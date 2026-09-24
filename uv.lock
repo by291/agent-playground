@@ -62,9 +62,10 @@ source = { editable = "." }
 dependencies = [
     { name = "aegra-cli" },
     { name = "langchain" },
+    { name = "langchain-core" },
     { name = "langchain-deepseek" },
+    { name = "langgraph" },
     { name = "langgraph-checkpoint-postgres" },
-    { name = "psycopg", extra = ["binary", "pool"] },
 ]
 
 [package.dev-dependencies]
@@ -78,9 +79,10 @@ dev = [
 requires-dist = [
     { name = "aegra-cli" },
     { name = "langchain" },
+    { name = "langchain-core", specifier = ">=1.6.4" },
     { name = "langchain-deepseek", specifier = ">=1.1.1" },
+    { name = "langgraph", specifier = ">=1.2.12" },
     { name = "langgraph-checkpoint-postgres" },
-    { name = "psycopg", extras = ["binary", "pool"] },
 ]
 
 [package.metadata.requires-dev]
@@ -1131,9 +1133,6 @@ wheels = [
 [package.optional-dependencies]
 binary = [
     { name = "psycopg-binary", marker = "implementation_name != 'pypy'" },
-]
-pool = [
-    { name = "psycopg-pool" },
 ]
 
 [[package]]
