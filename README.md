@@ -1,43 +1,59 @@
 # Agent playground
 
-A small TypeScript runtime for trying LangChain agents with PostgreSQL checkpoints and AG-UI event streaming. It exposes one AG-UI compatible SSE endpoint and a health endpoint. PostgreSQL is the only Docker Compose service.
+A small Python LangChain agent served by Aegra. Aegra provides Agent Protocol APIs for threads, runs, and PostgreSQL checkpoints. A custom route uses the official `ag-ui-langgraph` adapter to stream AG-UI events from the same agent graph.
 
 ## Run locally
 
-Requires Node.js 22+, pnpm, Docker, and an OpenAI API key or an OpenAI-compatible endpoint.
+Requires Docker and an OpenAI API key (or an OpenAI-compatible endpoint).
 
 ```sh
-pnpm install
 cp .env.example .env
-docker compose up -d --wait
-pnpm dev
+# Set OPENAI_API_KEY in .env.
+docker compose up --build -d --wait
 ```
 
-Set `OPENAI_API_KEY` and `OPENAI_MODEL` in `.env` before starting the server. Set `OPENAI_BASE_URL` if you use a compatible provider. The API listens on `127.0.0.1:3000` by default, and Compose exposes PostgreSQL on `127.0.0.1:55432`.
+The API listens on `http://127.0.0.1:2026`. PostgreSQL is exposed on `127.0.0.1:55432` for local inspection. Redis is internal to Compose. Set `OPENAI_BASE_URL` to use a compatible provider.
 
-## Send a run
+## Stream AG-UI
 
 ```sh
-curl --no-buffer -X POST http://127.0.0.1:3000/agent \
+curl --no-buffer -X POST http://127.0.0.1:2026/agent \
   -H 'Content-Type: application/json' \
   -H 'Accept: text/event-stream' \
   -d '{
     "threadId": "demo-thread",
     "runId": "demo-run-1",
-    "messages": [{"id": "user-message-1", "role": "user", "content": "What time is it now?"}]
+    "messages": [{"id": "user-message-1", "role": "user", "content": "What time is it now?"}],
+    "tools": [],
+    "context": [],
+    "state": {}
   }'
 ```
 
-The response contains AG-UI `RUN_STARTED`, text message and tool call events, then `RUN_FINISHED` or `RUN_ERROR`. The built-in `get_current_time` tool gives the agent a simple tool-call path to exercise. `GET /health` returns `{"status":"ok"}`.
+The stream is encoded by `ag-ui-langgraph`. The `get_current_time` tool provides a simple tool-call path. The AG-UI route borrows Aegra's graph and PostgreSQL checkpointer. It streams directly from the API process, while Agent Protocol runs use Aegra's run queue. For this playground, keep AG-UI and Agent Protocol thread IDs separate; the direct AG-UI route does not use Aegra's run queue or its per-thread concurrency controls.
 
-For another turn, keep `threadId` and use new `runId` and user message IDs. The runtime sends only the final user message to LangChain because the PostgreSQL checkpoint already contains earlier turns. It currently accepts text user messages and server-side tools only. Client tools, context, interrupt resume, and multimodal input are outside this first version.
-
-## Check
+## Agent Protocol
 
 ```sh
-pnpm typecheck
-pnpm test
-TEST_DATABASE_URL=postgresql://agent:agent@127.0.0.1:55432/agent_playground pnpm test
+curl --no-buffer -X POST http://127.0.0.1:2026/runs/stream \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "assistant_id": "agent",
+    "input": {"messages": [{"role": "user", "content": "Hello"}]},
+    "stream_mode": "messages-tuple"
+  }'
 ```
 
-The last command includes a PostgreSQL test that creates a second agent instance and checks that it can continue an existing thread. It needs the Compose database to be running. The normal test command skips that test.
+`GET /health` checks the Aegra server.
+
+## Develop and check
+
+```sh
+uv sync
+uv run pytest
+uv run ruff check .
+```
+
+To include the PostgreSQL checkpoint test, start the Compose database and run `TEST_DATABASE_URL=postgresql://agent:agent@127.0.0.1:55432/agent_playground uv run pytest`.
+
+Use `docker compose up -d postgres redis` when running the Python server on the host. Then set `DATABASE_URL=postgresql://agent:agent@127.0.0.1:55432/agent_playground` and run `uv run aegra serve`.

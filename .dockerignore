@@ -1,0 +1,11 @@
+.env
+.git
+.venv
+.uv-cache
+node_modules
+.pnpm-store
+tests
+__pycache__
+.pytest_cache
+.ruff_cache
+*.pyc
