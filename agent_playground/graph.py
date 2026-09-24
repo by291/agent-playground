@@ -16,7 +16,9 @@ def get_current_time() -> str:
     return datetime.now(UTC).isoformat()
 
 
-def make_graph(model: BaseChatModel | None = None, checkpointer: Checkpointer | None = None):
+def make_graph(
+    model: BaseChatModel | None = None, checkpointer: Checkpointer | None = None
+):
     if model is None:
         model = ChatOpenAI(
             model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),

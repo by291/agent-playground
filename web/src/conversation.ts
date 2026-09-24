@@ -2,7 +2,10 @@ import type { Message } from "@ag-ui/client";
 
 const storageKey = "agent-playground-conversation";
 
-export type SavedConversation = { threadId: string; messages: Message[] };
+export interface SavedConversation {
+  threadId: string;
+  messages: Message[];
+}
 
 export function newConversation(): SavedConversation {
   return { threadId: crypto.randomUUID(), messages: [] };

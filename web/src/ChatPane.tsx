@@ -18,11 +18,11 @@ import {
 
 const MarkdownMessage = lazy(() => import("./MarkdownMessage"));
 
-type ChatPaneProps = {
+interface ChatPaneProps {
   messages: Message[];
   running: boolean;
   onSend: (message: string) => Promise<void>;
-};
+}
 
 export function ChatPane({ messages, running, onSend }: ChatPaneProps) {
   const scroll = useRef<HTMLDivElement>(null);

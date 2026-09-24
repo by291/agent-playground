@@ -1,8 +1,12 @@
 import { EventType, HttpAgent, type Message } from "@ag-ui/client";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { saveConversation, type SavedConversation } from "./conversation";
 
-export type Activity = { id: string; type: string; detail?: string };
+export interface Activity {
+  id: string;
+  type: string;
+  detail?: string;
+}
 
 export function useConversation(saved: SavedConversation) {
   const [agent] = useState(
@@ -20,11 +24,11 @@ export function useConversation(saved: SavedConversation) {
   const [running, setRunning] = useState(false);
   const active = useRef(true);
 
-  function persist() {
+  const persist = useCallback(() => {
     if (active.current) {
       saveConversation({ threadId: agent.threadId, messages: agent.messages });
     }
-  }
+  }, [agent]);
 
   useEffect(() => {
     active.current = true;
@@ -58,7 +62,7 @@ export function useConversation(saved: SavedConversation) {
       agent.abortRun();
       subscription.unsubscribe();
     };
-  }, [agent]);
+  }, [agent, persist]);
 
   async function send(content: string): Promise<void> {
     const text = content.trim();

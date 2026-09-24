@@ -8,8 +8,8 @@
     "check": "pnpm --filter agent-playground-server check && pnpm --filter agent-playground-web check",
     "lint": "pnpm --filter agent-playground-server lint && pnpm --filter agent-playground-web lint",
     "build": "pnpm --filter agent-playground-web build",
-    "format": "prettier --write 'server/*.{ts,js,json}' 'web/src/**/*.{ts,tsx,css}' 'web/*.{js,ts,html,json}' .prettierrc.json package.json pnpm-workspace.yaml",
-    "format:check": "prettier --check 'server/*.{ts,js,json}' 'web/src/**/*.{ts,tsx,css}' 'web/*.{js,ts,html,json}' .prettierrc.json package.json pnpm-workspace.yaml"
+    "format": "prettier --write 'server/**/*.{ts,tsx,js,json}' 'web/src/**/*.{ts,tsx,css}' 'web/*.{js,ts,html,json}' package.json pnpm-workspace.yaml",
+    "format:check": "prettier --check 'server/**/*.{ts,tsx,js,json}' 'web/src/**/*.{ts,tsx,css}' 'web/*.{js,ts,html,json}' package.json pnpm-workspace.yaml"
   },
   "devDependencies": {
     "prettier": "^3.9.9"

@@ -37,14 +37,18 @@ def fake_model() -> FakeToolModel:
 def test_tool_and_followup_response():
     async def check():
         graph = make_graph(model=fake_model())
-        output = await graph.ainvoke({"messages": [HumanMessage(content="What time is it?")]})
+        output = await graph.ainvoke(
+            {"messages": [HumanMessage(content="What time is it?")]}
+        )
         assert output["messages"][-1].content == "The clock was checked."
         assert output["messages"][-2].name == "get_current_time"
 
     asyncio.run(check())
 
 
-@pytest.mark.skipif(not os.getenv("TEST_DATABASE_URL"), reason="PostgreSQL test URL not set")
+@pytest.mark.skipif(
+    not os.getenv("TEST_DATABASE_URL"), reason="PostgreSQL test URL not set"
+)
 def test_postgres_checkpoint_survives_graph_recreation():
     async def check():
         thread_id = str(uuid4())
@@ -71,7 +75,9 @@ def test_postgres_checkpoint_survives_graph_recreation():
             )
 
         user_turns = [
-            message.content for message in result["messages"] if isinstance(message, HumanMessage)
+            message.content
+            for message in result["messages"]
+            if isinstance(message, HumanMessage)
         ]
         assert user_turns == ["First turn", "Second turn"]
 
