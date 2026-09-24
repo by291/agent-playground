@@ -12,8 +12,8 @@ import {
   useEffect,
   useRef,
   useState,
-  type FormEvent,
   type KeyboardEvent,
+  type SubmitEvent,
 } from "react";
 
 const MarkdownMessage = lazy(() => import("./MarkdownMessage"));
@@ -195,7 +195,7 @@ function Composer({
   const [prompt, setPrompt] = useState("");
   const input = useRef<HTMLTextAreaElement>(null);
 
-  function submit(event?: FormEvent) {
+  function submit(event?: SubmitEvent<HTMLFormElement>) {
     event?.preventDefault();
     if (!prompt.trim() || running) return;
     const message = prompt;
