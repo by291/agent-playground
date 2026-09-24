@@ -17,62 +17,13 @@ services:
 
   redis:
     image: redis:7-alpine
+    ports:
+      - "127.0.0.1:56379:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 3s
       retries: 10
-
-  agent:
-    build: .
-    environment:
-      DATABASE_URL: postgresql://agent:agent@postgres:5432/agent_playground
-      REDIS_BROKER_ENABLED: "true"
-      REDIS_URL: redis://redis:6379/0
-      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
-      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
-    ports:
-      - "127.0.0.1:2026:2026"
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:2026/health')"]
-      interval: 10s
-      timeout: 3s
-      retries: 10
-
-  server:
-    build:
-      context: .
-      dockerfile: server/Dockerfile
-    environment:
-      AEGRA_URL: http://agent:2026
-    ports:
-      - "127.0.0.1:3000:3000"
-    depends_on:
-      agent:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
-      interval: 10s
-      timeout: 3s
-      retries: 10
-
-  web:
-    build:
-      context: .
-      dockerfile: web/Dockerfile
-    environment:
-      BACKEND_URL: http://server:3000
-    ports:
-      - "127.0.0.1:5173:5173"
-    depends_on:
-      server:
-        condition: service_healthy
 
 volumes:
   postgres_data:

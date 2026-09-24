@@ -1,6 +1,6 @@
 # Agent playground
 
-A small monorepo for trying agent runtime ideas. The Python `agent_playground/` package defines a LangChain agent served by Aegra. The TypeScript `server/` exposes an AG-UI endpoint using the official remote LangGraph adapter. The `web/` project is a small chat and event viewer.
+A small monorepo for trying agent runtime ideas. The Python `agent_playground/` package defines a LangChain agent served by Aegra. The Hono `server/` exposes an AG-UI endpoint using the official remote LangGraph adapter. The React `web/` project is a chat and event viewer.
 
 ```text
 web/ (AG-UI client) → server/ (AG-UI adapter) → Aegra run queue → agent_playground/
@@ -9,17 +9,27 @@ web/ (AG-UI client) → server/ (AG-UI adapter) → Aegra run queue → agent_pl
 
 ## Run locally
 
-Requires Docker and an OpenAI API key, or an OpenAI-compatible endpoint.
+Requires Docker for PostgreSQL and Redis, plus uv, pnpm, and an OpenAI API key or compatible endpoint. The application processes run on the host for fast iteration.
 
 ```sh
 cp .env.example .env
 # Set OPENAI_API_KEY in .env.
-docker compose up --build -d --wait
+docker compose up -d --wait
+uv sync
+pnpm install
 ```
 
-Open `http://127.0.0.1:5173` for the web UI. The AG-UI endpoint is `POST http://127.0.0.1:3000/agent`; the native Aegra API is on `http://127.0.0.1:2026`. PostgreSQL is exposed on `127.0.0.1:55432` for local inspection, and Redis stays inside Compose.
+Start each process in a separate terminal from the repository root:
 
-The server creates Aegra runs via `@ag-ui/langgraph`. Agent execution goes through Aegra's queue and thread concurrency handling. The web UI uses `@ag-ui/client` and shows the stream's AG-UI events. This is a local playground; the server does not provide authentication or durable AG-UI event replay.
+```sh
+uv run --env-file .env aegra serve --host 127.0.0.1 --port 2026
+pnpm --filter agent-playground-server dev
+pnpm --filter agent-playground-web dev
+```
+
+Open `http://127.0.0.1:5173` for the web UI. The AG-UI endpoint is `POST http://127.0.0.1:3000/agent`; the native Aegra API is on `http://127.0.0.1:2026`. PostgreSQL and Redis are exposed locally on ports `55432` and `56379`.
+
+The server creates Aegra runs via `@ag-ui/langgraph`. Agent execution goes through Aegra's queue and thread concurrency handling. Hono handles HTTP and SSE streaming. The React web UI uses `@ag-ui/client` and shows the stream's AG-UI events. This is a local playground; the server does not provide authentication or durable AG-UI event replay.
 
 ## Call the AG-UI endpoint
 
@@ -48,8 +58,7 @@ uv run pytest
 uv run ruff check .
 pnpm check
 pnpm build
+pnpm format:check
 ```
 
 To include the PostgreSQL checkpoint test, start the Compose database and run `TEST_DATABASE_URL=postgresql://agent:agent@127.0.0.1:55432/agent_playground uv run pytest`.
-
-For host development, run `docker compose up -d postgres redis`, then start Aegra with `DATABASE_URL=postgresql://agent:agent@127.0.0.1:55432/agent_playground uv run aegra serve`. Start the TypeScript server with `pnpm --filter agent-playground-server dev` and the web project with `pnpm --filter agent-playground-web dev`.

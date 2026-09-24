@@ -4,6 +4,11 @@
   "packageManager": "pnpm@11.24.0",
   "scripts": {
     "check": "pnpm --filter agent-playground-server check && pnpm --filter agent-playground-web check",
-    "build": "pnpm --filter agent-playground-web build"
+    "build": "pnpm --filter agent-playground-web build",
+    "format": "prettier --write server/*.ts web/src/*.{ts,tsx,css}",
+    "format:check": "prettier --check server/*.ts web/src/*.{ts,tsx,css}"
+  },
+  "devDependencies": {
+    "prettier": "^3.9.9"
   }
 }
