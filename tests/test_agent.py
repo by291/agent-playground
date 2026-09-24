@@ -11,7 +11,7 @@ from langchain_core.language_models.fake_chat_models import FakeMessagesListChat
 from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 
-os.environ.setdefault("OPENAI_API_KEY", "test")
+os.environ.setdefault("DEEPSEEK_API_KEY", "test")
 
 from agent_playground.graph import make_graph
 

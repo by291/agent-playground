@@ -9,15 +9,17 @@ web/ (AG-UI client) → server/ (AG-UI adapter) → Aegra run queue → agent_pl
 
 ## Run locally
 
-Requires Docker for PostgreSQL and Redis, plus uv, pnpm, Make, and an OpenAI API key or compatible endpoint. The application processes run on the host for fast iteration.
+Requires Docker for PostgreSQL and Redis, plus uv, pnpm, Make, and a DeepSeek API key. The application processes run on the host for fast iteration.
 
 ```sh
 make setup
-# Set OPENAI_API_KEY in the root .env file created by setup.
+# Set DEEPSEEK_API_KEY in the root .env file created by setup.
 make dev
 ```
 
 `make setup` creates three separate environment files: the root `.env` configures the Python agent and Aegra, `server/.env` configures the AG-UI server, and `web/.env` configures the Vite proxy. Each app reads its own file, and all three files are ignored by Git.
+
+The agent uses LangChain's `ChatDeepSeek` integration and defaults to `deepseek-flash`. Set `DEEPSEEK_API_KEY` in the root `.env`; `DEEPSEEK_MODEL` and `DEEPSEEK_API_BASE` can override the model and endpoint. If you already have a root `.env`, replace its old `OPENAI_*` entries with the `DEEPSEEK_*` entries from `.env.example`.
 
 `make dev` starts the infrastructure and all three application processes. Stop it with Ctrl+C. To run a process in its own terminal instead, use:
 

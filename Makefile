@@ -8,7 +8,7 @@ help:
 	@echo "Quality: make check, make typecheck, make lint, make format, make format-check, make test, make build"
 
 setup:
-	@if [ ! -f .env ]; then cp .env.example .env; echo "Created .env; set OPENAI_API_KEY before running the agent."; fi
+	@if [ ! -f .env ]; then cp .env.example .env; echo "Created .env; set DEEPSEEK_API_KEY before running the agent."; fi
 	@if [ ! -f server/.env ]; then cp server/.env.example server/.env; echo "Created server/.env."; fi
 	@if [ ! -f web/.env ]; then cp web/.env.example web/.env; echo "Created web/.env."; fi
 	uv sync

@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 from langchain.agents import create_agent
 from langchain.tools import tool
 from langchain_core.language_models import BaseChatModel
-from langchain_openai import ChatOpenAI
+from langchain_deepseek import ChatDeepSeek
 from langgraph.types import Checkpointer
 
 
@@ -20,10 +20,7 @@ def make_graph(
     model: BaseChatModel | None = None, checkpointer: Checkpointer | None = None
 ):
     if model is None:
-        model = ChatOpenAI(
-            model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
-            base_url=os.getenv("OPENAI_BASE_URL") or None,
-        )
+        model = ChatDeepSeek(model=os.getenv("DEEPSEEK_MODEL", "deepseek-flash"))
     return create_agent(
         model=model,
         tools=[get_current_time],
