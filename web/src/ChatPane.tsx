@@ -51,7 +51,7 @@ export function ChatPane({ messages, running, onSend }: ChatPaneProps) {
         onScroll={updateScrollPosition}
         className="min-h-0 flex-1 overflow-y-auto overscroll-contain"
       >
-        <div className="mx-auto flex min-h-full w-full max-w-[820px] flex-col px-4 sm:px-8">
+        <div className="mx-auto flex min-h-full w-full max-w-205 flex-col px-4 sm:px-8">
           {visible.length === 0 ? (
             <Welcome onSend={onSend} />
           ) : (
@@ -81,7 +81,7 @@ function Welcome({ onSend }: { onSend: ChatPaneProps["onSend"] }) {
       <h2 className="max-w-xl text-[30px] leading-[1.15] font-semibold tracking-[-0.055em] text-ink sm:text-[38px]">
         A place to think out loud.
       </h2>
-      <p className="mt-4 max-w-lg text-[15px] leading-7 text-muted">
+      <p className="mt-4 max-w-lg text-[15px]/7 text-muted">
         Ask a question, try a tool call, or explore what happens during an agent
         run.
       </p>
@@ -156,7 +156,7 @@ function MessageRow({ message }: { message: Message }) {
   if (message.role === "user") {
     return (
       <div className="flex justify-end">
-        <div className="max-w-[85%] rounded-[20px] rounded-br-md bg-sidebar px-4 py-3 text-[15px] leading-7 whitespace-pre-wrap text-ink sm:max-w-[75%]">
+        <div className="max-w-[85%] rounded-[20px] rounded-br-md bg-sidebar px-4 py-3 text-[15px]/7 whitespace-pre-wrap text-ink sm:max-w-[75%]">
           {text}
         </div>
       </div>
@@ -216,7 +216,7 @@ function Composer({
 
   return (
     <div className="shrink-0 bg-white px-4 pt-3 pb-4 sm:px-8 sm:pb-6">
-      <div className="mx-auto w-full max-w-[820px]">
+      <div className="mx-auto w-full max-w-205">
         <form
           onSubmit={submit}
           className="rounded-[22px] border border-line bg-white p-3 shadow-[0_8px_32px_rgba(28,41,34,0.08)] transition-colors focus-within:border-accent-line sm:p-4"
@@ -230,7 +230,7 @@ function Composer({
             placeholder="Message Agent Playground"
             aria-label="Message"
             disabled={running}
-            className="max-h-48 min-h-14 w-full resize-none bg-transparent px-1 py-1 text-base leading-6 text-ink outline-none placeholder:text-soft disabled:cursor-wait disabled:opacity-60"
+            className="max-h-48 min-h-14 w-full resize-none bg-transparent p-1 text-base/6 text-ink outline-none placeholder:text-soft disabled:cursor-wait disabled:opacity-60"
           />
           <div className="flex items-center justify-between gap-3 pl-1">
             <span className="hidden text-[11px] text-soft sm:block">

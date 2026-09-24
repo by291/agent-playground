@@ -4,9 +4,10 @@
   "packageManager": "pnpm@11.24.0",
   "scripts": {
     "check": "pnpm --filter agent-playground-server check && pnpm --filter agent-playground-web check",
+    "lint": "pnpm --filter agent-playground-web lint",
     "build": "pnpm --filter agent-playground-web build",
-    "format": "prettier --write server/*.ts web/src/*.{ts,tsx,css}",
-    "format:check": "prettier --check server/*.ts web/src/*.{ts,tsx,css}"
+    "format": "prettier --write server/*.ts web/src/*.{ts,tsx,css} web/eslint.config.js",
+    "format:check": "prettier --check server/*.ts web/src/*.{ts,tsx,css} web/eslint.config.js"
   },
   "devDependencies": {
     "prettier": "^3.9.9"

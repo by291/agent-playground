@@ -57,8 +57,11 @@ pnpm install
 uv run pytest
 uv run ruff check .
 pnpm check
+pnpm lint
 pnpm build
 pnpm format:check
 ```
+
+`pnpm lint` checks Tailwind class names in the web app, including canonical forms such as `max-w-205`.
 
 To include the PostgreSQL checkpoint test, start the Compose database and run `TEST_DATABASE_URL=postgresql://agent:agent@127.0.0.1:55432/agent_playground uv run pytest`.

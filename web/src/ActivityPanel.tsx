@@ -18,15 +18,15 @@ export function ActivityPanel({
   return (
     <aside
       aria-label="Run activity"
-      className="flex min-w-0 flex-1 flex-col border-l border-line bg-canvas lg:w-[340px] lg:flex-none xl:w-[360px]"
+      className="flex min-w-0 flex-1 flex-col border-l border-line bg-canvas lg:w-85 lg:flex-none xl:w-90"
     >
-      <div className="flex items-start justify-between gap-3 border-b border-line px-5 py-5">
+      <div className="flex items-start justify-between gap-3 border-b border-line p-5">
         <div>
           <div className="flex items-center gap-2 text-[14px] font-semibold text-ink">
             <PulseIcon size={19} className="text-accent" aria-hidden="true" />
             Run activity
           </div>
-          <p className="mt-1 text-xs leading-5 text-muted">
+          <p className="mt-1 text-xs/5 text-muted">
             The AG-UI stream behind this conversation.
           </p>
         </div>
@@ -40,7 +40,7 @@ export function ActivityPanel({
         </button>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
+      <div className="min-h-0 flex-1 overflow-y-auto p-5">
         <div className="mb-4 flex items-center justify-between">
           <span className="text-[10px] font-semibold tracking-[0.14em] text-soft uppercase">
             Recent events
@@ -57,7 +57,7 @@ export function ActivityPanel({
               aria-hidden="true"
             />
             <p className="mt-3 text-sm font-medium text-ink">No activity yet</p>
-            <p className="mt-1 text-xs leading-5 text-muted">
+            <p className="mt-1 text-xs/5 text-muted">
               Events will appear here when you send a message.
             </p>
           </div>
@@ -74,7 +74,7 @@ export function ActivityPanel({
         <p className="text-[10px] font-semibold tracking-[0.14em] text-soft uppercase">
           Thread ID
         </p>
-        <code className="mt-2 block break-all font-mono text-[11px] leading-5 text-muted">
+        <code className="mt-2 block break-all font-mono text-[11px]/5 text-muted">
           {threadId}
         </code>
       </div>
@@ -96,7 +96,7 @@ function ActivityItem({ event }: { event: Activity }) {
         : ChatCircleDotsIcon;
 
   return (
-    <li className="flex gap-3 rounded-xl border border-line bg-white px-3 py-3">
+    <li className="flex gap-3 rounded-xl border border-line bg-white p-3">
       <span
         className={`flex size-8 shrink-0 items-center justify-center rounded-lg ${
           kind === "tool"
@@ -109,11 +109,11 @@ function ActivityItem({ event }: { event: Activity }) {
         <Icon size={17} aria-hidden="true" />
       </span>
       <div className="min-w-0 pt-0.5">
-        <p className="break-all font-mono text-[11px] leading-5 font-semibold text-ink">
+        <p className="break-all font-mono text-[11px]/5 font-semibold text-ink">
           {event.type}
         </p>
         {event.detail && (
-          <p className="mt-0.5 break-words text-xs leading-5 text-muted">
+          <p className="mt-0.5 wrap-break-word text-xs/5 text-muted">
             {event.detail}
           </p>
         )}

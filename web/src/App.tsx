@@ -130,7 +130,7 @@ function Sidebar({
   onNewConversation: () => void;
 }) {
   return (
-    <aside className="hidden w-[252px] shrink-0 flex-col border-r border-line bg-sidebar px-4 py-5 xl:flex">
+    <aside className="hidden w-63 shrink-0 flex-col border-r border-line bg-sidebar px-4 py-5 xl:flex">
       <div className="flex items-center gap-3 px-2">
         <div className="flex size-9 items-center justify-center rounded-xl bg-accent text-white shadow-sm">
           <SparkleIcon size={21} weight="fill" aria-hidden="true" />
@@ -175,7 +175,7 @@ function Sidebar({
           <span className="size-2 rounded-full bg-accent" />
           Runtime stack
         </div>
-        <p className="mt-2 text-[11px] leading-5 text-muted">
+        <p className="mt-2 text-[11px]/5 text-muted">
           Python agent · Aegra · AG-UI
         </p>
       </div>
