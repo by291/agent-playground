@@ -5,7 +5,9 @@ from datetime import UTC, datetime
 
 from langchain.agents import create_agent
 from langchain.tools import tool
+from langchain_core.language_models import BaseChatModel
 from langchain_openai import ChatOpenAI
+from langgraph.types import Checkpointer
 
 
 @tool
@@ -14,7 +16,7 @@ def get_current_time() -> str:
     return datetime.now(UTC).isoformat()
 
 
-def make_graph(model=None, checkpointer=None):
+def make_graph(model: BaseChatModel | None = None, checkpointer: Checkpointer | None = None):
     if model is None:
         model = ChatOpenAI(
             model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),

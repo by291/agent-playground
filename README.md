@@ -61,4 +61,6 @@ make format
 
 `make check` runs Pyrefly and TypeScript type checking, Ruff and ESLint linting, Ruff and Prettier format checks, Python tests, and the web build. `make format` applies the Python and frontend formatters. Individual targets such as `make typecheck`, `make lint`, `make format-check`, `make test`, and `make build` are available when a faster check is useful. Web linting checks Tailwind class names, including canonical forms such as `max-w-205`.
 
+Pyrefly uses its strict preset. Ruff checks imports, common bugs, and Python 3.12 syntax. Both TypeScript projects enable strict checking, unchecked index access, and exact optional properties; ESLint runs the type-aware recommended rules and enforces type-only imports. Ruff formats Python at 100 characters, and Prettier formats the TypeScript apps at 80 characters.
+
 To include the PostgreSQL checkpoint test, start the Compose database and run `TEST_DATABASE_URL=postgresql://agent:agent@127.0.0.1:55432/agent_playground make test`.

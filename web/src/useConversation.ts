@@ -1,4 +1,4 @@
-import { HttpAgent, type Message } from "@ag-ui/client";
+import { EventType, HttpAgent, type Message } from "@ag-ui/client";
 import { useEffect, useRef, useState } from "react";
 import { saveConversation, type SavedConversation } from "./conversation";
 
@@ -30,11 +30,19 @@ export function useConversation(saved: SavedConversation) {
     active.current = true;
     const subscription = agent.subscribe({
       onEvent({ event }) {
-        if (event.type === "RAW" || event.type === "STATE_SNAPSHOT") return;
+        if (
+          event.type === EventType.RAW ||
+          event.type === EventType.STATE_SNAPSHOT
+        )
+          return;
         const detail = "name" in event ? String(event.name) : undefined;
         setActivity((items) =>
           [
-            { id: crypto.randomUUID(), type: event.type, detail },
+            {
+              id: crypto.randomUUID(),
+              type: event.type,
+              ...(detail === undefined ? {} : { detail }),
+            },
             ...items,
           ].slice(0, 30),
         );

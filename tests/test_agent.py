@@ -2,6 +2,8 @@
 
 import asyncio
 import os
+from collections.abc import Sequence
+from typing import override
 from uuid import uuid4
 
 import pytest
@@ -15,7 +17,8 @@ from agent_playground.graph import make_graph
 
 
 class FakeToolModel(FakeMessagesListChatModel):
-    def bind_tools(self, tools, **kwargs):
+    @override
+    def bind_tools(self, tools: Sequence[object], **kwargs: object):
         return self
 
 

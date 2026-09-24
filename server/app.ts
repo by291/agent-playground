@@ -1,4 +1,4 @@
-import { RunAgentInputSchema } from "@ag-ui/client";
+import { EventType, RunAgentInputSchema } from "@ag-ui/client";
 import { LangGraphAgent } from "@ag-ui/langgraph";
 import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
@@ -26,7 +26,7 @@ app.post(
       context.json({ error: "Request body is too large" }, 413),
   }),
   async (context) => {
-    const body = await context.req.json().catch(() => null);
+    const body: unknown = await context.req.json().catch(() => null);
     const input = RunAgentInputSchema.safeParse(body);
     if (!input.success)
       return context.json({ error: "Invalid AG-UI input" }, 400);
@@ -53,8 +53,8 @@ app.post(
         await lastValueFrom(
           agent.run(input.data).pipe(
             filter((event) => {
-              if (event.type === "RAW") return false;
-              if (event.type !== "STATE_SNAPSHOT") return true;
+              if (event.type === EventType.RAW) return false;
+              if (event.type !== EventType.STATE_SNAPSHOT) return true;
 
               const snapshot = JSON.stringify(event.snapshot);
               if (snapshot === lastSnapshot) return false;

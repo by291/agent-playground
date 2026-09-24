@@ -34,6 +34,11 @@ testpaths = ["tests"]
 
 [tool.ruff]
 line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I", "B", "UP"]
 
 [tool.pyrefly]
 project-includes = ["agent_playground", "tests"]
+preset = "strict"
