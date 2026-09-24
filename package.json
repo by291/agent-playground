@@ -1,0 +1,9 @@
+{
+  "name": "agent-playground",
+  "private": true,
+  "packageManager": "pnpm@11.24.0",
+  "scripts": {
+    "check": "pnpm --filter agent-playground-server check && pnpm --filter agent-playground-web check",
+    "build": "pnpm --filter agent-playground-web build"
+  }
+}

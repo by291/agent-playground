@@ -1,0 +1,19 @@
+{
+  "name": "agent-playground-server",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch server.ts",
+    "check": "tsc --noEmit",
+    "start": "tsx server.ts"
+  },
+  "dependencies": {
+    "@ag-ui/client": "0.0.58",
+    "@ag-ui/langgraph": "^0.0.43"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "tsx": "^4.20.0",
+    "typescript": "^5.9.0"
+  }
+}

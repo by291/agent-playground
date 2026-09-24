@@ -3,7 +3,9 @@
 .venv
 .uv-cache
 node_modules
+**/node_modules
 .pnpm-store
+**/dist
 tests
 __pycache__
 .pytest_cache

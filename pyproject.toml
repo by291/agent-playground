@@ -1,11 +1,10 @@
 [project]
 name = "agent-playground"
 version = "0.2.0"
-description = "A small LangChain agent served by Aegra with AG-UI streaming"
+description = "A small LangChain agent served by Aegra"
 requires-python = ">=3.12,<3.14"
 dependencies = [
   "aegra-cli",
-  "ag-ui-langgraph[fastapi]",
   "langchain",
   "langchain-openai",
   "langgraph-checkpoint-postgres",
@@ -13,7 +12,7 @@ dependencies = [
 ]
 
 [dependency-groups]
-dev = ["httpx", "pytest", "ruff"]
+dev = ["pytest", "ruff"]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]

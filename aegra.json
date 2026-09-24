@@ -1,8 +1,5 @@
 {
   "graphs": {
     "agent": "./agent_playground/graph.py:graph"
-  },
-  "http": {
-    "app": "./agent_playground/http.py:app"
   }
 }

@@ -1,4 +1,4 @@
-"""The agent graph shared by the Agent Protocol and AG-UI endpoints."""
+"""The agent graph served through Aegra's Agent Protocol API."""
 
 import os
 from datetime import UTC, datetime

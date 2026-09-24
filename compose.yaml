@@ -45,5 +45,34 @@ services:
       timeout: 3s
       retries: 10
 
+  server:
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    environment:
+      AEGRA_URL: http://agent:2026
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      agent:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
+  web:
+    build:
+      context: .
+      dockerfile: web/Dockerfile
+    environment:
+      BACKEND_URL: http://server:3000
+    ports:
+      - "127.0.0.1:5173:5173"
+    depends_on:
+      server:
+        condition: service_healthy
+
 volumes:
   postgres_data:

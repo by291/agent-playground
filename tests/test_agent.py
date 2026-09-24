@@ -1,21 +1,17 @@
-"""Check the graph and AG-UI route without calling a real model provider."""
+"""Check the graph without calling a real model provider."""
 
 import asyncio
 import os
-from contextlib import asynccontextmanager
 from uuid import uuid4
 
-import httpx
 import pytest
 from langchain_core.language_models.fake_chat_models import FakeMessagesListChatModel
 from langchain_core.messages import AIMessage, HumanMessage
-from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 
 os.environ.setdefault("OPENAI_API_KEY", "test")
 
 from agent_playground.graph import make_graph
-from agent_playground.http import app
 
 
 class FakeToolModel(FakeMessagesListChatModel):
@@ -41,67 +37,6 @@ def test_tool_and_followup_response():
         output = await graph.ainvoke({"messages": [HumanMessage(content="What time is it?")]})
         assert output["messages"][-1].content == "The clock was checked."
         assert output["messages"][-2].name == "get_current_time"
-
-    asyncio.run(check())
-
-
-def test_ag_ui_route_uses_adapter(monkeypatch):
-    graph = make_graph(model=fake_model(), checkpointer=InMemorySaver())
-
-    class GraphService:
-        @asynccontextmanager
-        async def get_graph(self, graph_id):
-            assert graph_id == "agent"
-            yield graph
-
-    monkeypatch.setattr("agent_playground.http.get_langgraph_service", GraphService)
-
-    async def check():
-        transport = httpx.ASGITransport(app=app)
-        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-            response = await client.post(
-                "/agent",
-                json={
-                    "threadId": str(uuid4()),
-                    "runId": str(uuid4()),
-                    "messages": [{"id": str(uuid4()), "role": "user", "content": "What time is it?"}],
-                },
-                headers={"accept": "text/event-stream"},
-            )
-        assert response.status_code == 200
-        assert "text/event-stream" in response.headers["content-type"]
-        assert '"type":"RUN_STARTED"' in response.text
-        assert '"type":"TOOL_CALL_START"' in response.text
-        assert '"type":"RUN_FINISHED"' in response.text
-        assert '"type":"RAW"' not in response.text
-
-    asyncio.run(check())
-
-
-def test_ag_ui_route_reports_run_failure(monkeypatch):
-    class BrokenGraphService:
-        @asynccontextmanager
-        async def get_graph(self, graph_id):
-            raise RuntimeError("Internal graph failure")
-            yield
-
-    monkeypatch.setattr("agent_playground.http.get_langgraph_service", BrokenGraphService)
-
-    async def check():
-        transport = httpx.ASGITransport(app=app)
-        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-            response = await client.post(
-                "/agent",
-                json={
-                    "threadId": str(uuid4()),
-                    "runId": str(uuid4()),
-                    "messages": [{"id": str(uuid4()), "role": "user", "content": "Hello"}],
-                },
-                headers={"accept": "text/event-stream"},
-            )
-        assert response.status_code == 200
-        assert '"type":"RUN_ERROR"' in response.text
-        assert "Internal graph failure" not in response.text
 
     asyncio.run(check())
 
