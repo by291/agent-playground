@@ -13,9 +13,11 @@ Requires Docker for PostgreSQL and Redis, plus uv, pnpm, Make, and an OpenAI API
 
 ```sh
 make setup
-# Set OPENAI_API_KEY in the .env file created by setup.
+# Set OPENAI_API_KEY in the root .env file created by setup.
 make dev
 ```
+
+`make setup` creates three separate environment files: the root `.env` configures the Python agent and Aegra, `server/.env` configures the AG-UI server, and `web/.env` configures the Vite proxy. Each app reads its own file, and all three files are ignored by Git.
 
 `make dev` starts the infrastructure and all three application processes. Stop it with Ctrl+C. To run a process in its own terminal instead, use:
 
@@ -28,7 +30,7 @@ make web
 
 Run the last three commands in separate terminals. Use `make infra-down` to stop PostgreSQL and Redis. Run `make help` to list the shortcuts.
 
-From the repository root, `uv run agent` serves Aegra using `HOST` and `PORT` from `.env`, while `pnpm dev:server` and `pnpm dev:web` run the TypeScript apps. The Makefile forwards to these commands.
+From the repository root, `uv run agent` serves Aegra using `HOST` and `PORT` from the root `.env`, while `pnpm dev:server` and `pnpm dev:web` run the TypeScript apps using their local `.env` files. The Makefile forwards to these commands.
 
 Open `http://127.0.0.1:5173` for the web UI. The AG-UI endpoint is `POST http://127.0.0.1:3000/agent`; the native Aegra API is on `http://127.0.0.1:2026`. PostgreSQL and Redis are exposed locally on ports `55432` and `56379`.
 

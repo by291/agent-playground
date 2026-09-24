@@ -3,10 +3,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "tsx watch server.ts",
+    "dev": "node --env-file=.env --import tsx --watch server.ts",
     "check": "tsc --noEmit",
     "lint": "eslint '**/*.ts' --max-warnings 0",
-    "start": "tsx server.ts"
+    "start": "node --env-file=.env --import tsx server.ts"
   },
   "dependencies": {
     "@ag-ui/client": "0.0.58",
