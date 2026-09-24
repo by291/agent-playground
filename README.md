@@ -28,7 +28,7 @@ make web
 
 Run the last three commands in separate terminals. Use `make infra-down` to stop PostgreSQL and Redis. Run `make help` to list the shortcuts.
 
-From the repository root, `uv run agent` serves Aegra with the local host and port settings, while `pnpm dev:server` and `pnpm dev:web` run the TypeScript apps. The Makefile forwards to these commands.
+From the repository root, `uv run agent` serves Aegra using `HOST` and `PORT` from `.env`, while `pnpm dev:server` and `pnpm dev:web` run the TypeScript apps. The Makefile forwards to these commands.
 
 Open `http://127.0.0.1:5173` for the web UI. The AG-UI endpoint is `POST http://127.0.0.1:3000/agent`; the native Aegra API is on `http://127.0.0.1:2026`. PostgreSQL and Redis are exposed locally on ports `55432` and `56379`.
 
