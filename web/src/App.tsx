@@ -1,18 +1,19 @@
-import type { Message } from "@ag-ui/client";
 import {
-  useEffect,
-  useRef,
-  useState,
-  type FormEvent,
-  type KeyboardEvent,
-} from "react";
+  ChatCircleDotsIcon,
+  PlusIcon,
+  PulseIcon,
+  SparkleIcon,
+} from "@phosphor-icons/react";
+import { useEffect, useState } from "react";
+import { ActivityPanel } from "./ActivityPanel";
+import { ChatPane } from "./ChatPane";
 import {
   loadConversation,
   newConversation,
   saveConversation,
   type SavedConversation,
 } from "./conversation";
-import { useConversation, type Activity } from "./useConversation";
+import { useConversation } from "./useConversation";
 
 export function App() {
   const [conversation, setConversation] = useState(loadConversation);
@@ -40,49 +41,145 @@ function ConversationPage({
   onNewConversation: () => void;
 }) {
   const { messages, activity, running, send } = useConversation(conversation);
+  const [activityOpen, setActivityOpen] = useState(false);
 
   return (
-    <div className="shell">
-      <aside className="sidebar">
-        <div className="brand">
-          <span className="brand-mark">✳</span>
-          <span>agent playground</span>
-        </div>
-        <div className="sidebar-section-label">WORKSPACE</div>
-        <button className="new-chat" type="button" onClick={onNewConversation}>
-          <span>＋</span> New conversation
-        </button>
-        <div className="sidebar-bottom">
-          <div className="stack-label">THE STACK</div>
-          <div className="stack-line">
-            <span className="stack-dot python" /> Python agent
-          </div>
-          <div className="stack-line">
-            <span className="stack-dot aegra" /> Aegra runtime
-          </div>
-          <div className="stack-line">
-            <span className="stack-dot ts" /> TypeScript API + web
-          </div>
-        </div>
-      </aside>
+    <div className="flex h-dvh bg-canvas font-sans text-ink">
+      <Sidebar
+        threadId={conversation.threadId}
+        onNewConversation={onNewConversation}
+      />
 
-      <main className="workspace">
-        <header className="topbar">
-          <div>
-            <div className="eyebrow">EXPERIMENT / 01</div>
-            <h1>Agent chat</h1>
+      <div className="flex min-w-0 flex-1 flex-col bg-surface">
+        <header className="flex h-16 shrink-0 items-center justify-between gap-3 border-b border-line px-4 sm:px-6 lg:px-9">
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-accent text-white xl:hidden">
+              <SparkleIcon size={19} weight="fill" aria-hidden="true" />
+            </div>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <h1 className="truncate text-[15px] font-semibold tracking-[-0.02em] sm:text-base">
+                  Agent Playground
+                </h1>
+                <span className="hidden rounded-full border border-accent-line bg-accent-soft px-2 py-0.5 text-[10px] font-semibold tracking-wide text-accent sm:inline">
+                  EXPERIMENT
+                </span>
+              </div>
+              <p className="hidden text-xs text-soft sm:block">Agent chat</p>
+            </div>
           </div>
-          <ConnectionStatus />
+
+          <div className="flex shrink-0 items-center gap-1.5 sm:gap-3">
+            <ConnectionStatus />
+            <button
+              type="button"
+              onClick={() => setActivityOpen((open) => !open)}
+              aria-label={
+                activityOpen ? "Hide run activity" : "Show run activity"
+              }
+              aria-pressed={activityOpen}
+              className={`inline-flex h-10 items-center gap-2 rounded-xl px-3 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent ${
+                activityOpen
+                  ? "bg-accent-soft text-accent"
+                  : "text-muted hover:bg-sidebar hover:text-ink"
+              }`}
+            >
+              <PulseIcon size={18} aria-hidden="true" />
+              <span className="hidden sm:inline">Activity</span>
+              {activity.length > 0 && (
+                <span className="rounded-md bg-accent-soft px-1.5 py-0.5 text-[11px] font-semibold tabular-nums text-accent">
+                  {activity.length}
+                </span>
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={onNewConversation}
+              aria-label="New conversation"
+              className="inline-flex size-10 items-center justify-center rounded-xl text-muted transition-colors hover:bg-sidebar hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent xl:hidden"
+            >
+              <PlusIcon size={20} aria-hidden="true" />
+            </button>
+          </div>
         </header>
-        <div className="content-grid">
-          <section className="chat-panel">
-            <MessageList messages={messages} />
-            <Composer running={running} onSend={send} />
-          </section>
-          <ActivityPanel activity={activity} threadId={conversation.threadId} />
+
+        <div className="flex min-h-0 flex-1">
+          <main
+            className={`${activityOpen ? "hidden lg:flex" : "flex"} min-w-0 flex-1 flex-col`}
+          >
+            <ChatPane messages={messages} running={running} onSend={send} />
+          </main>
+          {activityOpen && (
+            <ActivityPanel
+              activity={activity}
+              threadId={conversation.threadId}
+              onClose={() => setActivityOpen(false)}
+            />
+          )}
         </div>
-      </main>
+      </div>
     </div>
+  );
+}
+
+function Sidebar({
+  threadId,
+  onNewConversation,
+}: {
+  threadId: string;
+  onNewConversation: () => void;
+}) {
+  return (
+    <aside className="hidden w-[252px] shrink-0 flex-col border-r border-line bg-sidebar px-4 py-5 xl:flex">
+      <div className="flex items-center gap-3 px-2">
+        <div className="flex size-9 items-center justify-center rounded-xl bg-accent text-white shadow-sm">
+          <SparkleIcon size={21} weight="fill" aria-hidden="true" />
+        </div>
+        <div>
+          <p className="text-[14px] font-semibold tracking-[-0.03em]">
+            agent playground
+          </p>
+          <p className="text-[11px] text-soft">Runtime workbench</p>
+        </div>
+      </div>
+
+      <button
+        type="button"
+        onClick={onNewConversation}
+        className="mt-8 flex h-11 items-center gap-3 rounded-xl border border-accent-line bg-white px-3 text-[13px] font-medium text-accent shadow-[0_1px_2px_rgba(28,41,34,0.03)] transition-colors hover:bg-accent-soft focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+      >
+        <PlusIcon size={18} aria-hidden="true" />
+        New conversation
+      </button>
+
+      <p className="mt-9 px-3 text-[10px] font-semibold tracking-[0.14em] text-soft uppercase">
+        Workspace
+      </p>
+      <div className="mt-3 flex h-10 items-center gap-3 rounded-xl bg-white px-3 text-[13px] font-medium text-ink shadow-[0_1px_3px_rgba(28,41,34,0.05)]">
+        <ChatCircleDotsIcon
+          size={18}
+          className="text-accent"
+          aria-hidden="true"
+        />
+        Agent chat
+      </div>
+      <div className="mt-3 px-3">
+        <p className="text-[11px] text-soft">Current thread</p>
+        <code className="mt-1 block font-mono text-[11px] text-muted">
+          {threadId.slice(0, 8)}…
+        </code>
+      </div>
+
+      <div className="mt-auto rounded-2xl border border-line bg-white/80 p-4">
+        <div className="flex items-center gap-2 text-xs font-semibold text-ink">
+          <span className="size-2 rounded-full bg-accent" />
+          Runtime stack
+        </div>
+        <p className="mt-2 text-[11px] leading-5 text-muted">
+          Python agent · Aegra · AG-UI
+        </p>
+      </div>
+    </aside>
   );
 }
 
@@ -95,180 +192,28 @@ function ConnectionStatus() {
       .catch(() => setConnected(false));
   }, []);
 
+  const label =
+    connected === null
+      ? "Checking gateway"
+      : connected
+        ? "Gateway online"
+        : "Gateway offline";
+
   return (
-    <div className="connection">
+    <div
+      role="status"
+      className="hidden items-center gap-2 text-xs font-medium text-muted md:flex"
+    >
       <span
-        id="connection-dot"
-        className={
-          connected === null ? "" : connected ? "connected" : "disconnected"
-        }
+        className={`size-2 rounded-full ${
+          connected === null
+            ? "bg-amber-400"
+            : connected
+              ? "bg-emerald-600"
+              : "bg-red-500"
+        }`}
       />
-      <span>
-        {connected === null
-          ? "Checking connection"
-          : connected
-            ? "API connected"
-            : "API unavailable"}
-      </span>
-    </div>
-  );
-}
-
-function messageText(message: Message): string {
-  if (typeof message.content === "string") return message.content;
-  if (!Array.isArray(message.content)) return "";
-  return message.content
-    .filter(
-      (part): part is { type: "text"; text: string } =>
-        part.type === "text" && "text" in part,
-    )
-    .map((part) => part.text)
-    .join("\n");
-}
-
-function MessageList({ messages }: { messages: Message[] }) {
-  const scroll = useRef<HTMLDivElement>(null);
-  const visible = messages.filter(
-    (message) => message.role === "user" || message.role === "assistant",
-  );
-
-  useEffect(() => {
-    if (scroll.current) scroll.current.scrollTop = scroll.current.scrollHeight;
-  }, [messages]);
-
-  return (
-    <div className="chat-scroll" ref={scroll}>
-      <div className="messages">
-        {visible.length === 0 ? (
-          <div className="empty-state">
-            <div className="empty-symbol">✳</div>
-            <div className="empty-kicker">YOUR SANDBOX IS READY</div>
-            <h2>Start with a question.</h2>
-            <p>
-              A small space to test an agent, its tools, and the events flowing
-              between them.
-            </p>
-          </div>
-        ) : (
-          visible.map((message) => {
-            const text = messageText(message);
-            if (!text) return null;
-            return (
-              <div className={`message-row ${message.role}`} key={message.id}>
-                <div className="avatar">
-                  {message.role === "user" ? "Y" : "✳"}
-                </div>
-                <div className="bubble">{text}</div>
-              </div>
-            );
-          })
-        )}
-      </div>
-    </div>
-  );
-}
-
-function Composer({
-  running,
-  onSend,
-}: {
-  running: boolean;
-  onSend: (message: string) => Promise<void>;
-}) {
-  const [prompt, setPrompt] = useState("");
-  const input = useRef<HTMLTextAreaElement>(null);
-
-  function submit(event?: FormEvent) {
-    event?.preventDefault();
-    if (!prompt.trim() || running) return;
-    const message = prompt;
-    setPrompt("");
-    void onSend(message).finally(() => input.current?.focus());
-  }
-
-  function handleKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
-    if (event.key === "Enter" && !event.shiftKey) {
-      event.preventDefault();
-      submit();
-    }
-  }
-
-  return (
-    <form className="composer" onSubmit={submit}>
-      <textarea
-        ref={input}
-        rows={2}
-        value={prompt}
-        onChange={(event) => setPrompt(event.target.value)}
-        onKeyDown={handleKeyDown}
-        placeholder="Ask the agent anything…"
-        aria-label="Message"
-        disabled={running}
-      />
-      <div className="composer-bottom">
-        <span>Enter to send · Shift + Enter for a new line</span>
-        <button type="submit" disabled={running || !prompt.trim()}>
-          {running ? (
-            "Running…"
-          ) : (
-            <>
-              Send <span>↗</span>
-            </>
-          )}
-        </button>
-      </div>
-    </form>
-  );
-}
-
-function ActivityPanel({
-  activity,
-  threadId,
-}: {
-  activity: Activity[];
-  threadId: string;
-}) {
-  return (
-    <aside className="activity-panel">
-      <div className="activity-heading">
-        <span>LIVE EVENTS</span>
-        <span className="live-indicator">● LIVE</span>
-      </div>
-      <p className="activity-description">
-        AG-UI events generated from the Aegra run stream.
-      </p>
-      <div className="activity-list">
-        {activity.length === 0 ? (
-          <div className="activity-empty">
-            Events will appear when you send a message.
-          </div>
-        ) : (
-          activity.map((event) => <ActivityItem key={event.id} event={event} />)
-        )}
-      </div>
-      <div className="thread-card">
-        <span>THREAD ID</span>
-        <code>{threadId}</code>
-      </div>
-    </aside>
-  );
-}
-
-function ActivityItem({ event }: { event: Activity }) {
-  const kind = event.type.startsWith("RUN_")
-    ? "run"
-    : event.type.startsWith("TOOL_")
-      ? "tool"
-      : "text";
-  const icon = kind === "tool" ? "⌘" : kind === "run" ? "●" : "↳";
-
-  return (
-    <div className="activity-item">
-      <span className={`event-icon ${kind}`}>{icon}</span>
-      <span>
-        {event.type}
-        {event.detail ? ` · ${event.detail}` : ""}
-      </span>
+      {label}
     </div>
   );
 }

@@ -29,7 +29,7 @@ pnpm --filter agent-playground-web dev
 
 Open `http://127.0.0.1:5173` for the web UI. The AG-UI endpoint is `POST http://127.0.0.1:3000/agent`; the native Aegra API is on `http://127.0.0.1:2026`. PostgreSQL and Redis are exposed locally on ports `55432` and `56379`.
 
-The server creates Aegra runs via `@ag-ui/langgraph`. Agent execution goes through Aegra's queue and thread concurrency handling. Hono handles HTTP and SSE streaming. The React web UI uses `@ag-ui/client` and shows the stream's AG-UI events. This is a local playground; the server does not provide authentication or durable AG-UI event replay.
+The server creates Aegra runs via `@ag-ui/langgraph`. Agent execution goes through Aegra's queue and thread concurrency handling. Hono handles HTTP and SSE streaming. The React web UI uses `@ag-ui/client`, Tailwind CSS, and Markdown rendering to show chat replies alongside AG-UI events. This is a local playground; the server does not provide authentication or durable AG-UI event replay.
 
 ## Call the AG-UI endpoint
 
