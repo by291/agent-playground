@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "tsx watch server.ts",
     "check": "tsc --noEmit",
+    "lint": "eslint '*.ts' --max-warnings 0",
     "start": "tsx server.ts"
   },
   "dependencies": {
@@ -16,7 +17,9 @@
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
+    "eslint": "^10.11.0",
     "tsx": "^4.20.0",
-    "typescript": "^5.9.0"
+    "typescript": "^5.9.0",
+    "typescript-eslint": "^8.70.1"
   }
 }

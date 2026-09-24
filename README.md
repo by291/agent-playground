@@ -9,23 +9,24 @@ web/ (AG-UI client) → server/ (AG-UI adapter) → Aegra run queue → agent_pl
 
 ## Run locally
 
-Requires Docker for PostgreSQL and Redis, plus uv, pnpm, and an OpenAI API key or compatible endpoint. The application processes run on the host for fast iteration.
+Requires Docker for PostgreSQL and Redis, plus uv, pnpm, Make, and an OpenAI API key or compatible endpoint. The application processes run on the host for fast iteration.
 
 ```sh
-cp .env.example .env
-# Set OPENAI_API_KEY in .env.
-docker compose up -d --wait
-uv sync
-pnpm install
+make setup
+# Set OPENAI_API_KEY in the .env file created by setup.
+make dev
 ```
 
-Start each process in a separate terminal from the repository root:
+`make dev` starts the infrastructure and all three application processes. Stop it with Ctrl+C. To run a process in its own terminal instead, use:
 
 ```sh
-uv run --env-file .env aegra serve --host 127.0.0.1 --port 2026
-pnpm --filter agent-playground-server dev
-pnpm --filter agent-playground-web dev
+make infra-up
+make agent
+make server
+make web
 ```
+
+Run the last three commands in separate terminals. Use `make infra-down` to stop PostgreSQL and Redis. Run `make help` to list the shortcuts.
 
 Open `http://127.0.0.1:5173` for the web UI. The AG-UI endpoint is `POST http://127.0.0.1:3000/agent`; the native Aegra API is on `http://127.0.0.1:2026`. PostgreSQL and Redis are exposed locally on ports `55432` and `56379`.
 
@@ -52,16 +53,10 @@ The `get_current_time` tool provides a simple tool-call path. Aegra's native Age
 ## Develop and check
 
 ```sh
-uv sync
-pnpm install
-uv run pytest
-uv run ruff check .
-pnpm check
-pnpm lint
-pnpm build
-pnpm format:check
+make check
+make format
 ```
 
-`pnpm lint` checks Tailwind class names in the web app, including canonical forms such as `max-w-205`.
+`make check` runs Pyrefly and TypeScript type checking, Ruff and ESLint linting, Ruff and Prettier format checks, Python tests, and the web build. `make format` applies the Python and frontend formatters. Individual targets such as `make typecheck`, `make lint`, `make format-check`, `make test`, and `make build` are available when a faster check is useful. Web linting checks Tailwind class names, including canonical forms such as `max-w-205`.
 
-To include the PostgreSQL checkpoint test, start the Compose database and run `TEST_DATABASE_URL=postgresql://agent:agent@127.0.0.1:55432/agent_playground uv run pytest`.
+To include the PostgreSQL checkpoint test, start the Compose database and run `TEST_DATABASE_URL=postgresql://agent:agent@127.0.0.1:55432/agent_playground make test`.

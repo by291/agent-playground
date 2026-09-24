@@ -1,13 +1,10 @@
 import betterTailwindcss from "eslint-plugin-better-tailwindcss";
-import { parser as typescriptParser } from "typescript-eslint";
+import tseslint from "typescript-eslint";
 
 export default [
+  ...tseslint.configs.recommended,
   {
     files: ["src/**/*.{ts,tsx}"],
-    languageOptions: {
-      parser: typescriptParser,
-      parserOptions: { ecmaFeatures: { jsx: true } },
-    },
     plugins: { "better-tailwindcss": betterTailwindcss },
     settings: {
       "better-tailwindcss": { entryPoint: "src/style.css", rootFontSize: 16 },

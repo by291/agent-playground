@@ -67,7 +67,9 @@ def test_postgres_checkpoint_survives_graph_recreation():
                 {"configurable": {"thread_id": thread_id}},
             )
 
-        user_turns = [message.content for message in result["messages"] if isinstance(message, HumanMessage)]
+        user_turns = [
+            message.content for message in result["messages"] if isinstance(message, HumanMessage)
+        ]
         assert user_turns == ["First turn", "Second turn"]
 
     asyncio.run(check())
