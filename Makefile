@@ -19,13 +19,13 @@ infra-down:
 	docker compose down
 
 agent:
-	uv run --env-file .env aegra serve --host 127.0.0.1 --port 2026
+	uv run agent
 
 server:
-	pnpm --filter agent-playground-server dev
+	pnpm dev:server
 
 web:
-	pnpm --filter agent-playground-web dev
+	pnpm dev:web
 
 dev: infra-up
 	$(MAKE) -j3 agent server web

@@ -58,7 +58,7 @@ wheels = [
 [[package]]
 name = "agent-playground"
 version = "0.2.0"
-source = { virtual = "." }
+source = { editable = "." }
 dependencies = [
     { name = "aegra-cli" },
     { name = "langchain" },
