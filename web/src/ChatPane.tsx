@@ -7,6 +7,7 @@ import {
   SparkleIcon,
 } from "@phosphor-icons/react";
 import {
+  Fragment,
   Suspense,
   lazy,
   useEffect,
@@ -15,27 +16,38 @@ import {
   type KeyboardEvent,
   type SubmitEvent,
 } from "react";
+import { A2UICard } from "./A2UICard";
+import type { A2UICard as CardData } from "./a2ui";
 
 const MarkdownMessage = lazy(() => import("./MarkdownMessage"));
 
 interface ChatPaneProps {
   messages: Message[];
+  cards: CardData[];
   running: boolean;
   onSend: (message: string) => Promise<void>;
 }
 
-export function ChatPane({ messages, running, onSend }: ChatPaneProps) {
+export function ChatPane({ messages, cards, running, onSend }: ChatPaneProps) {
   const scroll = useRef<HTMLDivElement>(null);
   const followOutput = useRef(true);
   const visible = messages.filter(
     (message) => message.role === "user" || message.role === "assistant",
+  );
+  const cardsByCall = new Map(cards.map((card) => [card.toolCallId, card]));
+  const attachedCalls = new Set(
+    visible.flatMap((message) =>
+      message.role === "assistant"
+        ? (message.toolCalls ?? []).map((call) => call.id)
+        : [],
+    ),
   );
 
   useEffect(() => {
     if (followOutput.current && scroll.current) {
       scroll.current.scrollTop = scroll.current.scrollHeight;
     }
-  }, [messages, running]);
+  }, [messages, cards, running]);
 
   function updateScrollPosition() {
     const element = scroll.current;
@@ -57,8 +69,22 @@ export function ChatPane({ messages, running, onSend }: ChatPaneProps) {
           ) : (
             <div className="space-y-8 pt-8 pb-12 sm:pt-12">
               {visible.map((message) => (
-                <MessageRow key={message.id} message={message} />
+                <Fragment key={message.id}>
+                  <MessageRow message={message} />
+                  {message.role === "assistant" &&
+                    message.toolCalls?.map((call) => {
+                      const card = cardsByCall.get(call.id);
+                      return card ? (
+                        <A2UICard key={call.id} card={card} />
+                      ) : null;
+                    })}
+                </Fragment>
               ))}
+              {cards
+                .filter((card) => !attachedCalls.has(card.toolCallId))
+                .map((card) => (
+                  <A2UICard key={card.toolCallId} card={card} />
+                ))}
               {running && visible.at(-1)?.role === "user" && <Thinking />}
             </div>
           )}
@@ -97,6 +123,18 @@ function Welcome({ onSend }: { onSend: ChatPaneProps["onSend"] }) {
           icon={<ClockIcon size={21} aria-hidden="true" />}
           title="Try the time tool"
           prompt="What time is it in UTC right now?"
+          onSend={onSend}
+        />
+        <Suggestion
+          icon={<SparkleIcon size={21} aria-hidden="true" />}
+          title="Build a visual plan"
+          prompt="Create an experiment plan for testing an agent workflow."
+          onSend={onSend}
+        />
+        <Suggestion
+          icon={<ChatCircleDotsIcon size={21} aria-hidden="true" />}
+          title="Try the MCP tool"
+          prompt="Use the MCP tool to add 12 and 30."
           onSend={onSend}
         />
       </div>

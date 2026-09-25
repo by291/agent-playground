@@ -1,5 +1,6 @@
 import { EventType, HttpAgent, type Message } from "@ag-ui/client";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { parseA2UICard } from "./a2ui";
 import { saveConversation, type SavedConversation } from "./conversation";
 
 export interface Activity {
@@ -21,12 +22,18 @@ export function useConversation(saved: SavedConversation) {
     ...agent.messages,
   ]);
   const [activity, setActivity] = useState<Activity[]>([]);
+  const [cards, setCards] = useState(() => saved.cards);
+  const cardsRef = useRef(saved.cards);
   const [running, setRunning] = useState(false);
   const active = useRef(true);
 
   const persist = useCallback(() => {
     if (active.current) {
-      saveConversation({ threadId: agent.threadId, messages: agent.messages });
+      saveConversation({
+        threadId: agent.threadId,
+        messages: agent.messages,
+        cards: cardsRef.current,
+      });
     }
   }, [agent]);
 
@@ -34,6 +41,23 @@ export function useConversation(saved: SavedConversation) {
     active.current = true;
     const subscription = agent.subscribe({
       onEvent({ event }) {
+        if (event.type === EventType.TOOL_CALL_RESULT) {
+          const card =
+            typeof event.toolCallId === "string" &&
+            typeof event.content === "string"
+              ? parseA2UICard(event.toolCallId, event.content)
+              : null;
+          if (card) {
+            cardsRef.current = [
+              ...cardsRef.current.filter(
+                (item) => item.toolCallId !== card.toolCallId,
+              ),
+              card,
+            ];
+            setCards(cardsRef.current);
+            persist();
+          }
+        }
         if (
           event.type === EventType.RAW ||
           event.type === EventType.STATE_SNAPSHOT
@@ -93,5 +117,5 @@ export function useConversation(saved: SavedConversation) {
     }
   }
 
-  return { messages, activity, running, send };
+  return { messages, cards, activity, running, send };
 }

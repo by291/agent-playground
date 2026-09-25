@@ -54,7 +54,9 @@ curl --no-buffer -X POST http://127.0.0.1:3000/agent \
   }'
 ```
 
-The `get_current_time` tool provides a simple tool-call path. Aegra's native Agent Protocol stream is also available at `POST /runs/stream` on port `2026`.
+The original `get_current_time` tool is still built into the agent. The local MCP server exposes `calculate_sum`; Aegra loads it through the LangChain MCP adapter when the graph starts. The `run_experiment_workflow` tool calls a small LangGraph workflow and returns an A2UI v0.9 card. Try "Use the MCP tool to add 12 and 30" or "Create an experiment plan for testing an agent workflow" in the web UI.
+
+The AG-UI adapter carries the workflow's A2UI messages in a `TOOL_CALL_RESULT`. The web app validates those messages and renders them with the official A2UI React renderer. Cards appear when the workflow tool finishes and are saved with the local conversation. The example card is read-only; A2UI actions and progressive card updates are not wired yet. Aegra's native Agent Protocol stream is also available at `POST /runs/stream` on port `2026`.
 
 ## Develop and check
 
@@ -67,4 +69,4 @@ make format
 
 Pyrefly uses its strict preset. Ruff keeps its default checks and adds import sorting, common bug checks, and Python syntax upgrades; its formatter uses the default 88-character line length. Both TypeScript projects enable strict checking, unchecked index access, exact optional properties, and verbatim module syntax. ESLint uses the JavaScript and type-aware TypeScript recommended rules, with React Hooks rules for the web app. Prettier uses its defaults, while `.editorconfig` defines indentation and line endings for editors.
 
-To include the PostgreSQL checkpoint test, start the Compose database and run `TEST_DATABASE_URL=postgresql://agent:agent@127.0.0.1:55432/agent_playground make test`.
+The PostgreSQL checkpoint test uses Testcontainers to start a temporary `postgres:17-alpine` container. `make test` and `make check` need a running Docker daemon, but do not need the Compose database or a `TEST_DATABASE_URL` variable.

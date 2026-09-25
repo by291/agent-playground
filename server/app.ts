@@ -1,4 +1,9 @@
-import { EventType, RunAgentInputSchema } from "@ag-ui/client";
+import {
+  EventType,
+  RunAgentInputSchema,
+  type RunErrorEvent,
+  type RunStartedEvent,
+} from "@ag-ui/client";
 import { LangGraphAgent } from "@ag-ui/langgraph";
 import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
@@ -8,6 +13,7 @@ import {
   filter,
   lastValueFrom,
   map,
+  materialize,
   Subject,
   takeUntil,
 } from "rxjs";
@@ -42,6 +48,8 @@ app.post(
     return streamSSE(context, async (stream) => {
       const cancelled = new Subject<void>();
       let lastSnapshot: string | undefined;
+      let runStarted = false;
+      let terminalEventSent = false;
 
       stream.onAbort(() => {
         agent.abortRun();
@@ -66,22 +74,55 @@ app.post(
               delete output.rawEvent;
               return output;
             }),
-            // Serial writes preserve AG-UI event order when the agent emits quickly.
-            concatMap((event) =>
-              stream.writeSSE({ data: JSON.stringify(event) }),
-            ),
+            // Treat an upstream error as the last queued item so earlier writes finish.
+            materialize(),
+            concatMap(async (notification) => {
+              if (notification.kind === "E") throw notification.error;
+              if (notification.kind !== "N") return;
+
+              const event = notification.value;
+              if (
+                !runStarted &&
+                (event.type === EventType.RUN_ERROR ||
+                  event.type === EventType.RUN_FINISHED)
+              ) {
+                const runStart: RunStartedEvent = {
+                  type: EventType.RUN_STARTED,
+                  threadId: input.data.threadId,
+                  runId: input.data.runId,
+                };
+                await stream.writeSSE({ data: JSON.stringify(runStart) });
+                runStarted = true;
+              }
+              await stream.writeSSE({ data: JSON.stringify(event) });
+              if (event.type === EventType.RUN_STARTED) runStarted = true;
+              if (
+                event.type === EventType.RUN_ERROR ||
+                event.type === EventType.RUN_FINISHED
+              )
+                terminalEventSent = true;
+            }),
             takeUntil(cancelled),
           ),
           { defaultValue: undefined },
         );
       } catch (error) {
-        console.error("Agent stream failed", error);
-        if (!stream.aborted) {
+        console.error("Agent stream failed", error ?? "Unknown error");
+        if (!stream.aborted && !terminalEventSent) {
+          if (!runStarted) {
+            const runStart: RunStartedEvent = {
+              type: EventType.RUN_STARTED,
+              threadId: input.data.threadId,
+              runId: input.data.runId,
+            };
+            await stream.writeSSE({ data: JSON.stringify(runStart) });
+          }
+          const runError: RunErrorEvent = {
+            type: EventType.RUN_ERROR,
+            message: "Agent run failed",
+          };
           await stream.writeSSE({
-            data: JSON.stringify({
-              type: "RUN_ERROR",
-              message: "Agent run failed",
-            }),
+            data: JSON.stringify(runError),
           });
         }
       }

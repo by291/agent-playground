@@ -40,7 +40,8 @@ function ConversationPage({
   conversation: SavedConversation;
   onNewConversation: () => void;
 }) {
-  const { messages, activity, running, send } = useConversation(conversation);
+  const { messages, cards, activity, running, send } =
+    useConversation(conversation);
   const [activityOpen, setActivityOpen] = useState(false);
 
   return (
@@ -107,7 +108,12 @@ function ConversationPage({
           <main
             className={`${activityOpen ? "hidden lg:flex" : "flex"} min-w-0 flex-1 flex-col`}
           >
-            <ChatPane messages={messages} running={running} onSend={send} />
+            <ChatPane
+              messages={messages}
+              cards={cards}
+              running={running}
+              onSend={send}
+            />
           </main>
           {activityOpen && (
             <ActivityPanel
