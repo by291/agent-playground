@@ -1,30 +1,33 @@
 # 项目规约
 
-## 项目定位
+## 项目目标
 
-- 这是一个用来验证想法的项目，以快速、清楚地验证想法为优先目标，不追求不必要的专业化或复杂度。
+- 这是验证 agent runtime 想法的项目。优先快速、清楚地跑通想法，避免为尚未出现的需求增加复杂度。
+- 澄清影响实现的关键需求后直接推进；根据改动范围选择必要的设计和验证步骤，不要求固定流程。
 
-## 工作方式
+## 仓库导航
 
-- 写代码以快速推进为主。澄清需求后可以直接实现，不必特别遵循严格的设计、开发或评审流程；按任务需要选择必要的步骤。
+- `agent_playground/`：Python agent、tools、MCP 和 workflow，由 Aegra 提供 Agent Protocol 服务。
+- `server/`：TypeScript 后端，将 Aegra 的运行流提供为 AG-UI 接口。
+- `web/`：TypeScript 前端，展示对话和 A2UI 内容。
+- `compose.yaml`：本地 PostgreSQL、Redis 等基础设施；`tests/`：Python 侧测试。
+- 完整启动步骤、当前能力、协议传递方式和已知限制见 `README.md`；不要把容易变化的项目现状重复写进本文件。
 
-## 技术选型
+## 实现约定
 
-- Agent runtime 以 Python 为主，使用 uv 管理依赖；只有确有需要时才引入 TypeScript。
-- 在确有需要时，可以引入合理的库和基础设施；根据要验证的问题选择，避免提前堆砌。
-- 所需基础设施通过 Docker Compose 维护，方便在本地启动和复现。
+- Agent 逻辑放在 Python 项目中；`server/` 处理协议适配和 HTTP，`web/` 处理交互与展示。修改跨层链路时先确认各层职责。
+- 优先使用现有库和协议提供的类型、模型与适配器，避免重复手写 AG-UI 或 A2UI 协议实现。
+- Python 使用 uv，TypeScript 使用 pnpm；通过各自的包管理器增删依赖并更新锁文件。仅在验证目标需要时引入新库或基础设施。
+- 基础设施通过 Docker Compose 维护。根目录、`server/` 和 `web/` 各自使用自己的 `.env`，避免跨项目读取配置。
+- 代码是写给人阅读的：使用清晰命名和直接结构；只在意图、边界条件或不直观的处理需要解释时添加注释，不要让文件主要由注释构成。
 
-## 代码风格
+## 开发与验证
 
-- 代码是写给人阅读的。优先使用清晰的命名、直接的结构和容易理解的实现。
-- 在意图、边界条件或不直观的处理需要解释时添加注释；不要用注释重复代码，也不要让文件主要由注释构成。
+- `make help` 查看快捷命令，`make setup` 准备依赖和环境文件，`make dev` 启动本地开发环境。
+- 修改后运行与改动相关的检查；涉及跨项目链路时可运行 `make check`。`make test` 和 `make check` 的 PostgreSQL 测试通过 Testcontainers 启动临时容器，需要 Docker daemon。
+- 运行方式、环境变量、对外行为或已知限制发生变化时更新 `README.md`；长期约定或目录职责发生变化时更新本文件。
 
-## 语言
+## 语言与提交
 
-- 文档可以使用中文；除文档外，代码及注释、测试、配置中的自定义文本、界面文案和 Git 提交信息均使用英文。
-
-## Git 提交信息
-
-- 提交标题使用 `type: short description` 格式，例如 `feat: add experiment entry point` 或 `docs: update project guidelines`。
-- 类型按改动选择：`feat`（功能）、`fix`（修复）、`docs`（文档）、`refactor`（重构）、`test`（测试）、`chore`（其他维护）。
-- 描述用英文写清本次提交实际做了什么，避免 `update` 这类含糊标题；必要时再补充正文说明原因。
+- 文档可以使用中文；代码及注释、测试、配置中的自定义文本、界面文案和 Git 提交信息使用英文。
+- Git 提交标题使用 `type: short description`，例如 `feat: add experiment entry point`。类型按改动选择 `feat`、`fix`、`docs`、`refactor`、`test` 或 `chore`；描述具体改动，避免含糊的 `update`。

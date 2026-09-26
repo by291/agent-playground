@@ -58,6 +58,8 @@ The original `get_current_time` tool is still built into the agent. The local MC
 
 The AG-UI adapter carries the workflow's A2UI messages in a `TOOL_CALL_RESULT`. The web app validates those messages and renders them with the official A2UI React renderer. Cards appear when the workflow tool finishes and are saved with the local conversation. The example card is read-only; A2UI actions and progressive card updates are not wired yet. Aegra's native Agent Protocol stream is also available at `POST /runs/stream` on port `2026`.
 
+The current `@a2ui/react` release has an [upstream published-package styling issue](https://github.com/a2ui-project/a2ui/issues/1307). The sample card wrapper has local styles, but renderer component styles may be incomplete. Avoid importing the package's unexported CSS path; recheck rendering after upgrading the renderer.
+
 ## Develop and check
 
 ```sh
