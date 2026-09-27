@@ -1,28 +1,51 @@
-import {
-  EventType,
-  RunAgentInputSchema,
-  type RunErrorEvent,
-  type RunStartedEvent,
-} from "@ag-ui/client";
+import { RunAgentInputSchema } from "@ag-ui/client";
 import { Hono } from "hono";
+import { desc } from "drizzle-orm";
 import { bodyLimit } from "hono/body-limit";
-import { streamSSE } from "hono/streaming";
-import {
-  concatMap,
-  filter,
-  lastValueFrom,
-  map,
-  materialize,
-  Subject,
-  takeUntil,
-} from "rxjs";
-import { ReviewLangGraphAgent } from "./hitl";
-
-const aegraUrl = process.env.AEGRA_URL ?? "http://127.0.0.1:2026";
+import { streamAgent } from "./agent-stream";
+import { conversationSnapshot } from "./conversation-snapshot";
+import { db } from "./database";
+import { currentInterrupts, reviewCallsPersisted } from "./recovery";
+import { admitRun, claimPrepared } from "./run-store";
+import { conversations } from "./schema";
 
 export const app = new Hono();
 
 app.get("/health", (context) => context.text("ok"));
+
+app.get("/conversations", async (context) => {
+  const rows = await db
+    .select({ threadId: conversations.threadId })
+    .from(conversations)
+    .orderBy(desc(conversations.createdAt))
+    .limit(50);
+  return context.json({ conversations: rows });
+});
+
+app.get("/conversations/:threadId", async (context) => {
+  try {
+    const snapshot = await conversationSnapshot(context.req.param("threadId"));
+    return snapshot
+      ? context.json(snapshot)
+      : context.json({ error: "Conversation not found" }, 404);
+  } catch (error) {
+    console.error("Conversation recovery failed", error);
+    return context.json({ error: "Conversation recovery failed" }, 503);
+  }
+});
+
+async function waitForInterrupts(threadId: string) {
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    try {
+      const interrupts = await currentInterrupts(threadId);
+      if (interrupts.length) return interrupts;
+    } catch {
+      // The checkpoint may still be committing after an interrupt event.
+    }
+    await new Promise((resolve) => setTimeout(resolve, 150));
+  }
+  return [];
+}
 
 app.post(
   "/agent",
@@ -37,97 +60,60 @@ app.post(
     if (!input.success)
       return context.json({ error: "Invalid AG-UI input" }, 400);
 
-    // The adapter keeps run state, so each request gets its own instance.
-    const agent = new ReviewLangGraphAgent({
-      graphId: "agent",
-      deploymentUrl: aegraUrl,
-      emitInterruptOutcome: true,
-      enableLegacyOnInterruptEvent: false,
-    });
-    context.header("Cache-Control", "no-cache, no-transform");
-    context.header("X-Accel-Buffering", "no");
+    // Client-provided forwarding options cannot select Aegra metadata or disconnect policy.
+    const trustedInput = { ...input.data };
+    delete trustedInput.forwardedProps;
+    const isResume = (trustedInput.resume?.length ?? 0) > 0;
+    const userMessage = isResume
+      ? null
+      : [...trustedInput.messages]
+          .reverse()
+          .find((message) => message.role === "user");
+    const messageId = isResume ? trustedInput.runId : userMessage?.id;
+    if (!messageId || (!isResume && !userMessage)) {
+      return context.json({ error: "Submission needs a user message" }, 400);
+    }
 
-    return streamSSE(context, async (stream) => {
-      const cancelled = new Subject<void>();
-      let lastSnapshot: string | undefined;
-      let runStarted = false;
-      let terminalEventSent = false;
-
-      stream.onAbort(() => {
-        agent.abortRun();
-        cancelled.next();
-        cancelled.complete();
-      });
-
-      try {
-        await lastValueFrom(
-          agent.run(input.data).pipe(
-            filter((event) => {
-              if (event.type === EventType.RAW) return false;
-              if (event.type !== EventType.STATE_SNAPSHOT) return true;
-
-              const snapshot = JSON.stringify(event.snapshot);
-              if (snapshot === lastSnapshot) return false;
-              lastSnapshot = snapshot;
-              return true;
-            }),
-            map((event) => {
-              const output = { ...event } as Record<string, unknown>;
-              delete output.rawEvent;
-              return output;
-            }),
-            // Treat an upstream error as the last queued item so earlier writes finish.
-            materialize(),
-            concatMap(async (notification) => {
-              if (notification.kind === "E") throw notification.error;
-              if (notification.kind !== "N") return;
-
-              const event = notification.value;
-              if (
-                !runStarted &&
-                (event.type === EventType.RUN_ERROR ||
-                  event.type === EventType.RUN_FINISHED)
-              ) {
-                const runStart: RunStartedEvent = {
-                  type: EventType.RUN_STARTED,
-                  threadId: input.data.threadId,
-                  runId: input.data.runId,
-                };
-                await stream.writeSSE({ data: JSON.stringify(runStart) });
-                runStarted = true;
-              }
-              await stream.writeSSE({ data: JSON.stringify(event) });
-              if (event.type === EventType.RUN_STARTED) runStarted = true;
-              if (
-                event.type === EventType.RUN_ERROR ||
-                event.type === EventType.RUN_FINISHED
-              )
-                terminalEventSent = true;
-            }),
-            takeUntil(cancelled),
-          ),
-          { defaultValue: undefined },
-        );
-      } catch (error) {
-        console.error("Agent stream failed", error ?? "Unknown error");
-        if (!stream.aborted && !terminalEventSent) {
-          if (!runStarted) {
-            const runStart: RunStartedEvent = {
-              type: EventType.RUN_STARTED,
-              threadId: input.data.threadId,
-              runId: input.data.runId,
-            };
-            await stream.writeSSE({ data: JSON.stringify(runStart) });
-          }
-          const runError: RunErrorEvent = {
-            type: EventType.RUN_ERROR,
-            message: "Agent run failed",
-          };
-          await stream.writeSSE({
-            data: JSON.stringify(runError),
-          });
-        }
+    if (isResume) {
+      const current = await waitForInterrupts(trustedInput.threadId);
+      const submitted = trustedInput.resume ?? [];
+      const currentIds = new Set(current.map((interrupt) => interrupt.id));
+      const submittedIds = new Set(submitted.map((entry) => entry.interruptId));
+      if (
+        current.length !== submitted.length ||
+        currentIds.size !== submittedIds.size ||
+        [...currentIds].some((id) => !submittedIds.has(id)) ||
+        !(await reviewCallsPersisted(trustedInput.threadId, current))
+      ) {
+        return context.json({ error: "Review is no longer current" }, 409);
       }
-    });
+    }
+
+    let admitted;
+    try {
+      // Refresh terminal status before admission so a completed run frees its thread.
+      await conversationSnapshot(trustedInput.threadId);
+      admitted = await admitRun({
+        threadId: trustedInput.threadId,
+        runId: trustedInput.runId,
+        messageId,
+        request: trustedInput,
+        userMessage: userMessage ?? null,
+        isResume,
+      });
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Submission failed";
+      return context.json({ error: message }, 409);
+    }
+
+    if (!(await claimPrepared(trustedInput.runId))) {
+      return context.json(
+        { error: "Submission already dispatched", status: admitted.row.status },
+        409,
+      );
+    }
+
+    return streamAgent(context, trustedInput, admitted.row);
   },
 );

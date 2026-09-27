@@ -13,7 +13,9 @@ dependencies = [
   "langgraph>=1.2.12",
   "langgraph-checkpoint-postgres",
   "mcp>=1.30.0",
+  "psycopg[binary,pool]>=3.3.6",
   "pydantic>=2.13.5",
+  "sqlalchemy>=2.0.54",
 ]
 
 [project.scripts]

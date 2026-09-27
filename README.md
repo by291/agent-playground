@@ -7,6 +7,16 @@ web/ (AG-UI client) → server/ (AG-UI adapter) → Aegra run queue → agent_pl
                                                 ↘ PostgreSQL checkpoints
 ```
 
+## Project structure
+
+| Area | Main modules |
+| --- | --- |
+| `agent_playground/` | `graph.py` assembles the agent and tools; `workflow.py` runs the example workflow; `workflow_cards.py` builds A2UI messages; `workflow_outputs.py` persists step outputs. |
+| `server/` | `app.ts` owns HTTP admission and read routes; `agent-stream.ts` adapts Aegra events to SSE; `recovery.ts` reconciles runs and interrupts; `conversation-snapshot.ts` assembles persisted conversation state; `database.ts`, `run-store.ts` and the schema files own application data. |
+| `web/src/` | `conversation/` handles submission state, local pointers and server snapshots; `chat/` renders messages, cards, composer and review form; `a2ui/` validates and renders cards; `layout/` contains sidebar and activity UI; `App.tsx` connects them. |
+
+The [conversation recovery design](docs/superpowers/specs/2026-09-27-conversation-recovery-design.md) describes the data and protocol boundaries. The [validation record](docs/conversation-recovery-validation.md) lists the local end-to-end checks and their limits.
+
 ## Run locally
 
 Requires Docker for PostgreSQL and Redis, plus uv, pnpm, Make, and a DeepSeek API key. The application processes run on the host for fast iteration.
@@ -36,9 +46,9 @@ From the repository root, `uv run agent` serves Aegra using `HOST` and `PORT` fr
 
 Open `http://127.0.0.1:5173` for the web UI. The AG-UI endpoint is `POST http://127.0.0.1:3000/agent`; the native Aegra API is on `http://127.0.0.1:2026`. PostgreSQL and Redis are exposed locally on ports `55432` and `56379`.
 
-PostgreSQL keeps Aegra's service tables, Alembic history, checkpoints, and store in the `aegra` schema. The playground's planned conversation and workflow output tables will use `public`. Compose creates a local `aegra` database role with `search_path = aegra` when it initializes a new PostgreSQL volume; the existing `agent` role remains available for application tables in `public`. Aegra uses the `DATABASE_URL` from the root `.env` and should connect as `aegra`. If a PostgreSQL volume was created before this layout, recreate it with `docker compose down --volumes` followed by `make infra-up`. This deletes local PostgreSQL data.
+PostgreSQL keeps Aegra's service tables, Alembic history, checkpoints, and store in the `aegra` schema. The playground's conversation and workflow output tables use `public`. The TypeScript server applies its Drizzle migrations at startup; the Python graph prepares the workflow output table when it starts. Compose creates a local `aegra` database role with `search_path = aegra` when it initializes a new PostgreSQL volume; the existing `agent` role is used for application tables in `public`. Aegra uses `DATABASE_URL` from the root `.env` and should connect as `aegra`. Both the root `.env` and `server/.env` need their own `APP_DATABASE_URL` pointing to the application role. If a PostgreSQL volume was created before this layout, recreate it with `docker compose down --volumes` followed by `make infra-up`. This deletes local PostgreSQL data.
 
-The server creates Aegra runs via `@ag-ui/langgraph`. Agent execution goes through Aegra's queue and thread concurrency handling. Hono handles HTTP and SSE streaming. The React web UI uses `@ag-ui/client`, Tailwind CSS, and Markdown rendering to show chat replies alongside AG-UI events. This is a local playground; the server does not provide authentication or durable AG-UI event replay.
+The server creates Aegra runs via `@ag-ui/langgraph`. Agent execution goes through Aegra's queue and thread concurrency handling. Hono handles HTTP and SSE streaming. The React web UI uses `@ag-ui/client`, Tailwind CSS, and Markdown rendering to show chat replies alongside AG-UI events. This is a local playground; the server does not provide authentication or durable AG-UI event replay. It stores completed messages, workflow outputs, and run summaries so the UI can recover after a disconnect.
 
 ## Call the AG-UI endpoint
 
@@ -58,7 +68,7 @@ curl --no-buffer -X POST http://127.0.0.1:3000/agent \
 
 The original `get_current_time` tool is still built into the agent. The local MCP server exposes `calculate_sum`; Aegra loads it through the LangChain MCP adapter when the graph starts. The `run_experiment_workflow` tool runs a small LangGraph workflow with visible steps and one human review point. Try "Use the MCP tool to add 12 and 30" or "Create an experiment plan for testing an agent workflow" in the web UI.
 
-Each workflow step emits an A2UI v0.9 card: captured idea, draft plan, review request, and review result. The review step also pauses with a LangGraph interrupt. The AG-UI adapter exposes the pause through `RUN_FINISHED.outcome`; the web UI lets you edit and approve the draft or reject it, then resumes the same thread with `resume[]`. Step cards travel as AG-UI `CUSTOM` events, are validated with the official A2UI schema, and render with the official React renderer. The web app saves the cards and pending review with the local conversation so a paused workflow can be resumed after a page reload. The example cards are read-only; A2UI actions and updates to an existing surface are not wired yet. Aegra's native Agent Protocol stream is also available at `POST /runs/stream` on port `2026`.
+Each workflow step emits an A2UI v0.9 card: captured idea, draft plan, review request, and review result. The review step also pauses with a LangGraph interrupt. The AG-UI adapter exposes the pause through `RUN_FINISHED.outcome`; the web UI lets you edit and approve the draft or reject it, then resumes the same thread with `resume[]`. Step cards are saved by the Python workflow before they travel as AG-UI `CUSTOM` events, are validated with the official A2UI schema, and render with the official React renderer. The web app recovers cards and the current interrupt from `GET /conversations/:threadId`; local storage holds only the thread pointer and an unconfirmed submission for retry. `GET /conversations` lists recent threads. A disconnected browser does not cancel the Aegra run. If a server crash leaves Aegra run creation unconfirmed, the server checks only the newest Aegra run for that thread. When it cannot confirm the mapping, the submission becomes `submission_unknown` and the UI does not retry it automatically. The example cards are read-only; A2UI actions and updates to an existing surface are not wired yet. Aegra's native Agent Protocol stream is also available at `POST /runs/stream` on port `2026`.
 
 The current `@a2ui/react` release has an [upstream published-package styling issue](https://github.com/a2ui-project/a2ui/issues/1307). The sample card wrapper has local styles, but renderer component styles may be incomplete. Avoid importing the package's unexported CSS path; recheck rendering after upgrading the renderer.
 

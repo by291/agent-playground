@@ -1,7 +1,7 @@
 import { A2uiSurface, basicCatalog } from "@a2ui/react/v0_9";
 import { MessageProcessor } from "@a2ui/web_core/v0_9";
 import { useState } from "react";
-import type { A2UICard as CardData } from "./a2ui";
+import type { A2UICard as CardData } from "./card";
 
 export function A2UICard({ card }: { card: CardData }) {
   const [surface] = useState(() => {

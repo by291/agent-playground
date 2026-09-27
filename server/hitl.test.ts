@@ -1,7 +1,22 @@
 import type { ResumeEntry } from "@ag-ui/client";
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { ReviewLangGraphAgent } from "./hitl";
+import { omitInputOnResume, ReviewLangGraphAgent } from "./hitl";
+
+void test("sends only the resume command to Aegra", () => {
+  const url = new URL("http://127.0.0.1:2026/threads/thread/runs/stream");
+  const init = {
+    method: "POST",
+    body: JSON.stringify({
+      input: { messages: [] },
+      command: { resume: "approve" },
+    }),
+  };
+  const result = omitInputOnResume(url, init);
+  assert.deepEqual(JSON.parse(result.body as string), {
+    command: { resume: "approve" },
+  });
+});
 
 class TestAgent extends ReviewLangGraphAgent {
   resumeValue(entries: readonly ResumeEntry[]): unknown {

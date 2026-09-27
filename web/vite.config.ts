@@ -13,6 +13,7 @@ export default defineConfig(({ mode }) => {
       port: 5173,
       proxy: {
         "/agent": backendUrl,
+        "/conversations": backendUrl,
         "/health": backendUrl,
       },
     },

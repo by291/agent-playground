@@ -1,30 +1,17 @@
 """A deterministic example workflow that produces an A2UI experiment card."""
 
 from typing import Literal, TypedDict
-from uuid import uuid4
 
-from a2ui.core.basic_catalog import BasicCatalog
-from a2ui.core.basic_catalog.components import (
-    CardComponent,
-    ColumnComponent,
-    TextComponent,
-)
-from a2ui.core.schema import (
-    A2uiMessage,
-    CreateSurface,
-    CreateSurfaceMessage,
-    UpdateComponents,
-    UpdateComponentsMessage,
-)
-from a2ui.core.schema.common_types import ComponentId
 from langchain.tools import tool
 from langchain_core.callbacks.manager import adispatch_custom_event
+from langgraph.config import get_config
 from langgraph.graph import END, START, StateGraph
 from langgraph.prebuilt import ToolRuntime
 from langgraph.types import interrupt
 from pydantic import BaseModel, Field
 
-BASIC_CATALOG = BasicCatalog()
+from agent_playground.workflow_cards import experiment_card
+from agent_playground.workflow_outputs import store_workflow_output
 
 
 class ExperimentState(BaseModel):
@@ -47,11 +34,6 @@ class ReviewUpdate(TypedDict):
     title: str
     steps: list[str]
     review_status: Literal["approved", "rejected"]
-
-
-class ExperimentCard(BaseModel):
-    kind: Literal["a2ui"] = "a2ui"
-    messages: list[A2uiMessage]
 
 
 class PlanReview(BaseModel):
@@ -90,6 +72,7 @@ async def review_plan(state: ExperimentState) -> ReviewUpdate:
         interrupt(
             {
                 "kind": "experiment_plan_review",
+                "workflowCallId": state.card_group_id,
                 "title": state.title,
                 "steps": state.steps,
             },
@@ -132,53 +115,35 @@ builder.add_edge("finish_plan", END)
 experiment_workflow = builder.compile()
 
 
-def experiment_card(
-    state: ExperimentState, stage: str, heading: str, lines: list[str]
-) -> ExperimentCard:
-    """Return protocol messages for one workflow step."""
-    surface_id = f"experiment-{state.card_group_id}-{stage}"
-    step_ids = [ComponentId(f"step-{index}") for index in range(len(lines))]
-    components: list[CardComponent | ColumnComponent | TextComponent] = [
-        CardComponent(id=ComponentId("root"), child=ComponentId("content")),
-        ColumnComponent(
-            id=ComponentId("content"),
-            children=[ComponentId("eyebrow"), ComponentId("title"), *step_ids],
-        ),
-        TextComponent(id=ComponentId("eyebrow"), text=heading, variant="caption"),
-        TextComponent(id=ComponentId("title"), text=state.title, variant="h3"),
-        *[
-            TextComponent(id=step_id, text=f"{index}. {step}")
-            for index, (step_id, step) in enumerate(
-                zip(step_ids, lines, strict=True), start=1
-            )
-        ],
-    ]
-    return ExperimentCard(
-        messages=[
-            CreateSurfaceMessage(
-                create_surface=CreateSurface(
-                    surface_id=surface_id, catalog_id=BASIC_CATALOG.catalog_id
-                )
-            ),
-            UpdateComponentsMessage(
-                update_components=UpdateComponents(
-                    surface_id=surface_id, components=components
-                )
-            ),
-        ]
-    )
-
-
 async def emit_card(
     state: ExperimentState, stage: str, heading: str, lines: list[str]
 ) -> None:
-    card = experiment_card(state, stage, heading, lines)
+    card = experiment_card(state.card_group_id, state.title, stage, heading, lines)
+    config = get_config()
+    metadata = config.get("metadata") or {}
+    configurable = config.get("configurable") or {}
+    agui_run_id = metadata.get("agui_run_id")
+    thread_id = configurable.get("thread_id")
+    if not isinstance(agui_run_id, str) or not isinstance(thread_id, str):
+        raise TypeError("Workflow output is missing AG-UI run or thread ID")
+    payload = card.model_dump(mode="json", by_alias=True, exclude_none=True)
+    output = await store_workflow_output(
+        thread_id,
+        agui_run_id,
+        state.card_group_id,
+        stage,
+        {"idea": 1, "draft": 2, "review": 3, "reviewed": 4}[stage],
+        payload,
+    )
     await adispatch_custom_event(
         "experiment_card",
         {
-            "id": f"experiment-{state.card_group_id}-{stage}",
+            "id": output.id,
+            "aguiRunId": output.agui_run_id,
+            "workflowCallId": state.card_group_id,
+            "outputSeq": output.output_seq,
             "toolCallId": state.card_group_id,
-            **card.model_dump(mode="json", by_alias=True, exclude_none=True),
+            **payload,
         },
     )
 
@@ -186,10 +151,12 @@ async def emit_card(
 @tool
 async def run_experiment_workflow(idea: str, runtime: ToolRuntime) -> str:
     """Run a visible experiment-planning workflow with a human review step."""
+    if not runtime.tool_call_id:
+        raise ValueError("Workflow requires a stable tool call ID")
     result = await experiment_workflow.ainvoke(
         ExperimentState(
             idea=idea,
-            card_group_id=runtime.tool_call_id or str(uuid4()),
+            card_group_id=runtime.tool_call_id,
         )
     )
     completed = ExperimentState.model_validate(result)

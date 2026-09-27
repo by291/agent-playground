@@ -22,6 +22,26 @@ os.environ.setdefault("DEEPSEEK_API_KEY", "test")
 
 from agent_playground.graph import make_graph, mcp_client
 from agent_playground.workflow import ExperimentState, experiment_workflow
+from agent_playground.workflow_outputs import WorkflowOutput
+
+
+@pytest.fixture(autouse=True)
+def isolate_workflow_output_store(monkeypatch: pytest.MonkeyPatch):
+    async def save_card(
+        thread_id: str,
+        agui_run_id: str,
+        workflow_call_id: str,
+        step_id: str,
+        step_seq: int,
+        payload: dict[str, object],
+    ) -> WorkflowOutput:
+        return WorkflowOutput(
+            id=f"experiment-{workflow_call_id}-{step_id}",
+            agui_run_id=agui_run_id,
+            output_seq=step_seq,
+        )
+
+    monkeypatch.setattr("agent_playground.workflow.store_workflow_output", save_card)
 
 
 class FakeToolModel(FakeMessagesListChatModel):
@@ -115,7 +135,10 @@ def test_workflow_streams_each_step_and_waits_for_review(
     builder.add_edge(START, "workflow")
     builder.add_edge("workflow", END)
     graph = builder.compile(checkpointer=InMemorySaver())
-    config = {"configurable": {"thread_id": str(uuid4())}}
+    config = {
+        "configurable": {"thread_id": str(uuid4())},
+        "metadata": {"agui_run_id": "agui-test"},
+    }
 
     async def cards_for(input_value: object) -> list[dict[str, Any]]:
         cards: list[dict[str, Any]] = []
@@ -176,7 +199,10 @@ def test_agent_resumes_workflow_tool_after_review():
         )
         saver = InMemorySaver()
         first_graph = make_graph(model=first_model, checkpointer=saver)
-        config = {"configurable": {"thread_id": str(uuid4())}}
+        config = {
+            "configurable": {"thread_id": str(uuid4())},
+            "metadata": {"agui_run_id": "agui-test"},
+        }
 
         cards: list[dict[str, Any]] = []
         async for event in first_graph.astream_events(
@@ -249,7 +275,10 @@ def test_agent_resumes_parallel_workflow_reviews():
             ]
         )
         graph = make_graph(model=model, checkpointer=InMemorySaver())
-        config = {"configurable": {"thread_id": str(uuid4())}}
+        config = {
+            "configurable": {"thread_id": str(uuid4())},
+            "metadata": {"agui_run_id": "agui-test"},
+        }
 
         paused = await graph.ainvoke(
             {"messages": [HumanMessage(content="Plan both ideas.")]}, config

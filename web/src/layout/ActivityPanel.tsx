@@ -4,7 +4,7 @@ import {
   PulseIcon,
   XIcon,
 } from "@phosphor-icons/react";
-import type { Activity } from "./useConversation";
+import type { Activity } from "../conversation/types";
 
 export function ActivityPanel({
   activity,

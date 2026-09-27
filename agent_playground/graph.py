@@ -13,6 +13,7 @@ from langchain_mcp_adapters.client import MultiServerMCPClient
 from langgraph.types import Checkpointer
 
 from agent_playground.workflow import run_experiment_workflow
+from agent_playground.workflow_outputs import prepare_output_store
 
 
 @tool
@@ -57,5 +58,6 @@ def make_graph(
 
 async def graph():
     """Load MCP tools once at startup; Aegra supplies the PostgreSQL checkpointer."""
+    prepare_output_store()
     tools = await mcp_client().get_tools()
     return make_graph(mcp_tools=tools)
