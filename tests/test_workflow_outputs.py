@@ -21,7 +21,7 @@ def test_catalog_change_preserves_replayed_output(monkeypatch: pytest.MonkeyPatc
         "messages": [{"version": "v0.9.1"}],
     }
 
-    with PostgresContainer("postgres:17-alpine") as postgres:
+    with PostgresContainer("postgres:18-alpine") as postgres:
         monkeypatch.setenv("APP_DATABASE_URL", postgres.get_connection_url(driver=None))
         _engine.cache_clear()
         engine = _engine()

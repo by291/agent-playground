@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  python:
+    name: Python
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10
+        with:
+          version: 0.12.19
+          enable-cache: true
+      - run: uv python install 3.12
+      - run: uv sync --locked --python 3.12
+      - run: uv run pyrefly check
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - run: uv run pytest
+
+  server:
+    name: Server
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/setup@v3
+        with:
+          runtime: node@26
+          cache: true
+          require-lockfile: true
+      - run: pnpm --filter agent-playground-server check
+      - run: pnpm --filter agent-playground-server lint
+      - run: pnpm --filter agent-playground-server test
+
+  web:
+    name: Web
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/setup@v3
+        with:
+          runtime: node@26
+          cache: true
+          require-lockfile: true
+      - run: pnpm format:check
+      - run: pnpm --filter agent-playground-web check
+      - run: pnpm --filter agent-playground-web lint
+      - run: pnpm --filter agent-playground-web test
+      - run: pnpm --filter agent-playground-web build

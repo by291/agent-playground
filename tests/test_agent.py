@@ -346,5 +346,5 @@ def test_postgres_checkpoint_survives_graph_recreation():
         ]
         assert user_turns == ["First turn", "Second turn"]
 
-    with PostgresContainer("postgres:17-alpine") as postgres:
+    with PostgresContainer("postgres:18-alpine") as postgres:
         asyncio.run(check(postgres.get_connection_url(driver=None)))
