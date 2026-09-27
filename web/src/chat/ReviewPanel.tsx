@@ -1,10 +1,7 @@
 import { useState, type SubmitEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  NativeSelect,
-  NativeSelectOption,
-} from "@/components/ui/native-select";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Textarea } from "@/components/ui/textarea";
 import type { ChatPaneProps } from "./types";
 
@@ -77,22 +74,39 @@ export function ReviewPanel({
               Plan {index + 1}
             </legend>
           )}
-          <label className="block text-xs font-medium text-ink">
-            Decision
-            <NativeSelect
-              value={draft.decision}
-              onChange={(event) =>
-                update(index, {
-                  decision: event.target.value as "approve" | "reject",
-                })
-              }
-              disabled={running}
-              className="mt-1 w-full [&_select]:h-10 [&_select]:bg-white"
+          <div>
+            <p
+              id={`decision-label-${draft.interruptId}`}
+              className="text-xs font-medium text-ink"
             >
-              <NativeSelectOption value="approve">Approve</NativeSelectOption>
-              <NativeSelectOption value="reject">Reject</NativeSelectOption>
-            </NativeSelect>
-          </label>
+              Decision
+            </p>
+            <RadioGroup
+              value={draft.decision}
+              onValueChange={(decision) => {
+                if (decision === "approve" || decision === "reject") {
+                  update(index, { decision });
+                }
+              }}
+              disabled={running}
+              aria-labelledby={`decision-label-${draft.interruptId}`}
+              className="mt-2 grid-cols-2 gap-2"
+            >
+              {(["approve", "reject"] as const).map((decision) => (
+                <label
+                  key={decision}
+                  htmlFor={`${draft.interruptId}-${decision}`}
+                  className="flex min-h-11 items-center gap-2 rounded-xl border border-line bg-white px-3 text-sm font-medium text-ink has-data-[state=checked]:border-accent has-data-[state=checked]:bg-accent-soft"
+                >
+                  <RadioGroupItem
+                    id={`${draft.interruptId}-${decision}`}
+                    value={decision}
+                  />
+                  {decision === "approve" ? "Approve" : "Reject"}
+                </label>
+              ))}
+            </RadioGroup>
+          </div>
           <label className="block text-xs font-medium text-ink">
             Title
             <Input

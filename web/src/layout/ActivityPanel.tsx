@@ -4,6 +4,7 @@ import {
   PulseIcon,
   XIcon,
 } from "@phosphor-icons/react";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type { Activity } from "../conversation/types";
 
@@ -37,7 +38,7 @@ export function ActivityPanel({
           size="icon-lg"
           onClick={onClose}
           aria-label="Close run activity"
-          className="size-9 text-muted hover:bg-white hover:text-ink"
+          className="size-11 text-muted hover:bg-white hover:text-ink"
         >
           <XIcon size={18} aria-hidden="true" />
         </Button>
@@ -48,9 +49,12 @@ export function ActivityPanel({
           <span className="text-[10px] font-semibold tracking-[0.14em] text-soft uppercase">
             Recent events
           </span>
-          <span className="rounded-full border border-accent-line bg-accent-soft px-2 py-0.5 text-[10px] font-semibold text-accent">
+          <Badge
+            variant="secondary"
+            className="border border-accent-line bg-accent-soft text-[10px] font-semibold text-accent"
+          >
             AG-UI
-          </span>
+          </Badge>
         </div>
         {activity.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-line bg-white px-5 py-8 text-center">

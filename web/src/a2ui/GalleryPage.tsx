@@ -1,8 +1,13 @@
 import {
   ArrowLeftIcon,
   ArrowCounterClockwiseIcon,
+  BracketsCurlyIcon,
+  EyeIcon,
+  SquaresFourIcon,
 } from "@phosphor-icons/react";
 import { useState } from "react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   NativeSelect,
@@ -73,17 +78,24 @@ export function GalleryPage() {
             <ArrowLeftIcon size={18} aria-hidden="true" />
             Agent chat
           </a>
-          <span className="rounded-full border border-accent-line bg-accent-soft px-3 py-1 text-xs font-semibold text-accent">
+          <Badge
+            variant="secondary"
+            className="h-auto gap-1.5 border border-accent-line bg-accent-soft px-3 py-1 text-accent"
+          >
+            <SquaresFourIcon size={14} aria-hidden="true" />
             {workflowComponentNames.length} components
-          </span>
+          </Badge>
         </div>
       </header>
 
       <main className="mx-auto max-w-7xl px-4 py-8 sm:px-8 sm:py-10">
         <div className="mb-8 flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
           <div>
-            <p className="mb-2 text-xs font-semibold tracking-[0.14em] text-accent uppercase">
-              {workflowCatalog.id}
+            <p
+              title={workflowCatalog.id}
+              className="mb-2 text-xs font-semibold tracking-[0.14em] text-accent uppercase"
+            >
+              Workflow catalog
             </p>
             <h1 className="text-3xl font-semibold tracking-[-0.04em] sm:text-4xl">
               A2UI component gallery
@@ -116,10 +128,17 @@ export function GalleryPage() {
 
         <p className="mb-5 text-sm text-muted">{example.description}</p>
 
-        <div className="grid gap-5 sm:grid-cols-2">
+        <div className="grid gap-5 lg:grid-cols-2">
           <section className="flex min-w-0 flex-col overflow-hidden rounded-2xl border border-line bg-white shadow-sm">
             <div className="flex min-h-14 items-center justify-between gap-3 border-b border-line px-5">
-              <h2 className="text-sm font-semibold">JSON example</h2>
+              <h2 className="flex items-center gap-2 text-sm font-semibold">
+                <BracketsCurlyIcon
+                  size={18}
+                  className="text-accent"
+                  aria-hidden="true"
+                />
+                JSON example
+              </h2>
               <Button
                 type="button"
                 variant="ghost"
@@ -131,29 +150,49 @@ export function GalleryPage() {
                 Reset
               </Button>
             </div>
-            <div className="h-[58vh] min-h-96 lg:h-[68vh] lg:min-h-140">
+            <div className="h-[52vh] min-h-88 lg:h-[68vh] lg:min-h-140">
               <JsonEditor
                 component={component}
                 value={source}
                 onChange={updateSource}
               />
             </div>
-            <div
-              role={result.error ? "alert" : "status"}
-              className={`min-h-12 border-t px-5 py-3 text-xs ${result.error ? "border-red-200 bg-red-50 text-red-700" : "border-line text-muted"}`}
-            >
-              {result.error ?? "Valid A2UI JSON · preview updated"}
-            </div>
+            {result.error ? (
+              <Alert
+                variant="destructive"
+                className="min-h-12 rounded-none border-0 border-t border-red-200 bg-red-50 px-5 py-3"
+              >
+                <AlertDescription className="text-xs text-red-700">
+                  {result.error}
+                </AlertDescription>
+              </Alert>
+            ) : (
+              <div
+                role="status"
+                className="min-h-12 border-t border-line px-5 py-3 text-xs text-muted"
+              >
+                Valid A2UI JSON · preview updated
+              </div>
+            )}
           </section>
 
           <section className="flex min-w-0 flex-col overflow-hidden rounded-2xl border border-line bg-white shadow-sm">
             <div className="flex min-h-14 items-center justify-between gap-3 border-b border-line px-5">
-              <h2 className="text-sm font-semibold">Rendered preview</h2>
-              <span className="text-xs text-muted">
+              <h2 className="flex items-center gap-2 text-sm font-semibold">
+                <EyeIcon size={18} className="text-accent" aria-hidden="true" />
+                Rendered preview
+              </h2>
+              <Badge
+                variant="secondary"
+                className={`h-auto gap-1.5 px-2.5 py-1 ${result.error ? "bg-amber-50 text-amber-800" : "bg-accent-soft text-accent"}`}
+              >
+                <span
+                  className={`size-1.5 rounded-full ${result.error ? "bg-amber-600" : "bg-accent"}`}
+                />
                 {result.error ? "Last valid JSON" : "Live"}
-              </span>
+              </Badge>
             </div>
-            <div className="flex min-h-96 flex-1 items-start justify-center bg-canvas p-5 sm:p-8 lg:min-h-140">
+            <div className="flex min-h-80 flex-1 items-start justify-center bg-canvas p-5 sm:p-8 lg:min-h-140">
               <div className="w-full max-w-xl">
                 <A2UICard
                   key={preview.source}

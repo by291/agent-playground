@@ -5,6 +5,7 @@ import {
   SquaresFourIcon,
 } from "@phosphor-icons/react";
 import { lazy, Suspense, useState } from "react";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ChatPane } from "./chat/ChatPane";
 import {
@@ -97,9 +98,12 @@ function ConversationPage({
                 <h1 className="truncate text-[15px] font-semibold tracking-[-0.02em] sm:text-base">
                   Agent Playground
                 </h1>
-                <span className="hidden rounded-full border border-accent-line bg-accent-soft px-2 py-0.5 text-[10px] font-semibold tracking-wide text-accent sm:inline">
+                <Badge
+                  variant="secondary"
+                  className="hidden border border-accent-line bg-accent-soft text-[10px] font-semibold tracking-wide text-accent sm:inline-flex"
+                >
                   EXPERIMENT
-                </span>
+                </Badge>
               </div>
               <p className="hidden text-xs text-soft sm:block">Agent chat</p>
             </div>
@@ -110,7 +114,7 @@ function ConversationPage({
             <a
               href="/a2ui"
               aria-label="A2UI components"
-              className="inline-flex size-10 items-center justify-center rounded-xl text-muted hover:bg-sidebar hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent xl:hidden"
+              className="inline-flex size-11 items-center justify-center rounded-xl text-muted hover:bg-sidebar hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent xl:hidden"
             >
               <SquaresFourIcon size={20} aria-hidden="true" />
             </a>
@@ -122,7 +126,7 @@ function ConversationPage({
                 activityOpen ? "Hide run activity" : "Show run activity"
               }
               aria-pressed={activityOpen}
-              className={`h-10 rounded-xl px-3 hover:bg-sidebar ${
+              className={`h-11 rounded-xl px-3 hover:bg-sidebar ${
                 activityOpen
                   ? "bg-accent-soft text-accent"
                   : "text-muted hover:bg-sidebar hover:text-ink"
@@ -131,9 +135,12 @@ function ConversationPage({
               <PulseIcon size={18} aria-hidden="true" />
               <span className="hidden sm:inline">Activity</span>
               {activity.length > 0 && (
-                <span className="rounded-md bg-accent-soft px-1.5 py-0.5 text-[11px] font-semibold tabular-nums text-accent">
+                <Badge
+                  variant="secondary"
+                  className="h-auto rounded-md bg-accent-soft px-1.5 py-0.5 text-[11px] font-semibold tabular-nums text-accent"
+                >
                   {activity.length}
-                </span>
+                </Badge>
               )}
             </Button>
             <Button
@@ -142,7 +149,7 @@ function ConversationPage({
               size="icon-lg"
               onClick={onNewConversation}
               aria-label="New conversation"
-              className="size-10 rounded-xl text-muted hover:bg-sidebar hover:text-ink xl:hidden"
+              className="size-11 rounded-xl text-muted hover:bg-sidebar hover:text-ink xl:hidden"
             >
               <PlusIcon size={20} aria-hidden="true" />
             </Button>

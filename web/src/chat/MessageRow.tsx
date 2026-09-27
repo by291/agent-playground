@@ -1,6 +1,12 @@
 import type { Message } from "@ag-ui/client";
 import { SparkleIcon } from "@phosphor-icons/react";
 import { lazy, Suspense } from "react";
+import { Bubble, BubbleContent } from "@/components/ui/bubble";
+import {
+  Message as ConversationMessage,
+  MessageAvatar,
+  MessageContent,
+} from "@/components/ui/message";
 
 const MarkdownMessage = lazy(() => import("./MarkdownMessage"));
 
@@ -28,25 +34,37 @@ export function MessageRow({ message }: { message: Message }) {
 
   if (message.role === "user") {
     return (
-      <div className="flex justify-end">
-        <div className="max-w-[85%] rounded-[20px] rounded-br-md bg-sidebar px-4 py-3 text-[15px]/7 whitespace-pre-wrap text-ink sm:max-w-[75%]">
-          {text}
-        </div>
-      </div>
+      <ConversationMessage align="end">
+        <MessageContent>
+          <Bubble
+            variant="secondary"
+            align="end"
+            className="max-w-[85%] sm:max-w-[75%]"
+          >
+            <BubbleContent className="rounded-[20px] rounded-br-md px-4 py-3 text-[15px]/7 whitespace-pre-wrap">
+              {text}
+            </BubbleContent>
+          </Bubble>
+        </MessageContent>
+      </ConversationMessage>
     );
   }
 
   return (
-    <div className="flex items-start gap-3 sm:gap-4">
-      <div className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-xl bg-accent-soft text-accent">
+    <ConversationMessage className="gap-3 sm:gap-4">
+      <MessageAvatar className="mt-0.5 size-8 self-start rounded-xl bg-accent-soft text-accent">
         <SparkleIcon size={18} weight="fill" aria-hidden="true" />
-      </div>
-      <div className="chat-markdown min-w-0 flex-1 pt-0.5">
-        <Suspense fallback={<p className="whitespace-pre-wrap">{text}</p>}>
-          <MarkdownMessage text={text} />
-        </Suspense>
-      </div>
-    </div>
+      </MessageAvatar>
+      <MessageContent className="pt-0.5">
+        <Bubble variant="ghost" className="w-full">
+          <BubbleContent className="chat-markdown w-full overflow-visible text-ink">
+            <Suspense fallback={<p className="whitespace-pre-wrap">{text}</p>}>
+              <MarkdownMessage text={text} />
+            </Suspense>
+          </BubbleContent>
+        </Bubble>
+      </MessageContent>
+    </ConversationMessage>
   );
 }
 

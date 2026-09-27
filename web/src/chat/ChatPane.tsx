@@ -1,4 +1,13 @@
-import { Fragment, useEffect, useRef } from "react";
+import { Fragment } from "react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import {
+  MessageScroller,
+  MessageScrollerButton,
+  MessageScrollerContent,
+  MessageScrollerItem,
+  MessageScrollerProvider,
+  MessageScrollerViewport,
+} from "@/components/ui/message-scroller";
 import { A2UICard } from "../a2ui/A2UICard";
 import type { A2UICard as CardData } from "../a2ui/card";
 import { Composer } from "./Composer";
@@ -17,8 +26,6 @@ export function ChatPane({
   onSend,
   onReview,
 }: ChatPaneProps) {
-  const scroll = useRef<HTMLDivElement>(null);
-  const followOutput = useRef(true);
   const visible = messages.filter(
     (message) => message.role === "user" || message.role === "assistant",
   );
@@ -38,71 +45,79 @@ export function ChatPane({
     ),
   );
 
-  useEffect(() => {
-    if (followOutput.current && scroll.current) {
-      scroll.current.scrollTop = scroll.current.scrollHeight;
-    }
-  }, [messages, cards, reviews, running]);
-
-  function updateScrollPosition() {
-    const element = scroll.current;
-    if (!element) return;
-    followOutput.current =
-      element.scrollHeight - element.scrollTop - element.clientHeight < 100;
-  }
-
   return (
     <>
-      <div
-        ref={scroll}
-        onScroll={updateScrollPosition}
-        className="min-h-0 flex-1 overflow-y-auto overscroll-contain"
-      >
-        <div className="mx-auto flex min-h-full w-full max-w-205 flex-col px-4 sm:px-8">
-          {visible.length === 0 ? (
+      {visible.length === 0 ? (
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+          <div className="mx-auto flex min-h-full w-full max-w-205 flex-col px-4 sm:px-8">
             <Welcome onSend={onSend} />
-          ) : (
-            <div className="space-y-8 pt-8 pb-12 sm:pt-12">
-              {visible.map((message) => (
-                <Fragment key={message.id}>
-                  <MessageRow message={message} />
-                  {message.role === "assistant" &&
-                    message.toolCalls?.map((call) => {
-                      return cardsByCall
-                        .get(call.id)
-                        ?.map((card) => <A2UICard key={card.id} card={card} />);
-                    })}
-                </Fragment>
-              ))}
-              {cards
-                .filter(
-                  (card) =>
-                    !card.toolCallId || !attachedCalls.has(card.toolCallId),
-                )
-                .map((card) => (
-                  <A2UICard key={card.id} card={card} />
-                ))}
-              {reviews.length > 0 && (
-                <ReviewPanel
-                  key={reviews.map((review) => review.interruptId).join(",")}
-                  reviews={reviews}
-                  running={running}
-                  onReview={onReview}
-                />
-              )}
-              {running && visible.at(-1)?.role === "user" && <Thinking />}
-              {recoveryIssue && (
-                <p
-                  role="alert"
-                  className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900"
-                >
-                  {recoveryIssue}
-                </p>
-              )}
-            </div>
-          )}
+          </div>
         </div>
-      </div>
+      ) : (
+        <MessageScrollerProvider autoScroll defaultScrollPosition="end">
+          <MessageScroller className="min-h-0 flex-1">
+            <MessageScrollerViewport>
+              <MessageScrollerContent className="mx-auto w-full max-w-205 gap-8 px-4 pt-8 pb-12 sm:px-8 sm:pt-12">
+                {/* Checkpoint IDs can replace stream IDs at the same position. */}
+                {visible.map((message, index) => (
+                  <Fragment key={index}>
+                    <MessageScrollerItem>
+                      <MessageRow message={message} />
+                    </MessageScrollerItem>
+                    {message.role === "assistant" &&
+                      message.toolCalls?.map((call) => {
+                        return cardsByCall.get(call.id)?.map((card) => (
+                          <MessageScrollerItem key={card.id}>
+                            <A2UICard card={card} />
+                          </MessageScrollerItem>
+                        ));
+                      })}
+                  </Fragment>
+                ))}
+                {cards
+                  .filter(
+                    (card) =>
+                      !card.toolCallId || !attachedCalls.has(card.toolCallId),
+                  )
+                  .map((card) => (
+                    <MessageScrollerItem key={card.id}>
+                      <A2UICard card={card} />
+                    </MessageScrollerItem>
+                  ))}
+                {reviews.length > 0 && (
+                  <MessageScrollerItem
+                    key={reviews.map((review) => review.interruptId).join(",")}
+                  >
+                    <ReviewPanel
+                      reviews={reviews}
+                      running={running}
+                      onReview={onReview}
+                    />
+                  </MessageScrollerItem>
+                )}
+                {running && visible.at(-1)?.role === "user" && (
+                  <MessageScrollerItem key="thinking">
+                    <Thinking />
+                  </MessageScrollerItem>
+                )}
+                {recoveryIssue && (
+                  <MessageScrollerItem key="recovery-issue">
+                    <Alert className="rounded-xl border-amber-300 bg-amber-50 p-3 text-amber-900">
+                      <AlertDescription className="text-amber-900">
+                        {recoveryIssue}
+                      </AlertDescription>
+                    </Alert>
+                  </MessageScrollerItem>
+                )}
+              </MessageScrollerContent>
+            </MessageScrollerViewport>
+            <MessageScrollerButton
+              size="icon-lg"
+              className="size-11 rounded-xl"
+            />
+          </MessageScroller>
+        </MessageScrollerProvider>
+      )}
       <Composer
         running={running}
         waitingForReview={waitingForReview}

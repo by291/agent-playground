@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Badge } from "@/components/ui/badge";
 
 export function ConnectionStatus() {
   const [connected, setConnected] = useState<boolean | null>(null);
@@ -17,9 +18,10 @@ export function ConnectionStatus() {
         : "Gateway offline";
 
   return (
-    <div
+    <Badge
+      variant="outline"
       role="status"
-      className="hidden items-center gap-2 text-xs font-medium text-muted md:flex"
+      className="hidden h-7 items-center gap-2 border-line bg-white px-2.5 text-xs text-muted md:inline-flex"
     >
       <span
         className={`size-2 rounded-full ${
@@ -31,6 +33,6 @@ export function ConnectionStatus() {
         }`}
       />
       {label}
-    </div>
+    </Badge>
   );
 }
