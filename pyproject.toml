@@ -12,10 +12,10 @@ dependencies = [
   "langchain-mcp-adapters>=0.3.2",
   "langgraph>=1.2.12",
   "langgraph-checkpoint-postgres",
-  "mcp>=1.30.0",
+  "mcp>=1.30.0,<2",
   "psycopg[binary,pool]>=3.3.6",
   "pydantic>=2.13.5",
-  "sqlalchemy>=2.0.54",
+  "sqlalchemy>=2.1.1",
 ]
 
 [project.scripts]
