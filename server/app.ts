@@ -4,7 +4,6 @@ import {
   type RunErrorEvent,
   type RunStartedEvent,
 } from "@ag-ui/client";
-import { LangGraphAgent } from "@ag-ui/langgraph";
 import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { streamSSE } from "hono/streaming";
@@ -17,6 +16,7 @@ import {
   Subject,
   takeUntil,
 } from "rxjs";
+import { ReviewLangGraphAgent } from "./hitl";
 
 const aegraUrl = process.env.AEGRA_URL ?? "http://127.0.0.1:2026";
 
@@ -38,9 +38,11 @@ app.post(
       return context.json({ error: "Invalid AG-UI input" }, 400);
 
     // The adapter keeps run state, so each request gets its own instance.
-    const agent = new LangGraphAgent({
+    const agent = new ReviewLangGraphAgent({
       graphId: "agent",
       deploymentUrl: aegraUrl,
+      emitInterruptOutcome: true,
+      enableLegacyOnInterruptEvent: false,
     });
     context.header("Cache-Control", "no-cache, no-transform");
     context.header("X-Accel-Buffering", "no");

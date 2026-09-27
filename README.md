@@ -54,9 +54,9 @@ curl --no-buffer -X POST http://127.0.0.1:3000/agent \
   }'
 ```
 
-The original `get_current_time` tool is still built into the agent. The local MCP server exposes `calculate_sum`; Aegra loads it through the LangChain MCP adapter when the graph starts. The `run_experiment_workflow` tool calls a small LangGraph workflow and returns an A2UI v0.9 card. Try "Use the MCP tool to add 12 and 30" or "Create an experiment plan for testing an agent workflow" in the web UI.
+The original `get_current_time` tool is still built into the agent. The local MCP server exposes `calculate_sum`; Aegra loads it through the LangChain MCP adapter when the graph starts. The `run_experiment_workflow` tool runs a small LangGraph workflow with visible steps and one human review point. Try "Use the MCP tool to add 12 and 30" or "Create an experiment plan for testing an agent workflow" in the web UI.
 
-The AG-UI adapter carries the workflow's A2UI messages in a `TOOL_CALL_RESULT`. The web app validates those messages and renders them with the official A2UI React renderer. Cards appear when the workflow tool finishes and are saved with the local conversation. The example card is read-only; A2UI actions and progressive card updates are not wired yet. Aegra's native Agent Protocol stream is also available at `POST /runs/stream` on port `2026`.
+Each workflow step emits an A2UI v0.9 card: captured idea, draft plan, review request, and review result. The review step also pauses with a LangGraph interrupt. The AG-UI adapter exposes the pause through `RUN_FINISHED.outcome`; the web UI lets you edit and approve the draft or reject it, then resumes the same thread with `resume[]`. Step cards travel as AG-UI `CUSTOM` events, are validated with the official A2UI schema, and render with the official React renderer. The web app saves the cards and pending review with the local conversation so a paused workflow can be resumed after a page reload. The example cards are read-only; A2UI actions and updates to an existing surface are not wired yet. Aegra's native Agent Protocol stream is also available at `POST /runs/stream` on port `2026`.
 
 The current `@a2ui/react` release has an [upstream published-package styling issue](https://github.com/a2ui-project/a2ui/issues/1307). The sample card wrapper has local styles, but renderer component styles may be incomplete. Avoid importing the package's unexported CSS path; recheck rendering after upgrading the renderer.
 
@@ -67,7 +67,7 @@ make check
 make format
 ```
 
-`make check` runs Pyrefly and TypeScript type checking, Ruff and ESLint linting, Ruff and Prettier format checks, Python tests, and the web build. `make format` applies the Python and frontend formatters. Individual targets such as `make typecheck`, `make lint`, `make format-check`, `make test`, and `make build` are available when a faster check is useful. Web linting checks Tailwind class names, including canonical forms such as `max-w-205`.
+`make check` runs Pyrefly and TypeScript type checking, Ruff and ESLint linting, Ruff and Prettier format checks, Python and server tests, and the web build. `make format` applies the Python and frontend formatters. Individual targets such as `make typecheck`, `make lint`, `make format-check`, `make test`, and `make build` are available when a faster check is useful. Web linting checks Tailwind class names, including canonical forms such as `max-w-205`.
 
 Pyrefly uses its strict preset. Ruff keeps its default checks and adds import sorting, common bug checks, and Python syntax upgrades; its formatter uses the default 88-character line length. Both TypeScript projects enable strict checking, unchecked index access, exact optional properties, and verbatim module syntax. ESLint uses the JavaScript and type-aware TypeScript recommended rules, with React Hooks rules for the web app. Prettier uses its defaults, while `.editorconfig` defines indentation and line endings for editors.
 

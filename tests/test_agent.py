@@ -1,26 +1,48 @@
 """Check the graph without calling a real model provider."""
 
 import asyncio
-import json
 import os
 from collections.abc import Sequence
-from typing import override
+from typing import Any, cast, override
 from uuid import uuid4
 
+import pytest
+from langchain_core.callbacks.manager import AsyncCallbackManagerForLLMRun
 from langchain_core.language_models.fake_chat_models import FakeMessagesListChatModel
-from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
+from langchain_core.outputs import ChatResult
+from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+from langgraph.graph import END, START, StateGraph
+from langgraph.types import Command
+from pydantic import BaseModel
 from testcontainers.community.postgres import PostgresContainer
 
 os.environ.setdefault("DEEPSEEK_API_KEY", "test")
 
 from agent_playground.graph import make_graph, mcp_client
+from agent_playground.workflow import ExperimentState, experiment_workflow
 
 
 class FakeToolModel(FakeMessagesListChatModel):
     @override
     def bind_tools(self, tools: Sequence[object], **kwargs: object):
         return self
+
+    @override
+    async def _agenerate(
+        self,
+        messages: list[BaseMessage],
+        stop: list[str] | None = None,
+        run_manager: AsyncCallbackManagerForLLMRun | None = None,
+        **kwargs: Any,
+    ) -> ChatResult:
+        return self._generate(messages, stop=stop, **kwargs)
+
+
+class ReviewState(BaseModel):
+    idea: str
+    result: dict[str, object] | None = None
 
 
 def fake_model() -> FakeToolModel:
@@ -36,18 +58,13 @@ def fake_model() -> FakeToolModel:
 
 
 def test_tool_and_followup_response():
-    async def check():
-        graph = make_graph(model=fake_model())
-        output = await graph.ainvoke(
-            {"messages": [HumanMessage(content="What time is it?")]}
-        )
-        assert output["messages"][-1].content == "The clock was checked."
-        assert output["messages"][-2].name == "get_current_time"
-
-    asyncio.run(check())
+    graph = make_graph(model=fake_model())
+    output = graph.invoke({"messages": [HumanMessage(content="What time is it?")]})
+    assert output["messages"][-1].content == "The clock was checked."
+    assert output["messages"][-2].name == "get_current_time"
 
 
-def test_mcp_tool_and_workflow_card():
+def test_mcp_tool_and_followup_response():
     async def check():
         mcp_tools = await mcp_client().get_tools()
         assert [tool.name for tool in mcp_tools] == ["calculate_sum"]
@@ -62,32 +79,205 @@ def test_mcp_tool_and_workflow_card():
                             "name": "calculate_sum",
                             "args": {"left": 2, "right": 3},
                         },
+                    ],
+                ),
+                AIMessage(content="The sum is ready."),
+            ]
+        )
+        output = await make_graph(model=model, mcp_tools=mcp_tools).ainvoke(
+            {"messages": [HumanMessage(content="Add two numbers.")]}
+        )
+        results = {message.name: message.content for message in output["messages"]}
+        assert "5.0" in str(results["calculate_sum"])
+        assert output["messages"][-1].content == "The sum is ready."
+
+    asyncio.run(check())
+
+
+@pytest.mark.parametrize(
+    ("decision", "expected_title", "expected_line"),
+    [
+        ("approve", "Human-approved title", "1. Run an edited first step."),
+        ("reject", "Test an agent workflow", "1. The reviewer rejected this draft."),
+    ],
+)
+def test_workflow_streams_each_step_and_waits_for_review(
+    decision: str, expected_title: str, expected_line: str
+):
+    async def call_workflow(state: ReviewState) -> dict[str, dict[str, object]]:
+        result = await experiment_workflow.ainvoke(
+            ExperimentState(idea=state.idea, card_group_id="call-plan")
+        )
+        return {"result": result}
+
+    builder = StateGraph(ReviewState)
+    builder.add_node("workflow", call_workflow)
+    builder.add_edge(START, "workflow")
+    builder.add_edge("workflow", END)
+    graph = builder.compile(checkpointer=InMemorySaver())
+    config = {"configurable": {"thread_id": str(uuid4())}}
+
+    async def cards_for(input_value: object) -> list[dict[str, Any]]:
+        cards: list[dict[str, Any]] = []
+        async for event in graph.astream_events(input_value, config, version="v2"):
+            if (
+                event["event"] == "on_custom_event"
+                and event["name"] == "experiment_card"
+            ):
+                cards.append(cast("dict[str, Any]", event["data"]))
+        return cards
+
+    async def check():
+        before = await cards_for({"idea": "Test an agent workflow"})
+        assert [card["id"] for card in before] == [
+            "experiment-call-plan-idea",
+            "experiment-call-plan-draft",
+            "experiment-call-plan-review",
+        ]
+        assert all(card["kind"] == "a2ui" for card in before)
+        review = graph.get_state(config).tasks[0].interrupts[0].value
+        assert review["kind"] == "experiment_plan_review"
+        assert review["title"] == "Test an agent workflow"
+        assert len(review["steps"]) == 3
+
+        after = await cards_for(
+            Command(
+                resume={
+                    "decision": decision,
+                    "title": "Human-approved title",
+                    "steps": ["Run an edited first step."],
+                }
+            )
+        )
+        assert after[-1]["id"] == "experiment-call-plan-reviewed"
+        components = after[-1]["messages"][1]["updateComponents"]["components"]
+        assert any(component.get("text") == expected_title for component in components)
+        assert any(component.get("text") == expected_line for component in components)
+        assert graph.get_state(config).next == ()
+
+    asyncio.run(check())
+
+
+def test_agent_resumes_workflow_tool_after_review():
+    async def check():
+        first_model = FakeToolModel(
+            responses=[
+                AIMessage(
+                    content="",
+                    tool_calls=[
                         {
                             "id": "call-plan",
                             "name": "run_experiment_workflow",
                             "args": {"idea": "Test an agent workflow"},
+                        }
+                    ],
+                ),
+            ]
+        )
+        saver = InMemorySaver()
+        first_graph = make_graph(model=first_model, checkpointer=saver)
+        config = {"configurable": {"thread_id": str(uuid4())}}
+
+        cards: list[dict[str, Any]] = []
+        async for event in first_graph.astream_events(
+            {"messages": [HumanMessage(content="Make a plan.")]},
+            config,
+            version="v2",
+        ):
+            if (
+                event["event"] == "on_custom_event"
+                and event["name"] == "experiment_card"
+            ):
+                cards.append(cast("dict[str, Any]", event["data"]))
+        assert [card["id"] for card in cards] == [
+            "experiment-call-plan-idea",
+            "experiment-call-plan-draft",
+            "experiment-call-plan-review",
+        ]
+        assert (
+            first_graph.get_state(config).tasks[0].interrupts[0].value["kind"]
+            == "experiment_plan_review"
+        )
+
+        resumed_graph = make_graph(
+            model=FakeToolModel(
+                responses=[AIMessage(content="The approved plan is ready.")]
+            ),
+            checkpointer=saver,
+        )
+        completed = await resumed_graph.ainvoke(
+            Command(
+                resume={
+                    "decision": "approve",
+                    "title": "Approved title",
+                    "steps": ["Run one trial."],
+                }
+            ),
+            config,
+        )
+        result = next(
+            message.content
+            for message in completed["messages"]
+            if getattr(message, "name", None) == "run_experiment_workflow"
+        )
+        assert result == "Approved experiment plan: Approved title\n1. Run one trial."
+        assert completed["messages"][-1].content == "The approved plan is ready."
+
+    asyncio.run(check())
+
+
+def test_agent_resumes_parallel_workflow_reviews():
+    async def check():
+        model = FakeToolModel(
+            responses=[
+                AIMessage(
+                    content="",
+                    tool_calls=[
+                        {
+                            "id": "call-first",
+                            "name": "run_experiment_workflow",
+                            "args": {"idea": "First idea"},
+                        },
+                        {
+                            "id": "call-second",
+                            "name": "run_experiment_workflow",
+                            "args": {"idea": "Second idea"},
                         },
                     ],
                 ),
-                AIMessage(content="The experiment plan is ready."),
+                AIMessage(content="Both reviews are complete."),
             ]
         )
-        output = await make_graph(model=model, mcp_tools=mcp_tools).ainvoke(
-            {"messages": [HumanMessage(content="Add two numbers and make a plan.")]}
-        )
-        results = {message.name: message.content for message in output["messages"]}
-        assert "5.0" in str(results["calculate_sum"])
+        graph = make_graph(model=model, checkpointer=InMemorySaver())
+        config = {"configurable": {"thread_id": str(uuid4())}}
 
-        card = json.loads(results["run_experiment_workflow"])
-        assert card["kind"] == "a2ui"
-        assert card["messages"][0]["createSurface"]["catalogId"].endswith(
-            "/v0_9/catalogs/basic/catalog.json"
+        paused = await graph.ainvoke(
+            {"messages": [HumanMessage(content="Plan both ideas.")]}, config
         )
-        assert (
-            card["messages"][1]["updateComponents"]["components"][0]["component"]
-            == "Card"
+        interrupts = paused["__interrupt__"]
+        assert len(interrupts) == 2
+
+        completed = await graph.ainvoke(
+            Command(
+                resume={
+                    item.id: {
+                        "decision": "approve",
+                        "title": item.value["title"],
+                        "steps": item.value["steps"],
+                    }
+                    for item in interrupts
+                }
+            ),
+            config,
         )
-        assert output["messages"][-1].content == "The experiment plan is ready."
+        results = {
+            message.tool_call_id: message.content
+            for message in completed["messages"]
+            if getattr(message, "name", None) == "run_experiment_workflow"
+        }
+        assert "Approved experiment plan: First idea" in results["call-first"]
+        assert "Approved experiment plan: Second idea" in results["call-second"]
+        assert completed["messages"][-1].content == "Both reviews are complete."
 
     asyncio.run(check())
 

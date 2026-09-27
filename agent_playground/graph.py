@@ -49,7 +49,8 @@ def make_graph(
             "for the current date or time. Use calculate_sum for arithmetic "
             "that asks you to add two numbers. Use run_experiment_workflow when "
             "the user asks for an experiment plan or a visual card. "
-            "After a workflow call, summarize its plan in plain text."
+            "After an approved workflow call, summarize its plan in plain text. "
+            "If the reviewer rejected it, acknowledge the rejection."
         ),
     )
 

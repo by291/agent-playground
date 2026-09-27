@@ -40,8 +40,16 @@ function ConversationPage({
   conversation: SavedConversation;
   onNewConversation: () => void;
 }) {
-  const { messages, cards, activity, running, send } =
-    useConversation(conversation);
+  const {
+    messages,
+    cards,
+    reviews,
+    waitingForReview,
+    activity,
+    running,
+    send,
+    reviewPlan,
+  } = useConversation(conversation);
   const [activityOpen, setActivityOpen] = useState(false);
 
   return (
@@ -111,8 +119,11 @@ function ConversationPage({
             <ChatPane
               messages={messages}
               cards={cards}
+              reviews={reviews}
+              waitingForReview={waitingForReview}
               running={running}
               onSend={send}
+              onReview={reviewPlan}
             />
           </main>
           {activityOpen && (

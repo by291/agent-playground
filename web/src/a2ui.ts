@@ -2,13 +2,15 @@ import { basicCatalog } from "@a2ui/react/v0_9";
 import { A2uiMessageListSchema, type A2uiMessage } from "@a2ui/web_core/v0_9";
 
 export interface A2UICard {
-  toolCallId: string;
+  id: string;
+  toolCallId?: string;
   messages: A2uiMessage[];
 }
 
 export function parseA2UICard(
-  toolCallId: string,
+  id: string,
   content: string,
+  toolCallId?: string,
 ): A2UICard | null {
   try {
     const payload: unknown = JSON.parse(content);
@@ -22,7 +24,11 @@ export function parseA2UICard(
     if (creation?.createSurface.catalogId !== basicCatalog.id) return null;
 
     // The package's parsed schema and public message type differ on optional fields.
-    return { toolCallId, messages: parsed.data as A2uiMessage[] };
+    return {
+      id,
+      ...(toolCallId === undefined ? {} : { toolCallId }),
+      messages: parsed.data as A2uiMessage[],
+    };
   } catch {
     return null;
   }

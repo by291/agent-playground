@@ -50,6 +50,7 @@ format-check:
 
 test:
 	uv run pytest
+	pnpm test
 
 build:
 	pnpm build
