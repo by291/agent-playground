@@ -1,14 +1,12 @@
 import type { Message } from "@ag-ui/client";
 import { SparkleIcon } from "@phosphor-icons/react";
-import { lazy, Suspense } from "react";
 import { Bubble, BubbleContent } from "@/components/ui/bubble";
 import {
   Message as ConversationMessage,
   MessageAvatar,
   MessageContent,
 } from "@/components/ui/message";
-
-const MarkdownMessage = lazy(() => import("./MarkdownMessage"));
+import MarkdownMessage from "./MarkdownMessage";
 
 function messageText(message: Message): string {
   if (typeof message.content === "string") return message.content;
@@ -28,7 +26,13 @@ function messageText(message: Message): string {
     .join("\n");
 }
 
-export function MessageRow({ message }: { message: Message }) {
+export function MessageRow({
+  message,
+  smoothText = false,
+}: {
+  message: Message;
+  smoothText?: boolean;
+}) {
   const text = messageText(message);
   if (!text) return null;
 
@@ -58,9 +62,11 @@ export function MessageRow({ message }: { message: Message }) {
       <MessageContent className="pt-0.5">
         <Bubble variant="ghost" className="w-full">
           <BubbleContent className="chat-markdown w-full overflow-visible text-ink">
-            <Suspense fallback={<p className="whitespace-pre-wrap">{text}</p>}>
-              <MarkdownMessage text={text} />
-            </Suspense>
+            <MarkdownMessage
+              key={message.id}
+              text={text}
+              animate={smoothText}
+            />
           </BubbleContent>
         </Bubble>
       </MessageContent>
@@ -74,7 +80,12 @@ export function Thinking() {
       <div className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-accent-soft text-accent">
         <SparkleIcon size={18} weight="fill" aria-hidden="true" />
       </div>
-      <span className="animate-pulse">Thinking…</span>
+      <span>Thinking</span>
+      <span className="-ml-3 flex items-center gap-1" aria-hidden="true">
+        <span className="thinking-dot" />
+        <span className="thinking-dot" />
+        <span className="thinking-dot" />
+      </span>
     </div>
   );
 }

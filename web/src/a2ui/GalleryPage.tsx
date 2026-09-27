@@ -193,7 +193,11 @@ export function GalleryPage() {
               </Badge>
             </div>
             <div className="flex min-h-80 flex-1 items-start justify-center bg-canvas p-5 sm:p-8 lg:min-h-140">
-              <div className="w-full max-w-xl">
+              {/* A JSON edit updates the card without replaying the entrance. */}
+              <div
+                key={component}
+                className="gallery-preview-enter w-full max-w-xl"
+              >
                 <A2UICard
                   key={preview.source}
                   card={preview.card}

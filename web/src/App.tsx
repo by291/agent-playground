@@ -74,6 +74,7 @@ function ConversationPage({
     waitingForReview,
     activity,
     running,
+    animatedMessageId,
     recoveryIssue,
     send,
     reviewPlan,
@@ -166,6 +167,7 @@ function ConversationPage({
               reviews={reviews}
               waitingForReview={waitingForReview}
               running={running}
+              animatedMessageId={animatedMessageId}
               recoveryIssue={recoveryIssue}
               onSend={send}
               onReview={reviewPlan}

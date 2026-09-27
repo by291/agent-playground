@@ -20,7 +20,7 @@ export function ActivityPanel({
   return (
     <aside
       aria-label="Run activity"
-      className="flex min-w-0 flex-1 flex-col border-l border-line bg-canvas lg:w-85 lg:flex-none xl:w-90"
+      className="activity-panel-enter flex min-w-0 flex-1 flex-col border-l border-line bg-canvas lg:w-85 lg:flex-none xl:w-90"
     >
       <div className="flex items-start justify-between gap-3 border-b border-line p-5">
         <div>

@@ -11,6 +11,7 @@ export interface ChatPaneProps {
   reviews: PlanReview[];
   waitingForReview: boolean;
   running: boolean;
+  animatedMessageId: string | null;
   recoveryIssue: string | null;
   onSend: (message: string) => Promise<void>;
   onReview: (responses: PlanReviewResponse[]) => Promise<void>;

@@ -40,7 +40,7 @@ export function Composer({
     <div className="shrink-0 bg-white px-4 pt-3 pb-4 sm:px-8 sm:pb-6">
       <div className="mx-auto w-full max-w-205">
         <form onSubmit={submit}>
-          <InputGroup className="h-auto flex-col items-stretch gap-1 rounded-[22px] border-line bg-white p-3 shadow-[0_8px_32px_rgba(28,41,34,0.08)] focus-within:border-accent-line sm:p-4">
+          <InputGroup className="h-auto flex-col items-stretch gap-1 rounded-[22px] border-line bg-white p-3 shadow-[0_8px_32px_rgba(28,41,34,0.08)] transition-[border-color,box-shadow] duration-200 focus-within:border-accent-line focus-within:shadow-[0_10px_36px_rgba(49,94,69,0.13)] sm:p-4">
             <InputGroupTextarea
               ref={input}
               rows={1}

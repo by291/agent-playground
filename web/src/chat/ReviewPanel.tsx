@@ -57,7 +57,7 @@ export function ReviewPanel({
   return (
     <form
       onSubmit={submit}
-      className="ml-11 space-y-5 rounded-2xl border border-accent-line bg-accent-soft/40 p-4 sm:ml-12"
+      className="review-panel-enter ml-11 space-y-5 rounded-2xl border border-accent-line bg-accent-soft/40 p-4 sm:ml-12"
     >
       <div>
         <h2 className="text-sm font-semibold text-ink">

@@ -31,6 +31,9 @@ export function useConversation(saved: SavedConversation) {
   const [pendingInterrupts, setPendingInterrupts] = useState<Interrupt[]>([]);
   const pendingRef = useRef<PendingSubmission | undefined>(saved.pending);
   const [running, setRunning] = useState(false);
+  const [animatedMessageId, setAnimatedMessageId] = useState<string | null>(
+    null,
+  );
   const [recoveryIssue, setRecoveryIssue] = useState<string | null>(null);
   const active = useRef(true);
 
@@ -120,6 +123,12 @@ export function useConversation(saved: SavedConversation) {
     active.current = true;
     const subscription = agent.subscribe({
       onEvent({ event }) {
+        if (
+          event.type === EventType.TEXT_MESSAGE_CONTENT &&
+          typeof event.messageId === "string"
+        ) {
+          setAnimatedMessageId(event.messageId);
+        }
         if (event.type === EventType.TOOL_CALL_RESULT) {
           const card =
             typeof event.toolCallId === "string" &&
@@ -281,6 +290,7 @@ export function useConversation(saved: SavedConversation) {
     waitingForReview: pendingInterrupts.length > 0,
     activity,
     running,
+    animatedMessageId,
     recoveryIssue,
     send,
     reviewPlan,

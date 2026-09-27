@@ -22,6 +22,7 @@ export function ChatPane({
   reviews,
   waitingForReview,
   running,
+  animatedMessageId,
   recoveryIssue,
   onSend,
   onReview,
@@ -62,7 +63,10 @@ export function ChatPane({
                 {visible.map((message, index) => (
                   <Fragment key={index}>
                     <MessageScrollerItem>
-                      <MessageRow message={message} />
+                      <MessageRow
+                        message={message}
+                        smoothText={animatedMessageId === message.id}
+                      />
                     </MessageScrollerItem>
                     {message.role === "assistant" &&
                       message.toolCalls?.map((call) => {

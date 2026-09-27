@@ -134,6 +134,82 @@ button:not(:disabled) {
   --a2ui-font-family-title: var(--font-sans);
 }
 
+.thinking-dot {
+  width: 0.25rem;
+  height: 0.25rem;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  @keyframes rise-in {
+    from {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes slide-in {
+    from {
+      opacity: 0;
+      transform: translateX(12px);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
+
+  @keyframes thinking-beat {
+    0%,
+    60%,
+    100% {
+      opacity: 0.35;
+      transform: translateY(0);
+    }
+    30% {
+      opacity: 1;
+      transform: translateY(-3px);
+    }
+  }
+
+  .welcome-intro {
+    animation: rise-in 380ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  .welcome-suggestions {
+    animation: rise-in 420ms 80ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  .activity-panel-enter {
+    animation: slide-in 260ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  .gallery-preview-enter {
+    animation: rise-in 240ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  .review-panel-enter {
+    animation: rise-in 260ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  .thinking-dot {
+    animation: thinking-beat 1.2s ease-in-out infinite;
+  }
+
+  .thinking-dot:nth-child(2) {
+    animation-delay: 150ms;
+  }
+
+  .thinking-dot:nth-child(3) {
+    animation-delay: 300ms;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
