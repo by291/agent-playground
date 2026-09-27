@@ -2,12 +2,15 @@ import { RunAgentInputSchema } from "@ag-ui/client";
 import { Hono } from "hono";
 import { desc } from "drizzle-orm";
 import { bodyLimit } from "hono/body-limit";
-import { streamAgent } from "./agent-stream";
-import { conversationSnapshot } from "./conversation-snapshot";
-import { db } from "./database";
-import { currentInterrupts, reviewCallsPersisted } from "./recovery";
-import { admitRun, claimPrepared } from "./run-store";
-import { conversations } from "./schema";
+import { streamAgent } from "./agent/agent-stream";
+import { conversationSnapshot } from "./conversation/conversation-snapshot";
+import {
+  currentInterrupts,
+  reviewCallsPersisted,
+} from "./conversation/recovery";
+import { admitRun, claimPrepared } from "./conversation/run-store";
+import { db } from "./db/database";
+import { conversations } from "./db/schema";
 
 export const app = new Hono();
 

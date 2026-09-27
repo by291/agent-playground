@@ -10,6 +10,6 @@ export async function migrateServer(): Promise<void> {
   if (!process.env.APP_DATABASE_URL) {
     throw new Error("APP_DATABASE_URL is required");
   }
-  const migrationsFolder = new URL("./drizzle", import.meta.url).pathname;
+  const migrationsFolder = new URL("../drizzle", import.meta.url).pathname;
   await migrate(db, { migrationsFolder });
 }

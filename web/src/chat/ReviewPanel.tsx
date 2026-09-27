@@ -1,4 +1,11 @@
 import { useState, type SubmitEvent } from "react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  NativeSelect,
+  NativeSelectOption,
+} from "@/components/ui/native-select";
+import { Textarea } from "@/components/ui/textarea";
 import type { ChatPaneProps } from "./types";
 
 interface ReviewDraft {
@@ -72,7 +79,7 @@ export function ReviewPanel({
           )}
           <label className="block text-xs font-medium text-ink">
             Decision
-            <select
+            <NativeSelect
               value={draft.decision}
               onChange={(event) =>
                 update(index, {
@@ -80,42 +87,42 @@ export function ReviewPanel({
                 })
               }
               disabled={running}
-              className="mt-1 block w-full rounded-lg border border-line bg-white px-3 py-2 text-sm text-ink"
+              className="mt-1 w-full [&_select]:h-10 [&_select]:bg-white"
             >
-              <option value="approve">Approve</option>
-              <option value="reject">Reject</option>
-            </select>
+              <NativeSelectOption value="approve">Approve</NativeSelectOption>
+              <NativeSelectOption value="reject">Reject</NativeSelectOption>
+            </NativeSelect>
           </label>
           <label className="block text-xs font-medium text-ink">
             Title
-            <input
+            <Input
               value={draft.title}
               onChange={(event) => update(index, { title: event.target.value })}
               disabled={running || draft.decision === "reject"}
-              className="mt-1 block w-full rounded-lg border border-line bg-white px-3 py-2 text-sm text-ink"
+              className="mt-1 h-10 bg-white"
             />
           </label>
           <label className="block text-xs font-medium text-ink">
             Steps, one per line
-            <textarea
+            <Textarea
               value={draft.stepsText}
               onChange={(event) =>
                 update(index, { stepsText: event.target.value })
               }
               disabled={running || draft.decision === "reject"}
               rows={Math.max(3, draft.stepsText.split("\n").length)}
-              className="mt-1 block w-full resize-y rounded-lg border border-line bg-white px-3 py-2 text-sm text-ink"
+              className="mt-1 resize-y bg-white"
             />
           </label>
         </fieldset>
       ))}
-      <button
+      <Button
         type="submit"
         disabled={running || invalid}
-        className="rounded-xl bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover disabled:cursor-not-allowed disabled:bg-line disabled:text-soft"
+        className="h-10 rounded-xl px-4"
       >
         {running ? "Continuing…" : "Submit review"}
-      </button>
+      </Button>
     </form>
   );
 }

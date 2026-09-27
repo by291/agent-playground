@@ -15,11 +15,11 @@ import {
   Subject,
   takeUntil,
 } from "rxjs";
-import { recordAegraRun } from "./run-store";
+import { recordAegraRun } from "../conversation/run-store";
 import { aegraClient, ReviewLangGraphAgent } from "./hitl";
-import { reconcileRun } from "./recovery";
+import { reconcileRun } from "../conversation/recovery";
 import { normalizeRunEvent } from "./run-events";
-import type { RunRow } from "./schema";
+import type { RunRow } from "../db/schema";
 
 const aegraUrl = process.env.AEGRA_URL ?? "http://127.0.0.1:2026";
 

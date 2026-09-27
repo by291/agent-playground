@@ -4,6 +4,7 @@ import {
   SparkleIcon,
   SquaresFourIcon,
 } from "@phosphor-icons/react";
+import { Button } from "@/components/ui/button";
 
 export function Sidebar({
   threadId,
@@ -26,14 +27,15 @@ export function Sidebar({
         </div>
       </div>
 
-      <button
+      <Button
         type="button"
+        variant="outline"
         onClick={onNewConversation}
-        className="mt-8 flex h-11 items-center gap-3 rounded-xl border border-accent-line bg-white px-3 text-[13px] font-medium text-accent shadow-[0_1px_2px_rgba(28,41,34,0.03)] transition-colors hover:bg-accent-soft focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+        className="mt-8 h-11 justify-start gap-3 rounded-xl border-accent-line bg-white px-3 text-[13px] text-accent hover:bg-accent-soft hover:text-accent"
       >
         <PlusIcon size={18} aria-hidden="true" />
         New conversation
-      </button>
+      </Button>
 
       <p className="mt-9 px-3 text-[10px] font-semibold tracking-[0.14em] text-soft uppercase">
         Workspace

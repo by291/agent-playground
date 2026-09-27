@@ -8,8 +8,8 @@
 ## 仓库导航
 
 - `agent_playground/`：Python agent、tools、MCP 和 workflow，由 Aegra 提供 Agent Protocol 服务。
-- `server/`：TypeScript 后端，将 Aegra 的运行流提供为 AG-UI 接口。
-- `web/`：TypeScript 前端，展示对话和 A2UI 内容。
+- `server/`：TypeScript 后端；`agent/` 适配 Aegra 与 AG-UI，`conversation/` 管理运行和恢复，`db/` 管理应用数据，根目录保留 HTTP 入口和配置。
+- `web/`：TypeScript 前端，展示对话和 A2UI 内容；`src/components/ui/` 存放 shadcn/ui 基础控件。
 - `compose.yaml`：本地 PostgreSQL、Redis 等基础设施；`tests/`：Python 侧测试。
 - 完整启动步骤、当前能力、协议传递方式和已知限制见 `README.md`；不要把容易变化的项目现状重复写进本文件。
 

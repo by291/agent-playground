@@ -1,5 +1,7 @@
 import { ArrowUpIcon } from "@phosphor-icons/react";
 import { useRef, useState, type KeyboardEvent, type SubmitEvent } from "react";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
 import type { ChatPaneProps } from "./types";
 
 export function Composer({
@@ -36,7 +38,7 @@ export function Composer({
           onSubmit={submit}
           className="rounded-[22px] border border-line bg-white p-3 shadow-[0_8px_32px_rgba(28,41,34,0.08)] transition-colors focus-within:border-accent-line sm:p-4"
         >
-          <textarea
+          <Textarea
             ref={input}
             rows={2}
             value={prompt}
@@ -49,7 +51,7 @@ export function Composer({
             }
             aria-label="Message"
             disabled={running || waitingForReview}
-            className="max-h-48 min-h-14 w-full resize-none bg-transparent p-1 text-base/6 text-ink outline-none placeholder:text-soft disabled:cursor-wait disabled:opacity-60"
+            className="max-h-48 min-h-14 resize-none border-0 bg-transparent p-1 text-base/6 shadow-none focus-visible:border-0 focus-visible:ring-0"
           />
           <div className="flex items-center justify-between gap-3 pl-1">
             <span className="hidden text-[11px] text-soft sm:block">
@@ -58,8 +60,9 @@ export function Composer({
             <span className="text-[11px] text-soft sm:hidden">
               Ask anything
             </span>
-            <button
+            <Button
               type="submit"
+              size="icon-lg"
               disabled={running || waitingForReview || !prompt.trim()}
               aria-label={
                 waitingForReview
@@ -68,10 +71,10 @@ export function Composer({
                     ? "Agent is responding"
                     : "Send message"
               }
-              className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-accent text-white transition-colors hover:bg-accent-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:cursor-not-allowed disabled:bg-line disabled:text-soft"
+              className="size-10 rounded-xl"
             >
               <ArrowUpIcon size={19} weight="bold" aria-hidden="true" />
-            </button>
+            </Button>
           </div>
         </form>
         <p className="mt-3 hidden text-center text-[11px] text-soft sm:block">

@@ -1,9 +1,9 @@
 import { Client, type Run, type ThreadState } from "@langchain/langgraph-sdk";
 import { langGraphInterruptsToAGUI } from "@ag-ui/langgraph";
 import { and, eq, inArray, isNull } from "drizzle-orm";
-import { db } from "./database";
-import { conversationRuns, type RunRow } from "./schema";
-import { workflowOutputs } from "./workflow-schema";
+import { db } from "../db/database";
+import { conversationRuns, type RunRow } from "../db/schema";
+import { workflowOutputs } from "../db/workflow-schema";
 
 const aegra = new Client({
   apiUrl: process.env.AEGRA_URL ?? "http://127.0.0.1:2026",

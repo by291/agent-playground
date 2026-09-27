@@ -1,13 +1,13 @@
 import type { ThreadState } from "@langchain/langgraph-sdk";
 import { asc, desc, eq } from "drizzle-orm";
-import { db } from "./database";
+import { db } from "../db/database";
 import { interruptsFromState, readThreadState, reconcileRun } from "./recovery";
 import {
   conversationMessages,
   conversationRuns,
   conversations,
-} from "./schema";
-import { workflowOutputs } from "./workflow-schema";
+} from "../db/schema";
+import { workflowOutputs } from "../db/workflow-schema";
 
 async function saveCompletedMessages(threadId: string, state: ThreadState) {
   const values = state.values;

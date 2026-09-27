@@ -1,12 +1,12 @@
 import { and, eq, inArray, isNull, or } from "drizzle-orm";
 import { isDeepStrictEqual } from "node:util";
-import { db } from "./database";
+import { db } from "../db/database";
 import {
   conversationMessages,
   conversationRuns,
   conversations,
   type RunRow,
-} from "./schema";
+} from "../db/schema";
 
 interface RunSubmission {
   threadId: string;

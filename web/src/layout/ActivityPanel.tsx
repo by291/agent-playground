@@ -4,6 +4,7 @@ import {
   PulseIcon,
   XIcon,
 } from "@phosphor-icons/react";
+import { Button } from "@/components/ui/button";
 import type { Activity } from "../conversation/types";
 
 export function ActivityPanel({
@@ -30,14 +31,16 @@ export function ActivityPanel({
             The AG-UI stream behind this conversation.
           </p>
         </div>
-        <button
+        <Button
           type="button"
+          variant="ghost"
+          size="icon-lg"
           onClick={onClose}
           aria-label="Close run activity"
-          className="flex size-9 shrink-0 items-center justify-center rounded-lg text-muted transition-colors hover:bg-white hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+          className="size-9 text-muted hover:bg-white hover:text-ink"
         >
           <XIcon size={18} aria-hidden="true" />
-        </button>
+        </Button>
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto p-5">

@@ -5,6 +5,7 @@ import {
   SquaresFourIcon,
 } from "@phosphor-icons/react";
 import { lazy, Suspense, useState } from "react";
+import { Button } from "@/components/ui/button";
 import { ChatPane } from "./chat/ChatPane";
 import {
   loadConversation,
@@ -113,14 +114,15 @@ function ConversationPage({
             >
               <SquaresFourIcon size={20} aria-hidden="true" />
             </a>
-            <button
+            <Button
               type="button"
+              variant="ghost"
               onClick={() => setActivityOpen((open) => !open)}
               aria-label={
                 activityOpen ? "Hide run activity" : "Show run activity"
               }
               aria-pressed={activityOpen}
-              className={`inline-flex h-10 items-center gap-2 rounded-xl px-3 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent ${
+              className={`h-10 rounded-xl px-3 hover:bg-sidebar ${
                 activityOpen
                   ? "bg-accent-soft text-accent"
                   : "text-muted hover:bg-sidebar hover:text-ink"
@@ -133,15 +135,17 @@ function ConversationPage({
                   {activity.length}
                 </span>
               )}
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
+              variant="ghost"
+              size="icon-lg"
               onClick={onNewConversation}
               aria-label="New conversation"
-              className="inline-flex size-10 items-center justify-center rounded-xl text-muted transition-colors hover:bg-sidebar hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent xl:hidden"
+              className="size-10 rounded-xl text-muted hover:bg-sidebar hover:text-ink xl:hidden"
             >
               <PlusIcon size={20} aria-hidden="true" />
-            </button>
+            </Button>
           </div>
         </header>
 

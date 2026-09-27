@@ -12,10 +12,12 @@ web/ (AG-UI client) → server/ (AG-UI adapter) → Aegra run queue → agent_pl
 | Area | Main modules |
 | --- | --- |
 | `agent_playground/` | `graph.py` assembles the agent and tools; `workflow.py` runs the example workflow; `workflow_cards.py` builds A2UI messages; `workflow_outputs.py` persists step outputs. |
-| `server/` | `app.ts` owns HTTP admission and read routes; `agent-stream.ts` adapts Aegra events to SSE; `recovery.ts` reconciles runs and interrupts; `conversation-snapshot.ts` assembles persisted conversation state; `database.ts`, `run-store.ts` and the schema files own application data. |
-| `web/src/` | `conversation/` handles submission state, local pointers and server snapshots; `chat/` renders messages, cards, composer and review form; `a2ui/` owns the custom catalog, card renderer and component gallery; `layout/` contains sidebar and activity UI; `App.tsx` connects them. |
+| `server/` | `app.ts` and `server.ts` are the HTTP and startup entry points; `agent/` adapts Aegra events to AG-UI; `conversation/` owns run admission, recovery and snapshots; `db/` owns the application database and schemas; `drizzle/` holds migrations. |
+| `web/src/` | `conversation/` handles submission state, local pointers and server snapshots; `chat/` renders messages, cards, composer and review form; `a2ui/` owns the custom catalog, card renderer and component gallery; `layout/` contains sidebar and activity UI; `components/ui/` holds shadcn/ui primitives; `App.tsx` connects them. |
 
 The [conversation recovery design](docs/superpowers/specs/2026-09-27-conversation-recovery-design.md) describes the data and protocol boundaries. The [validation record](docs/conversation-recovery-validation.md) lists the local end-to-end checks and their limits.
+
+The web app keeps shadcn/ui primitives in `web/src/components/ui/`. To add another primitive, run `pnpm dlx shadcn@latest add <component>` from `web/`; `components.json` keeps the registry settings. The A2UI workflow catalog uses its own React components on top of the official A2UI renderer.
 
 ## Run locally
 
@@ -48,7 +50,7 @@ Open `http://127.0.0.1:5173` for the web UI. The AG-UI endpoint is `POST http://
 
 PostgreSQL keeps Aegra's service tables, Alembic history, checkpoints, and store in the `aegra` schema. The playground's conversation and workflow output tables use `public`. The TypeScript server applies its Drizzle migrations at startup; the Python graph prepares the workflow output table when it starts. Compose creates a local `aegra` database role with `search_path = aegra` when it initializes a new PostgreSQL volume; the existing `agent` role is used for application tables in `public`. Aegra uses `DATABASE_URL` from the root `.env` and should connect as `aegra`. Both the root `.env` and `server/.env` need their own `APP_DATABASE_URL` pointing to the application role. If a PostgreSQL volume was created before this layout, recreate it with `docker compose down --volumes` followed by `make infra-up`. This deletes local PostgreSQL data.
 
-The server creates Aegra runs via `@ag-ui/langgraph`. Agent execution goes through Aegra's queue and thread concurrency handling. Hono handles HTTP and SSE streaming. The React web UI uses `@ag-ui/client`, Tailwind CSS, and Markdown rendering to show chat replies alongside AG-UI events. This is a local playground; the server does not provide authentication or durable AG-UI event replay. It stores completed messages, workflow outputs, and run summaries so the UI can recover after a disconnect.
+The server creates Aegra runs via `@ag-ui/langgraph`. Agent execution goes through Aegra's queue and thread concurrency handling. Hono handles HTTP and SSE streaming. The React web UI uses `@ag-ui/client`, Tailwind CSS, shadcn/ui form and button components, and Markdown rendering to show chat replies alongside AG-UI events. This is a local playground; the server does not provide authentication or durable AG-UI event replay. It stores completed messages, workflow outputs, and run summaries so the UI can recover after a disconnect.
 
 ## Call the AG-UI endpoint
 

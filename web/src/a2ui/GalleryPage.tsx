@@ -3,6 +3,11 @@ import {
   ArrowCounterClockwiseIcon,
 } from "@phosphor-icons/react";
 import { useState } from "react";
+import { Button } from "@/components/ui/button";
+import {
+  NativeSelect,
+  NativeSelectOption,
+} from "@/components/ui/native-select";
 import { A2UICard } from "./A2UICard";
 import type { A2UICard as CardData } from "./card";
 import { workflowCatalog, workflowComponentNames } from "./catalog";
@@ -94,18 +99,18 @@ export function GalleryPage() {
             >
               Component
             </label>
-            <select
+            <NativeSelect
               id="gallery-component"
               value={component}
               onChange={(event) => setComponent(event.target.value)}
-              className="min-h-11 w-full rounded-xl border border-line bg-white px-3 text-sm font-medium text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+              className="w-full [&_select]:min-h-11 [&_select]:rounded-xl [&_select]:bg-white [&_select]:font-medium"
             >
               {catalogExamples.map((item) => (
-                <option key={item.component} value={item.component}>
+                <NativeSelectOption key={item.component} value={item.component}>
                   {item.component}
-                </option>
+                </NativeSelectOption>
               ))}
-            </select>
+            </NativeSelect>
           </div>
         </div>
 
@@ -115,15 +120,16 @@ export function GalleryPage() {
           <section className="flex min-w-0 flex-col overflow-hidden rounded-2xl border border-line bg-white shadow-sm">
             <div className="flex min-h-14 items-center justify-between gap-3 border-b border-line px-5">
               <h2 className="text-sm font-semibold">JSON example</h2>
-              <button
+              <Button
                 type="button"
+                variant="ghost"
                 onClick={resetSource}
                 disabled={drafts[component] === undefined}
-                className="inline-flex min-h-11 items-center gap-2 rounded-lg px-2 text-xs font-medium text-muted hover:text-ink disabled:cursor-default disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+                className="min-h-11 px-2 text-xs text-muted hover:bg-accent-soft hover:text-ink"
               >
                 <ArrowCounterClockwiseIcon size={15} aria-hidden="true" />
                 Reset
-              </button>
+              </Button>
             </div>
             <div className="h-[58vh] min-h-96 lg:h-[68vh] lg:min-h-140">
               <JsonEditor

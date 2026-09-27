@@ -1,6 +1,6 @@
 import { serve } from "@hono/node-server";
 import { app } from "./app.js";
-import { migrateServer } from "./database.js";
+import { migrateServer } from "./db/database.js";
 
 const port = Number(process.env.SERVER_PORT ?? 3000);
 
