@@ -1,0 +1,56 @@
+{
+  "kind": "a2ui",
+  "component": "WorkflowPanel",
+  "description": "A surface that arranges workflow content in a card.",
+  "messages": [
+    {
+      "version": "v0.9",
+      "createSurface": {
+        "surfaceId": "preview-panel",
+        "catalogId": "urn:agent-playground:workflow:v1"
+      }
+    },
+    {
+      "version": "v0.9",
+      "updateComponents": {
+        "surfaceId": "preview-panel",
+        "components": [
+          {
+            "id": "root",
+            "component": "WorkflowPanel",
+            "children": ["eyebrow", "title", "steps"]
+          },
+          {
+            "id": "eyebrow",
+            "component": "WorkflowText",
+            "role": "eyebrow",
+            "text": "DRAFT PLAN"
+          },
+          {
+            "id": "title",
+            "component": "WorkflowText",
+            "role": "title",
+            "text": "Test a small idea"
+          },
+          {
+            "id": "steps",
+            "component": "WorkflowSteps",
+            "children": ["step-1", "step-2"]
+          },
+          {
+            "id": "step-1",
+            "component": "WorkflowText",
+            "role": "step",
+            "text": "Define success."
+          },
+          {
+            "id": "step-2",
+            "component": "WorkflowText",
+            "role": "step",
+            "text": "Run a trial."
+          }
+        ]
+      }
+    }
+  ]
+}

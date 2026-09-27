@@ -39,6 +39,7 @@ def isolate_workflow_output_store(monkeypatch: pytest.MonkeyPatch):
             id=f"experiment-{workflow_call_id}-{step_id}",
             agui_run_id=agui_run_id,
             output_seq=step_seq,
+            payload=payload,
         )
 
     monkeypatch.setattr("agent_playground.workflow.store_workflow_output", save_card)
@@ -175,7 +176,10 @@ def test_workflow_streams_each_step_and_waits_for_review(
         assert after[-1]["id"] == "experiment-call-plan-reviewed"
         components = after[-1]["messages"][1]["updateComponents"]["components"]
         assert any(component.get("text") == expected_title for component in components)
-        assert any(component.get("text") == expected_line for component in components)
+        assert any(
+            component.get("text") == expected_line.removeprefix("1. ")
+            for component in components
+        )
         assert graph.get_state(config).next == ()
 
     asyncio.run(check())

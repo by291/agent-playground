@@ -1,0 +1,39 @@
+{
+  "kind": "a2ui",
+  "component": "WorkflowSteps",
+  "description": "An ordered list built from child components.",
+  "messages": [
+    {
+      "version": "v0.9",
+      "createSurface": {
+        "surfaceId": "preview-steps",
+        "catalogId": "urn:agent-playground:workflow:v1"
+      }
+    },
+    {
+      "version": "v0.9",
+      "updateComponents": {
+        "surfaceId": "preview-steps",
+        "components": [
+          {
+            "id": "root",
+            "component": "WorkflowSteps",
+            "children": ["first", "second"]
+          },
+          {
+            "id": "first",
+            "component": "WorkflowText",
+            "role": "step",
+            "text": "Choose a goal."
+          },
+          {
+            "id": "second",
+            "component": "WorkflowText",
+            "role": "step",
+            "text": "Check the result."
+          }
+        ]
+      }
+    }
+  ]
+}

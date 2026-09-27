@@ -65,7 +65,7 @@ export async function fetchConversationSnapshot(
       "toolCallId" in output && typeof output.toolCallId === "string"
         ? output.toolCallId
         : undefined;
-    const card = parseA2UICard(output.id, JSON.stringify(output), toolCallId);
+    const card = parseA2UICard(output.id, output, toolCallId);
     return card ? [card] : [];
   });
 

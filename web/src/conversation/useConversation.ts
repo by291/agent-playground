@@ -143,11 +143,7 @@ export function useConversation(saved: SavedConversation) {
               "toolCallId" in value && typeof value.toolCallId === "string"
                 ? value.toolCallId
                 : undefined;
-            const card = parseA2UICard(
-              value.id,
-              JSON.stringify(value),
-              toolCallId,
-            );
+            const card = parseA2UICard(value.id, value, toolCallId);
             if (card) rememberCard(card);
           }
         }

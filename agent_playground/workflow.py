@@ -143,7 +143,7 @@ async def emit_card(
             "workflowCallId": state.card_group_id,
             "outputSeq": output.output_seq,
             "toolCallId": state.card_group_id,
-            **payload,
+            **output.payload,
         },
     )
 

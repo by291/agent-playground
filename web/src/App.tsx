@@ -1,5 +1,10 @@
-import { PlusIcon, PulseIcon, SparkleIcon } from "@phosphor-icons/react";
-import { useState } from "react";
+import {
+  PlusIcon,
+  PulseIcon,
+  SparkleIcon,
+  SquaresFourIcon,
+} from "@phosphor-icons/react";
+import { lazy, Suspense, useState } from "react";
 import { ChatPane } from "./chat/ChatPane";
 import {
   loadConversation,
@@ -12,7 +17,30 @@ import { ActivityPanel } from "./layout/ActivityPanel";
 import { ConnectionStatus } from "./layout/ConnectionStatus";
 import { Sidebar } from "./layout/Sidebar";
 
+const GalleryPage = lazy(() =>
+  import("./a2ui/GalleryPage").then(({ GalleryPage }) => ({
+    default: GalleryPage,
+  })),
+);
+
 export function App() {
+  if (window.location.pathname === "/a2ui") {
+    return (
+      <Suspense
+        fallback={
+          <div className="min-h-dvh bg-canvas p-8 text-sm text-muted">
+            Loading components…
+          </div>
+        }
+      >
+        <GalleryPage />
+      </Suspense>
+    );
+  }
+  return <ConversationApp />;
+}
+
+function ConversationApp() {
   const [conversation, setConversation] = useState(loadConversation);
 
   function startNewConversation() {
@@ -78,6 +106,13 @@ function ConversationPage({
 
           <div className="flex shrink-0 items-center gap-1.5 sm:gap-3">
             <ConnectionStatus />
+            <a
+              href="/a2ui"
+              aria-label="A2UI components"
+              className="inline-flex size-10 items-center justify-center rounded-xl text-muted hover:bg-sidebar hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent xl:hidden"
+            >
+              <SquaresFourIcon size={20} aria-hidden="true" />
+            </a>
             <button
               type="button"
               onClick={() => setActivityOpen((open) => !open)}

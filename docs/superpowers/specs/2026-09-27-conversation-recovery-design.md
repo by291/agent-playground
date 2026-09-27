@@ -22,7 +22,9 @@ Aegra 的内部表和 checkpoint 位于 `aegra` schema；会话和 workflow 输�
 - `conversation_messages` 保存用户消息和已提交 checkpoint 的完整 assistant 文本消息，`(thread_id, message_id)` 唯一。会话内的提交序号决定消息所在回合。
 - `workflow_outputs` 保存完整的 A2UI v0.9 消息、稳定输出 ID、首次产生它的 AG-UI run ID、workflow 调用 ID、步骤 ID、版本和会话输出序号。一个 workflow 调用跨审核前后保持同一个 `ToolRuntime.tool_call_id`。
 
-同一调用的步骤输出以 `(thread_id, workflow_call_id, step_id, version)` 幂等写入。重试时，相同 payload 返回原输出 ID、序号和 run 归属；不同 payload 报冲突。会话输出序号在锁定 `conversations` 行的事务中分配，因此并行调用按持久化提交顺序展示，不假定它们有业务上的先后关系。
+新的 workflow 卡片使用 `urn:agent-playground:workflow:v1` 自定义 catalog。Python 输出 `WorkflowPanel`、`WorkflowText` 和 `WorkflowSteps` 组件消息；Web 将同名组件注册为 React 实现。`/a2ui` 预览页每次选择一个组件，左侧用本地 Monaco 编辑器展示并修改 `web/src/a2ui/examples/` 中的 JSON 文件内容，右侧用同一 A2UI renderer 展示结果；解析或组件校验失败时保留上次有效预览。已持久化的 Basic Catalog 卡片继续可读；若以后改变组件协议，应使用新 catalog ID 并保留旧版读取能力。
+
+同一调用的步骤输出以 `(thread_id, workflow_call_id, step_id, version)` 幂等写入。新 catalog 的输出版本为 2；恢复旧调用时优先复用该步骤已经保存的输出及其原始 payload，避免部署后生成不同卡片而产生冲突。当前版本的重试若产生不同 payload，仍报冲突。会话输出序号在锁定 `conversations` 行的事务中分配，因此并行调用按持久化提交顺序展示，不假定它们有业务上的先后关系。
 
 ## 提交与执行
 

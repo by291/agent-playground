@@ -24,6 +24,7 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.sql import func
 
 metadata = MetaData(schema="public")
+WORKFLOW_OUTPUT_VERSION = 2
 conversations = Table(
     "conversations",
     metadata,
@@ -64,6 +65,7 @@ class WorkflowOutput:
     id: str
     agui_run_id: str
     output_seq: int
+    payload: dict[str, object]
 
 
 @lru_cache(maxsize=1)
@@ -101,21 +103,30 @@ def _store(
             raise ValueError("Unknown conversation")
         existing = (
             connection.execute(
-                select(workflow_outputs).where(
+                select(workflow_outputs)
+                .where(
                     workflow_outputs.c.thread_id == thread_id,
                     workflow_outputs.c.workflow_call_id == workflow_call_id,
                     workflow_outputs.c.step_id == step_id,
-                    workflow_outputs.c.version == 1,
                 )
+                .order_by(workflow_outputs.c.version.desc())
+                .limit(1)
             )
             .mappings()
             .one_or_none()
         )
         if existing is not None:
-            if existing["payload"] != payload:
+            # A resumed call must publish its saved card, even after a catalog upgrade.
+            if (
+                existing["version"] == WORKFLOW_OUTPUT_VERSION
+                and existing["payload"] != payload
+            ):
                 raise ValueError("Workflow output payload conflict")
             return WorkflowOutput(
-                existing["id"], existing["agui_run_id"], existing["output_seq"]
+                existing["id"],
+                existing["agui_run_id"],
+                existing["output_seq"],
+                existing["payload"],
             )
         matching_run = connection.execute(
             select(conversation_runs.c.agui_run_id).where(
@@ -135,6 +146,7 @@ def _store(
                 step_id=step_id,
                 step_seq=step_seq,
                 output_seq=conversation,
+                version=WORKFLOW_OUTPUT_VERSION,
                 payload=payload,
             )
         )
@@ -143,7 +155,7 @@ def _store(
             .where(conversations.c.thread_id == thread_id)
             .values(next_output_seq=conversation + 1)
         )
-        return WorkflowOutput(output_id, agui_run_id, conversation)
+        return WorkflowOutput(output_id, agui_run_id, conversation, payload)
 
 
 async def store_workflow_output(
