@@ -5,7 +5,7 @@ import {
   EyeIcon,
   SquaresFourIcon,
 } from "@phosphor-icons/react";
-import { useState } from "react";
+import { lazy, Suspense, useState } from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -17,7 +17,10 @@ import { A2UICard } from "./A2UICard";
 import type { A2UICard as CardData } from "./card";
 import { workflowCatalog, workflowComponentNames } from "./catalog";
 import { catalogExamples, parseGalleryPreview } from "./examples";
-import { JsonEditor } from "./JsonEditor";
+
+const JsonEditor = lazy(() =>
+  import("./JsonEditor").then(({ JsonEditor }) => ({ default: JsonEditor })),
+);
 
 interface Preview {
   card: CardData;
@@ -151,11 +154,17 @@ export function GalleryPage() {
               </Button>
             </div>
             <div className="h-[52vh] min-h-88 lg:h-[68vh] lg:min-h-140">
-              <JsonEditor
-                component={component}
-                value={source}
-                onChange={updateSource}
-              />
+              <Suspense
+                fallback={
+                  <p className="p-4 text-sm text-muted">Loading editor…</p>
+                }
+              >
+                <JsonEditor
+                  component={component}
+                  value={source}
+                  onChange={updateSource}
+                />
+              </Suspense>
             </div>
             {result.error ? (
               <Alert

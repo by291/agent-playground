@@ -1,4 +1,4 @@
-import { Fragment } from "react";
+import { Fragment, lazy, Suspense, useEffect } from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   MessageScroller,
@@ -8,13 +8,24 @@ import {
   MessageScrollerProvider,
   MessageScrollerViewport,
 } from "@/components/ui/message-scroller";
-import { A2UICard } from "../a2ui/A2UICard";
 import type { A2UICard as CardData } from "../a2ui/card";
 import { Composer } from "./Composer";
-import { MessageRow, Thinking } from "./MessageRow";
+import { MessageRow, preloadMarkdownMessage, Thinking } from "./MessageRow";
 import { ReviewPanel } from "./ReviewPanel";
 import type { ChatPaneProps } from "./types";
 import { Welcome } from "./Welcome";
+
+const A2UICard = lazy(() =>
+  import("../a2ui/A2UICard").then(({ A2UICard }) => ({ default: A2UICard })),
+);
+
+function Card({ card }: { card: CardData }) {
+  return (
+    <Suspense fallback={null}>
+      <A2UICard card={card} />
+    </Suspense>
+  );
+}
 
 export function ChatPane({
   messages,
@@ -27,6 +38,11 @@ export function ChatPane({
   onSend,
   onReview,
 }: ChatPaneProps) {
+  useEffect(() => {
+    // Start loading the renderer while the agent prepares its first text event.
+    if (running) preloadMarkdownMessage();
+  }, [running]);
+
   const visible = messages.filter(
     (message) => message.role === "user" || message.role === "assistant",
   );
@@ -72,7 +88,7 @@ export function ChatPane({
                       message.toolCalls?.map((call) => {
                         return cardsByCall.get(call.id)?.map((card) => (
                           <MessageScrollerItem key={card.id}>
-                            <A2UICard card={card} />
+                            <Card card={card} />
                           </MessageScrollerItem>
                         ));
                       })}
@@ -85,7 +101,7 @@ export function ChatPane({
                   )
                   .map((card) => (
                     <MessageScrollerItem key={card.id}>
-                      <A2UICard card={card} />
+                      <Card card={card} />
                     </MessageScrollerItem>
                   ))}
                 {reviews.length > 0 && (

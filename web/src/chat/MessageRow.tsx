@@ -1,12 +1,24 @@
 import type { Message } from "@ag-ui/client";
 import { SparkleIcon } from "@phosphor-icons/react";
+import { lazy, Suspense } from "react";
 import { Bubble, BubbleContent } from "@/components/ui/bubble";
 import {
   Message as ConversationMessage,
   MessageAvatar,
   MessageContent,
 } from "@/components/ui/message";
-import MarkdownMessage from "./MarkdownMessage";
+
+let markdownModule: Promise<typeof import("./MarkdownMessage")> | undefined;
+
+function loadMarkdownMessage() {
+  return (markdownModule ??= import("./MarkdownMessage"));
+}
+
+const MarkdownMessage = lazy(loadMarkdownMessage);
+
+export function preloadMarkdownMessage() {
+  void loadMarkdownMessage();
+}
 
 function messageText(message: Message): string {
   if (typeof message.content === "string") return message.content;
@@ -62,11 +74,19 @@ export function MessageRow({
       <MessageContent className="pt-0.5">
         <Bubble variant="ghost" className="w-full">
           <BubbleContent className="chat-markdown w-full overflow-visible text-ink">
-            <MarkdownMessage
-              key={message.id}
-              text={text}
-              animate={smoothText}
-            />
+            <Suspense
+              fallback={
+                smoothText ? null : (
+                  <p className="whitespace-pre-wrap">{text}</p>
+                )
+              }
+            >
+              <MarkdownMessage
+                key={message.id}
+                text={text}
+                animate={smoothText}
+              />
+            </Suspense>
           </BubbleContent>
         </Bubble>
       </MessageContent>

@@ -1,5 +1,6 @@
 import Editor, { loader } from "@monaco-editor/react";
-import * as monaco from "monaco-editor";
+import * as monaco from "monaco-editor/editor/editor.api";
+import "monaco-editor/languages/features/json/register";
 import editorWorker from "monaco-editor/editor/editor.worker.js?worker";
 import jsonWorker from "monaco-editor/language/json/json.worker.js?worker";
 
