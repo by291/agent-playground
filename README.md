@@ -36,6 +36,8 @@ From the repository root, `uv run agent` serves Aegra using `HOST` and `PORT` fr
 
 Open `http://127.0.0.1:5173` for the web UI. The AG-UI endpoint is `POST http://127.0.0.1:3000/agent`; the native Aegra API is on `http://127.0.0.1:2026`. PostgreSQL and Redis are exposed locally on ports `55432` and `56379`.
 
+PostgreSQL keeps Aegra's service tables, Alembic history, checkpoints, and store in the `aegra` schema. The playground's planned conversation and workflow output tables will use `public`. Compose creates a local `aegra` database role with `search_path = aegra` when it initializes a new PostgreSQL volume; the existing `agent` role remains available for application tables in `public`. Aegra uses the `DATABASE_URL` from the root `.env` and should connect as `aegra`. If a PostgreSQL volume was created before this layout, recreate it with `docker compose down --volumes` followed by `make infra-up`. This deletes local PostgreSQL data.
+
 The server creates Aegra runs via `@ag-ui/langgraph`. Agent execution goes through Aegra's queue and thread concurrency handling. Hono handles HTTP and SSE streaming. The React web UI uses `@ag-ui/client`, Tailwind CSS, and Markdown rendering to show chat replies alongside AG-UI events. This is a local playground; the server does not provide authentication or durable AG-UI event replay.
 
 ## Call the AG-UI endpoint
