@@ -90,9 +90,11 @@ function ConversationPage({
             <a
               href="/a2ui"
               aria-label="A2UI components"
-              className="inline-flex size-11 items-center justify-center rounded-xl text-muted hover:bg-sidebar hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent xl:hidden"
+              title="A2UI components"
+              className="inline-flex h-11 min-w-11 items-center justify-center gap-2 rounded-xl px-2 text-muted hover:bg-sidebar hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent xl:px-3"
             >
               <SquaresFourIcon size={20} aria-hidden="true" />
+              <span className="hidden text-xs xl:inline">Components</span>
             </a>
             <Button
               type="button"

@@ -2,7 +2,6 @@ import {
   ChatCircleDotsIcon,
   PlusIcon,
   SparkleIcon,
-  SquaresFourIcon,
 } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
 
@@ -38,7 +37,7 @@ export function Sidebar({
       </Button>
 
       <p className="mt-9 px-3 text-[10px] font-semibold tracking-[0.14em] text-soft uppercase">
-        Workspace
+        Conversations
       </p>
       <div className="mt-3 flex h-11 items-center gap-3 rounded-xl bg-white px-3 text-[13px] font-medium text-ink shadow-sm">
         <ChatCircleDotsIcon
@@ -46,15 +45,8 @@ export function Sidebar({
           className="text-accent"
           aria-hidden="true"
         />
-        Agent chat
+        Current conversation
       </div>
-      <a
-        href="/a2ui"
-        className="mt-1 flex h-11 items-center gap-3 rounded-xl px-3 text-[13px] font-medium text-muted hover:bg-white hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
-      >
-        <SquaresFourIcon size={18} aria-hidden="true" />
-        A2UI components
-      </a>
       <div className="mt-auto border-t border-line px-3 pt-5">
         <p className="text-[11px] font-medium text-muted">Current thread</p>
         <code className="mt-1 block font-mono text-xs text-ink">

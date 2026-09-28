@@ -28,6 +28,7 @@
   --primary-foreground: #ffffff;
   --secondary: #e9f2e9;
   --secondary-foreground: #315e45;
+  --muted: #f4f6f2;
   --muted-foreground: #58675e;
   --border: #e2e8e1;
   --input: #e2e8e1;
@@ -227,6 +228,7 @@ button:not(:disabled) {
   --color-primary-foreground: var(--primary-foreground);
   --color-secondary: var(--secondary);
   --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted-surface: var(--muted);
   --color-muted-foreground: var(--muted-foreground);
   --color-border: var(--border);
   --color-input: var(--input);
