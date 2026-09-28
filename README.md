@@ -82,6 +82,10 @@ Open `/a2ui` to select a registered component and edit its JSON example in a loc
 
 The current output format has version 3. Legacy `kind: "a2ui"` wrappers, `experiment_card` events and Basic Catalog surfaces are unsupported. Existing database rows are retained; start a new conversation after upgrading. Local storage holds only the thread pointer and an unconfirmed submission for retry. `GET /conversations` lists recent threads. A disconnected browser does not cancel the Aegra run. If a server crash leaves Aegra run creation unconfirmed, the server checks only the newest Aegra run for that thread. When it cannot confirm the mapping, the submission becomes `submission_unknown` and the UI does not retry it automatically. Aegra's native Agent Protocol stream is also available at `POST /runs/stream` on port `2026`.
 
+## Observability
+
+Run `make dev-observability` to start the optional local Langfuse, Collector, Prometheus, and Grafana stack together with tracing-enabled apps. Langfuse is on `http://127.0.0.1:3031`; Grafana is on `http://127.0.0.1:3032`. The graph factory restores persisted W3C trace context around each worker execution, connecting browser, server, model, and tool spans without modifying Aegra. See [the observability guide](docs/observability.md) for local credentials, individual commands, deployment settings, metric semantics, and current limits.
+
 ## Develop and check
 
 ```sh

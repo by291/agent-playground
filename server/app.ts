@@ -11,8 +11,13 @@ import {
 import { admitRun, claimPrepared } from "./conversation/run-store";
 import { db } from "./db/database";
 import { conversations } from "./db/schema";
+import { observeRequest } from "./observability/http";
+import { telemetry } from "./observability/ingestion";
+import { logger } from "./observability/logger";
 
 export const app = new Hono();
+app.route("/telemetry", telemetry);
+app.use("/agent", observeRequest);
 
 app.get("/health", (context) => context.text("ok"));
 
@@ -32,7 +37,10 @@ app.get("/conversations/:threadId", async (context) => {
       ? context.json(snapshot)
       : context.json({ error: "Conversation not found" }, 404);
   } catch (error) {
-    console.error("Conversation recovery failed", error);
+    logger.error(
+      { err: error, thread_id: context.req.param("threadId") },
+      "Conversation recovery failed",
+    );
     return context.json({ error: "Conversation recovery failed" }, 503);
   }
 });

@@ -16,6 +16,7 @@ export default defineConfig(({ mode }) => {
         "/agent": backendUrl,
         "/conversations": backendUrl,
         "/health": backendUrl,
+        "/telemetry": backendUrl,
       },
     },
   };

@@ -1,0 +1,161 @@
+# Local development credentials. Override them before deploying this stack.
+x-langfuse-environment: &langfuse-environment
+  DATABASE_URL: postgresql://langfuse:langfuse@langfuse-postgres:5432/langfuse
+  NEXTAUTH_URL: http://127.0.0.1:3031
+  SALT: ${LANGFUSE_SALT:-playground-local-salt}
+  ENCRYPTION_KEY: ${LANGFUSE_ENCRYPTION_KEY:-0000000000000000000000000000000000000000000000000000000000000000}
+  CLICKHOUSE_URL: http://langfuse-clickhouse:8123
+  CLICKHOUSE_MIGRATION_URL: clickhouse://langfuse-clickhouse:9000
+  CLICKHOUSE_USER: langfuse
+  CLICKHOUSE_PASSWORD: langfuse
+  CLICKHOUSE_CLUSTER_ENABLED: "false"
+  REDIS_HOST: langfuse-redis
+  REDIS_PORT: "6379"
+  REDIS_AUTH: langfuse-local
+  LANGFUSE_S3_EVENT_UPLOAD_BUCKET: langfuse
+  LANGFUSE_S3_EVENT_UPLOAD_REGION: auto
+  LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID: minio
+  LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY: minio-local-password
+  LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT: http://langfuse-minio:9000
+  LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE: "true"
+  LANGFUSE_S3_EVENT_UPLOAD_PREFIX: events/
+  LANGFUSE_S3_MEDIA_UPLOAD_BUCKET: langfuse
+  LANGFUSE_S3_MEDIA_UPLOAD_REGION: auto
+  LANGFUSE_S3_MEDIA_UPLOAD_ACCESS_KEY_ID: minio
+  LANGFUSE_S3_MEDIA_UPLOAD_SECRET_ACCESS_KEY: minio-local-password
+  LANGFUSE_S3_MEDIA_UPLOAD_ENDPOINT: http://127.0.0.1:9090
+  LANGFUSE_S3_MEDIA_UPLOAD_INTERNAL_ENDPOINT: http://langfuse-minio:9000
+  LANGFUSE_S3_MEDIA_UPLOAD_FORCE_PATH_STYLE: "true"
+  LANGFUSE_S3_MEDIA_UPLOAD_PREFIX: media/
+
+x-langfuse-service: &langfuse-service
+  profiles: [observability]
+  restart: unless-stopped
+  depends_on:
+    langfuse-postgres: { condition: service_healthy }
+    langfuse-redis: { condition: service_healthy }
+    langfuse-clickhouse: { condition: service_healthy }
+    langfuse-minio: { condition: service_healthy }
+
+services:
+  langfuse:
+    <<: *langfuse-service
+    image: docker.langfuse.com/langfuse/langfuse:4
+    ports: ["127.0.0.1:3031:3000"]
+    environment:
+      <<: *langfuse-environment
+      HOSTNAME: 0.0.0.0
+      NEXTAUTH_SECRET: ${LANGFUSE_NEXTAUTH_SECRET:-playground-local-nextauth-secret}
+      LANGFUSE_INIT_ORG_ID: playground
+      LANGFUSE_INIT_ORG_NAME: Agent Playground
+      LANGFUSE_INIT_PROJECT_ID: playground
+      LANGFUSE_INIT_PROJECT_NAME: Agent Playground
+      LANGFUSE_INIT_PROJECT_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-pk-lf-playground}
+      LANGFUSE_INIT_PROJECT_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-sk-lf-playground-local}
+      LANGFUSE_INIT_USER_EMAIL: developer@example.com
+      LANGFUSE_INIT_USER_NAME: Developer
+      LANGFUSE_INIT_USER_PASSWORD: ${LANGFUSE_USER_PASSWORD:-playground-local-password}
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/public/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+
+  langfuse-worker:
+    <<: *langfuse-service
+    image: docker.langfuse.com/langfuse/langfuse-worker:4
+    environment: *langfuse-environment
+
+  langfuse-postgres:
+    profiles: [observability]
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: langfuse
+      POSTGRES_PASSWORD: langfuse
+      POSTGRES_DB: langfuse
+    volumes: ["langfuse_postgres_data:/var/lib/postgresql"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U langfuse -d langfuse"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  langfuse-redis:
+    profiles: [observability]
+    image: redis:8-alpine
+    command: ["redis-server", "--requirepass", "langfuse-local", "--maxmemory-policy", "noeviction"]
+    volumes: ["langfuse_redis_data:/data"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "langfuse-local", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  langfuse-clickhouse:
+    profiles: [observability]
+    image: clickhouse/clickhouse-server:25.12
+    environment:
+      CLICKHOUSE_USER: langfuse
+      CLICKHOUSE_PASSWORD: langfuse
+    volumes: ["langfuse_clickhouse_data:/var/lib/clickhouse"]
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8123/ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  langfuse-minio:
+    profiles: [observability]
+    image: cgr.dev/chainguard/minio
+    entrypoint: sh
+    command: -c 'mkdir -p /data/langfuse && minio server --address ":9000" /data'
+    environment:
+      MINIO_ROOT_USER: minio
+      MINIO_ROOT_PASSWORD: minio-local-password
+    ports: ["127.0.0.1:9090:9000"]
+    volumes: ["langfuse_minio_data:/data"]
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  otel-collector:
+    profiles: [observability]
+    image: otel/opentelemetry-collector-contrib:0.161.0
+    command: ["--config=/etc/otelcol/config.yaml"]
+    environment:
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-pk-lf-playground}
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-sk-lf-playground-local}
+    ports: ["127.0.0.1:4318:4318"]
+    volumes: ["./collector.yaml:/etc/otelcol/config.yaml:ro"]
+
+  prometheus:
+    profiles: [observability]
+    image: prom/prometheus:v3.15.0
+    command: ["--config.file=/etc/prometheus/prometheus.yaml", "--storage.tsdb.retention.time=7d"]
+    extra_hosts: ["host.docker.internal:host-gateway"]
+    volumes:
+      - ./prometheus.yaml:/etc/prometheus/prometheus.yaml:ro
+      - prometheus_data:/prometheus
+    ports: ["127.0.0.1:9091:9090"]
+
+  grafana:
+    profiles: [observability]
+    image: grafana/grafana:13.2.2
+    environment:
+      GF_SECURITY_ADMIN_USER: developer
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-playground-local-password}
+    volumes:
+      - ./grafana:/etc/grafana/provisioning:ro
+      - grafana_data:/var/lib/grafana
+    ports: ["127.0.0.1:3032:3000"]
+
+volumes:
+  langfuse_postgres_data:
+  langfuse_redis_data:
+  langfuse_clickhouse_data:
+  langfuse_minio_data:
+  prometheus_data:
+  grafana_data:

@@ -16,6 +16,7 @@ import {
   type SavedConversation,
 } from "./storage";
 import type { Activity } from "./types";
+import { startSubmissionTrace } from "../observability/tracing";
 
 export interface ConversationState {
   messages: Message[];
@@ -47,6 +48,7 @@ export function createConversationSession(
   let a2ui: ReturnType<typeof createA2UIRuntime> | undefined;
   let invalidOutputIssue: string | null = null;
   let fillingOutputGap = false;
+  let submissionTrace: ReturnType<typeof startSubmissionTrace> | undefined;
   const store = createStore<ConversationState>()(() => ({
     messages: [],
     surfaces: [],
@@ -65,6 +67,8 @@ export function createConversationSession(
   function receiveOutputs(outputs: A2UIOutput[]) {
     const result = a2ui?.ingest(outputs);
     if (!result) return false;
+    if (result.issue && result.issue !== store.getState().a2uiIssue)
+      submissionTrace?.error(new Error(result.issue));
     store.setState({
       surfaces: result.surfaces,
       a2uiIssue: invalidOutputIssue ?? result.issue,
@@ -133,6 +137,7 @@ export function createConversationSession(
     try {
       applySnapshot(await refresh());
     } catch (error) {
+      submissionTrace?.event("snapshot_recovery_failed");
       if (connected)
         store.setState({
           snapshotIssue: errorDetail(error, "Recovery failed"),
@@ -153,6 +158,9 @@ export function createConversationSession(
   async function runSubmission(submission: PendingSubmission) {
     if (!connected || submitting) return;
     submitting = true;
+    submissionTrace = startSubmissionTrace(saved.threadId, submission.runId);
+    const originalHeaders = agent.headers;
+    agent.headers = { ...originalHeaders, ...submissionTrace.headers };
     submittedRunId = submission.runId;
     streamInterrupts = undefined;
     agent.setMessages(submission.messages);
@@ -168,11 +176,15 @@ export function createConversationSession(
         ...(submission.resume ? { resume: submission.resume } : {}),
       });
     } catch (error) {
+      submissionTrace.error(error);
       if (connected)
         store.setState({
           recoveryIssue: errorDetail(error, "Agent run failed"),
         });
     } finally {
+      submissionTrace.finish();
+      submissionTrace = undefined;
+      agent.headers = originalHeaders;
       submitting = false;
       streamInterrupts = undefined;
       if (connected) await refreshSnapshot();
@@ -260,17 +272,23 @@ export function createConversationSession(
         if (!connected) return;
         if (
           event.type === EventType.TEXT_MESSAGE_CONTENT &&
+          typeof event.delta === "string" &&
+          event.delta.length > 0 &&
           typeof event.messageId === "string"
         ) {
+          submissionTrace?.firstText();
           store.setState({ animatedMessageId: event.messageId });
         }
         try {
           const output = parseA2UIEvent(event);
           if (output && receiveOutputs([output])) void recoverOutputGap();
         } catch (error) {
+          submissionTrace?.error(error);
           invalidOutputIssue = errorDetail(error, "Invalid A2UI output");
           store.setState({ a2uiIssue: invalidOutputIssue });
         }
+        if (event.type === EventType.RUN_ERROR)
+          submissionTrace?.error(new Error(String(event.message)));
         if (
           event.type === EventType.RAW ||
           event.type === EventType.STATE_SNAPSHOT
@@ -292,6 +310,9 @@ export function createConversationSession(
         if (connected) store.setState({ messages: [...agent.messages] });
       },
       onRunFinishedEvent({ event }) {
+        submissionTrace?.outcome(
+          event.outcome?.type === "interrupt" ? "interrupted" : "finished",
+        );
         if (!connected) return;
         streamInterrupts =
           event.outcome?.type === "interrupt" ? event.outcome.interrupts : [];
@@ -300,6 +321,7 @@ export function createConversationSession(
     });
     return () => {
       connected = false;
+      submissionTrace?.outcome("disconnected");
       subscription.unsubscribe();
       a2ui?.dispose();
       a2ui = undefined;

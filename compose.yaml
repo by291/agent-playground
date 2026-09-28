@@ -1,3 +1,6 @@
+include:
+  - infra/observability/compose.yaml
+
 services:
   postgres:
     image: postgres:18-alpine

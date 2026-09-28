@@ -2,16 +2,21 @@
 
 import os
 import sys
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 
+from async_lru import alru_cache
 from langchain.agents import create_agent
 from langchain.tools import tool
 from langchain_core.language_models import BaseChatModel
+from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import BaseTool
 from langchain_deepseek import ChatDeepSeek
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from langgraph.types import Checkpointer
+from langgraph_sdk.runtime import ServerRuntime
 
+from agent_playground.observability import execution_trace
 from agent_playground.workflow import run_experiment_workflow
 from agent_playground.workflow_outputs import prepare_output_store
 
@@ -56,8 +61,20 @@ def make_graph(
     )
 
 
-async def graph():
-    """Load MCP tools once at startup; Aegra supplies the PostgreSQL checkpointer."""
+@alru_cache(maxsize=1)
+async def base_graph():
+    """Share graph setup; Aegra copies it and injects persistence for each run."""
     prepare_output_store()
     tools = await mcp_client().get_tools()
     return make_graph(mcp_tools=tools)
+
+
+@asynccontextmanager
+async def graph(config: RunnableConfig, runtime: ServerRuntime[dict[str, object]]):
+    """Aegra keeps this context open for the complete worker execution."""
+    compiled = await base_graph()
+    if runtime.execution_runtime is None:
+        yield compiled
+        return
+    with execution_trace(config):
+        yield compiled

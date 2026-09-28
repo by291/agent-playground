@@ -2,6 +2,7 @@ import { A2uiSurface } from "@a2ui/react/v0_9";
 import { Component, type ReactNode } from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import type { A2UISurfaceView } from "./runtime";
+import { reportClientError } from "../observability/tracing";
 
 export function A2UISurface({
   view,
@@ -12,7 +13,11 @@ export function A2UISurface({
 }) {
   return (
     <div className={inChat ? "ml-11 sm:ml-12" : undefined}>
-      <SurfaceErrorBoundary key={view.id} surface={view.surface}>
+      <SurfaceErrorBoundary
+        key={view.id}
+        surfaceId={view.id}
+        surface={view.surface}
+      >
         <A2uiSurface surface={view.surface} />
       </SurfaceErrorBoundary>
     </div>
@@ -22,6 +27,7 @@ export function A2UISurface({
 class SurfaceErrorBoundary extends Component<
   {
     children: ReactNode;
+    surfaceId: string;
     surface: A2UISurfaceView["surface"];
   },
   { error: string | null }
@@ -38,12 +44,19 @@ class SurfaceErrorBoundary extends Component<
             ? String(error.message)
             : "Rendering failed";
         this.setState({ error: detail });
+        reportClientError(new Error(detail), {
+          "app.surface_id": this.props.surfaceId,
+        });
       },
     );
   }
 
   componentWillUnmount() {
     this.subscription?.unsubscribe();
+  }
+
+  componentDidCatch(error: unknown) {
+    reportClientError(error, { "app.surface_id": this.props.surfaceId });
   }
 
   static getDerivedStateFromError(error: unknown) {

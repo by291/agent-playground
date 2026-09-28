@@ -1,6 +1,7 @@
 import type { Interrupt, ResumeEntry } from "@ag-ui/client";
 import { LangGraphAgent } from "@ag-ui/langgraph";
 import { Client } from "@langchain/langgraph-sdk";
+import { prepareAegraRequest } from "../observability/tracing";
 
 export function omitInputOnResume(url: URL, init: RequestInit): RequestInit {
   if (!url.pathname.endsWith("/runs/stream") || typeof init.body !== "string") {
@@ -22,7 +23,8 @@ export function omitInputOnResume(url: URL, init: RequestInit): RequestInit {
 export function aegraClient(apiUrl: string): Client {
   return new Client({
     apiUrl,
-    onRequest: omitInputOnResume,
+    onRequest: (url, init) =>
+      prepareAegraRequest(url, omitInputOnResume(url, init)),
   });
 }
 
