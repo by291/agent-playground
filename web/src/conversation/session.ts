@@ -6,7 +6,8 @@ import {
   type ResumeEntry,
 } from "@ag-ui/client";
 import { createStore } from "zustand/vanilla";
-import { parseA2UIEvent, type A2UICard } from "../a2ui/card";
+import { parseA2UIEvent, type A2UIOutput } from "../a2ui/outputs";
+import { createA2UIRuntime, type A2UISurfaceView } from "../a2ui/runtime";
 import type { PlanReviewResponse } from "./planReview";
 import { mergeMessages, type ConversationSnapshot } from "./snapshot";
 import {
@@ -18,7 +19,8 @@ import type { Activity } from "./types";
 
 export interface ConversationState {
   messages: Message[];
-  cards: A2UICard[];
+  surfaces: A2UISurfaceView[];
+  a2uiIssue: string | null;
   activity: Activity[];
   pendingInterrupts: Interrupt[];
   running: boolean;
@@ -42,9 +44,13 @@ export function createConversationSession(
   let submittedRunId: string | undefined;
   let streamInterrupts: Interrupt[] | undefined;
   let refresh: RefreshSnapshot;
+  let a2ui: ReturnType<typeof createA2UIRuntime> | undefined;
+  let invalidOutputIssue: string | null = null;
+  let fillingOutputGap = false;
   const store = createStore<ConversationState>()(() => ({
     messages: [],
-    cards: [],
+    surfaces: [],
+    a2uiIssue: null,
     activity: [],
     pendingInterrupts: [],
     running: false,
@@ -56,15 +62,14 @@ export function createConversationSession(
     reviewPlan,
   }));
 
-  function rememberCard(card: A2UICard) {
-    const cards = store.getState().cards;
-    const existing = cards.find((item) => item.id === card.id);
-    if (!existing) store.setState({ cards: [...cards, card] });
-    else if (
-      JSON.stringify(existing.messages) !== JSON.stringify(card.messages)
-    ) {
-      store.setState({ recoveryIssue: "Conflicting saved card content" });
-    }
+  function receiveOutputs(outputs: A2UIOutput[]) {
+    const result = a2ui?.ingest(outputs);
+    if (!result) return false;
+    store.setState({
+      surfaces: result.surfaces,
+      a2uiIssue: invalidOutputIssue ?? result.issue,
+    });
+    return result.needsRecovery;
   }
 
   function clearPending() {
@@ -114,7 +119,7 @@ export function createConversationSession(
       // A rejected request may never appear in server history. Keep its input and error.
       store.setState({ running: serverRunning });
     }
-    for (const card of snapshot?.cards ?? []) rememberCard(card);
+    receiveOutputs(snapshot?.outputs ?? []);
 
     const savedRun = snapshot?.runs.find((run) => run.runId === pending?.runId);
     if (savedRun && savedRun.status !== "prepared") clearPending();
@@ -132,6 +137,16 @@ export function createConversationSession(
         store.setState({
           snapshotIssue: errorDetail(error, "Recovery failed"),
         });
+    }
+  }
+
+  async function recoverOutputGap() {
+    if (fillingOutputGap) return;
+    fillingOutputGap = true;
+    try {
+      await refreshSnapshot();
+    } finally {
+      fillingOutputGap = false;
     }
   }
 
@@ -237,6 +252,9 @@ export function createConversationSession(
   function connect(refreshSnapshot: RefreshSnapshot) {
     connected = true;
     refresh = refreshSnapshot;
+    a2ui = createA2UIRuntime();
+    invalidOutputIssue = null;
+    store.setState({ surfaces: [], a2uiIssue: null });
     const subscription = agent.subscribe({
       onEvent({ event }) {
         if (!connected) return;
@@ -246,8 +264,13 @@ export function createConversationSession(
         ) {
           store.setState({ animatedMessageId: event.messageId });
         }
-        const card = parseA2UIEvent(event);
-        if (card) rememberCard(card);
+        try {
+          const output = parseA2UIEvent(event);
+          if (output && receiveOutputs([output])) void recoverOutputGap();
+        } catch (error) {
+          invalidOutputIssue = errorDetail(error, "Invalid A2UI output");
+          store.setState({ a2uiIssue: invalidOutputIssue });
+        }
         if (
           event.type === EventType.RAW ||
           event.type === EventType.STATE_SNAPSHOT
@@ -278,6 +301,8 @@ export function createConversationSession(
     return () => {
       connected = false;
       subscription.unsubscribe();
+      a2ui?.dispose();
+      a2ui = undefined;
       // Detach the browser stream; the server-owned Aegra run continues.
       void agent.detachActiveRun();
     };

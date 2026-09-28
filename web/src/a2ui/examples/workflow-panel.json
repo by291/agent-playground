@@ -1,5 +1,4 @@
 {
-  "kind": "a2ui",
   "component": "WorkflowPanel",
   "description": "A surface that arranges workflow content in a card.",
   "messages": [
@@ -18,7 +17,11 @@
           {
             "id": "root",
             "component": "WorkflowPanel",
-            "children": ["eyebrow", "title", "steps"]
+            "children": [
+              "eyebrow",
+              "title",
+              "steps"
+            ]
           },
           {
             "id": "eyebrow",
@@ -35,7 +38,10 @@
           {
             "id": "steps",
             "component": "WorkflowSteps",
-            "children": ["step-1", "step-2"]
+            "children": [
+              "step-1",
+              "step-2"
+            ]
           },
           {
             "id": "step-1",

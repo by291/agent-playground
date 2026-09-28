@@ -60,3 +60,27 @@ void test("cancelling a conversation query aborts its HTTP request", async (cont
   assert.equal(signal?.aborted, true);
   client.clear();
 });
+
+void test("recovery rejects legacy A2UI output wrappers", async (context) => {
+  context.mock.method(globalThis, "fetch", () =>
+    Promise.resolve(
+      Response.json({
+        messages: [],
+        interrupts: [],
+        runs: [],
+        outputs: [{ id: "old", outputSeq: 1, kind: "a2ui", messages: [] }],
+      }),
+    ),
+  );
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  try {
+    await assert.rejects(
+      client.fetchQuery(conversationQueryOptions("legacy-thread")),
+      /Invalid A2UI output/,
+    );
+  } finally {
+    client.clear();
+  }
+});

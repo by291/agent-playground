@@ -1,4 +1,4 @@
-"""Check output identity when a persisted workflow resumes across catalog versions."""
+"""Check output identity and reject unsupported persisted output versions."""
 
 import pytest
 from sqlalchemy import select
@@ -14,10 +14,11 @@ from agent_playground.workflow_outputs import (
 )
 
 
-def test_catalog_change_preserves_replayed_output(monkeypatch: pytest.MonkeyPatch):
+def test_old_outputs_are_rejected_and_current_outputs_are_idempotent(
+    monkeypatch: pytest.MonkeyPatch,
+):
     old_payload: dict[str, object] = {"kind": "a2ui", "messages": [{"version": "v0.9"}]}
     new_payload: dict[str, object] = {
-        "kind": "a2ui",
         "messages": [{"version": "v0.9.1"}],
     }
 
@@ -52,10 +53,8 @@ def test_catalog_change_preserves_replayed_output(monkeypatch: pytest.MonkeyPatc
                     )
                 )
 
-            replay = _store("thread", "new-run", "call", "review", 3, new_payload)
-            assert replay.id == "old-output"
-            assert replay.agui_run_id == "old-run"
-            assert replay.payload == old_payload
+            with pytest.raises(ValueError, match="Unsupported workflow output version"):
+                _store("thread", "new-run", "call", "review", 3, new_payload)
 
             fresh = _store("thread", "new-run", "new-call", "idea", 1, new_payload)
             assert fresh.payload == new_payload
@@ -75,7 +74,7 @@ def test_catalog_change_preserves_replayed_output(monkeypatch: pytest.MonkeyPatc
                     .scalars()
                     .all()
                 )
-            assert versions == [1, 2]
+            assert versions == [1, 3]
         finally:
             _engine.cache_clear()
             engine.dispose()

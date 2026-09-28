@@ -18,8 +18,6 @@ export const workflowOutputs = pgTable("workflow_outputs", {
   outputSeq: bigint("output_seq", { mode: "number" }).notNull(),
   kind: text("kind").notNull(),
   version: integer("version").notNull(),
-  payload: jsonb("payload")
-    .$type<{ kind: "a2ui"; messages: unknown[] }>()
-    .notNull(),
+  payload: jsonb("payload").$type<{ messages: unknown[] }>().notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
 });

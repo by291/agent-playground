@@ -30,3 +30,20 @@ Workflow 输出改为项目自定义 catalog 后，`make check` 通过：9 个 P
 样例改为独立 JSON 文件，页面一次展示一个组件，左侧是本地打包的 Monaco JSON 编辑器，右侧是同一 A2UI renderer 的效果。`make check` 通过：9 个 Python 测试、4 个 server 测试、7 个 web 测试及前端构建。Web 测试验证编辑后的 JSON 可生成预览，错误 JSON 或其他 catalog 不能替换预览。
 
 浏览器验证组件切换、修改 JSON 后实时更新效果、无效 JSON 时显示错误并保留上次有效效果，以及键盘操作重置样例。编辑只作用于当前页面状态，不会写回仓库的 JSON 文件。Monaco 资源随前端构建输出，不依赖外部 CDN；该预览页按路由延迟加载，聊天页不加载编辑器。
+
+## 会话级 A2UI runtime（2026-09-28）
+
+当前实现采用输出版本 3，不兼容旧包装、旧事件名称或 Basic Catalog。上文关于旧卡片兼容的记录只描述当时的版本。
+
+| 验证范围 | 结果 |
+| --- | --- |
+| Python workflow 与 PostgreSQL | 10 个测试通过；输出使用官方 `A2uiMessageListWrapper`，持久化后发出 `a2ui` 事件；旧输出版本被拒绝，当前版本重复写入保持身份，内容冲突报错。 |
+| 官方消息与会话 processor | 覆盖纯更新、多 surface、组件与数据更新、删除、动态文本绑定、乱序排队与补齐、重复快照、JSONB 对象键顺序、身份冲突和会话隔离。 |
+| AG-UI 实时订阅 | 使用真实 `HttpAgent` 消费受控 SSE；重复的后续输出触发一次缺口恢复，完整快照不会重建已有 surface；非法 A2UI 事件显示错误，文本流继续处理。 |
+| 处理和绑定错误 | 批次中途失败时隐藏涉及的 surface，并停止后续处理。增量绑定的非法路径及函数参数中的嵌套路径在官方组件 schema 校验阶段被拒绝，避免 SDK 回调吞错后留下旧文字。 |
+| 浏览器 | 受控 HTTP/SSE 服务配合实际前端：绑定内容更新、surface 删除、刷新恢复、新会话清空、未知组件显示错误；JSON 预览保持有效结果，非法组件或路径不能替换预览，重置恢复样例。 |
+| Python → Web 序列化 | 按 workflow 相同方式序列化 Python 输出，交由官方 Web schema 和会话 runtime 处理，成功生成 `WorkflowPanel` surface。 |
+
+Python 类型、lint 和格式检查通过；TypeScript 类型、lint、格式检查、server/web 测试与前端构建通过。复审发现的未知组件预览和增量绑定吞错问题均已补充回归验证。
+
+这轮没有重跑真实 Aegra/模型端到端链路。当前示例 workflow 仍按步骤创建独立 surface；增量处理由受控流和官方 resolver 验证。A2UI action 到后端的链路尚未实现。

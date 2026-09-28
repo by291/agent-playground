@@ -136,7 +136,7 @@ async def emit_card(
         payload,
     )
     await adispatch_custom_event(
-        "experiment_card",
+        "a2ui",
         {
             "id": output.id,
             "aguiRunId": output.agui_run_id,

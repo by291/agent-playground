@@ -1,5 +1,4 @@
 {
-  "kind": "a2ui",
   "component": "WorkflowSteps",
   "description": "An ordered list built from child components.",
   "messages": [
@@ -18,7 +17,10 @@
           {
             "id": "root",
             "component": "WorkflowSteps",
-            "children": ["first", "second"]
+            "children": [
+              "first",
+              "second"
+            ]
           },
           {
             "id": "first",

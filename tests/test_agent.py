@@ -144,10 +144,7 @@ def test_workflow_streams_each_step_and_waits_for_review(
     async def cards_for(input_value: object) -> list[dict[str, Any]]:
         cards: list[dict[str, Any]] = []
         async for event in graph.astream_events(input_value, config, version="v2"):
-            if (
-                event["event"] == "on_custom_event"
-                and event["name"] == "experiment_card"
-            ):
+            if event["event"] == "on_custom_event" and event["name"] == "a2ui":
                 cards.append(cast("dict[str, Any]", event["data"]))
         return cards
 
@@ -158,7 +155,7 @@ def test_workflow_streams_each_step_and_waits_for_review(
             "experiment-call-plan-draft",
             "experiment-call-plan-review",
         ]
-        assert all(card["kind"] == "a2ui" for card in before)
+        assert all("kind" not in card and "messages" in card for card in before)
         review = graph.get_state(config).tasks[0].interrupts[0].value
         assert review["kind"] == "experiment_plan_review"
         assert review["title"] == "Test an agent workflow"
@@ -214,10 +211,7 @@ def test_agent_resumes_workflow_tool_after_review():
             config,
             version="v2",
         ):
-            if (
-                event["event"] == "on_custom_event"
-                and event["name"] == "experiment_card"
-            ):
+            if event["event"] == "on_custom_event" and event["name"] == "a2ui":
                 cards.append(cast("dict[str, Any]", event["data"]))
         assert [card["id"] for card in cards] == [
             "experiment-call-plan-idea",

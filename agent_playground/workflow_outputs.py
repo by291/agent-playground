@@ -24,7 +24,7 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.sql import func
 
 metadata = MetaData(schema="public")
-WORKFLOW_OUTPUT_VERSION = 2
+WORKFLOW_OUTPUT_VERSION = 3
 conversations = Table(
     "conversations",
     metadata,
@@ -116,11 +116,11 @@ def _store(
             .one_or_none()
         )
         if existing is not None:
-            # A resumed call must publish its saved card, even after a catalog upgrade.
-            if (
-                existing["version"] == WORKFLOW_OUTPUT_VERSION
-                and existing["payload"] != payload
-            ):
+            if existing["version"] != WORKFLOW_OUTPUT_VERSION:
+                raise ValueError(
+                    "Unsupported workflow output version; start a new conversation"
+                )
+            if existing["payload"] != payload:
                 raise ValueError("Workflow output payload conflict")
             return WorkflowOutput(
                 existing["id"],

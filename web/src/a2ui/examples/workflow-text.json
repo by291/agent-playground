@@ -1,7 +1,6 @@
 {
-  "kind": "a2ui",
   "component": "WorkflowText",
-  "description": "Text with eyebrow, title, body, or step styling.",
+  "description": "Text bound to the surface data model through a JSON Pointer.",
   "messages": [
     {
       "version": "v0.9",
@@ -18,7 +17,11 @@
           {
             "id": "root",
             "component": "WorkflowPanel",
-            "children": ["eyebrow", "title", "body"]
+            "children": [
+              "eyebrow",
+              "title",
+              "body"
+            ]
           },
           {
             "id": "eyebrow",
@@ -30,7 +33,9 @@
             "id": "title",
             "component": "WorkflowText",
             "role": "title",
-            "text": "A clear heading"
+            "text": {
+              "path": "/title"
+            }
           },
           {
             "id": "body",
@@ -39,6 +44,14 @@
             "text": "Supporting context stays readable at any width."
           }
         ]
+      }
+    },
+    {
+      "version": "v0.9",
+      "updateDataModel": {
+        "surfaceId": "preview-text",
+        "path": "/title",
+        "value": "A clear heading"
       }
     }
   ]

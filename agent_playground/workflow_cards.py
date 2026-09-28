@@ -3,7 +3,7 @@
 from typing import Literal
 
 from a2ui.core.schema import (
-    A2uiMessage,
+    A2uiMessageListWrapper,
     CreateSurface,
     CreateSurfaceMessage,
     UpdateComponents,
@@ -34,14 +34,9 @@ class WorkflowSteps(BaseModel):
     children: list[ComponentId]
 
 
-class ExperimentCard(BaseModel):
-    kind: Literal["a2ui"] = "a2ui"
-    messages: list[A2uiMessage]
-
-
 def experiment_card(
     card_group_id: str, title: str, stage: str, heading: str, lines: list[str]
-) -> ExperimentCard:
+) -> A2uiMessageListWrapper:
     """Return protocol messages for one workflow step."""
     surface_id = f"experiment-{card_group_id}-{stage}"
     step_ids = [ComponentId(f"step-{index}") for index in range(len(lines))]
@@ -62,7 +57,7 @@ def experiment_card(
             for step_id, line in zip(step_ids, lines, strict=True)
         ],
     ]
-    return ExperimentCard(
+    return A2uiMessageListWrapper(
         messages=[
             CreateSurfaceMessage(
                 create_surface=CreateSurface(

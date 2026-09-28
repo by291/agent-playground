@@ -22,15 +22,24 @@ Aegra 的内部表和 checkpoint 位于 `aegra` schema；会话和 workflow 输�
 - `conversation_messages` 保存用户消息和已提交 checkpoint 的完整 assistant 文本消息，`(thread_id, message_id)` 唯一。会话内的提交序号决定消息所在回合。
 - `workflow_outputs` 保存完整的 A2UI v0.9 消息、稳定输出 ID、首次产生它的 AG-UI run ID、workflow 调用 ID、步骤 ID、版本和会话输出序号。一个 workflow 调用跨审核前后保持同一个 `ToolRuntime.tool_call_id`。
 
-新的 workflow 卡片使用 `urn:agent-playground:workflow:v1` 自定义 catalog。Python 输出 `WorkflowPanel`、`WorkflowText` 和 `WorkflowSteps` 组件消息；Web 将同名组件注册为 React 实现。`/a2ui` 预览页每次选择一个组件，左侧用本地 Monaco 编辑器展示并修改 `web/src/a2ui/examples/` 中的 JSON 文件内容，右侧用同一 A2UI renderer 展示结果；解析或组件校验失败时保留上次有效预览。已持久化的 Basic Catalog 卡片继续可读；若以后改变组件协议，应使用新 catalog ID 并保留旧版读取能力。
+Workflow surface 使用 `urn:agent-playground:workflow:v1` 自定义 catalog。Python 输出 `WorkflowPanel`、`WorkflowText` 和 `WorkflowSteps` 组件消息；Web 将同名组件注册为 React 实现。`WorkflowText.text` 使用官方 `DynamicString` schema，支持字面量和数据路径绑定。`/a2ui` 预览页每次选择一个组件，左侧用本地 Monaco 编辑器展示并修改 `web/src/a2ui/examples/` 中的 JSON 文件内容，右侧用同一 A2UI renderer 展示结果；解析或组件校验失败时保留上次有效预览。
 
-同一调用的步骤输出以 `(thread_id, workflow_call_id, step_id, version)` 幂等写入。新 catalog 的输出版本为 2；恢复旧调用时优先复用该步骤已经保存的输出及其原始 payload，避免部署后生成不同卡片而产生冲突。当前版本的重试若产生不同 payload，仍报冲突。会话输出序号在锁定 `conversations` 行的事务中分配，因此并行调用按持久化提交顺序展示，不假定它们有业务上的先后关系。
+同一调用的步骤输出以 `(thread_id, workflow_call_id, step_id, version)` 幂等写入。当前输出版本为 3，payload 使用官方 `{ messages: [...] }` 模型。旧版本不再兼容，已有数据保留，升级后使用新会话；恢复旧步骤时明确报错。当前版本的重试若产生不同 payload，报冲突。会话输出序号在锁定 `conversations` 行的事务中分配，因此并行调用按持久化提交顺序展示，不假定它们有业务上的先后关系。
+
+## A2UI 消息处理
+
+- `CUSTOM` 事件名称为 `a2ui`，value 为输出 ID、序号、run/tool 归属和标准 `messages`。这些身份字段属于项目传输封装，组件消息遵循官方 v0.9 schema。普通工具结果不当作 A2UI 消息解析。
+- Web 将业务封装校验与官方消息校验分开。每个会话使用一个官方 `MessageProcessor`，实时事件与恢复快照共用入口；支持纯更新批次、多 surface、组件和数据更新、删除。
+- 输出按 ID 与序号去重，相同身份的不同内容明确报错。对象键顺序不影响重复判断。缺失序号先等待快照补齐，再处理后续消息；旧快照不会重建已有 surface 或回退数据。
+- Surface 在创建时确定 tool 归属，后续更新不重新归属。React renderer 只消费 processor 的 surface model，会话切换时释放 processor。
+- 非法协议或渲染错误对用户可见。官方 processor 不提供批次回滚；批次处理失败时隐藏该批次涉及的 surface，保留其他 surface，并停止该会话实例的后续 A2UI 处理。
+- 当前 workflow 仍为每个步骤创建独立 surface；增量处理能力由 runtime 和预览样例验证。A2UI action 到后端的链路尚未实现。
 
 ## 提交与执行
 
 1. Web 在请求前保存 thread ID、message ID、AG-UI run ID 和提交内容。server 在锁定会话行的事务中检查当前运行与审核状态，记录提交和用户消息，再独占地将 `prepared` 改为 `dispatching`。
 2. server 忽略浏览器提供的 `forwardedProps`，自行注入 `metadata.agui_run_id`、`onDisconnect: "continue"` 和 `onRunCreated`。回调保存 Aegra run ID；server 对外发送的 `RUN_STARTED`、`RUN_FINISHED` 始终使用本次 AG-UI run ID。
-3. Python workflow 从运行配置获取 thread ID 和 AG-UI run ID。每个步骤先写入 `workflow_outputs`，再发送带有输出 ID、原 run 归属和 A2UI payload 的 `experiment_card` 事件。写入失败时步骤失败，不进入缺少持久审核卡片的 interrupt。
+3. Python workflow 从运行配置获取 thread ID 和 AG-UI run ID。每个步骤先写入 `workflow_outputs`，再发送带有输出 ID、原 run 归属和 A2UI payload 的 `a2ui` 事件。写入失败时步骤失败，不进入缺少持久审核卡片的 interrupt。
 4. 审核 interrupt 携带 workflow 调用 ID。server 从 Aegra 当前 thread state 读取完整 interrupt 集合，核对提交的 ID 和已持久化的审核输出，再将响应交给 Aegra 恢复执行。
 
 同一 thread 同时只允许一个待提交或运行中的请求。普通消息不能越过未处理的审核。重复的相同提交只入库一次；已开始 dispatch 的请求不再次调用 Aegra。
@@ -46,7 +55,7 @@ Aegra 的内部表和 checkpoint 位于 `aegra` schema；会话和 workflow 输�
 ## 一致性边界
 
 - `workflow_outputs` 与 Aegra checkpoint 不共享事务。若输出已提交而 checkpoint 未提交，该卡片可能对应最终失败的 run；界面需同时呈现运行状态。
-- 首版保存每张卡片的一组完整 A2UI 消息，不做同一 surface 的增量更新。
+- 保存有序的 A2UI 消息批次，重载时从头送入会话 processor；实时期间只补充未处理的输出。
 - 不保存完整 AG-UI 事件流或运行中 token。精确事件回放不属于本设计。
 - `submission_unknown` 表示无法确认底层 run 是否创建，需要人工对账；它不表示执行成功，也不能作为自动重试依据。
 

@@ -9,21 +9,23 @@ import {
   MessageScrollerProvider,
   MessageScrollerViewport,
 } from "@/components/ui/message-scroller";
-import type { A2UICard as CardData } from "../a2ui/card";
+import type { A2UISurfaceView } from "../a2ui/runtime";
 import { MessageRow, preloadMarkdownMessage, Thinking } from "./MessageRow";
 import { ReviewPanel } from "./ReviewPanel";
 import { useConversation } from "../conversation/useConversation";
 import { parsePlanReview } from "../conversation/planReview";
 import { Welcome } from "./Welcome";
 
-const A2UICard = lazy(() =>
-  import("../a2ui/A2UICard").then(({ A2UICard }) => ({ default: A2UICard })),
+const A2UISurface = lazy(() =>
+  import("../a2ui/A2UISurface").then(({ A2UISurface }) => ({
+    default: A2UISurface,
+  })),
 );
 
-function Card({ card }: { card: CardData }) {
+function Surface({ view }: { view: A2UISurfaceView }) {
   return (
     <Suspense fallback={null}>
-      <A2UICard card={card} />
+      <A2UISurface view={view} />
     </Suspense>
   );
 }
@@ -31,7 +33,7 @@ function Card({ card }: { card: CardData }) {
 export function ChatPane() {
   const {
     messages,
-    cards,
+    surfaces,
     pendingInterrupts,
     running,
     animatedMessageId,
@@ -41,11 +43,12 @@ export function ChatPane() {
   } = useConversation(
     useShallow((state) => ({
       messages: state.messages,
-      cards: state.cards,
+      surfaces: state.surfaces,
       pendingInterrupts: state.pendingInterrupts,
       running: state.running,
       animatedMessageId: state.animatedMessageId,
-      recoveryIssue: state.snapshotIssue ?? state.recoveryIssue,
+      recoveryIssue:
+        state.snapshotIssue ?? state.a2uiIssue ?? state.recoveryIssue,
       onSend: state.send,
       onReview: state.reviewPlan,
     })),
@@ -66,12 +69,12 @@ export function ChatPane() {
   const visible = messages.filter(
     (message) => message.role === "user" || message.role === "assistant",
   );
-  const cardsByCall = new Map<string, CardData[]>();
-  for (const card of cards) {
-    if (!card.toolCallId) continue;
-    cardsByCall.set(card.toolCallId, [
-      ...(cardsByCall.get(card.toolCallId) ?? []),
-      card,
+  const surfacesByCall = new Map<string, A2UISurfaceView[]>();
+  for (const view of surfaces) {
+    if (!view.toolCallId) continue;
+    surfacesByCall.set(view.toolCallId, [
+      ...(surfacesByCall.get(view.toolCallId) ?? []),
+      view,
     ]);
   }
   const attachedCalls = new Set(
@@ -84,7 +87,7 @@ export function ChatPane() {
 
   return (
     <>
-      {visible.length === 0 ? (
+      {visible.length === 0 && surfaces.length === 0 && reviews.length === 0 ? (
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
           <div className="mx-auto flex min-h-full w-full max-w-205 flex-col px-4 sm:px-8">
             <Welcome onSend={onSend} />
@@ -107,22 +110,22 @@ export function ChatPane() {
                     </MessageScrollerItem>
                     {message.role === "assistant" &&
                       message.toolCalls?.map((call) => {
-                        return cardsByCall.get(call.id)?.map((card) => (
-                          <MessageScrollerItem key={card.id}>
-                            <Card card={card} />
+                        return surfacesByCall.get(call.id)?.map((view) => (
+                          <MessageScrollerItem key={view.id}>
+                            <Surface view={view} />
                           </MessageScrollerItem>
                         ));
                       })}
                   </Fragment>
                 ))}
-                {cards
+                {surfaces
                   .filter(
-                    (card) =>
-                      !card.toolCallId || !attachedCalls.has(card.toolCallId),
+                    (view) =>
+                      !view.toolCallId || !attachedCalls.has(view.toolCallId),
                   )
-                  .map((card) => (
-                    <MessageScrollerItem key={card.id}>
-                      <Card card={card} />
+                  .map((view) => (
+                    <MessageScrollerItem key={view.id}>
+                      <Surface view={view} />
                     </MessageScrollerItem>
                   ))}
                 {reviews.length > 0 && (

@@ -4,12 +4,12 @@ import {
   type Interrupt,
   type Message,
 } from "@ag-ui/client";
-import { parseA2UICard, type A2UICard } from "../a2ui/card";
+import { parseA2UIOutput, type A2UIOutput } from "../a2ui/outputs";
 import type { RunSummary } from "./types";
 
 export interface ConversationSnapshot {
   messages: Message[];
-  cards: A2UICard[];
+  outputs: A2UIOutput[];
   interrupts: Interrupt[];
   runs: RunSummary[];
 }
@@ -59,21 +59,11 @@ export async function fetchConversationSnapshot(
     throw new Error("Invalid conversation snapshot");
   }
 
-  const cards = outputItems.flatMap((output): A2UICard[] => {
-    if (typeof output !== "object" || output === null || !("id" in output))
-      return [];
-    if (typeof output.id !== "string") return [];
-    const toolCallId =
-      "toolCallId" in output && typeof output.toolCallId === "string"
-        ? output.toolCallId
-        : undefined;
-    const card = parseA2UICard(output.id, output, toolCallId);
-    return card ? [card] : [];
-  });
+  const parsedOutputs = outputItems.map(parseA2UIOutput);
 
   return {
     messages: messages.data,
-    cards,
+    outputs: parsedOutputs,
     interrupts: interrupts.data,
     runs: runItems,
   };

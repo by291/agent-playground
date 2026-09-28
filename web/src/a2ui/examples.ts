@@ -1,50 +1,77 @@
-import { MessageProcessor } from "@a2ui/web_core/v0_9";
-import type { A2UICard } from "./card";
-import { parseA2UICard } from "./card";
+import { MessageProcessor, NodeResolver } from "@a2ui/web_core/v0_9";
+import { z } from "zod";
 import { workflowCatalog } from "./catalog";
+import { parseA2UIMessages } from "./messages";
+import type { A2UISurfaceView } from "./runtime";
 import panelExample from "./examples/workflow-panel.json";
 import stepsExample from "./examples/workflow-steps.json";
 import textExample from "./examples/workflow-text.json";
 
+const previewSchema = z
+  .object({
+    component: z.string().optional(),
+    description: z.string().optional(),
+    messages: z.unknown(),
+  })
+  .strict();
+
 export function parseGalleryPreview(
   component: string,
   source: string,
-): { card: A2UICard | null; error: string | null } {
+): {
+  surfaces: A2UISurfaceView[] | null;
+  error: string | null;
+} {
   let value: unknown;
   try {
     value = JSON.parse(source);
   } catch {
-    return { card: null, error: "Enter valid JSON to update the preview." };
+    return { surfaces: null, error: "Enter valid JSON to update the preview." };
   }
 
-  const card = parseA2UICard(component, value);
-  const creation = card?.messages.find((message) => "createSurface" in message);
-  if (
-    !card ||
-    !creation ||
-    !("createSurface" in creation) ||
-    creation.createSurface.catalogId !== workflowCatalog.id
-  ) {
+  const processor = new MessageProcessor([workflowCatalog]);
+  try {
+    const preview = previewSchema.parse(value);
+    processor.processMessages(parseA2UIMessages(preview.messages));
+    const surfaces = [...processor.model.surfacesMap.values()];
+    if (
+      !surfaces.length ||
+      surfaces.some((surface) => !surface.componentsModel.get("root"))
+    ) {
+      throw new Error("The preview needs a surface with a root component.");
+    }
+    // Some catalog/tree errors are reported during node resolution, after
+    // message validation. Check them before replacing the last valid preview.
+    for (const surface of surfaces) {
+      let issue: string | undefined;
+      const subscription = surface.onError.subscribe((error: unknown) => {
+        issue =
+          typeof error === "object" && error !== null && "message" in error
+            ? String(error.message)
+            : "Could not resolve A2UI components.";
+      });
+      const resolver = new NodeResolver(surface, workflowCatalog);
+      resolver.dispose();
+      subscription.unsubscribe();
+      if (issue) throw new Error(issue);
+    }
     return {
-      card: null,
-      error: "Use an A2UI card from the workflow catalog.",
+      surfaces: surfaces.map((surface) => ({
+        id: `${component}:${surface.id}`,
+        surface,
+      })),
+      error: null,
+    };
+  } catch (error) {
+    processor.model.dispose();
+    return {
+      surfaces: null,
+      error:
+        error instanceof Error
+          ? error.message
+          : "Could not process A2UI messages.",
     };
   }
-
-  try {
-    const processor = new MessageProcessor([workflowCatalog]);
-    processor.processMessages(card.messages);
-    const surface = processor.model.getSurface(
-      creation.createSurface.surfaceId,
-    );
-    if (!surface?.componentsModel.get("root")) {
-      throw new Error("Missing root component");
-    }
-  } catch {
-    return { card: null, error: "The A2UI components could not be rendered." };
-  }
-
-  return { card, error: null };
 }
 
 const exampleFiles = [panelExample, textExample, stepsExample];
@@ -52,13 +79,13 @@ const exampleFiles = [panelExample, textExample, stepsExample];
 export const catalogExamples = exampleFiles.map((example) => {
   const source = JSON.stringify(example, null, 2);
   const result = parseGalleryPreview(example.component, source);
-  if (!result.card) {
+  if (!result.surfaces)
     throw new Error(`Invalid gallery example: ${example.component}`);
-  }
+  for (const view of result.surfaces) view.surface.dispose();
   return {
     component: example.component,
     description: example.description,
     source,
-    messages: result.card.messages,
+    messages: parseA2UIMessages(example.messages),
   };
 });

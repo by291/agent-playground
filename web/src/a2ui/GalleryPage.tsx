@@ -13,8 +13,8 @@ import {
   NativeSelect,
   NativeSelectOption,
 } from "@/components/ui/native-select";
-import { A2UICard } from "./A2UICard";
-import type { A2UICard as CardData } from "./card";
+import { A2UISurface } from "./A2UISurface";
+import type { A2UISurfaceView } from "./runtime";
 import { workflowCatalog, workflowComponentNames } from "./catalog";
 import { catalogExamples, parseGalleryPreview } from "./examples";
 
@@ -23,8 +23,9 @@ const JsonEditor = lazy(() =>
 );
 
 interface Preview {
-  card: CardData;
+  surfaces: A2UISurfaceView[];
   source: string;
+  error: string | null;
 }
 
 export function GalleryPage() {
@@ -32,29 +33,34 @@ export function GalleryPage() {
     catalogExamples[0]?.component ?? "",
   );
   const [drafts, setDrafts] = useState<Record<string, string>>({});
-  const [lastValid, setLastValid] = useState<Record<string, Preview>>({});
+  const [previews, setPreviews] = useState<Record<string, Preview>>(() =>
+    Object.fromEntries(
+      catalogExamples.map((example) => [
+        example.component,
+        {
+          surfaces:
+            parseGalleryPreview(example.component, example.source).surfaces ??
+            [],
+          source: example.source,
+          error: null,
+        },
+      ]),
+    ),
+  );
   const example = catalogExamples.find((item) => item.component === component);
-  if (!example) return null;
-
-  const source = drafts[component] ?? example.source;
-  const result = parseGalleryPreview(component, source);
-  const preview: Preview = result.card
-    ? { card: result.card, source }
-    : (lastValid[component] ?? {
-        card: { id: component, messages: example.messages },
-        source: example.source,
-      });
+  const source = drafts[component] ?? example?.source ?? "";
+  const preview = previews[component];
+  if (!example || !preview) return null;
 
   function updateSource(next: string) {
     setDrafts((current) => ({ ...current, [component]: next }));
     const updated = parseGalleryPreview(component, next);
-    if (updated.card) {
-      const card = updated.card;
-      setLastValid((current) => ({
-        ...current,
-        [component]: { card, source: next },
-      }));
-    }
+    setPreviews((current) => ({
+      ...current,
+      [component]: updated.surfaces
+        ? { surfaces: updated.surfaces, source: next, error: null }
+        : { ...current[component]!, error: updated.error },
+    }));
   }
 
   function resetSource() {
@@ -63,11 +69,15 @@ export function GalleryPage() {
       delete next[component];
       return next;
     });
-    setLastValid((current) => {
-      const next = { ...current };
-      delete next[component];
-      return next;
-    });
+    const reset = parseGalleryPreview(component, example!.source);
+    setPreviews((current) => ({
+      ...current,
+      [component]: {
+        surfaces: reset.surfaces ?? [],
+        source: example!.source,
+        error: reset.error,
+      },
+    }));
   }
 
   return (
@@ -166,13 +176,13 @@ export function GalleryPage() {
                 />
               </Suspense>
             </div>
-            {result.error ? (
+            {preview.error ? (
               <Alert
                 variant="destructive"
                 className="min-h-12 rounded-none border-0 border-t border-red-200 bg-red-50 px-5 py-3"
               >
                 <AlertDescription className="text-xs text-red-700">
-                  {result.error}
+                  {preview.error}
                 </AlertDescription>
               </Alert>
             ) : (
@@ -193,25 +203,27 @@ export function GalleryPage() {
               </h2>
               <Badge
                 variant="secondary"
-                className={`h-auto gap-1.5 px-2.5 py-1 ${result.error ? "bg-amber-50 text-amber-800" : "bg-accent-soft text-accent"}`}
+                className={`h-auto gap-1.5 px-2.5 py-1 ${preview.error ? "bg-amber-50 text-amber-800" : "bg-accent-soft text-accent"}`}
               >
                 <span
-                  className={`size-1.5 rounded-full ${result.error ? "bg-amber-600" : "bg-accent"}`}
+                  className={`size-1.5 rounded-full ${preview.error ? "bg-amber-600" : "bg-accent"}`}
                 />
-                {result.error ? "Last valid JSON" : "Live"}
+                {preview.error ? "Last valid JSON" : "Live"}
               </Badge>
             </div>
             <div className="flex min-h-80 flex-1 items-start justify-center bg-canvas p-5 sm:p-8 lg:min-h-140">
-              {/* A JSON edit updates the card without replaying the entrance. */}
+              {/* A JSON edit updates the surface without replaying the entrance. */}
               <div
                 key={component}
                 className="gallery-preview-enter w-full max-w-xl"
               >
-                <A2UICard
-                  key={preview.source}
-                  card={preview.card}
-                  inChat={false}
-                />
+                {preview.surfaces.map((view) => (
+                  <A2UISurface
+                    key={`${preview.source}:${view.id}`}
+                    view={view}
+                    inChat={false}
+                  />
+                ))}
               </div>
             </div>
           </section>

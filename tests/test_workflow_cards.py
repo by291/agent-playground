@@ -3,6 +3,12 @@
 from agent_playground.workflow_cards import experiment_card
 
 
+def test_workflow_output_uses_the_official_message_wrapper():
+    card = experiment_card("call", "Demo", "idea", "IDEA", ["Try it"])
+    payload = card.model_dump(mode="json", by_alias=True, exclude_none=True)
+    assert set(payload) == {"messages"}
+
+
 def test_experiment_card_uses_playground_components():
     card = experiment_card("call-1", "Demo", "draft", "DRAFT PLAN", ["Try it"])
     messages = card.model_dump(mode="json", by_alias=True, exclude_none=True)[

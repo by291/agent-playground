@@ -10,6 +10,7 @@ import {
 import { createConversationSession } from "./session";
 import type { ConversationSnapshot } from "./snapshot";
 import type { SavedConversation } from "./storage";
+import type { A2UIOutput } from "../a2ui/outputs";
 
 const savedValues = new Map<string, string>();
 Object.defineProperty(globalThis, "localStorage", {
@@ -28,7 +29,7 @@ function snapshot(
     messages: [
       { id: "saved-message", role: "assistant", content: "Saved reply" },
     ],
-    cards: [],
+    outputs: [],
     interrupts: [],
     runs: [{ runId, status }],
   };
@@ -254,36 +255,37 @@ void test("an unknown server submission is recovered without resending it", () =
   }
 });
 
-void test("repeated cards are deduplicated and conflicting content keeps the first card", () => {
+void test("repeated outputs share the same surface and conflicts remain visible", () => {
   const session = createConversationSession({ threadId: "card-thread" });
   const disconnect = session.connect(() => Promise.resolve(null));
   try {
     const initial = snapshot();
-    initial.cards = [{ id: "card", messages: [] }];
+    initial.outputs = [
+      {
+        id: "output",
+        outputSeq: 1,
+        messages: [
+          {
+            version: "v0.9",
+            createSurface: {
+              surfaceId: "main",
+              catalogId: "urn:agent-playground:workflow:v1",
+            },
+          },
+        ],
+      },
+    ];
     session.applySnapshot(initial);
+    const surface = session.store.getState().surfaces[0]!.surface;
     session.applySnapshot(initial);
-    assert.equal(session.store.getState().cards.length, 1);
+    assert.equal(session.store.getState().surfaces.length, 1);
+    assert.equal(session.store.getState().surfaces[0]!.surface, surface);
     session.applySnapshot({
       ...initial,
-      cards: [
-        {
-          id: "card",
-          messages: [
-            {
-              version: "v0.9",
-              createSurface: {
-                surfaceId: "changed",
-                catalogId: "urn:agent-playground:workflow:v1",
-              },
-            },
-          ],
-        },
-      ],
+      outputs: [{ ...initial.outputs[0]!, messages: [] }],
     });
-    assert.deepEqual(session.store.getState().cards, [
-      { id: "card", messages: [] },
-    ]);
-    assert.match(session.store.getState().recoveryIssue ?? "", /conflicting/i);
+    assert.equal(session.store.getState().surfaces[0]!.surface, surface);
+    assert.match(session.store.getState().a2uiIssue ?? "", /conflicting/i);
   } finally {
     disconnect();
   }
@@ -315,6 +317,149 @@ void test("disconnect prevents late recovery from overwriting the new conversati
     JSON.parse(localStorage.getItem("agent-playground-conversation") ?? "null"),
     { threadId: "new-thread" },
   );
+});
+
+void test("out-of-order live A2UI updates recover through a snapshot and do not replay on completion", async () => {
+  const stream = streamingAgent("output-thread");
+  const session = createConversationSession(
+    { threadId: "output-thread" },
+    stream.agent,
+  );
+  const first: A2UIOutput = {
+    id: "created",
+    outputSeq: 1,
+    messages: [
+      {
+        version: "v0.9",
+        createSurface: {
+          surfaceId: "main",
+          catalogId: "urn:agent-playground:workflow:v1",
+        },
+      },
+      {
+        version: "v0.9",
+        updateComponents: {
+          surfaceId: "main",
+          components: [
+            {
+              id: "root",
+              component: "WorkflowText",
+              role: "title",
+              text: { path: "/title" },
+            },
+          ],
+        },
+      },
+    ],
+  };
+  const second: A2UIOutput = {
+    id: "updated",
+    outputSeq: 2,
+    messages: [
+      {
+        version: "v0.9",
+        updateDataModel: {
+          surfaceId: "main",
+          path: "/title",
+          value: "Recovered update",
+        },
+      },
+    ],
+  };
+  let reads = 0;
+  let recovered = snapshot();
+  recovered.outputs = [first, second];
+  const disconnect = session.connect(() => {
+    reads += 1;
+    return Promise.resolve(recovered);
+  });
+  try {
+    session.applySnapshot(null);
+    const completion = session.store.getState().send("Show a surface");
+    const input = await stream.requested;
+    stream.emit({
+      type: "RUN_STARTED",
+      threadId: input.threadId,
+      runId: input.runId,
+    });
+    stream.emit({ type: "CUSTOM", name: "a2ui", value: second });
+    stream.emit({ type: "CUSTOM", name: "a2ui", value: second });
+    await waitFor(() => session.store.getState().surfaces.length === 1);
+    assert.equal(reads, 1);
+    const surface = session.store.getState().surfaces[0]!.surface;
+    assert.equal(surface.dataModel.get("/title"), "Recovered update");
+    assert.equal(session.store.getState().a2uiIssue, null);
+    recovered = {
+      ...recovered,
+      runs: [{ runId: input.runId, status: "completed" }],
+    };
+    stream.finish(input);
+    await completion;
+    assert.equal(session.store.getState().surfaces[0]!.surface, surface);
+    assert.equal(session.store.getState().a2uiIssue, null);
+    disconnect();
+    const reconnect = session.connect(() => Promise.resolve(recovered));
+    session.applySnapshot(recovered);
+    assert.notEqual(session.store.getState().surfaces[0]!.surface, surface);
+    assert.equal(
+      session.store.getState().surfaces[0]!.surface.dataModel.get("/title"),
+      "Recovered update",
+    );
+    reconnect();
+  } finally {
+    disconnect();
+  }
+});
+
+void test("invalid A2UI events remain visible without interrupting the text stream", async () => {
+  const stream = streamingAgent("invalid-output-thread");
+  const session = createConversationSession(
+    { threadId: "invalid-output-thread" },
+    stream.agent,
+  );
+  const disconnect = session.connect(() => Promise.resolve(snapshot()));
+  try {
+    session.applySnapshot(null);
+    const completion = session.store.getState().send("Keep streaming");
+    const input = await stream.requested;
+    stream.emit({
+      type: "RUN_STARTED",
+      threadId: input.threadId,
+      runId: input.runId,
+    });
+    stream.emit({
+      type: "CUSTOM",
+      name: "a2ui",
+      value: { kind: "a2ui", messages: [] },
+    });
+    stream.emit({
+      type: "TEXT_MESSAGE_START",
+      messageId: "reply",
+      role: "assistant",
+    });
+    stream.emit({
+      type: "TEXT_MESSAGE_CONTENT",
+      messageId: "reply",
+      delta: "Still streaming",
+    });
+    await waitFor(
+      () =>
+        session.store.getState().messages.at(-1)?.content === "Still streaming",
+    );
+    assert.match(
+      session.store.getState().a2uiIssue ?? "",
+      /Invalid A2UI output/i,
+    );
+    stream.emit({ type: "TEXT_MESSAGE_END", messageId: "reply" });
+    stream.finish(input);
+    await completion;
+    assert.match(
+      session.store.getState().a2uiIssue ?? "",
+      /Invalid A2UI output/i,
+    );
+  } finally {
+    disconnect();
+  }
 });
 
 void test("review submission covers each interrupt once and blocks duplicate sends", async () => {
