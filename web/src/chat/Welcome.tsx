@@ -5,9 +5,9 @@ import {
   SparkleIcon,
 } from "@phosphor-icons/react";
 import type { ReactNode } from "react";
-import type { ChatPaneProps } from "./types";
+type SendMessage = (message: string) => Promise<void>;
 
-export function Welcome({ onSend }: { onSend: ChatPaneProps["onSend"] }) {
+export function Welcome({ onSend }: { onSend: SendMessage }) {
   return (
     <div className="my-auto w-full py-6 sm:py-8">
       <div className="welcome-intro">
@@ -65,7 +65,7 @@ function Suggestion({
   icon: ReactNode;
   title: string;
   prompt: string;
-  onSend: ChatPaneProps["onSend"];
+  onSend: SendMessage;
 }) {
   return (
     <button

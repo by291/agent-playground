@@ -7,16 +7,16 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type { Activity } from "../conversation/types";
+import { useConversation } from "../conversation/useConversation";
 
 export function ActivityPanel({
-  activity,
   threadId,
   onClose,
 }: {
-  activity: Activity[];
   threadId: string;
   onClose: () => void;
 }) {
+  const activity = useConversation((state) => state.activity);
   return (
     <aside
       aria-label="Run activity"

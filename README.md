@@ -13,11 +13,13 @@ web/ (AG-UI client) → server/ (AG-UI adapter) → Aegra run queue → agent_pl
 | --- | --- |
 | `agent_playground/` | `graph.py` assembles the agent and tools; `workflow.py` runs the example workflow; `workflow_cards.py` builds A2UI messages; `workflow_outputs.py` persists step outputs. |
 | `server/` | `app.ts` and `server.ts` are the HTTP and startup entry points; `agent/` adapts Aegra events to AG-UI; `conversation/` owns run admission, recovery and snapshots; `db/` owns the application database and schemas; `drizzle/` holds migrations. |
-| `web/src/` | `conversation/` handles submission state, local pointers and server snapshots; `chat/` renders messages, cards, composer and review form; `a2ui/` owns the custom catalog, card renderer and component gallery; `layout/` contains sidebar and activity UI; `components/ui/` holds shadcn/ui primitives; `App.tsx` connects them. |
+| `web/src/` | `conversation/` owns a scoped Zustand store and AG-UI session, TanStack Query snapshots, and local submission pointers; `chat/` renders messages, cards, composer and review form; `a2ui/` owns the custom catalog, card renderer and component gallery; `layout/` contains sidebar and activity UI; `components/ui/` holds shadcn/ui primitives; `App.tsx` connects them. |
 
 The [conversation recovery design](docs/superpowers/specs/2026-09-27-conversation-recovery-design.md) describes the data and protocol boundaries. The [validation record](docs/conversation-recovery-validation.md) lists the local end-to-end checks and their limits.
 
 The web app keeps shadcn/ui primitives in `web/src/components/ui/`. To add another primitive, run `pnpm dlx shadcn@latest add <component>` from `web/`; `components.json` keeps the registry settings. The A2UI workflow catalog uses its own React components on top of the official A2UI renderer.
+
+Each conversation has its own Zustand store. Components subscribe to the fields they display, while `HttpAgent` manages the AG-UI stream. TanStack Query fetches and caches server snapshots by thread ID, polls them every two seconds while the page is focused, and refreshes after a run ends or the page regains focus. Snapshot requests are cancellable. The composer waits for the initial snapshot before accepting input, and the gateway health indicator refreshes every 30 seconds. Only the thread pointer and an unconfirmed submission are persisted locally.
 
 ## Run locally
 

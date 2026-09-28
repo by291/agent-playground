@@ -8,13 +8,16 @@ import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ChatPane } from "./chat/ChatPane";
+import { Composer } from "./chat/Composer";
 import {
   loadConversation,
   newConversation,
   saveConversation,
-  type SavedConversation,
 } from "./conversation/storage";
-import { useConversation } from "./conversation/useConversation";
+import {
+  ConversationProvider,
+  useConversation,
+} from "./conversation/useConversation";
 import { ActivityPanel } from "./layout/ActivityPanel";
 import { ConnectionStatus } from "./layout/ConnectionStatus";
 import { Sidebar } from "./layout/Sidebar";
@@ -29,11 +32,15 @@ export function ConversationApp() {
   }
 
   return (
-    <ConversationPage
+    <ConversationProvider
       key={conversation.threadId}
       conversation={conversation}
-      onNewConversation={startNewConversation}
-    />
+    >
+      <ConversationPage
+        conversation={conversation}
+        onNewConversation={startNewConversation}
+      />
+    </ConversationProvider>
   );
 }
 
@@ -41,21 +48,9 @@ function ConversationPage({
   conversation,
   onNewConversation,
 }: {
-  conversation: SavedConversation;
+  conversation: { threadId: string };
   onNewConversation: () => void;
 }) {
-  const {
-    messages,
-    cards,
-    reviews,
-    waitingForReview,
-    activity,
-    running,
-    animatedMessageId,
-    recoveryIssue,
-    send,
-    reviewPlan,
-  } = useConversation(conversation);
   const [activityOpen, setActivityOpen] = useState(false);
 
   return (
@@ -112,14 +107,7 @@ function ConversationPage({
             >
               <PulseIcon size={18} aria-hidden="true" />
               <span className="hidden sm:inline">Activity</span>
-              {activity.length > 0 && (
-                <Badge
-                  variant="secondary"
-                  className="h-auto rounded-md bg-accent-soft px-1.5 py-0.5 text-[11px] font-semibold tabular-nums text-accent"
-                >
-                  {activity.length}
-                </Badge>
-              )}
+              <ActivityCount />
             </Button>
             <Button
               type="button"
@@ -138,21 +126,11 @@ function ConversationPage({
           <main
             className={`${activityOpen ? "hidden lg:flex" : "flex"} min-w-0 flex-1 flex-col`}
           >
-            <ChatPane
-              messages={messages}
-              cards={cards}
-              reviews={reviews}
-              waitingForReview={waitingForReview}
-              running={running}
-              animatedMessageId={animatedMessageId}
-              recoveryIssue={recoveryIssue}
-              onSend={send}
-              onReview={reviewPlan}
-            />
+            <ChatPane />
+            <Composer />
           </main>
           {activityOpen && (
             <ActivityPanel
-              activity={activity}
               threadId={conversation.threadId}
               onClose={() => setActivityOpen(false)}
             />
@@ -160,5 +138,18 @@ function ConversationPage({
         </div>
       </div>
     </div>
+  );
+}
+
+function ActivityCount() {
+  const count = useConversation((state) => state.activity.length);
+  if (!count) return null;
+  return (
+    <Badge
+      variant="secondary"
+      className="h-auto rounded-md bg-accent-soft px-1.5 py-0.5 text-[11px] font-semibold tabular-nums text-accent"
+    >
+      {count}
+    </Badge>
   );
 }

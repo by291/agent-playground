@@ -3,7 +3,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Textarea } from "@/components/ui/textarea";
-import type { ChatPaneProps } from "./types";
+import type {
+  PlanReview,
+  PlanReviewResponse,
+} from "../conversation/planReview";
 
 interface ReviewDraft {
   interruptId: string;
@@ -16,7 +19,11 @@ export function ReviewPanel({
   reviews,
   running,
   onReview,
-}: Pick<ChatPaneProps, "reviews" | "running" | "onReview">) {
+}: {
+  reviews: PlanReview[];
+  running: boolean;
+  onReview: (responses: PlanReviewResponse[]) => Promise<void>;
+}) {
   const [drafts, setDrafts] = useState<ReviewDraft[]>(() =>
     reviews.map((review) => ({
       interruptId: review.interruptId,

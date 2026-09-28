@@ -1,4 +1,5 @@
-import { Fragment, lazy, Suspense, useEffect } from "react";
+import { Fragment, lazy, Suspense, useEffect, useMemo } from "react";
+import { useShallow } from "zustand/react/shallow";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   MessageScroller,
@@ -9,10 +10,10 @@ import {
   MessageScrollerViewport,
 } from "@/components/ui/message-scroller";
 import type { A2UICard as CardData } from "../a2ui/card";
-import { Composer } from "./Composer";
 import { MessageRow, preloadMarkdownMessage, Thinking } from "./MessageRow";
 import { ReviewPanel } from "./ReviewPanel";
-import type { ChatPaneProps } from "./types";
+import { useConversation } from "../conversation/useConversation";
+import { parsePlanReview } from "../conversation/planReview";
 import { Welcome } from "./Welcome";
 
 const A2UICard = lazy(() =>
@@ -27,17 +28,36 @@ function Card({ card }: { card: CardData }) {
   );
 }
 
-export function ChatPane({
-  messages,
-  cards,
-  reviews,
-  waitingForReview,
-  running,
-  animatedMessageId,
-  recoveryIssue,
-  onSend,
-  onReview,
-}: ChatPaneProps) {
+export function ChatPane() {
+  const {
+    messages,
+    cards,
+    pendingInterrupts,
+    running,
+    animatedMessageId,
+    recoveryIssue,
+    onSend,
+    onReview,
+  } = useConversation(
+    useShallow((state) => ({
+      messages: state.messages,
+      cards: state.cards,
+      pendingInterrupts: state.pendingInterrupts,
+      running: state.running,
+      animatedMessageId: state.animatedMessageId,
+      recoveryIssue: state.snapshotIssue ?? state.recoveryIssue,
+      onSend: state.send,
+      onReview: state.reviewPlan,
+    })),
+  );
+  const reviews = useMemo(
+    () =>
+      pendingInterrupts.flatMap((item) => {
+        const review = parsePlanReview(item);
+        return review ? [review] : [];
+      }),
+    [pendingInterrupts],
+  );
   useEffect(() => {
     // Start loading the renderer while the agent prepares its first text event.
     if (running) preloadMarkdownMessage();
@@ -68,6 +88,7 @@ export function ChatPane({
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
           <div className="mx-auto flex min-h-full w-full max-w-205 flex-col px-4 sm:px-8">
             <Welcome onSend={onSend} />
+            {recoveryIssue && <RecoveryNotice issue={recoveryIssue} />}
           </div>
         </div>
       ) : (
@@ -122,11 +143,7 @@ export function ChatPane({
                 )}
                 {recoveryIssue && (
                   <MessageScrollerItem key="recovery-issue">
-                    <Alert className="rounded-xl border-amber-300 bg-amber-50 p-3 text-amber-900">
-                      <AlertDescription className="text-amber-900">
-                        {recoveryIssue}
-                      </AlertDescription>
-                    </Alert>
+                    <RecoveryNotice issue={recoveryIssue} />
                   </MessageScrollerItem>
                 )}
               </MessageScrollerContent>
@@ -138,11 +155,14 @@ export function ChatPane({
           </MessageScroller>
         </MessageScrollerProvider>
       )}
-      <Composer
-        running={running}
-        waitingForReview={waitingForReview}
-        onSend={onSend}
-      />
     </>
+  );
+}
+
+function RecoveryNotice({ issue }: { issue: string }) {
+  return (
+    <Alert className="mb-3 rounded-xl border-amber-300 bg-amber-50 p-3 text-amber-900">
+      <AlertDescription className="text-amber-900">{issue}</AlertDescription>
+    </Alert>
   );
 }

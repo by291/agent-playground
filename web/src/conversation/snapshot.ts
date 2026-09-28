@@ -27,9 +27,11 @@ function isRunSummary(value: unknown): value is RunSummary {
 
 export async function fetchConversationSnapshot(
   threadId: string,
+  signal?: AbortSignal,
 ): Promise<ConversationSnapshot | null> {
   const response = await fetch(
     `/conversations/${encodeURIComponent(threadId)}`,
+    signal ? { signal } : {},
   );
   if (response.status === 404) return null;
   if (!response.ok) throw new Error("Conversation recovery is unavailable");

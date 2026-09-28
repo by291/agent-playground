@@ -1,21 +1,24 @@
-import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Badge } from "@/components/ui/badge";
 
 export function ConnectionStatus() {
-  const [connected, setConnected] = useState<boolean | null>(null);
+  const {
+    data: healthy,
+    isPending,
+    isError,
+  } = useQuery({
+    queryKey: ["health"],
+    queryFn: async ({ signal }) => (await fetch("/health", { signal })).ok,
+    refetchInterval: 30_000,
+    retry: 1,
+  });
+  const connected = healthy === true && !isError;
 
-  useEffect(() => {
-    fetch("/health")
-      .then((response) => setConnected(response.ok))
-      .catch(() => setConnected(false));
-  }, []);
-
-  const label =
-    connected === null
-      ? "Checking gateway"
-      : connected
-        ? "Gateway online"
-        : "Gateway offline";
+  const label = isPending
+    ? "Checking gateway"
+    : connected
+      ? "Gateway online"
+      : "Gateway offline";
 
   return (
     <Badge
@@ -25,7 +28,7 @@ export function ConnectionStatus() {
     >
       <span
         className={`size-2 rounded-full ${
-          connected === null
+          isPending
             ? "bg-amber-400"
             : connected
               ? "bg-emerald-600"

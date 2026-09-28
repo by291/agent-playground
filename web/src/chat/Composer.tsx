@@ -1,5 +1,6 @@
 import { ArrowUpIcon } from "@phosphor-icons/react";
 import { useRef, useState, type KeyboardEvent, type SubmitEvent } from "react";
+import { useShallow } from "zustand/react/shallow";
 import {
   InputGroup,
   InputGroupAddon,
@@ -7,19 +8,24 @@ import {
   InputGroupText,
   InputGroupTextarea,
 } from "@/components/ui/input-group";
-import type { ChatPaneProps } from "./types";
+import { useConversation } from "../conversation/useConversation";
 
-export function Composer({
-  running,
-  waitingForReview,
-  onSend,
-}: Pick<ChatPaneProps, "running" | "waitingForReview" | "onSend">) {
+export function Composer() {
+  const { running, recovering, waitingForReview, onSend } = useConversation(
+    useShallow((state) => ({
+      running: state.running,
+      recovering: state.recovering,
+      waitingForReview: state.pendingInterrupts.length > 0,
+      onSend: state.send,
+    })),
+  );
+  const disabled = running || recovering || waitingForReview;
   const [prompt, setPrompt] = useState("");
   const input = useRef<HTMLTextAreaElement>(null);
 
   function submit(event?: SubmitEvent<HTMLFormElement>) {
     event?.preventDefault();
-    if (!prompt.trim() || running || waitingForReview) return;
+    if (!prompt.trim() || disabled) return;
     const message = prompt;
     setPrompt("");
     void onSend(message).finally(() => input.current?.focus());
@@ -48,12 +54,14 @@ export function Composer({
               onChange={(event) => setPrompt(event.target.value)}
               onKeyDown={handleKeyDown}
               placeholder={
-                waitingForReview
-                  ? "Review the plan above to continue"
-                  : "Message Agent Playground"
+                recovering
+                  ? "Loading conversation…"
+                  : waitingForReview
+                    ? "Review the plan above to continue"
+                    : "Message Agent Playground"
               }
               aria-label="Message"
-              disabled={running || waitingForReview}
+              disabled={disabled}
               className="max-h-48 min-h-12 px-1 py-3 text-base/6"
             />
             <InputGroupAddon
@@ -70,13 +78,15 @@ export function Composer({
                 type="submit"
                 variant="default"
                 size="icon-sm"
-                disabled={running || waitingForReview || !prompt.trim()}
+                disabled={disabled || !prompt.trim()}
                 aria-label={
-                  waitingForReview
-                    ? "Review the plan to continue"
-                    : running
-                      ? "Agent is responding"
-                      : "Send message"
+                  recovering
+                    ? "Loading conversation"
+                    : waitingForReview
+                      ? "Review the plan to continue"
+                      : running
+                        ? "Agent is responding"
+                        : "Send message"
                 }
                 className="size-11 rounded-xl"
               >
