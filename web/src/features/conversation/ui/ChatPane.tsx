@@ -43,7 +43,9 @@ function Surface({
   );
 }
 
-export function ChatPane() {
+export function ChatPane({
+  onSelectPrompt,
+}: { onSelectPrompt?: (prompt: string) => void } = {}) {
   const {
     messages,
     runs,
@@ -84,27 +86,29 @@ export function ChatPane() {
   return (
     <>
       {!hasContent ? (
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
-          <div className="mx-auto flex min-h-full w-full max-w-205 flex-col px-4 sm:px-8">
-            <Welcome onSend={onSend} />
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 sm:px-8">
+          <div className="conversation-layout conversation-column flex min-h-full flex-col">
+            <Welcome
+              onSelect={onSelectPrompt ?? ((prompt) => void onSend(prompt))}
+            />
             {recoveryIssue && <RecoveryNotice issue={recoveryIssue} />}
           </div>
         </div>
       ) : (
         <MessageScrollerProvider autoScroll defaultScrollPosition="end">
           <MessageScroller className="min-h-0 flex-1">
-            <MessageScrollerViewport>
-              <MessageScrollerContent className="mx-auto w-full max-w-205 gap-8 px-4 pt-8 pb-12 sm:px-8 sm:pt-12">
+            <MessageScrollerViewport className="px-4 sm:px-8">
+              <MessageScrollerContent className="conversation-layout gap-8 pt-8 pb-12 sm:pt-12">
                 {turns.map(({ turn, artifacts, hasReply, reviewKey }) => {
                   return (
                     <Fragment key={turn.id}>
                       {turn.user && (
-                        <MessageScrollerItem>
+                        <MessageScrollerItem className="conversation-column">
                           <MessageRow message={turn.user} />
                         </MessageScrollerItem>
                       )}
                       {hasReply && (
-                        <MessageScrollerItem>
+                        <MessageScrollerItem className="conversation-column">
                           <AssistantReply
                             turn={turn}
                             animatedMessageId={animatedMessageId}
@@ -147,12 +151,16 @@ export function ChatPane() {
                   );
                 })}
                 {unattachedSurfaces.map((view) => (
-                  <MessageScrollerItem key={view.id}>
+                  <MessageScrollerItem
+                    key={view.id}
+                    className="conversation-column"
+                  >
                     <Surface view={view} />
                   </MessageScrollerItem>
                 ))}
                 {unattachedReviews.length > 0 && (
                   <MessageScrollerItem
+                    className="conversation-column"
                     key={unattachedReviews
                       .map((review) => review.interruptId)
                       .join(",")}
@@ -165,7 +173,10 @@ export function ChatPane() {
                   </MessageScrollerItem>
                 )}
                 {recoveryIssue && (
-                  <MessageScrollerItem key="recovery-issue">
+                  <MessageScrollerItem
+                    key="recovery-issue"
+                    className="conversation-column"
+                  >
                     <RecoveryNotice issue={recoveryIssue} />
                   </MessageScrollerItem>
                 )}
@@ -173,7 +184,7 @@ export function ChatPane() {
             </MessageScrollerViewport>
             <MessageScrollerButton
               size="icon-lg"
-              className="size-11 rounded-xl"
+              className="size-10 rounded-md"
             />
           </MessageScroller>
         </MessageScrollerProvider>
@@ -188,13 +199,13 @@ function ConversationPlaceholder({ issue }: { issue: string | null }) {
       role="region"
       aria-label="Messages"
       aria-busy={!issue}
-      className="min-h-0 flex-1 overflow-y-auto overscroll-contain"
+      className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 sm:px-8"
     >
-      <div className="mx-auto w-full max-w-205 px-4 pt-8 pb-12 sm:px-8 sm:pt-12">
+      <div className="conversation-layout conversation-column pt-8 pb-12 sm:pt-12">
         <div aria-hidden="true" className="space-y-8 motion-safe:animate-pulse">
-          <div className="ml-auto h-12 w-40 rounded-[20px] rounded-br-md bg-sidebar" />
-          <div className="flex gap-3 sm:gap-4">
-            <div className="size-8 shrink-0 rounded-xl bg-accent-soft" />
+          <div className="ml-auto h-12 w-40 rounded-lg bg-sidebar" />
+          <div className="relative flex">
+            <div className="absolute top-0 -left-12 hidden size-8 rounded-md bg-sidebar sm:block" />
             <div className="flex-1 space-y-3 pt-2">
               <div className="h-3 w-2/5 rounded-full bg-sidebar" />
               <div className="h-3 w-4/5 rounded-full bg-sidebar" />

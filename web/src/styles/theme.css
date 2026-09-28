@@ -1,20 +1,24 @@
 @import "tailwindcss";
 
+@source "../../node_modules/streamdown/dist/*.js";
+@source "../../node_modules/@streamdown/code/dist/*.js";
+
 @custom-variant dark (&:is(.dark *));
 
 @theme {
   --font-sans: Inter, ui-sans-serif, system-ui, sans-serif;
-  --color-canvas: #f7f8f5;
-  --color-sidebar: #f4f6f2;
+  --color-canvas: #f5f6f8;
+  --color-sidebar: #f5f6f8;
   --color-surface: #ffffff;
-  --color-ink: #1c2922;
-  --color-muted: #58675e;
-  --color-soft: #65736a;
-  --color-line: #e2e8e1;
-  --color-accent: #315e45;
-  --color-accent-hover: #244b36;
-  --color-accent-soft: #e9f2e9;
-  --color-accent-line: #cde0cf;
+  --color-ink: #20242c;
+  --color-muted: #626a77;
+  --color-soft: #626a77;
+  --color-line: #e2e5eb;
+  --color-accent: #315fd1;
+  --color-accent-hover: #264db0;
+  --color-accent-soft: #edf2ff;
+  --color-accent-line: #ced9f5;
+  --color-selected: #e9ecf1;
 }
 
 :root {
@@ -24,17 +28,17 @@
   font-synthesis: none;
   --background: var(--color-surface);
   --foreground: var(--color-ink);
-  --primary: var(--color-accent);
+  --primary: #252a34;
   --primary-foreground: #ffffff;
-  --secondary: var(--color-accent-soft);
-  --secondary-foreground: var(--color-accent);
+  --secondary: var(--color-sidebar);
+  --secondary-foreground: var(--color-ink);
   --muted: var(--color-sidebar);
   --muted-foreground: var(--color-muted);
   --border: var(--color-line);
   --input: var(--color-line);
   --ring: var(--color-accent);
   --destructive: #b42318;
-  --radius: 0.75rem;
+  --radius: 0.5rem;
 }
 
 @theme inline {

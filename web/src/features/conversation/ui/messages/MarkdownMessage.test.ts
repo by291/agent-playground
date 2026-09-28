@@ -2,7 +2,13 @@ import "../../../../../tests/dom";
 import assert from "node:assert/strict";
 import test, { afterEach, type TestContext } from "node:test";
 import { createElement } from "react";
-import { act, cleanup, render } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  waitFor,
+} from "@testing-library/react";
 import MarkdownMessage from "./MarkdownMessage";
 import {
   ReplyPresentationProvider,
@@ -10,6 +16,58 @@ import {
 } from "../ReplyPresentation";
 
 afterEach(cleanup);
+
+void test("code blocks highlight syntax and copy the original source", async (context) => {
+  const source = "int main(void) {\n  return 0;\n}\n";
+  const copied: string[] = [];
+  const clipboardDescriptor = Object.getOwnPropertyDescriptor(
+    navigator,
+    "clipboard",
+  );
+
+  Object.defineProperty(navigator, "clipboard", {
+    configurable: true,
+    value: {
+      writeText: (text: string) => {
+        copied.push(text);
+
+        return Promise.resolve();
+      },
+    },
+  });
+  context.after(() => {
+    if (clipboardDescriptor) {
+      Object.defineProperty(navigator, "clipboard", clipboardDescriptor);
+    } else {
+      Reflect.deleteProperty(navigator, "clipboard");
+    }
+  });
+
+  const page = render(
+    createElement(MarkdownMessage, {
+      text: `\`\`\`c\n${source}\`\`\``,
+      streaming: false,
+    }),
+  );
+
+  await waitFor(() => {
+    const tokens = page.container.querySelectorAll(
+      '[data-streamdown="code-block"] span[style*="--sdm-c:"]',
+    );
+
+    assert.ok(
+      [...tokens].some((token) => token.getAttribute("style")?.includes("#")),
+      "Code tokens must receive syntax colors after the language loads",
+    );
+  });
+
+  fireEvent.click(page.getByRole("button", { name: "Copy Code" }));
+  await waitFor(() => {
+    assert.deepEqual(copied, [source]);
+  });
+
+  assert.ok(page.getByRole("button", { name: "Download file" }));
+});
 
 Object.defineProperty(HTMLElement.prototype, "scrollTo", {
   configurable: true,

@@ -1,6 +1,10 @@
-import { AppBrand } from "@/components/AppBrand";
-import { PlusIcon, PulseIcon, SquaresFourIcon } from "@phosphor-icons/react";
-import { useState } from "react";
+import {
+  PlusIcon,
+  PulseIcon,
+  SidebarSimpleIcon,
+  SquaresFourIcon,
+} from "@phosphor-icons/react";
+import { useEffect, useRef, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ChatPane } from "@/features/conversation/ui/ChatPane";
@@ -8,9 +12,20 @@ import { Composer } from "@/features/conversation/ui/Composer";
 import { ContextIndicator } from "@/features/conversation/ui/ContextIndicator";
 import { useConversation } from "@/features/conversation/ConversationProvider";
 import { ActivityPanel } from "@/features/conversation/ui/ActivityPanel";
-import { ConnectionStatus } from "@/components/ConnectionStatus";
 import { Sidebar } from "@/features/conversation/ui/Sidebar";
+import { ResizableSidebar } from "./ResizableSidebar";
+import { isEmpty } from "../model/selectors";
 import { ReplyPresentationProvider } from "./ReplyPresentation";
+
+const collapsedStorageKey = "agent-playground-sidebar-collapsed";
+
+function loadSidebarCollapsed() {
+  try {
+    return localStorage.getItem(collapsedStorageKey) === "true";
+  } catch {
+    return false;
+  }
+}
 
 export function ConversationWorkspace({
   conversation,
@@ -22,22 +37,115 @@ export function ConversationWorkspace({
   development: boolean;
 }) {
   const [activityOpen, setActivityOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] =
+    useState(loadSidebarCollapsed);
+  const [prompt, setPrompt] = useState("");
+  const [navigationOpen, setNavigationOpen] = useState(false);
+  const navigation = useRef<HTMLDialogElement>(null);
+  const empty = useConversation(isEmpty);
   const showActivity = development && activityOpen;
+
+  useEffect(() => {
+    function closeOnDesktop() {
+      if (window.innerWidth >= 768) {
+        navigation.current?.close();
+      }
+    }
+
+    window.addEventListener("resize", closeOnDesktop);
+
+    return () => window.removeEventListener("resize", closeOnDesktop);
+  }, []);
+
+  function openNavigation() {
+    navigation.current?.showModal();
+    setNavigationOpen(true);
+  }
+
+  function closeNavigation() {
+    navigation.current?.close();
+  }
+
+  function startFromNavigation() {
+    closeNavigation();
+    onNewConversation();
+  }
+
+  function toggleSidebar() {
+    const collapsed = !sidebarCollapsed;
+
+    setSidebarCollapsed(collapsed);
+
+    try {
+      localStorage.setItem(collapsedStorageKey, String(collapsed));
+    } catch {
+      // Navigation still works when browser preferences cannot be saved.
+    }
+  }
 
   return (
     <div className="flex h-dvh bg-canvas font-sans text-ink">
-      <Sidebar
-        threadId={conversation.threadId}
+      <ResizableSidebar
+        collapsed={sidebarCollapsed}
+        empty={empty}
         onNewConversation={onNewConversation}
       />
+      <dialog
+        ref={navigation}
+        id="mobile-navigation"
+        aria-label="Conversation navigation"
+        onClose={() => setNavigationOpen(false)}
+        onClick={(event) => {
+          if (event.target === event.currentTarget) {
+            closeNavigation();
+          }
+        }}
+        className="workspace-navigation-dialog"
+      >
+        <Sidebar
+          mobile
+          empty={empty}
+          onNewConversation={startFromNavigation}
+          onClose={closeNavigation}
+        />
+      </dialog>
 
       <div className="flex min-w-0 flex-1 flex-col bg-surface">
-        <header className="flex h-16 shrink-0 items-center justify-between gap-3 border-b border-line px-4 sm:px-6 lg:px-9">
-          <AppBrand subtitle="Agent chat" iconClassName="xl:hidden" />
+        <header className="flex h-16 shrink-0 items-center justify-between gap-2 border-b border-line px-3 sm:gap-3 sm:px-6">
+          <div className="flex min-w-0 items-center gap-2 sm:gap-3">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              onClick={toggleSidebar}
+              aria-label={
+                sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"
+              }
+              aria-controls="workspace-sidebar"
+              aria-expanded={!sidebarCollapsed}
+              className="workspace-toolbar-button workspace-sidebar-toggle hidden size-9 md:inline-flex"
+            >
+              <SidebarSimpleIcon size={19} aria-hidden="true" />
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              onClick={openNavigation}
+              aria-label="Open navigation"
+              aria-controls="mobile-navigation"
+              aria-expanded={navigationOpen}
+              className="workspace-toolbar-button size-10 md:hidden"
+            >
+              <SidebarSimpleIcon size={20} aria-hidden="true" />
+            </Button>
+            <h1 className="truncate text-sm font-medium">
+              {empty ? "New conversation" : "Current conversation"}
+            </h1>
+          </div>
 
           <div className="flex shrink-0 items-center gap-1.5 sm:gap-3">
             <ContextIndicator />
-            <ConnectionStatus />
             {development && (
               <>
                 <a
@@ -46,7 +154,7 @@ export function ConversationWorkspace({
                   rel="noopener noreferrer"
                   aria-label="A2UI components (opens in a new tab)"
                   title="A2UI components (opens in a new tab)"
-                  className="inline-flex h-11 min-w-11 items-center justify-center gap-2 rounded-xl px-2 font-medium text-muted hover:bg-sidebar hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent xl:px-3"
+                  className="workspace-toolbar-button inline-flex h-10 min-w-10 items-center justify-center gap-2 px-2 font-medium xl:px-3"
                 >
                   <SquaresFourIcon size={20} aria-hidden="true" />
                   <span className="hidden text-xs xl:inline">Components</span>
@@ -59,14 +167,10 @@ export function ConversationWorkspace({
                     activityOpen ? "Hide run activity" : "Show run activity"
                   }
                   aria-pressed={activityOpen}
-                  className={`h-11 rounded-xl px-3 text-xs hover:bg-sidebar ${
-                    activityOpen
-                      ? "bg-accent-soft text-accent"
-                      : "text-muted hover:bg-sidebar hover:text-ink"
-                  }`}
+                  className="workspace-toolbar-button h-10 px-2 text-xs"
                 >
                   <PulseIcon size={18} aria-hidden="true" />
-                  <span className="hidden sm:inline">Activity</span>
+                  <span className="hidden xl:inline">Activity</span>
                   <ActivityCount />
                 </Button>
               </>
@@ -77,7 +181,7 @@ export function ConversationWorkspace({
               size="icon-lg"
               onClick={onNewConversation}
               aria-label="New conversation"
-              className="size-11 rounded-xl text-muted hover:bg-sidebar hover:text-ink xl:hidden"
+              className="workspace-toolbar-button size-10 md:hidden"
             >
               <PlusIcon size={20} aria-hidden="true" />
             </Button>
@@ -89,8 +193,8 @@ export function ConversationWorkspace({
             className={`${showActivity ? "hidden lg:flex" : "flex"} min-w-0 flex-1 flex-col`}
           >
             <ReplyPresentationProvider>
-              <ChatPane />
-              <Composer />
+              <ChatPane onSelectPrompt={setPrompt} />
+              <Composer prompt={prompt} onPromptChange={setPrompt} />
             </ReplyPresentationProvider>
           </main>
           {showActivity && (

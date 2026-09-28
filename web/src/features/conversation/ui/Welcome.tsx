@@ -1,55 +1,39 @@
 import {
-  ArrowRightIcon,
-  ChatCircleDotsIcon,
-  ClockIcon,
-  SparkleIcon,
+  ArrowUpRightIcon,
+  ChatCircleIcon,
+  ListChecksIcon,
 } from "@phosphor-icons/react";
 import type { ReactNode } from "react";
-type SendMessage = (message: string) => Promise<void>;
 
-export function Welcome({ onSend }: { onSend: SendMessage }) {
+export function Welcome({ onSelect }: { onSelect: (prompt: string) => void }) {
   return (
-    <div className="my-auto w-full py-6 sm:py-8">
+    <div className="my-auto w-full py-8 sm:py-12">
       <div className="welcome-intro">
-        <div className="mb-5 flex size-11 items-center justify-center rounded-2xl border border-accent-line bg-accent-soft text-accent shadow-sm">
-          <SparkleIcon size={23} weight="fill" aria-hidden="true" />
-        </div>
-        <p className="mb-2 text-xs font-semibold tracking-[0.12em] text-accent uppercase">
+        <p className="mb-4 text-[11px] font-medium tracking-[0.13em] text-muted uppercase">
           Your agent workspace
         </p>
-        <h2 className="max-w-xl text-3xl/tight font-semibold tracking-[-0.045em] text-ink sm:text-4xl">
-          A place to think out loud.
+        <h2 className="max-w-xl text-3xl/tight font-medium tracking-[-0.04em] text-ink sm:text-4xl">
+          What would you like <br />
+          to work on?
         </h2>
-        <p className="mt-3 max-w-lg text-[15px]/7 text-muted">
-          Ask a question, try a tool call, or explore what happens during an
-          agent run.
+        <p className="mt-4 max-w-lg text-sm/7 text-muted">
+          Explore a question. Shape a plan. Move a task forward.
         </p>
       </div>
-
-      <div className="welcome-suggestions mt-7 grid gap-3 sm:grid-cols-2">
+      <div className="welcome-suggestions mt-8 grid gap-3 sm:grid-cols-2">
         <Suggestion
-          icon={<ChatCircleDotsIcon size={21} aria-hidden="true" />}
-          title="Start a conversation"
-          prompt="What can you help me with?"
-          onSend={onSend}
+          icon={<ListChecksIcon size={19} aria-hidden="true" />}
+          title="Draft a plan"
+          description="Turn an idea into clear steps"
+          prompt="Create a plan for validating an agent workflow."
+          onSelect={onSelect}
         />
         <Suggestion
-          icon={<ClockIcon size={21} aria-hidden="true" />}
-          title="Try the time tool"
-          prompt="What time is it in UTC right now?"
-          onSend={onSend}
-        />
-        <Suggestion
-          icon={<SparkleIcon size={21} aria-hidden="true" />}
-          title="Build a visual plan"
-          prompt="Create an experiment plan for testing an agent workflow."
-          onSend={onSend}
-        />
-        <Suggestion
-          icon={<ChatCircleDotsIcon size={21} aria-hidden="true" />}
-          title="Try the MCP tool"
-          prompt="Use the MCP tool to add 12 and 30."
-          onSend={onSend}
+          icon={<ChatCircleIcon size={19} aria-hidden="true" />}
+          title="Explore a question"
+          description="Think through a problem together"
+          prompt="Help me think through a complex question."
+          onSelect={onSelect}
         />
       </div>
     </div>
@@ -59,32 +43,30 @@ export function Welcome({ onSend }: { onSend: SendMessage }) {
 function Suggestion({
   icon,
   title,
+  description,
   prompt,
-  onSend,
+  onSelect,
 }: {
   icon: ReactNode;
   title: string;
+  description: string;
   prompt: string;
-  onSend: SendMessage;
+  onSelect: (prompt: string) => void;
 }) {
   return (
     <button
       type="button"
-      onClick={() => void onSend(prompt)}
-      className="group flex min-h-22 items-center gap-3 rounded-2xl border border-line bg-white p-3 text-left shadow-sm transition-[transform,border-color,background-color,box-shadow] duration-200 hover:border-accent-line hover:bg-accent-soft/30 hover:shadow-md motion-safe:hover:-translate-y-0.5 motion-safe:active:scale-[0.99] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+      onClick={() => onSelect(prompt)}
+      className="group flex min-h-22 items-start gap-3 rounded-lg border border-line bg-surface p-4 text-left transition-colors duration-150 hover:border-muted/40 hover:bg-sidebar focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
     >
-      <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-accent-soft text-accent">
-        {icon}
-      </span>
+      <span className="mt-0.5 shrink-0 text-muted">{icon}</span>
       <span className="min-w-0 flex-1">
-        <span className="block text-[13px] font-semibold text-ink">
-          {title}
-        </span>
-        <span className="mt-1 block text-xs/5 text-muted">{prompt}</span>
+        <span className="block text-[13px] font-medium text-ink">{title}</span>
+        <span className="mt-1 block text-xs/5 text-muted">{description}</span>
       </span>
-      <ArrowRightIcon
-        size={17}
-        className="shrink-0 text-soft transition-transform group-hover:translate-x-0.5 group-hover:text-accent"
+      <ArrowUpRightIcon
+        size={16}
+        className="mt-0.5 shrink-0 text-muted group-hover:text-ink"
         aria-hidden="true"
       />
     </button>

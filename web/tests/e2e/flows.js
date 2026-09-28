@@ -10,7 +10,7 @@ export async function verifyFreshWelcome(tab) {
     .filter({ visible: true })
     .click();
   await page
-    .getByRole("heading", { name: "A place to think out loud." })
+    .getByRole("heading", { name: "What would you like to work on?" })
     .waitFor({ state: "visible" });
   assert.equal(
     await page.getByRole("textbox", { name: "Message" }).isEnabled(),
@@ -18,7 +18,7 @@ export async function verifyFreshWelcome(tab) {
   );
   await tab.reload();
   await page
-    .getByRole("heading", { name: "A place to think out loud." })
+    .getByRole("heading", { name: "What would you like to work on?" })
     .waitFor({ state: "visible" });
 
   return "Fresh and restored empty conversations show the welcome page.";

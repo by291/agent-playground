@@ -1,7 +1,7 @@
 import "../../../tests/dom";
 import assert from "node:assert/strict";
 import test, { afterEach } from "node:test";
-import { createElement } from "react";
+import { createElement, useState } from "react";
 import {
   act,
   cleanup,
@@ -25,6 +25,12 @@ function Messages() {
   );
 
   return createElement("output", null, text);
+}
+
+function DraftComposer() {
+  const [prompt, setPrompt] = useState("");
+
+  return createElement(Composer, { prompt, onPromptChange: setPrompt });
 }
 
 void test("a fresh page makes no snapshot request until its stream settles and restored history is delivered", async (context) => {
@@ -131,7 +137,7 @@ void test("a fresh page makes no snapshot request until its stream settles and r
           "div",
           null,
           createElement(Messages),
-          createElement(Composer),
+          createElement(DraftComposer),
         ),
       }),
     );

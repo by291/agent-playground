@@ -1,60 +1,101 @@
 import {
-  ChatCircleDotsIcon,
+  ChatCircleIcon,
   PlusIcon,
-  SparkleIcon,
+  StackIcon,
+  XIcon,
 } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
+import { ConnectionStatus } from "@/components/ConnectionStatus";
 
 export function Sidebar({
-  threadId,
+  collapsed = false,
+  mobile = false,
+  empty,
   onNewConversation,
+  onClose,
 }: {
-  threadId: string;
+  collapsed?: boolean;
+  mobile?: boolean;
+  empty: boolean;
   onNewConversation: () => void;
+  onClose?: () => void;
 }) {
+  const title = empty ? "New conversation" : "Current conversation";
+
   return (
-    <aside className="hidden w-63 shrink-0 flex-col border-r border-line bg-sidebar px-4 py-5 xl:flex">
-      <div className="flex items-center gap-3 px-2">
-        <div className="flex size-9 items-center justify-center rounded-xl bg-accent text-white shadow-sm">
-          <SparkleIcon size={21} weight="fill" aria-hidden="true" />
+    <aside
+      id={mobile ? "mobile-navigation-content" : "workspace-sidebar"}
+      aria-label="Conversation navigation"
+      data-collapsed={collapsed}
+      className="workspace-sidebar flex size-full shrink-0 flex-col overflow-hidden border-r border-line bg-sidebar px-3 py-6"
+    >
+      <div className="flex h-10 shrink-0 items-center gap-2.5 px-1">
+        <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground">
+          <StackIcon size={20} aria-hidden="true" />
         </div>
-        <div>
-          <p className="text-[14px] font-semibold tracking-[-0.03em]">
-            agent playground
+        <div
+          className="workspace-sidebar-label min-w-0"
+          aria-hidden={collapsed}
+        >
+          <p className="text-[13px] font-semibold tracking-tight">
+            Agent Playground
           </p>
-          <p className="text-[11px] text-soft">Runtime workbench</p>
+          <p className="mt-0.5 text-xs text-muted">Workspace</p>
         </div>
+        {mobile && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            onClick={onClose}
+            aria-label="Close navigation"
+            className="ml-auto size-9 text-muted"
+          >
+            <XIcon size={18} aria-hidden="true" />
+          </Button>
+        )}
       </div>
 
       <Button
         type="button"
         variant="outline"
         onClick={onNewConversation}
-        className="mt-8 h-11 justify-start gap-3 rounded-xl border-accent-line bg-white px-3 text-[13px] text-accent hover:bg-accent-soft hover:text-accent"
+        aria-label="New conversation"
+        title={collapsed ? "New conversation" : undefined}
+        className="workspace-sidebar-new h-10 w-full justify-start gap-2 rounded-md border-line bg-surface px-3 text-[13px] text-ink hover:bg-selected hover:text-ink"
       >
         <PlusIcon size={18} aria-hidden="true" />
-        New conversation
+        <span className="workspace-sidebar-label" aria-hidden={collapsed}>
+          New conversation
+        </span>
       </Button>
 
-      <p className="mt-9 px-3 text-[10px] font-semibold tracking-[0.14em] text-soft uppercase">
-        Conversations
-      </p>
-      <div className="mt-3 flex h-11 items-center gap-3 rounded-xl bg-white px-3 text-[13px] font-medium text-ink shadow-sm">
-        <ChatCircleDotsIcon
+      <div className="workspace-sidebar-section" aria-hidden={collapsed}>
+        <p className="min-h-0 overflow-hidden px-2 text-[11px]/4 font-medium tracking-widest text-muted uppercase">
+          Conversations
+        </p>
+      </div>
+      <div
+        aria-label={title}
+        title={collapsed ? title : undefined}
+        className="workspace-sidebar-current flex h-10 w-full items-center gap-2 rounded-md bg-selected px-3 text-[13px]"
+      >
+        <ChatCircleIcon
           size={18}
-          className="text-accent"
+          className="size-4 shrink-0 text-accent"
           aria-hidden="true"
         />
-        Current conversation
+        <span
+          className="workspace-sidebar-label truncate"
+          aria-hidden={collapsed}
+        >
+          {title}
+        </span>
       </div>
-      <div className="mt-auto border-t border-line px-3 pt-5">
-        <p className="text-[11px] font-medium text-muted">Current thread</p>
-        <code className="mt-1 block font-mono text-xs text-ink">
-          {threadId.slice(0, 8)}…
-        </code>
-        <p className="mt-4 text-[11px]/5 text-soft">
-          Python agent · Aegra · AG-UI
-        </p>
+      <div
+        className={`mt-auto w-full border-t border-line pt-4 ${collapsed ? "text-center" : "px-2"}`}
+      >
+        <ConnectionStatus compact={collapsed} />
       </div>
     </aside>
   );

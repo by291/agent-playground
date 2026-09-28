@@ -14,6 +14,7 @@ import {
   type Components,
   type ExtraProps,
 } from "streamdown";
+import { code } from "@streamdown/code";
 import { compactStreamingText, segmentStreamingText } from "./streamingText";
 import { textReveal, usePacedText } from "./usePacedText";
 import { useReportReplyPresentation } from "../ReplyPresentation";
@@ -28,6 +29,7 @@ interface MarkdownContentProps extends MarkdownProps {
 }
 
 const lastBlockContext = createContext(-1);
+const markdownPlugins = { code };
 const fadeOptions = {
   animation: "fadeIn",
   duration: textReveal.fadeDurationMs,
@@ -99,6 +101,8 @@ const MarkdownContent = memo(function MarkdownContent({
         mode={streaming ? "streaming" : "static"}
         animated={animated ? fadeOptions : false}
         isAnimating={streaming}
+        plugins={markdownPlugins}
+        codeBlockMaxHeight={480}
         components={components}
         BlockComponent={StreamingBlock}
         parseMarkdownIntoBlocksFn={parseBlocks}

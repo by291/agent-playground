@@ -103,14 +103,14 @@ export function ReviewPanel({
         return (
           <fieldset
             key={draft.interruptId}
-            className="review-panel-enter min-w-0 space-y-4 rounded-2xl border border-accent-line bg-accent-soft/40 p-4 shadow-sm sm:p-5"
+            className="review-panel-enter min-w-0 space-y-4 overflow-hidden rounded-lg border border-line bg-surface p-4 sm:p-5"
           >
             <legend className="sr-only">Review plan {index + 1}</legend>
-            <div>
-              <p className="text-[11px] font-semibold tracking-[0.14em] text-accent uppercase">
+            <div className="-mx-4 -mt-4 border-b border-line bg-sidebar px-4 py-3 sm:-mx-5 sm:-mt-5 sm:px-5">
+              <p className="text-xs font-medium text-amber-800">
                 {running ? "Applying review" : "Review required"}
               </p>
-              <p className="mt-2 text-sm text-muted">
+              <p className="mt-1 text-xs/5 text-muted">
                 Edit the plan below, then approve or reject it.
               </p>
             </div>
@@ -148,7 +148,7 @@ export function ReviewPanel({
                   multiple ? draft.decision === "approve" : undefined
                 }
                 onClick={multiple ? () => choose(index, "approve") : undefined}
-                className="h-11 rounded-xl px-4"
+                className="h-10 rounded-md px-4"
               >
                 Approve plan
               </Button>
@@ -160,7 +160,7 @@ export function ReviewPanel({
                   multiple ? draft.decision === "reject" : undefined
                 }
                 onClick={() => choose(index, "reject")}
-                className="h-11 rounded-xl bg-white px-4"
+                className="h-10 rounded-md bg-surface px-4"
               >
                 Reject
               </Button>
@@ -183,7 +183,7 @@ export function ReviewPanel({
           <Button
             type="submit"
             disabled={running || incomplete}
-            className="h-11 rounded-xl px-4"
+            className="h-10 rounded-md px-4"
           >
             {running ? "Continuing…" : "Continue workflow"}
           </Button>

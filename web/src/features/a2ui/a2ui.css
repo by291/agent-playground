@@ -1,9 +1,9 @@
 .a2ui-card {
-  --a2ui-color-surface: #fff;
+  --a2ui-color-surface: var(--color-surface);
   --a2ui-color-on-surface: var(--color-ink);
   --a2ui-color-on-background: var(--color-ink);
   --a2ui-color-primary: var(--color-accent);
-  --a2ui-color-border: var(--color-accent-line);
-  --a2ui-text-caption-color: var(--color-accent);
+  --a2ui-color-border: var(--color-line);
+  --a2ui-text-caption-color: var(--color-muted);
   --a2ui-font-family-title: var(--font-sans);
 }

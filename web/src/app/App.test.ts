@@ -40,19 +40,19 @@ void test("refreshing a conversation renders its page layout while history recov
     /<header\b/,
     "The page layout must be present immediately",
   );
-  assert.match(markup, /placeholder="Message Agent Playground"/);
+  assert.match(markup, /placeholder="Describe a task or ask a question…"/);
   assert.match(markup, /aria-label="Messages"/);
   assert.match(markup, /aria-busy="true"/);
   assert.doesNotMatch(markup, /Loading conversation/);
-  assert.doesNotMatch(markup, /A place to think out loud/);
+  assert.doesNotMatch(markup, /What would you like/);
 });
 
 void test("a new or saved empty conversation renders the welcome screen immediately", () => {
   for (const saved of [null, { threadId: "empty-conversation", empty: true }]) {
     const markup = renderInitialPage(saved);
 
-    assert.match(markup, /A place to think out loud/);
-    assert.match(markup, /Start a conversation/);
+    assert.match(markup, /What would you like/);
+    assert.match(markup, /Draft a plan/);
     assert.doesNotMatch(markup, /aria-busy="true"/);
     assert.doesNotMatch(markup, /animate-pulse/);
     assert.doesNotMatch(markup, /Loading conversation/);
@@ -72,7 +72,7 @@ void test("a pending submission requires recovery even when its old empty marker
   });
 
   assert.match(markup, /aria-busy="true"/);
-  assert.doesNotMatch(markup, /A place to think out loud/);
+  assert.doesNotMatch(markup, /What would you like/);
 });
 
 void test("rendering without development mode omits debug tool controls", () => {

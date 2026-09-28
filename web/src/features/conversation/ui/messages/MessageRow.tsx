@@ -1,6 +1,6 @@
 import type { Message } from "@ag-ui/client";
 import type { ReactNode } from "react";
-import { SparkleIcon } from "@phosphor-icons/react";
+import { StackIcon } from "@phosphor-icons/react";
 import { Bubble, BubbleContent } from "@/components/ui/bubble";
 import {
   Message as ConversationMessage,
@@ -32,7 +32,7 @@ export function MessageRow({
             align="end"
             className="max-w-[85%] sm:max-w-[75%]"
           >
-            <BubbleContent className="rounded-[20px] rounded-br-md px-4 py-3 text-[15px]/7 whitespace-pre-wrap">
+            <BubbleContent className="rounded-lg border-line px-4 py-3 text-[15px]/7 whitespace-pre-wrap">
               {text}
             </BubbleContent>
           </Bubble>
@@ -50,12 +50,9 @@ export function MessageRow({
 
 export function AssistantFrame({ children }: { children: ReactNode }) {
   return (
-    <ConversationMessage
-      className="gap-3 sm:gap-4"
-      aria-label="Assistant reply"
-    >
-      <MessageAvatar className="mt-0.5 size-8 self-start rounded-xl bg-accent-soft text-accent">
-        <SparkleIcon size={18} weight="fill" aria-hidden="true" />
+    <ConversationMessage className="gap-0" aria-label="Assistant reply">
+      <MessageAvatar className="absolute top-0.5 -left-12 hidden size-8 self-start rounded-md bg-sidebar text-ink sm:flex">
+        <StackIcon size={18} aria-hidden="true" />
       </MessageAvatar>
       <MessageContent className="pt-0.5">{children}</MessageContent>
     </ConversationMessage>

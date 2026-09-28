@@ -1,6 +1,6 @@
 import { composerState } from "../model/selectors";
 import { ArrowUpIcon } from "@phosphor-icons/react";
-import { useState, type KeyboardEvent, type SubmitEvent } from "react";
+import { type KeyboardEvent, type SubmitEvent } from "react";
 import { useShallow } from "zustand/react/shallow";
 import {
   InputGroup,
@@ -12,16 +12,21 @@ import {
 import { useConversation } from "../ConversationProvider";
 import { useReplyPresentationBusy } from "./ReplyPresentation";
 
-export function Composer() {
+export function Composer({
+  prompt,
+  onPromptChange,
+}: {
+  prompt: string;
+  onPromptChange: (prompt: string) => void;
+}) {
   const { running, recovering, waitingForReview, onSend } = useConversation(
     useShallow(composerState),
   );
   const presenting = useReplyPresentationBusy();
   const responding = running || presenting;
   const disabled = responding || recovering || waitingForReview;
-  const [prompt, setPrompt] = useState("");
 
-  let placeholder = "Message Agent Playground";
+  let placeholder = "Describe a task or ask a question…";
   let sendLabel = responding ? "Agent is responding" : "Send message";
 
   if (recovering) {
@@ -40,7 +45,7 @@ export function Composer() {
 
     const message = prompt;
 
-    setPrompt("");
+    onPromptChange("");
     void onSend(message);
   }
 
@@ -56,14 +61,14 @@ export function Composer() {
   }
 
   return (
-    <div className="shrink-0 bg-white px-4 pt-3 pb-4 sm:px-8 sm:pb-6">
-      <div className="mx-auto w-full max-w-205">
+    <div className="shrink-0 bg-surface px-4 pt-3 pb-4 sm:px-8 sm:pb-5">
+      <div className="conversation-layout conversation-column">
         <form onSubmit={submit}>
-          <InputGroup className="h-auto flex-col items-stretch gap-1 rounded-[22px] border-line bg-white p-3 shadow-[0_8px_32px_rgba(28,41,34,0.08)] transition-[border-color,box-shadow] duration-200 focus-within:border-accent-line focus-within:shadow-[0_10px_36px_rgba(49,94,69,0.13)] sm:p-4">
+          <InputGroup className="h-auto flex-col items-stretch gap-1 rounded-xl border-line bg-surface p-3 shadow-[0_3px_12px_rgba(32,36,44,0.04)] transition-colors duration-150 focus-within:border-accent sm:p-4">
             <InputGroupTextarea
               rows={1}
               value={prompt}
-              onChange={(event) => setPrompt(event.target.value)}
+              onChange={(event) => onPromptChange(event.target.value)}
               onKeyDown={handleKeyDown}
               placeholder={placeholder}
               aria-label="Message"
@@ -86,7 +91,7 @@ export function Composer() {
                 size="icon-sm"
                 disabled={disabled || !prompt.trim()}
                 aria-label={sendLabel}
-                className="size-11 rounded-xl"
+                className="size-10 rounded-md"
               >
                 <ArrowUpIcon size={19} weight="bold" aria-hidden="true" />
               </InputGroupButton>
@@ -94,7 +99,7 @@ export function Composer() {
           </InputGroup>
         </form>
         <p className="mt-3 hidden text-center text-[11px] text-soft sm:block">
-          Responses may be inaccurate. Verify important information.
+          Review important information before acting.
         </p>
       </div>
     </div>

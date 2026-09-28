@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Badge } from "@/components/ui/badge";
 
-export function ConnectionStatus() {
+export function ConnectionStatus({ compact = false }: { compact?: boolean }) {
   const {
     data: healthy,
     isPending,
@@ -22,17 +22,19 @@ export function ConnectionStatus() {
     statusColor = "bg-amber-400";
   } else if (connected) {
     label = "Gateway online";
-    statusColor = "bg-emerald-600";
+    statusColor = "bg-accent";
   }
 
   return (
     <Badge
       variant="outline"
       role="status"
-      className="hidden h-7 items-center gap-2 border-line bg-white px-2.5 text-xs text-muted md:inline-flex"
+      aria-label={label}
+      title={compact ? label : undefined}
+      className={`h-8 gap-2 border-transparent bg-transparent text-xs text-muted ${compact ? "justify-center px-2" : "justify-start px-0"}`}
     >
       <span className={`size-2 rounded-full ${statusColor}`} />
-      {label}
+      <span className={compact ? "sr-only" : undefined}>{label}</span>
     </Badge>
   );
 }

@@ -1,4 +1,4 @@
-import { SparkleIcon } from "@phosphor-icons/react";
+import { StackIcon } from "@phosphor-icons/react";
 import { Badge } from "./ui/badge";
 import { cn } from "@/lib/utils";
 
@@ -15,11 +15,11 @@ export function AppBrand({
     <div className="flex min-w-0 items-center gap-3">
       <div
         className={cn(
-          "flex size-8 shrink-0 items-center justify-center rounded-xl bg-accent text-white",
+          "flex size-8 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground",
           iconClassName,
         )}
       >
-        <SparkleIcon size={19} weight="fill" aria-hidden="true" />
+        <StackIcon size={19} aria-hidden="true" />
       </div>
       <div className="min-w-0">
         <div className="flex items-center gap-2">

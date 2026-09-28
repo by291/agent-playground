@@ -35,7 +35,7 @@ export function ContextIndicator() {
         <Button
           variant="ghost"
           type="button"
-          className="h-11 gap-2 rounded-xl px-2 text-muted hover:bg-sidebar hover:text-ink sm:px-3"
+          className="workspace-toolbar-button h-10 gap-1.5 px-2 sm:gap-2 sm:px-3"
           aria-label={
             usage
               ? `Estimated context usage ${label}. Show details`
@@ -44,7 +44,7 @@ export function ContextIndicator() {
         >
           <svg
             viewBox="0 0 24 24"
-            className={`size-5 shrink-0 ${nearLimit ? "text-amber-600" : "text-accent"}`}
+            className={`size-5 shrink-0 ${nearLimit ? "text-amber-600" : "text-muted"}`}
             fill="none"
             aria-hidden="true"
           >
@@ -78,7 +78,7 @@ export function ContextIndicator() {
           align="end"
           sideOffset={8}
           collisionPadding={16}
-          className="z-50 w-80 max-w-[calc(100vw-2rem)] rounded-2xl border border-line bg-surface p-5 text-ink shadow-xl outline-none"
+          className="z-50 w-80 max-w-[calc(100vw-2rem)] rounded-lg border border-line bg-surface p-5 text-ink shadow-lg outline-none"
           aria-label="Context usage details"
         >
           <div className="mb-4 flex items-center justify-between gap-3">
