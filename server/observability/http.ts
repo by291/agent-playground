@@ -6,6 +6,7 @@ import {
   metrics,
 } from "@opentelemetry/api";
 import { createMiddleware } from "hono/factory";
+import { routePath } from "hono/route";
 import { tracer, recordError } from "./tracing";
 import { logger } from "./logger";
 
@@ -20,7 +21,7 @@ export const observeRequest = createMiddleware(async (context, next) => {
     context.req.header(),
   );
   const span = tracer.startSpan(
-    `${context.req.method} ${context.req.routePath}`,
+    `${context.req.method} ${routePath(context)}`,
     { kind: SpanKind.SERVER },
     parent,
   );
@@ -41,7 +42,7 @@ export const observeRequest = createMiddleware(async (context, next) => {
     } finally {
       const attributes = {
         "http.request.method": context.req.method,
-        "http.route": context.req.routePath,
+        "http.route": routePath(context),
         "http.response.status_code": context.res.status,
       };
 

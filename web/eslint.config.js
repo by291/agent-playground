@@ -26,6 +26,7 @@ export default defineConfig([
       "better-tailwindcss": { entryPoint: "src/style.css", rootFontSize: 16 },
     },
     rules: {
+      "@typescript-eslint/no-deprecated": "error",
       "better-tailwindcss/enforce-canonical-classes": "error",
       "better-tailwindcss/no-unnecessary-whitespace": "error",
     },

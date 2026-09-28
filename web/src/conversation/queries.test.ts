@@ -21,12 +21,10 @@ void test("thread-specific queries fetch the correct snapshot and treat a new th
   const client = new QueryClient();
 
   try {
-    const existing = await client.fetchQuery(
+    const existing = await client.query(
       conversationQueryOptions("existing/thread"),
     );
-    const empty = await client.fetchQuery(
-      conversationQueryOptions("new-thread"),
-    );
+    const empty = await client.query(conversationQueryOptions("new-thread"));
 
     assert.equal(existing?.messages[0]?.content, "Recovered");
     assert.equal(empty, null);
@@ -57,7 +55,7 @@ void test("cancelling a conversation query aborts its HTTP request", async (cont
   );
   const client = new QueryClient();
   const options = conversationQueryOptions("old-thread");
-  const request = client.fetchQuery(options);
+  const request = client.query(options);
   const rejected = assert.rejects(request);
 
   await client.cancelQueries({ queryKey: options.queryKey });
@@ -83,7 +81,7 @@ void test("recovery rejects legacy A2UI output wrappers", async (context) => {
 
   try {
     await assert.rejects(
-      client.fetchQuery(conversationQueryOptions("legacy-thread")),
+      client.query(conversationQueryOptions("legacy-thread")),
       /Invalid A2UI output/,
     );
   } finally {
@@ -108,7 +106,7 @@ void test("an unknown run status cannot unlock the composer as a valid snapshot"
 
   try {
     await assert.rejects(
-      client.fetchQuery(conversationQueryOptions("invalid-status")),
+      client.query(conversationQueryOptions("invalid-status")),
       /Invalid conversation snapshot/,
     );
   } finally {
