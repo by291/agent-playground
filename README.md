@@ -97,6 +97,12 @@ The header's context ring opens estimated token usage and a breakdown of system 
 
 The browser sends only the newest user message for a normal turn. Aegra's checkpoint owns model history; archived chat is not reintroduced after compaction. The complete public transcript is kept separately in the application database. Internal summaries and compressed message snapshots do not replace that transcript. Current-run replies are kept in checkpoint state until synchronization so compaction during a tool loop cannot erase recoverable replies. Context usage is synchronized with the latest finished or interrupted checkpoint and recovered after reload without extra upstream reads on every poll.
 
+## Tool process in chat
+
+Each user turn has one assistant reply area. Tool calls appear in a collapsed process above the final answer. Expanding the process shows the assistant's accompanying text and each tool's execution status; expanding a tool shows its parameters and raw result. This text is ordinary assistant content, not private reasoning. A user-opened process stays open when the run finishes. Tool failures remain visible while collapsed, and workflow cards and review forms remain directly accessible outside the process.
+
+Assistant tool calls and tool results are archived as official AG-UI messages in `conversation_messages`, including empty assistant messages that contain tool calls. The Python checkpoint keeps these public messages recoverable across context compaction and review resumes. Refresh restores the saved process, initially collapsed. Previously archived text-only replies still share one assistant area, but their missing tool metadata is not reconstructed from text.
+
 ## Observability
 
 Run `make dev-observability` to start the optional local Langfuse, Collector, Prometheus, and Grafana stack together with tracing-enabled apps. Langfuse is on `http://127.0.0.1:3031`; Grafana is on `http://127.0.0.1:3032`. The graph factory restores persisted W3C trace context around each worker execution, connecting browser, server, model, and tool spans without modifying Aegra. See [the observability guide](docs/observability.md) for local credentials, individual commands, deployment settings, metric semantics, and current limits.

@@ -9,6 +9,7 @@ from langchain_core.callbacks.manager import AsyncCallbackManagerForLLMRun
 from langchain_core.language_models.fake_chat_models import FakeMessagesListChatModel
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMessage
 from langchain_core.outputs import ChatResult
+from langchain_core.tools import tool
 from langgraph.checkpoint.memory import InMemorySaver
 from pydantic import PrivateAttr
 
@@ -147,3 +148,54 @@ def test_a_single_oversized_request_fails_without_silently_dropping_it(
         graph.invoke({"messages": [HumanMessage(content="oversized " * 1000)]})
 
     assert not model._inputs
+
+
+@pytest.mark.parametrize("asynchronous", [False, True])
+def test_public_tool_messages_survive_compaction_within_a_turn(
+    monkeypatch: pytest.MonkeyPatch, asynchronous: bool
+):
+    monkeypatch.setenv("CONTEXT_WINDOW_TOKENS", "20000")
+    monkeypatch.setenv("CONTEXT_COMPACT_RATIO", "0.5")
+
+    @tool
+    def lookup_fact() -> str:
+        """Return a known fact for the test."""
+        return "Project Cedar launched in 2024."
+
+    model = RecordingModel(
+        responses=[
+            AIMessage(
+                id="lookup-note",
+                content="I'll look up the project.",
+                tool_calls=[{"id": "lookup", "name": "lookup_fact", "args": {}}],
+            ),
+            AIMessage(
+                id="clock-note",
+                content="Now check the date. " + "history " * 3500,
+                tool_calls=[{"id": "clock", "name": "get_current_time", "args": {}}],
+            ),
+            AIMessage(id="answer", content="Cedar launched in 2024."),
+        ]
+    )
+    summary = RecordingModel(responses=[AIMessage(content="Cedar launched in 2024.")])
+    graph = make_graph(
+        model=model,
+        summary_model=summary,
+        mcp_tools=[lookup_fact],
+        checkpointer=InMemorySaver(),
+    )
+    config = {"configurable": {"thread_id": "tool-compaction"}}
+    inputs = {"messages": [HumanMessage(content="Check the project and the date.")]}
+
+    if asynchronous:
+        result = asyncio.run(graph.ainvoke(inputs, config))
+    else:
+        result = graph.invoke(inputs, config)
+
+    assert result["context_usage"]["compactions"] > 0
+    replies = graph.get_state(config).values["response_messages"]
+    assert [message.type for message in replies] == ["ai", "tool", "ai", "tool", "ai"]
+    assert replies[1].tool_call_id == "lookup"
+    assert replies[1].content == "Project Cedar launched in 2024."
+    assert replies[0].content == "I'll look up the project."
+    assert replies[-1].content == "Cedar launched in 2024."

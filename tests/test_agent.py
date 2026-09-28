@@ -262,6 +262,10 @@ def test_agent_resumes_workflow_tool_after_review():
 
         assert result == "Approved experiment plan: Approved title\n1. Run one trial."
         assert completed["messages"][-1].content == "The approved plan is ready."
+        public_messages = resumed_graph.get_state(config).values["response_messages"]
+        assert [message.type for message in public_messages] == ["ai", "tool", "ai"]
+        assert public_messages[0].tool_calls[0]["id"] == "call-plan"
+        assert public_messages[1].tool_call_id == "call-plan"
 
     asyncio.run(check())
 

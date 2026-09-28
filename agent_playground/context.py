@@ -10,6 +10,7 @@ from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import (
     AIMessage,
     AnyMessage,
+    HumanMessage,
     MessageLikeRepresentation,
     SystemMessage,
     ToolMessage,
@@ -47,8 +48,10 @@ class ContextUsage(TypedDict):
 
 class ContextState(AgentState[Any]):
     context_usage: NotRequired[Annotated[ContextUsage, OmitFromInput]]
-    # Keep this run's replies recoverable even if later tool loops compact them.
-    response_messages: NotRequired[Annotated[list[AIMessage], PrivateStateAttr]]
+    # Keep public replies and tool results recoverable across compaction and review.
+    response_messages: NotRequired[
+        Annotated[list[AIMessage | ToolMessage], PrivateStateAttr]
+    ]
 
 
 class ContextSettings(BaseModel):
@@ -79,6 +82,35 @@ class ContextSettings(BaseModel):
 def estimate_tokens(messages: Iterable[MessageLikeRepresentation]) -> int:
     # A conservative character ratio also accommodates the playground's Chinese text.
     return count_tokens_approximately(messages, chars_per_token=2.0)
+
+
+def recoverable_responses(state: ContextState) -> list[AIMessage | ToolMessage]:
+    messages = state["messages"]
+    start = 0
+
+    for index, message in enumerate(messages):
+        if isinstance(message, HumanMessage):
+            start = index + 1
+
+    responses = list(state.get("response_messages", []))
+    saved_ids = {message.id for message in responses if message.id is not None}
+
+    for message in messages[start:]:
+        if not isinstance(message, (AIMessage, ToolMessage)):
+            continue
+
+        if message.additional_kwargs.get("lc_source") == "summarization":
+            continue
+
+        if message.id is not None and message.id in saved_ids:
+            continue
+
+        responses.append(message)
+
+        if message.id is not None:
+            saved_ids.add(message.id)
+
+    return responses
 
 
 class ContextMiddleware(SummarizationMiddleware):
@@ -134,17 +166,25 @@ class ContextMiddleware(SummarizationMiddleware):
     def before_model(
         self, state: AgentState[Any], runtime: Runtime[Any]
     ) -> dict[str, Any]:
+        responses = recoverable_responses(cast("ContextState", state))
         update = super().before_model(state, runtime)
 
-        return self._context_update(cast("ContextState", state), update)
+        return {
+            **self._context_update(cast("ContextState", state), update),
+            "response_messages": responses,
+        }
 
     @override
     async def abefore_model(
         self, state: AgentState[Any], runtime: Runtime[Any]
     ) -> dict[str, Any]:
+        responses = recoverable_responses(cast("ContextState", state))
         update = await super().abefore_model(state, runtime)
 
-        return self._context_update(cast("ContextState", state), update)
+        return {
+            **self._context_update(cast("ContextState", state), update),
+            "response_messages": responses,
+        }
 
     @override
     def after_model(
@@ -152,13 +192,10 @@ class ContextMiddleware(SummarizationMiddleware):
     ) -> dict[str, Any]:
         context_state = cast("ContextState", state)
         usage = self._usage(context_state, state["messages"])
-        response = state["messages"][-1]
-        responses = list(context_state.get("response_messages", []))
-
-        if isinstance(response, AIMessage):
-            responses.append(response)
-
-        return {"context_usage": usage, "response_messages": responses}
+        return {
+            "context_usage": usage,
+            "response_messages": recoverable_responses(context_state),
+        }
 
     def _context_update(
         self, state: ContextState, update: dict[str, Any] | None

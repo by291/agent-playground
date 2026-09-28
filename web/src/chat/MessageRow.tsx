@@ -1,4 +1,5 @@
 import type { Message } from "@ag-ui/client";
+import type { ReactNode } from "react";
 import { SparkleIcon } from "@phosphor-icons/react";
 import { Bubble, BubbleContent } from "@/components/ui/bubble";
 import {
@@ -41,33 +42,54 @@ export function MessageRow({
   }
 
   return (
-    <ConversationMessage className="gap-3 sm:gap-4">
+    <AssistantFrame>
+      <AssistantText message={message} smoothText={smoothText} />
+    </AssistantFrame>
+  );
+}
+
+export function AssistantFrame({ children }: { children: ReactNode }) {
+  return (
+    <ConversationMessage
+      className="gap-3 sm:gap-4"
+      aria-label="Assistant reply"
+    >
       <MessageAvatar className="mt-0.5 size-8 self-start rounded-xl bg-accent-soft text-accent">
         <SparkleIcon size={18} weight="fill" aria-hidden="true" />
       </MessageAvatar>
-      <MessageContent className="pt-0.5">
-        <Bubble variant="ghost" className="w-full">
-          <BubbleContent className="chat-markdown w-full overflow-visible text-ink">
-            <MarkdownMessage
-              key={message.id}
-              text={text}
-              animate={smoothText}
-            />
-          </BubbleContent>
-        </Bubble>
-      </MessageContent>
+      <MessageContent className="pt-0.5">{children}</MessageContent>
     </ConversationMessage>
   );
 }
 
-export function Thinking() {
+export function AssistantText({
+  message,
+  smoothText = false,
+}: {
+  message: Message;
+  smoothText?: boolean;
+}) {
   return (
-    <div className="flex items-center gap-4 text-sm text-muted" role="status">
-      <div className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-accent-soft text-accent">
-        <SparkleIcon size={18} weight="fill" aria-hidden="true" />
-      </div>
-      <span>Thinking</span>
-      <span className="-ml-3 flex items-center gap-1" aria-hidden="true">
+    <Bubble variant="ghost" className="w-full">
+      <BubbleContent className="chat-markdown w-full overflow-visible text-ink">
+        <MarkdownMessage
+          key={message.id}
+          text={messageText(message)}
+          animate={smoothText}
+        />
+      </BubbleContent>
+    </Bubble>
+  );
+}
+
+export function ThinkingStatus({ label = "Thinking" }: { label?: string }) {
+  return (
+    <div
+      className="flex min-h-8 items-center gap-2 text-sm text-muted"
+      role="status"
+    >
+      <span>{label}</span>
+      <span className="flex items-center gap-1" aria-hidden="true">
         <span className="thinking-dot" />
         <span className="thinking-dot" />
         <span className="thinking-dot" />

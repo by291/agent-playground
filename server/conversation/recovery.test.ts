@@ -18,6 +18,7 @@ let unavailable = false;
 let stateReads = 0;
 let listedRuns: unknown[] = [];
 let compactedCheckpoint = false;
+let toolCheckpoint = false;
 const contextUsage = {
   model: "deepseek-flash",
   usedTokens: 1200,
@@ -60,6 +61,32 @@ const upstream = createServer((request, response) => {
                     id: "latest-reply",
                     type: "ai",
                     content: "Latest response",
+                  },
+                ],
+              }
+            : {}),
+          ...(toolCheckpoint
+            ? {
+                response_messages: [
+                  {
+                    id: "tool-request",
+                    type: "ai",
+                    content: "I'll check.",
+                    tool_calls: [
+                      { id: "clock", name: "get_current_time", args: {} },
+                    ],
+                  },
+                  {
+                    id: "tool-result",
+                    type: "tool",
+                    tool_call_id: "clock",
+                    content: "Clock unavailable",
+                    status: "error",
+                  },
+                  {
+                    id: "tool-answer",
+                    type: "ai",
+                    content: "The clock is unavailable.",
                   },
                 ],
               }
@@ -340,6 +367,42 @@ void test("a compacted checkpoint recovers usage and replies removed from model 
     assert.equal(stateReads, beforeReads);
   } finally {
     compactedCheckpoint = false;
+  }
+});
+
+void test("tool calls and errors survive archival and repeated conversation refreshes", async () => {
+  toolCheckpoint = true;
+
+  try {
+    const { synchronizeConversation } = await import("./checkpoint-sync");
+    const { conversationSnapshot } = await import("./conversation-snapshot");
+    const run = await admit("tool-checkpoint");
+
+    await database.db
+      .update(schema.conversationRuns)
+      .set({ status: "completed" })
+      .where(eq(schema.conversationRuns.aguiRunId, run.aguiRunId));
+    await synchronizeConversation(run.threadId);
+    const saved = await conversationSnapshot(run.threadId);
+
+    assert.deepEqual(
+      saved?.messages.map((message) => message.role),
+      ["user", "assistant", "tool", "assistant"],
+    );
+    const caller = saved?.messages[1];
+    const result = saved?.messages[2];
+
+    assert.ok(caller?.role === "assistant" && result?.role === "tool");
+    assert.equal(caller.toolCalls?.[0]?.function.arguments, "{}");
+    assert.equal(result.toolCallId, "clock");
+    assert.equal(result.error, "Clock unavailable");
+    await synchronizeConversation(run.threadId);
+    assert.deepEqual(
+      (await conversationSnapshot(run.threadId))?.messages,
+      saved?.messages,
+    );
+  } finally {
+    toolCheckpoint = false;
   }
 });
 

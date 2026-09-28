@@ -1,6 +1,4 @@
-import { MessageSchema } from "@ag-ui/client";
 import { langGraphInterruptsToAGUI } from "@ag-ui/langgraph";
-import type { ThreadState } from "@langchain/langgraph-sdk";
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { aegra } from "../agent/client";
 import { db } from "../db/database";
@@ -14,46 +12,7 @@ import { isRunFinished } from "../../shared/run-status";
 import { parseContextUsage } from "../../shared/context-usage";
 import { latestRun } from "./run-store";
 import { reconcileRun } from "./recovery";
-
-function completedMessages(state: ThreadState) {
-  const values: unknown = state.values;
-
-  if (
-    !values ||
-    typeof values !== "object" ||
-    !("messages" in values) ||
-    !Array.isArray(values.messages)
-  ) {
-    return [];
-  }
-
-  const messages =
-    "response_messages" in values && Array.isArray(values.response_messages)
-      ? values.response_messages
-      : values.messages;
-
-  return messages.flatMap((raw: unknown) => {
-    if (
-      !raw ||
-      typeof raw !== "object" ||
-      !("type" in raw) ||
-      raw.type !== "ai" ||
-      !("content" in raw) ||
-      typeof raw.content !== "string" ||
-      !raw.content.trim()
-    ) {
-      return [];
-    }
-
-    const parsed = MessageSchema.safeParse({
-      id: "id" in raw ? raw.id : undefined,
-      role: "assistant",
-      content: raw.content,
-    });
-
-    return parsed.success ? [parsed.data] : [];
-  });
-}
+import { completedMessages } from "../agent/messages";
 
 async function readCompletedCheckpoint(run: RunRow) {
   for (let attempt = 0; attempt < 5; attempt += 1) {
@@ -77,7 +36,7 @@ async function saveCheckpoint(
   run: RunRow,
   checkpoint: Awaited<ReturnType<typeof readCompletedCheckpoint>>,
 ) {
-  const messages = completedMessages(checkpoint.state);
+  const messages = completedMessages(checkpoint.state.values);
   const values: unknown = checkpoint.state.values;
   const usage =
     values && typeof values === "object" && "context_usage" in values

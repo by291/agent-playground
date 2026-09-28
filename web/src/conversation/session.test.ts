@@ -17,6 +17,216 @@ import { createConversationSession } from "./session";
 import type { ConversationSnapshot } from "./contracts";
 import type { SavedConversation } from "./storage";
 import type { A2UIOutput } from "../a2ui/outputs";
+import { chatTurns, toolProcess } from "../chat/turns";
+
+void test("a resumed tool argument stream replaces saved arguments instead of appending them", async () => {
+  const stream = streamingAgent("tool-resume");
+  const session = createConversationSession(
+    { threadId: "tool-resume" },
+    stream.agent,
+  );
+  const interrupt = InterruptSchema.parse({
+    id: "review",
+    reason: "Review the plan",
+    metadata: { langgraph: { raw: { workflowCallId: "plan" } } },
+  });
+  const interrupted: ConversationSnapshot = {
+    messages: [
+      { id: "question", role: "user", content: "Make a plan" },
+      {
+        id: "plan-request",
+        role: "assistant",
+        content: "",
+        toolCalls: [
+          {
+            id: "plan",
+            type: "function",
+            function: {
+              name: "run_experiment_workflow",
+              arguments: '{"idea":"Old saved value"}',
+            },
+          },
+        ],
+      },
+    ],
+    interrupts: [interrupt],
+    outputs: [],
+    runs: [{ runId: "initial", messageId: "question", status: "interrupted" }],
+  };
+  const disconnect = connectSession(session, () =>
+    Promise.resolve(interrupted),
+  );
+
+  session.receiveSnapshot(interrupted);
+  const run = session.store.getState().reviewPlan([
+    {
+      interruptId: "review",
+      decision: "approve",
+      title: "Test",
+      steps: ["Try"],
+    },
+  ]);
+  const input = await stream.requested;
+
+  stream.emit({
+    type: "RUN_STARTED",
+    threadId: "tool-resume",
+    runId: input.runId,
+  });
+  stream.emit({
+    type: "TOOL_CALL_START",
+    toolCallId: "plan",
+    toolCallName: "run_experiment_workflow",
+    parentMessageId: "plan-request",
+  });
+  stream.emit({
+    type: "TOOL_CALL_ARGS",
+    toolCallId: "plan",
+    delta: '{"idea":',
+  });
+  await delay(0);
+  let caller = session.store
+    .getState()
+    .messages.find((message) => message.id === "plan-request");
+
+  assert.ok(caller?.role === "assistant");
+  assert.equal(caller.toolCalls?.[0]?.function.arguments, '{"idea":');
+  stream.emit({ type: "TOOL_CALL_ARGS", toolCallId: "plan", delta: '"Test"}' });
+  await delay(0);
+  caller = session.store
+    .getState()
+    .messages.find((message) => message.id === "plan-request");
+
+  assert.ok(caller?.role === "assistant");
+  assert.equal(caller.toolCalls?.[0]?.function.arguments, '{"idea":"Test"}');
+  stream.emit({ type: "TOOL_CALL_END", toolCallId: "plan" });
+  stream.emit({
+    type: "TOOL_CALL_RESULT",
+    toolCallId: "plan",
+    messageId: "result",
+    role: "tool",
+    content: "Approved",
+  });
+  stream.finish(input);
+  await run;
+  disconnect();
+});
+
+void test("new tool calls accumulate each argument fragment while execution remains running", async () => {
+  const stream = streamingAgent("new-tool");
+  const session = createConversationSession(
+    { threadId: "new-tool" },
+    stream.agent,
+  );
+  const disconnect = connectSession(session, () => Promise.resolve(null));
+
+  session.receiveSnapshot(null);
+  const run = session.store.getState().send("Add 1 and 2");
+  const input = await stream.requested;
+
+  stream.emit({
+    type: "RUN_STARTED",
+    threadId: input.threadId,
+    runId: input.runId,
+  });
+  stream.emit({
+    type: "TOOL_CALL_START",
+    toolCallId: "sum",
+    toolCallName: "calculate_sum",
+    parentMessageId: "caller",
+  });
+  stream.emit({ type: "TOOL_CALL_ARGS", toolCallId: "sum", delta: '{"a":1,' });
+  await delay(0);
+  let caller = session.store
+    .getState()
+    .messages.find((message) => message.id === "caller");
+
+  assert.ok(caller?.role === "assistant");
+  assert.equal(caller.toolCalls?.[0]?.function.arguments, '{"a":1,');
+  stream.emit({ type: "TOOL_CALL_ARGS", toolCallId: "sum", delta: '"b":2}' });
+  stream.emit({ type: "TOOL_CALL_END", toolCallId: "sum" });
+  await delay(0);
+  caller = session.store
+    .getState()
+    .messages.find((message) => message.id === "caller");
+
+  assert.ok(caller?.role === "assistant");
+  assert.equal(caller.toolCalls?.[0]?.function.arguments, '{"a":1,"b":2}');
+  assert.equal(session.store.getState().runs.at(-1)?.status, "running");
+  stream.emit({
+    type: "TOOL_CALL_RESULT",
+    toolCallId: "sum",
+    messageId: "result",
+    role: "tool",
+    content: "3",
+  });
+  stream.finish(input);
+  await run;
+  disconnect();
+});
+
+void test("a handled tool error is visible before the model finishes its fallback reply", async () => {
+  const stream = streamingAgent("handled-error");
+  const session = createConversationSession(
+    { threadId: "handled-error" },
+    stream.agent,
+  );
+  const disconnect = connectSession(session, () => Promise.resolve(null));
+
+  session.receiveSnapshot(null);
+  const run = session.store.getState().send("Create a plan");
+  const input = await stream.requested;
+
+  stream.emit({
+    type: "RUN_STARTED",
+    threadId: input.threadId,
+    runId: input.runId,
+  });
+  stream.emit({
+    type: "TOOL_CALL_START",
+    toolCallId: "plan",
+    toolCallName: "run_experiment_workflow",
+    parentMessageId: "caller",
+  });
+  stream.emit({ type: "TOOL_CALL_ARGS", toolCallId: "plan", delta: "{}" });
+  stream.emit({ type: "TOOL_CALL_END", toolCallId: "plan" });
+  // The LangGraph adapter does not emit TOOL_CALL_RESULT for handled errors.
+  stream.emit({
+    type: "STATE_SNAPSHOT",
+    snapshot: {
+      toolErrors: [
+        {
+          id: "error",
+          role: "tool",
+          toolCallId: "plan",
+          content: "Missing idea",
+          error: "Missing idea",
+        },
+      ],
+    },
+  });
+  await delay(0);
+  const state = session.store.getState();
+  const turn = chatTurns(state.messages, state.runs)[0]!;
+
+  assert.equal(state.running, true);
+  assert.equal(toolProcess(turn)[0]?.calls[0]?.status, "failed");
+  assert.equal(toolProcess(turn)[0]?.calls[0]?.result?.error, "Missing idea");
+  stream.emit({
+    type: "TEXT_MESSAGE_START",
+    messageId: "fallback",
+    role: "assistant",
+  });
+  stream.emit({
+    type: "TEXT_MESSAGE_CONTENT",
+    messageId: "fallback",
+    delta: "Please provide an idea.",
+  });
+  stream.emit({ type: "TEXT_MESSAGE_END", messageId: "fallback" });
+  stream.finish(input);
+  await run;
+  disconnect();
+});
 
 const savedValues = new Map<string, string>();
 

@@ -3,6 +3,7 @@ import {
   HttpAgent,
   type Interrupt,
   type Message,
+  MessageSchema,
 } from "@ag-ui/client";
 import { createStore } from "zustand/vanilla";
 import { parseA2UIEvent, type A2UIOutput } from "../a2ui/outputs";
@@ -13,6 +14,7 @@ import { saveConversation, type SavedConversation } from "./storage";
 import type { ConversationSnapshot, PendingSubmission } from "./contracts";
 import type { Activity } from "./types";
 import { createSubmissionRunner } from "./submission";
+import { isRunFinished } from "../../../shared/run-status";
 import {
   parseContextUsage,
   type ContextUsage,
@@ -20,6 +22,7 @@ import {
 
 export interface ConversationState {
   contextUsage: ContextUsage | null;
+  runs: ConversationSnapshot["runs"];
   messages: Message[];
   surfaces: A2UISurfaceView[];
   a2uiIssue: string | null;
@@ -57,6 +60,7 @@ export function createConversationSession(
     delete state.messages;
     delete state.context_usage;
     delete state.response_messages;
+    delete state.toolErrors;
 
     return next.run({ ...input, messages, state });
   });
@@ -73,6 +77,7 @@ export function createConversationSession(
 
   const store = createStore<ConversationState>()(() => ({
     contextUsage: null,
+    runs: [],
     messages: [],
     surfaces: [],
     a2uiIssue: null,
@@ -90,7 +95,20 @@ export function createConversationSession(
   const submission = createSubmissionRunner(saved.threadId, agent, {
     started() {
       streamInterrupts = undefined;
+      const runs = store
+        .getState()
+        .runs.filter((run) => run.runId !== submittedRunId);
+
+      if (pending) {
+        runs.push({
+          runId: pending.runId,
+          messageId: pending.messageId,
+          status: "running",
+        });
+      }
+
       store.setState({
+        runs,
         messages: [...agent.messages],
         running: true,
         empty: false,
@@ -100,6 +118,7 @@ export function createConversationSession(
 
     failed(error) {
       if (connected) {
+        updateRunStatus("failed");
         store.setState({
           recoveryIssue: errorDetail(error, "Agent run failed"),
         });
@@ -167,11 +186,27 @@ export function createConversationSession(
     });
 
     if (result.kind === "current") {
+      const localRun = store
+        .getState()
+        .runs.find((run) => run.runId === submittedRunId);
+      const runs = (snapshot?.runs ?? []).map((run) => {
+        if (
+          run.runId === localRun?.runId &&
+          isRunFinished(localRun.status) &&
+          !isRunFinished(run.status)
+        ) {
+          return { ...run, status: localRun.status };
+        }
+
+        return run;
+      });
+
       receiveContextUsage(snapshot?.contextUsage);
       agent.setMessages(result.messages);
       store.setState({
         messages: [...agent.messages],
         pendingInterrupts: result.interrupts,
+        runs,
         running: result.running,
         recoveryIssue: result.issue,
       });
@@ -362,6 +397,7 @@ export function createConversationSession(
 
         if (event.type === EventType.RUN_ERROR) {
           submission.trace?.error(new Error(String(event.message)));
+          updateRunStatus("failed");
         }
 
         if (
@@ -391,6 +427,77 @@ export function createConversationSession(
         }
       },
 
+      onToolCallStartEvent({ event, messages, input }) {
+        if (!input.resume?.length) {
+          return;
+        }
+
+        // A resumed LangGraph tool replays its full argument stream. Reset only
+        // the saved call before the SDK starts appending the replayed fragments.
+        return {
+          messages: messages.map((message) => {
+            if (
+              message.role !== "assistant" ||
+              !message.toolCalls?.some((call) => call.id === event.toolCallId)
+            ) {
+              return message;
+            }
+
+            return {
+              ...message,
+              toolCalls: message.toolCalls.map((call) =>
+                call.id === event.toolCallId
+                  ? { ...call, function: { ...call.function, arguments: "" } }
+                  : call,
+              ),
+            };
+          }),
+        };
+      },
+
+      onStateSnapshotEvent({ event, messages }) {
+        const snapshot = event.snapshot as Record<string, unknown> | null;
+
+        if (!snapshot || !Array.isArray(snapshot.toolErrors)) {
+          return;
+        }
+
+        const errors = snapshot.toolErrors.flatMap((value: unknown) => {
+          const parsed = MessageSchema.safeParse(value);
+
+          return parsed.success &&
+            parsed.data.role === "tool" &&
+            parsed.data.error
+            ? [parsed.data]
+            : [];
+        });
+
+        if (!errors.length) {
+          return;
+        }
+
+        return {
+          messages: messages.flatMap<Message>((message) => {
+            if (
+              message.role === "tool" &&
+              errors.some((error) => error.toolCallId === message.toolCallId)
+            ) {
+              return [];
+            }
+
+            if (message.role === "assistant") {
+              const ownedErrors = errors.filter((error) =>
+                message.toolCalls?.some((call) => call.id === error.toolCallId),
+              );
+
+              return [message, ...ownedErrors];
+            }
+
+            return [message];
+          }),
+        };
+      },
+
       onStateChanged({ state }) {
         if (
           connected &&
@@ -413,6 +520,9 @@ export function createConversationSession(
 
         streamInterrupts =
           event.outcome?.type === "interrupt" ? event.outcome.interrupts : [];
+        updateRunStatus(
+          event.outcome?.type === "interrupt" ? "interrupted" : "completed",
+        );
         store.setState({ pendingInterrupts: streamInterrupts });
       },
     });
@@ -426,6 +536,16 @@ export function createConversationSession(
       // Detach the browser stream; the server-owned Aegra run continues.
       void agent.detachActiveRun();
     };
+  }
+
+  function updateRunStatus(
+    status: ConversationSnapshot["runs"][number]["status"],
+  ) {
+    store.setState((state) => ({
+      runs: state.runs.map((run) =>
+        run.runId === submittedRunId ? { ...run, status } : run,
+      ),
+    }));
   }
 
   return { store, connect, receiveSnapshot, receiveSnapshotError };

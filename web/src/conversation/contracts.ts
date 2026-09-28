@@ -27,7 +27,11 @@ export const conversationSnapshotSchema = z.object({
     .array()
     .transform((outputs) => outputs.map(parseA2UIOutput)),
   runs: z
-    .object({ runId: z.string().min(1), status: z.enum(runStatuses) })
+    .object({
+      runId: z.string().min(1),
+      messageId: z.string().min(1).optional(),
+      status: z.enum(runStatuses),
+    })
     .array(),
 });
 

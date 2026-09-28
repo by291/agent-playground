@@ -19,6 +19,7 @@ import type { AgentExecution } from "./run";
 import { normalizeRunEvent } from "./run-events";
 import { observeAgentStream } from "../observability/agent-stream";
 import { logger } from "../observability/logger";
+import { publicToolErrors } from "./messages";
 
 export function streamAgent(
   context: Context,
@@ -48,26 +49,10 @@ export function streamAgent(
         await lastValueFrom(
           execution.events.pipe(
             filter((event) => {
-              if (
+              return !(
                 event.type === EventType.RAW ||
                 event.type === EventType.MESSAGES_SNAPSHOT
-              ) {
-                return false;
-              }
-
-              if (event.type !== EventType.STATE_SNAPSHOT) {
-                return true;
-              }
-
-              const snapshot = JSON.stringify(event.snapshot);
-
-              if (snapshot === lastSnapshot) {
-                return false;
-              }
-
-              lastSnapshot = snapshot;
-
-              return true;
+              );
             }),
             map((event) => {
               const output = normalizeRunEvent(event, trustedInput.runId);
@@ -84,6 +69,10 @@ export function streamAgent(
                   ...(event.snapshot as Record<string, unknown>),
                 };
 
+                // The adapter omits results for handled tool errors. Keep their
+                // official ToolMessages in public state while the model continues.
+                snapshot.toolErrors = publicToolErrors(snapshot);
+
                 // Public messages are recovered from the archive, not compressed model state.
                 delete snapshot.messages;
                 delete snapshot.response_messages;
@@ -91,6 +80,22 @@ export function streamAgent(
               }
 
               return clean;
+            }),
+            filter((event) => {
+              if (event.type !== EventType.STATE_SNAPSHOT) {
+                return true;
+              }
+
+              // Compare the small public state, not private model history.
+              const snapshot = JSON.stringify(event.snapshot);
+
+              if (snapshot === lastSnapshot) {
+                return false;
+              }
+
+              lastSnapshot = snapshot;
+
+              return true;
             }),
             // Treat an upstream error as the last queued item so earlier writes finish.
             materialize(),

@@ -1,4 +1,4 @@
-import { Fragment, lazy, Suspense, useMemo } from "react";
+import { lazy, Suspense, useMemo } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
@@ -10,8 +10,11 @@ import {
   MessageScrollerViewport,
 } from "@/components/ui/message-scroller";
 import type { A2UISurfaceView } from "../a2ui/runtime";
-import { MessageRow, Thinking } from "./MessageRow";
-import { hasMessageText, waitingForAssistantText } from "./presentation";
+import { MessageRow } from "./MessageRow";
+import { AssistantReply } from "./AssistantReply";
+import { chatTurns } from "./turns";
+import { hasMessageText } from "./presentation";
+import { isRunActive } from "../../../shared/run-status";
 import { ReviewPanel } from "./ReviewPanel";
 import { useConversation } from "../conversation/useConversation";
 import { parsePlanReview } from "../conversation/planReview";
@@ -34,6 +37,7 @@ function Surface({ view }: { view: A2UISurfaceView }) {
 export function ChatPane() {
   const {
     messages,
+    runs,
     surfaces,
     pendingInterrupts,
     running,
@@ -46,6 +50,7 @@ export function ChatPane() {
   } = useConversation(
     useShallow((state) => ({
       messages: state.messages,
+      runs: state.runs,
       surfaces: state.surfaces,
       pendingInterrupts: state.pendingInterrupts,
       running: state.running,
@@ -68,10 +73,7 @@ export function ChatPane() {
     [pendingInterrupts],
   );
 
-  const visible = messages.filter(
-    (message) => message.role === "user" || message.role === "assistant",
-  );
-  const waiting = waitingForAssistantText(visible, running);
+  const turns = chatTurns(messages, runs);
   const surfacesByCall = new Map<string, A2UISurfaceView[]>();
 
   for (const view of surfaces) {
@@ -86,7 +88,7 @@ export function ChatPane() {
   }
 
   const attachedCalls = new Set(
-    visible.flatMap((message) =>
+    messages.flatMap((message) =>
       message.role === "assistant"
         ? (message.toolCalls ?? []).map((call) => call.id)
         : [],
@@ -96,7 +98,7 @@ export function ChatPane() {
   if (
     recovering &&
     !empty &&
-    visible.length === 0 &&
+    turns.length === 0 &&
     surfaces.length === 0 &&
     reviews.length === 0
   ) {
@@ -105,7 +107,7 @@ export function ChatPane() {
 
   return (
     <>
-      {visible.length === 0 && surfaces.length === 0 && reviews.length === 0 ? (
+      {turns.length === 0 && surfaces.length === 0 && reviews.length === 0 ? (
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
           <div className="mx-auto flex min-h-full w-full max-w-205 flex-col px-4 sm:px-8">
             <Welcome onSend={onSend} />
@@ -117,27 +119,48 @@ export function ChatPane() {
           <MessageScroller className="min-h-0 flex-1">
             <MessageScrollerViewport>
               <MessageScrollerContent className="mx-auto w-full max-w-205 gap-8 px-4 pt-8 pb-12 sm:px-8 sm:pt-12">
-                {/* Checkpoint IDs can replace stream IDs at the same position. */}
-                {visible.map((message, index) => (
-                  <Fragment key={index}>
-                    {hasMessageText(message) && (
-                      <MessageScrollerItem>
-                        <MessageRow
-                          message={message}
-                          smoothText={animatedMessageId === message.id}
-                        />
-                      </MessageScrollerItem>
-                    )}
-                    {message.role === "assistant" &&
-                      message.toolCalls?.map((call) => {
-                        return surfacesByCall.get(call.id)?.map((view) => (
-                          <MessageScrollerItem key={view.id}>
-                            <Surface view={view} />
-                          </MessageScrollerItem>
-                        ));
-                      })}
-                  </Fragment>
-                ))}
+                {turns.map((turn) => {
+                  const calls = turn.messages.flatMap((message) =>
+                    message.role === "assistant"
+                      ? (message.toolCalls ?? [])
+                      : [],
+                  );
+                  const views = calls.flatMap(
+                    (call) => surfacesByCall.get(call.id) ?? [],
+                  );
+                  const hasReply =
+                    turn.messages.some(
+                      (message) =>
+                        message.role === "assistant" &&
+                        (hasMessageText(message) || message.toolCalls?.length),
+                    ) ||
+                    (turn.status !== null && isRunActive(turn.status)) ||
+                    views.length > 0;
+
+                  return (
+                    <div key={turn.id} className="contents">
+                      {turn.user && (
+                        <MessageScrollerItem>
+                          <MessageRow message={turn.user} />
+                        </MessageScrollerItem>
+                      )}
+                      {hasReply && (
+                        <MessageScrollerItem>
+                          <AssistantReply
+                            turn={turn}
+                            animatedMessageId={animatedMessageId}
+                          >
+                            {views.length > 0
+                              ? views.map((view) => (
+                                  <Surface key={view.id} view={view} />
+                                ))
+                              : undefined}
+                          </AssistantReply>
+                        </MessageScrollerItem>
+                      )}
+                    </div>
+                  );
+                })}
                 {surfaces
                   .filter(
                     (view) =>
@@ -157,11 +180,6 @@ export function ChatPane() {
                       running={running}
                       onReview={onReview}
                     />
-                  </MessageScrollerItem>
-                )}
-                {waiting && (
-                  <MessageScrollerItem key="thinking">
-                    <Thinking />
                   </MessageScrollerItem>
                 )}
                 {recoveryIssue && (
