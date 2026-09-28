@@ -27,8 +27,7 @@ export function Composer() {
   let sendLabel = running ? "Agent is responding" : "Send message";
 
   if (recovering) {
-    placeholder = "Loading conversation…";
-    sendLabel = "Loading conversation";
+    sendLabel = "Restoring conversation";
   } else if (waitingForReview) {
     placeholder = "Review the plan above to continue";
     sendLabel = "Review the plan to continue";

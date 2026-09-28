@@ -27,6 +27,7 @@ export interface ConversationState {
   pendingInterrupts: Interrupt[];
   running: boolean;
   recovering: boolean;
+  empty: boolean;
   animatedMessageId: string | null;
   recoveryIssue: string | null;
   snapshotIssue: string | null;
@@ -62,6 +63,7 @@ export function createConversationSession(
 
   let connected = false;
   let pending = saved.pending;
+  let savedEmpty = saved.empty;
   let submittedRunId: string | undefined;
   let streamInterrupts: Interrupt[] | undefined;
   let refresh: RefreshSnapshot;
@@ -78,6 +80,7 @@ export function createConversationSession(
     pendingInterrupts: [],
     running: false,
     recovering: true,
+    empty: saved.empty === true && !saved.pending,
     animatedMessageId: null,
     recoveryIssue: null,
     snapshotIssue: null,
@@ -90,6 +93,7 @@ export function createConversationSession(
       store.setState({
         messages: [...agent.messages],
         running: true,
+        empty: false,
         recoveryIssue: null,
       });
     },
@@ -138,11 +142,6 @@ export function createConversationSession(
     return result.kind === "waiting";
   }
 
-  function clearPending() {
-    pending = undefined;
-    saveConversation({ threadId: saved.threadId });
-  }
-
   function receiveContextUsage(value: unknown) {
     const usage = parseContextUsage(value);
     const current = store.getState().contextUsage;
@@ -158,8 +157,6 @@ export function createConversationSession(
     }
 
     const initialPending = store.getState().recovering ? pending : undefined;
-
-    store.setState({ recovering: false, snapshotIssue: null });
 
     const result = reconcileSnapshot(snapshot, {
       submittedRunId,
@@ -189,9 +186,32 @@ export function createConversationSession(
 
     receiveOutputs(snapshot?.outputs ?? []);
 
-    if (pending && pendingRecovery(snapshot, pending) === "confirmed") {
-      clearPending();
+    const pendingConfirmed =
+      pending && pendingRecovery(snapshot, pending) === "confirmed";
+
+    if (pendingConfirmed) {
+      pending = undefined;
     }
+
+    const state = store.getState();
+    const empty =
+      !pending &&
+      !state.running &&
+      state.messages.length === 0 &&
+      state.surfaces.length === 0 &&
+      state.pendingInterrupts.length === 0;
+
+    if (savedEmpty !== empty || pendingConfirmed) {
+      // Persist only the empty-page hint; history still comes from the server.
+      saveConversation({
+        threadId: saved.threadId,
+        empty,
+        ...(pending ? { pending } : {}),
+      });
+      savedEmpty = empty;
+    }
+
+    store.setState({ recovering: false, snapshotIssue: null, empty });
 
     if (
       initialPending &&
@@ -245,8 +265,13 @@ export function createConversationSession(
 
   function submit(input: PendingSubmission) {
     // Save before sending so a reload can retry exactly the same admission.
-    saveConversation({ threadId: saved.threadId, pending: input });
+    saveConversation({
+      threadId: saved.threadId,
+      pending: input,
+      empty: false,
+    });
     pending = input;
+    savedEmpty = false;
 
     return runSubmission(input);
   }

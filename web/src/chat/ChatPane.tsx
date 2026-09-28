@@ -37,6 +37,8 @@ export function ChatPane() {
     surfaces,
     pendingInterrupts,
     running,
+    recovering,
+    empty,
     animatedMessageId,
     recoveryIssue,
     onSend,
@@ -47,6 +49,8 @@ export function ChatPane() {
       surfaces: state.surfaces,
       pendingInterrupts: state.pendingInterrupts,
       running: state.running,
+      recovering: state.recovering,
+      empty: state.empty,
       animatedMessageId: state.animatedMessageId,
       recoveryIssue:
         state.snapshotIssue ?? state.a2uiIssue ?? state.recoveryIssue,
@@ -88,6 +92,16 @@ export function ChatPane() {
         : [],
     ),
   );
+
+  if (
+    recovering &&
+    !empty &&
+    visible.length === 0 &&
+    surfaces.length === 0 &&
+    reviews.length === 0
+  ) {
+    return <ConversationPlaceholder issue={recoveryIssue} />;
+  }
 
   return (
     <>
@@ -165,6 +179,31 @@ export function ChatPane() {
         </MessageScrollerProvider>
       )}
     </>
+  );
+}
+
+function ConversationPlaceholder({ issue }: { issue: string | null }) {
+  return (
+    <div
+      role="region"
+      aria-label="Messages"
+      aria-busy={!issue}
+      className="min-h-0 flex-1 overflow-y-auto overscroll-contain"
+    >
+      <div className="mx-auto w-full max-w-205 px-4 pt-8 pb-12 sm:px-8 sm:pt-12">
+        <div aria-hidden="true" className="space-y-8 motion-safe:animate-pulse">
+          <div className="ml-auto h-12 w-40 rounded-[20px] rounded-br-md bg-sidebar" />
+          <div className="flex gap-3 sm:gap-4">
+            <div className="size-8 shrink-0 rounded-xl bg-accent-soft" />
+            <div className="flex-1 space-y-3 pt-2">
+              <div className="h-3 w-2/5 rounded-full bg-sidebar" />
+              <div className="h-3 w-4/5 rounded-full bg-sidebar" />
+            </div>
+          </div>
+        </div>
+        {issue && <RecoveryNotice issue={issue} />}
+      </div>
+    </div>
   );
 }
 

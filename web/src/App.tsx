@@ -1,4 +1,5 @@
 import { lazy, Suspense } from "react";
+import { ConversationApp } from "./ConversationApp";
 
 const GalleryPage = lazy(() =>
   import("./a2ui/GalleryPage").then(({ GalleryPage }) => ({
@@ -6,24 +7,22 @@ const GalleryPage = lazy(() =>
   })),
 );
 
-const ConversationApp = lazy(() =>
-  import("./ConversationApp").then(({ ConversationApp }) => ({
-    default: ConversationApp,
-  })),
-);
-
 export function App() {
   const isGallery = window.location.pathname === "/a2ui";
+
+  if (!isGallery) {
+    return <ConversationApp />;
+  }
 
   return (
     <Suspense
       fallback={
         <div className="min-h-dvh bg-canvas p-8 text-sm text-muted">
-          {isGallery ? "Loading components…" : "Loading conversation…"}
+          Loading components…
         </div>
       }
     >
-      {isGallery ? <GalleryPage /> : <ConversationApp />}
+      <GalleryPage />
     </Suspense>
   );
 }

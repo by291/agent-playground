@@ -117,6 +117,89 @@ async function waitFor(predicate: () => boolean) {
   assert.ok(predicate(), "Expected conversation state was not reached");
 }
 
+void test("restoring a saved conversation never publishes a completed empty state", async (t) => {
+  const savedText = snapshot();
+  const savedSurface: ConversationSnapshot = {
+    ...snapshot(),
+    messages: [],
+    outputs: [
+      {
+        id: "saved-output",
+        outputSeq: 1,
+        messages: [
+          {
+            version: "v0.9",
+            createSurface: {
+              surfaceId: "main",
+              catalogId: "urn:agent-playground:workflow:v1",
+            },
+          },
+        ],
+      },
+    ],
+  };
+
+  for (const [name, saved] of [
+    ["text history", savedText],
+    ["surface history", savedSurface],
+  ] as const) {
+    await t.test(name, () => {
+      const session = createConversationSession({ threadId: name });
+      const disconnect = connectSession(session, () => Promise.resolve(saved));
+      const completedStates: { messages: number; surfaces: number }[] = [];
+      const unsubscribe = session.store.subscribe((state) => {
+        if (!state.recovering) {
+          completedStates.push({
+            messages: state.messages.length,
+            surfaces: state.surfaces.length,
+          });
+        }
+      });
+
+      try {
+        session.receiveSnapshot(saved);
+        assert.ok(completedStates.length > 0);
+
+        for (const state of completedStates) {
+          assert.ok(
+            state.messages > 0 || state.surfaces > 0,
+            "Recovery must install saved content before allowing the welcome screen",
+          );
+        }
+
+        const savedPointer = JSON.parse(
+          localStorage.getItem("agent-playground-conversation") ?? "null",
+        ) as SavedConversation;
+
+        assert.equal(savedPointer.empty, false);
+      } finally {
+        unsubscribe();
+        disconnect();
+      }
+    });
+  }
+});
+
+void test("an empty conversation finishes recovery without inventing history", () => {
+  const session = createConversationSession({ threadId: "empty-thread" });
+  const disconnect = connectSession(session, () => Promise.resolve(null));
+
+  try {
+    session.receiveSnapshot(null);
+    assert.equal(session.store.getState().recovering, false);
+    assert.deepEqual(session.store.getState().messages, []);
+    assert.deepEqual(session.store.getState().surfaces, []);
+    assert.deepEqual(session.store.getState().pendingInterrupts, []);
+    const saved = JSON.parse(
+      localStorage.getItem("agent-playground-conversation") ?? "null",
+    ) as SavedConversation;
+
+    assert.equal(saved.empty, true);
+  } finally {
+    disconnect();
+  }
+});
+
 void test("a rejected submission unlocks an existing conversation without discarding its pending input", async () => {
   const inputs: RunAgentInput[] = [];
   const agent = new HttpAgent({
@@ -152,6 +235,7 @@ void test("a rejected submission unlocks an existing conversation without discar
     ) as SavedConversation;
 
     assert.equal(saved.pending?.runId, inputs[0]?.runId);
+    assert.equal(saved.empty, false);
     assert.equal(inputs[0]?.messages.length, 1);
     assert.deepEqual(saved.pending?.messages.at(-1), inputs[0]?.messages[0]);
     assert.equal(saved.pending?.messages[0]?.id, "saved-message");

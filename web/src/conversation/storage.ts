@@ -5,10 +5,11 @@ const storageKey = "agent-playground-conversation";
 export interface SavedConversation {
   threadId: string;
   pending?: PendingSubmission;
+  empty?: boolean;
 }
 
 export function newConversation(): SavedConversation {
-  return { threadId: crypto.randomUUID() };
+  return { threadId: crypto.randomUUID(), empty: true };
 }
 
 export function loadConversation(): SavedConversation {
@@ -26,6 +27,9 @@ export function loadConversation(): SavedConversation {
         return {
           threadId: saved.threadId,
           ...(pending.success ? { pending: pending.data } : {}),
+          ...("empty" in saved && typeof saved.empty === "boolean"
+            ? { empty: saved.empty }
+            : {}),
         };
       }
     }
