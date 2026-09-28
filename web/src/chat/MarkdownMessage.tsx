@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { Streamdown, type AnimateOptions } from "streamdown";
-import "streamdown/styles.css";
 
 const streamingAnimation: AnimateOptions = {
   animation: "fadeIn",

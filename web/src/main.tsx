@@ -2,6 +2,7 @@ import { createRoot } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { App } from "./App";
 import "./style.css";
+import "streamdown/styles.css";
 
 if (import.meta.env.VITE_OBSERVABILITY_ENABLED === "true") {
   const { initializeTracing } = await import("./observability/bootstrap");

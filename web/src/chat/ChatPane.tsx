@@ -1,4 +1,4 @@
-import { Fragment, lazy, Suspense, useEffect, useMemo } from "react";
+import { Fragment, lazy, Suspense, useMemo } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
@@ -10,7 +10,7 @@ import {
   MessageScrollerViewport,
 } from "@/components/ui/message-scroller";
 import type { A2UISurfaceView } from "../a2ui/runtime";
-import { MessageRow, preloadMarkdownMessage, Thinking } from "./MessageRow";
+import { MessageRow, Thinking } from "./MessageRow";
 import { hasMessageText, waitingForAssistantText } from "./presentation";
 import { ReviewPanel } from "./ReviewPanel";
 import { useConversation } from "../conversation/useConversation";
@@ -63,13 +63,6 @@ export function ChatPane() {
       }),
     [pendingInterrupts],
   );
-
-  useEffect(() => {
-    // Start loading the renderer while the agent prepares its first text event.
-    if (running) {
-      preloadMarkdownMessage();
-    }
-  }, [running]);
 
   const visible = messages.filter(
     (message) => message.role === "user" || message.role === "assistant",
