@@ -54,6 +54,7 @@ function ConversationPage({
   onNewConversation: () => void;
 }) {
   const [activityOpen, setActivityOpen] = useState(false);
+  const showActivity = import.meta.env?.DEV && activityOpen;
 
   return (
     <div className="flex h-dvh bg-canvas font-sans text-ink">
@@ -87,33 +88,39 @@ function ConversationPage({
           <div className="flex shrink-0 items-center gap-1.5 sm:gap-3">
             <ContextIndicator />
             <ConnectionStatus />
-            <a
-              href="/a2ui"
-              aria-label="A2UI components"
-              title="A2UI components"
-              className="inline-flex h-11 min-w-11 items-center justify-center gap-2 rounded-xl px-2 text-muted hover:bg-sidebar hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent xl:px-3"
-            >
-              <SquaresFourIcon size={20} aria-hidden="true" />
-              <span className="hidden text-xs xl:inline">Components</span>
-            </a>
-            <Button
-              type="button"
-              variant="ghost"
-              onClick={() => setActivityOpen((open) => !open)}
-              aria-label={
-                activityOpen ? "Hide run activity" : "Show run activity"
-              }
-              aria-pressed={activityOpen}
-              className={`h-11 rounded-xl px-3 hover:bg-sidebar ${
-                activityOpen
-                  ? "bg-accent-soft text-accent"
-                  : "text-muted hover:bg-sidebar hover:text-ink"
-              }`}
-            >
-              <PulseIcon size={18} aria-hidden="true" />
-              <span className="hidden sm:inline">Activity</span>
-              <ActivityCount />
-            </Button>
+            {import.meta.env?.DEV && (
+              <>
+                <a
+                  href="/dev/a2ui-components"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label="A2UI components (opens in a new tab)"
+                  title="A2UI components (opens in a new tab)"
+                  className="inline-flex h-11 min-w-11 items-center justify-center gap-2 rounded-xl px-2 text-muted hover:bg-sidebar hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent xl:px-3"
+                >
+                  <SquaresFourIcon size={20} aria-hidden="true" />
+                  <span className="hidden text-xs xl:inline">Components</span>
+                </a>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={() => setActivityOpen((open) => !open)}
+                  aria-label={
+                    activityOpen ? "Hide run activity" : "Show run activity"
+                  }
+                  aria-pressed={activityOpen}
+                  className={`h-11 rounded-xl px-3 hover:bg-sidebar ${
+                    activityOpen
+                      ? "bg-accent-soft text-accent"
+                      : "text-muted hover:bg-sidebar hover:text-ink"
+                  }`}
+                >
+                  <PulseIcon size={18} aria-hidden="true" />
+                  <span className="hidden sm:inline">Activity</span>
+                  <ActivityCount />
+                </Button>
+              </>
+            )}
             <Button
               type="button"
               variant="ghost"
@@ -129,12 +136,12 @@ function ConversationPage({
 
         <div className="flex min-h-0 flex-1">
           <main
-            className={`${activityOpen ? "hidden lg:flex" : "flex"} min-w-0 flex-1 flex-col`}
+            className={`${showActivity ? "hidden lg:flex" : "flex"} min-w-0 flex-1 flex-col`}
           >
             <ChatPane />
             <Composer />
           </main>
-          {activityOpen && (
+          {showActivity && (
             <ActivityPanel
               threadId={conversation.threadId}
               onClose={() => setActivityOpen(false)}

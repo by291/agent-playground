@@ -26,7 +26,7 @@ export function JsonEditor({
       key={component}
       height="100%"
       language="json"
-      theme="vs-dark"
+      theme="vs"
       value={value}
       onChange={(next) => onChange(next ?? "")}
       loading={<p className="p-4 text-sm text-muted">Loading editor…</p>}
@@ -35,6 +35,7 @@ export function JsonEditor({
         automaticLayout: true,
         fontSize: 13,
         minimap: { enabled: false },
+        padding: { top: 12, bottom: 12 },
         scrollBeyondLastLine: false,
         tabSize: 2,
         wordWrap: "on",

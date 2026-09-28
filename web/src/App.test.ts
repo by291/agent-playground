@@ -6,9 +6,9 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { App } from "./App";
 import type { SavedConversation } from "./conversation/storage";
 
-function renderInitialPage(saved: SavedConversation | null) {
+function renderInitialPage(saved: SavedConversation | null, pathname = "/") {
   Object.defineProperty(globalThis, "window", {
-    value: { location: { pathname: "/" } },
+    value: { location: { pathname } },
     configurable: true,
   });
   Object.defineProperty(globalThis, "localStorage", {
@@ -73,4 +73,20 @@ void test("a pending submission requires recovery even when its old empty marker
 
   assert.match(markup, /aria-busy="true"/);
   assert.doesNotMatch(markup, /A place to think out loud/);
+});
+
+void test("rendering without development mode omits debug tool controls", () => {
+  const markup = renderInitialPage(null);
+
+  assert.doesNotMatch(markup, /A2UI components \(opens in a new tab\)/);
+  assert.doesNotMatch(markup, /Show run activity/);
+});
+
+void test("developer and retired routes are unavailable without development mode", () => {
+  for (const path of ["/dev/a2ui-components", "/a2ui"]) {
+    const markup = renderInitialPage(null, path);
+
+    assert.match(markup, /Page not found/);
+    assert.doesNotMatch(markup, /JSON example/);
+  }
 });
