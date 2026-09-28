@@ -1,11 +1,12 @@
 import { createRoot } from "react-dom/client";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { App } from "./App";
-import "./style.css";
+import { AppProviders } from "@/app/providers";
+import { appConfig } from "@/app/config";
+import { App } from "@/app/App";
+import "@/styles/index.css";
 import "streamdown/styles.css";
 
-if (import.meta.env.VITE_OBSERVABILITY_ENABLED === "true") {
-  const { initializeTracing } = await import("./observability/bootstrap");
+if (appConfig.observabilityEnabled) {
+  const { initializeTracing } = await import("@/observability/bootstrap");
 
   initializeTracing();
 }
@@ -16,10 +17,8 @@ if (!root) {
   throw new Error("App root is missing");
 }
 
-const queryClient = new QueryClient();
-
 createRoot(root).render(
-  <QueryClientProvider client={queryClient}>
+  <AppProviders>
     <App />
-  </QueryClientProvider>,
+  </AppProviders>,
 );

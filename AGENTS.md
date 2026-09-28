@@ -2,14 +2,15 @@
 
 ## 项目目标
 
-- 这是验证 agent runtime 想法的项目。优先快速、清楚地跑通想法，避免为尚未出现的需求增加复杂度。
+- 这是持续演进的 agent 应用项目，在验证 agent runtime 能力的同时，逐步提升工程严谨性并向生产使用靠拢。
+- 实现应保持清晰的职责边界、可理解的状态模型和可回归验证的行为；涉及运行、恢复和持久化的改动优先保证一致性与资源生命周期。根据实际需求演进，避免提前引入缺乏依据的复杂度。
 - 澄清影响实现的关键需求后直接推进；根据改动范围选择必要的设计和验证步骤，不要求固定流程。
 
 ## 仓库导航
 
 - `agent_playground/`：Python agent、tools、MCP 和 workflow，由 Aegra 提供 Agent Protocol 服务；`db/` 管理数据库契约、连接和输出持久化，workflow 输出发布与业务步骤分开。
 - `server/`：TypeScript 后端；`agent/` 适配 Aegra 与 AG-UI，`conversation/` 管理运行和恢复，`db/` 管理应用数据，根目录保留 HTTP 入口和配置。
-- `web/`：TypeScript 前端，展示对话和 A2UI 内容；`src/components/ui/` 存放 shadcn/ui 基础控件。
+- `web/`：TypeScript 前端；`src/app/` 管理入口、路由、配置和全局 provider，`src/pages/` 组合页面并拥有开发预览，`src/features/` 按 conversation 与 A2UI 能力组织 API、模型、运行和 UI；`src/components/ui/` 存放 shadcn/ui 基础控件，`src/styles/` 管理主题与全局样式。
 - `shared/`：TypeScript 应用共用的运行状态契约；AG-UI 和 A2UI 类型继续使用官方库。
 - `compose.yaml`：本地 PostgreSQL、Redis 等基础设施；`tests/`：Python 侧测试。
 - 完整启动步骤、当前能力、协议传递方式和已知限制见 `README.md`；不要把容易变化的项目现状重复写进本文件。
@@ -21,6 +22,7 @@
 - Python 使用 uv，TypeScript 使用 pnpm；通过各自的包管理器增删依赖并更新锁文件。仅在验证目标需要时引入新库或基础设施。
 - 基础设施通过 Docker Compose 维护。根目录、`server/` 和 `web/` 各自使用自己的 `.env`，避免跨项目读取配置。
 - 代码是写给人阅读的：使用清晰命名和直接结构；只在意图、边界条件或不直观的处理需要解释时添加注释，不要让文件主要由注释构成。
+- 前端依赖从 app 指向 pages、features 和基础模块；跨 feature 只通过公开入口，当前只允许 conversation 依赖 A2UI。feature 内部直接引用内部模块，避免通过自己的公开入口形成循环；测试与实现就近放置，浏览器流程放在 `web/tests/e2e/`。
 - 运行状态写入归 conversation 层，恢复查询不能覆盖更新后的映射或终态；快照读取与上游同步分开。前端 Query 负责取数和交付结果，session 负责状态协调，资源由创建者明确释放。
 
 ## 代码风格与可读性

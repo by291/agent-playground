@@ -9,8 +9,8 @@
     "lint": "pnpm --filter agent-playground-server lint && pnpm --filter agent-playground-web lint",
     "test": "pnpm --filter agent-playground-server test && pnpm --filter agent-playground-web test",
     "build": "pnpm --filter agent-playground-web build",
-    "format": "prettier --write 'server/**/*.{ts,tsx,js,json}' 'shared/**/*.ts' 'web/src/**/*.{ts,tsx,css}' 'web/*.{js,ts,html,json}' package.json pnpm-workspace.yaml eslint.style.mjs",
-    "format:check": "prettier --check 'server/**/*.{ts,tsx,js,json}' 'shared/**/*.ts' 'web/src/**/*.{ts,tsx,css}' 'web/*.{js,ts,html,json}' package.json pnpm-workspace.yaml eslint.style.mjs"
+    "format": "prettier --write 'server/**/*.{ts,tsx,js,json}' 'shared/**/*.ts' 'web/src/**/*.{ts,tsx,css}' 'web/tests/**/*.{ts,js}' 'web/*.{js,ts,html,json}' package.json pnpm-workspace.yaml eslint.style.mjs",
+    "format:check": "prettier --check 'server/**/*.{ts,tsx,js,json}' 'shared/**/*.ts' 'web/src/**/*.{ts,tsx,css}' 'web/tests/**/*.{ts,js}' 'web/*.{js,ts,html,json}' package.json pnpm-workspace.yaml eslint.style.mjs"
   },
   "devDependencies": {
     "@stylistic/eslint-plugin": "^5.10.0",

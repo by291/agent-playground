@@ -1,0 +1,12 @@
+body {
+  min-width: 320px;
+  margin: 0;
+}
+
+button:not(:disabled) {
+  cursor: pointer;
+}
+
+::selection {
+  background: var(--color-accent-line);
+}

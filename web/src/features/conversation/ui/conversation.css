@@ -1,0 +1,35 @@
+.thinking-dot {
+  width: 0.25rem;
+  height: 0.25rem;
+  border-radius: 50%;
+  background: currentColor;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .welcome-intro {
+    animation: rise-in 380ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  .welcome-suggestions {
+    animation: rise-in 420ms 80ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  .activity-panel-enter {
+    animation: slide-in 260ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  .review-panel-enter {
+    animation: rise-in 260ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  .thinking-dot {
+    animation: thinking-beat 1.2s ease-in-out infinite;
+  }
+
+  .thinking-dot:nth-child(2) {
+    animation-delay: 150ms;
+  }
+
+  .thinking-dot:nth-child(3) {
+    animation-delay: 300ms;
+  }
+}
