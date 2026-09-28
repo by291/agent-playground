@@ -9,6 +9,33 @@ import {
 import { W3CTraceContextPropagator } from "@opentelemetry/core";
 import { prepareAegraRequest } from "./client";
 
+void test("continuation sends only the newest user turn and never restores compacted state", () => {
+  const init = prepareAegraRequest(
+    new URL("http://aegra/threads/thread/runs/stream"),
+    {
+      method: "POST",
+      body: JSON.stringify({
+        input: {
+          messages: [
+            { id: "old", type: "human", content: "Old history" },
+            { id: "reply", type: "ai", content: "Old reply" },
+            { id: "new", type: "human", content: "Continue" },
+          ],
+          context_usage: { compactions: 0 },
+          response_messages: [],
+          selected: "kept",
+        },
+      }),
+    },
+  );
+  const body = JSON.parse(init.body as string) as { input: unknown };
+
+  assert.deepEqual(body.input, {
+    messages: [{ id: "new", type: "human", content: "Continue" }],
+    selected: "kept",
+  });
+});
+
 void test("Aegra submission persists the active server span, preserves resume and metadata", async () => {
   const exporter = new InMemorySpanExporter();
   const provider = new NodeTracerProvider({

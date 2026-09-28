@@ -11,6 +11,7 @@ import {
   type RunRow,
 } from "../db/schema";
 import { isRunFinished } from "../../shared/run-status";
+import { parseContextUsage } from "../../shared/context-usage";
 import { latestRun } from "./run-store";
 import { reconcileRun } from "./recovery";
 
@@ -26,7 +27,12 @@ function completedMessages(state: ThreadState) {
     return [];
   }
 
-  return values.messages.flatMap((raw: unknown) => {
+  const messages =
+    "response_messages" in values && Array.isArray(values.response_messages)
+      ? values.response_messages
+      : values.messages;
+
+  return messages.flatMap((raw: unknown) => {
     if (
       !raw ||
       typeof raw !== "object" ||
@@ -72,6 +78,11 @@ async function saveCheckpoint(
   checkpoint: Awaited<ReturnType<typeof readCompletedCheckpoint>>,
 ) {
   const messages = completedMessages(checkpoint.state);
+  const values: unknown = checkpoint.state.values;
+  const usage =
+    values && typeof values === "object" && "context_usage" in values
+      ? parseContextUsage(values.context_usage)
+      : null;
 
   await db.transaction(async (tx) => {
     // Admission uses the same lock: checkpoint ownership cannot change mid-save.
@@ -129,6 +140,11 @@ async function saveCheckpoint(
           .onConflictDoNothing();
       }
     }
+
+    await tx
+      .update(conversations)
+      .set({ contextUsage: usage })
+      .where(eq(conversations.threadId, run.threadId));
 
     await tx
       .update(conversationRuns)

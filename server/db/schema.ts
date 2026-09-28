@@ -11,9 +11,11 @@ import {
 } from "drizzle-orm/pg-core";
 import type { Interrupt, Message, RunAgentInput } from "@ag-ui/client";
 import { runStatuses } from "../../shared/run-status";
+import type { ContextUsage } from "../../shared/context-usage";
 
 export const conversations = pgTable("conversations", {
   threadId: text("thread_id").primaryKey(),
+  contextUsage: jsonb("context_usage").$type<ContextUsage>(),
   nextSubmitSeq: bigint("next_submit_seq", { mode: "number" })
     .notNull()
     .default(1),

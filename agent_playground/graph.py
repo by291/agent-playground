@@ -16,6 +16,7 @@ from langchain_mcp_adapters.client import MultiServerMCPClient
 from langgraph.types import Checkpointer
 from langgraph_sdk.runtime import ServerRuntime
 
+from agent_playground.context import ContextMiddleware
 from agent_playground.db.connection import prepare_output_store
 from agent_playground.observability import execution_trace
 from agent_playground.workflow import run_experiment_workflow
@@ -43,22 +44,35 @@ def make_graph(
     model: BaseChatModel | None = None,
     checkpointer: Checkpointer | None = None,
     mcp_tools: list[BaseTool] | None = None,
+    summary_model: BaseChatModel | None = None,
 ):
     if model is None:
-        model = ChatDeepSeek(model=os.getenv("DEEPSEEK_MODEL", "deepseek-flash"))
+        model_name = os.getenv("DEEPSEEK_MODEL", "deepseek-flash")
+        model = ChatDeepSeek(model=model_name, stream_usage=True)
+        summary_model = summary_model or ChatDeepSeek(
+            model=model_name,
+            max_tokens=4096,
+            extra_body={"thinking": {"type": "disabled"}},
+        )
+
+    tools = [get_current_time, *(mcp_tools or []), run_experiment_workflow]
+    system_prompt = (
+        "You are a concise assistant. Use get_current_time when the user asks "
+        "for the current date or time. Use calculate_sum for arithmetic "
+        "that asks you to add two numbers. Use run_experiment_workflow when "
+        "the user asks for an experiment plan or a visual card. "
+        "After an approved workflow call, summarize its plan in plain text. "
+        "If the reviewer rejected it, acknowledge the rejection."
+    )
 
     return create_agent(
         model=model,
-        tools=[get_current_time, *(mcp_tools or []), run_experiment_workflow],
+        tools=tools,
         checkpointer=checkpointer,
-        system_prompt=(
-            "You are a concise assistant. Use get_current_time when the user asks "
-            "for the current date or time. Use calculate_sum for arithmetic "
-            "that asks you to add two numbers. Use run_experiment_workflow when "
-            "the user asks for an experiment plan or a visual card. "
-            "After an approved workflow call, summarize its plan in plain text. "
-            "If the reviewer rejected it, acknowledge the rejection."
-        ),
+        system_prompt=system_prompt,
+        middleware=[
+            ContextMiddleware(model, summary_model or model, system_prompt, tools)
+        ],
     )
 
 

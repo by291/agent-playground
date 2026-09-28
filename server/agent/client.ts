@@ -23,6 +23,26 @@ export function prepareAegraRequest(url: URL, init: RequestInit): RequestInit {
   // Aegra rejects a resume command accompanied by the adapter's state input.
   if (body.command != null) {
     delete body.input;
+  } else if (body.input && typeof body.input === "object") {
+    const input = body.input as Record<string, unknown>;
+
+    if (Array.isArray(input.messages)) {
+      // The checkpoint owns model history; archived UI messages must not undo compaction.
+      const userMessage: unknown = [...(input.messages as unknown[])]
+        .reverse()
+        .find(
+          (message) =>
+            message !== null &&
+            typeof message === "object" &&
+            (("type" in message && message.type === "human") ||
+              ("role" in message && message.role === "user")),
+        );
+
+      input.messages = userMessage ? [userMessage] : [];
+    }
+
+    delete input.context_usage;
+    delete input.response_messages;
   }
 
   const metadata = body.config?.metadata ?? {};

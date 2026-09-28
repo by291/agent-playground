@@ -15,5 +15,8 @@
   "devDependencies": {
     "@stylistic/eslint-plugin": "^5.10.0",
     "prettier": "^3.9.9"
+  },
+  "dependencies": {
+    "zod": "3.25.76"
   }
 }

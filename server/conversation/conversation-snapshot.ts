@@ -17,7 +17,10 @@ export async function listConversations() {
 
 export async function conversationSnapshot(threadId: string) {
   const [conversation] = await db
-    .select({ threadId: conversations.threadId })
+    .select({
+      threadId: conversations.threadId,
+      contextUsage: conversations.contextUsage,
+    })
     .from(conversations)
     .where(eq(conversations.threadId, threadId));
 
@@ -55,6 +58,7 @@ export async function conversationSnapshot(threadId: string) {
 
   return {
     threadId,
+    contextUsage: conversation.contextUsage,
     messages: messages.map((row) => row.message),
     outputs: outputs.map((row) => ({
       id: row.id,

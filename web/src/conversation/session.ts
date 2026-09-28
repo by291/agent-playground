@@ -13,8 +13,13 @@ import { saveConversation, type SavedConversation } from "./storage";
 import type { ConversationSnapshot, PendingSubmission } from "./contracts";
 import type { Activity } from "./types";
 import { createSubmissionRunner } from "./submission";
+import {
+  parseContextUsage,
+  type ContextUsage,
+} from "../../../shared/context-usage";
 
 export interface ConversationState {
+  contextUsage: ContextUsage | null;
   messages: Message[];
   surfaces: A2UISurfaceView[];
   a2uiIssue: string | null;
@@ -36,6 +41,25 @@ export function createConversationSession(
   saved: SavedConversation,
   agent = new HttpAgent({ url: "/agent", threadId: saved.threadId }),
 ) {
+  agent.use((input, next) => {
+    const state = { ...input.state } as Record<string, unknown>;
+    const userMessage = [...input.messages]
+      .reverse()
+      .find((message) => message.role === "user");
+    let messages: Message[] = [];
+
+    if (!input.resume?.length && userMessage) {
+      messages = [userMessage];
+    }
+
+    // Model history and reporting fields belong to the server's checkpoint.
+    delete state.messages;
+    delete state.context_usage;
+    delete state.response_messages;
+
+    return next.run({ ...input, messages, state });
+  });
+
   let connected = false;
   let pending = saved.pending;
   let submittedRunId: string | undefined;
@@ -46,6 +70,7 @@ export function createConversationSession(
   let recoveringOutputs = false;
 
   const store = createStore<ConversationState>()(() => ({
+    contextUsage: null,
     messages: [],
     surfaces: [],
     a2uiIssue: null,
@@ -118,6 +143,15 @@ export function createConversationSession(
     saveConversation({ threadId: saved.threadId });
   }
 
+  function receiveContextUsage(value: unknown) {
+    const usage = parseContextUsage(value);
+    const current = store.getState().contextUsage;
+
+    if (usage && (!current || usage.revision >= current.revision)) {
+      store.setState({ contextUsage: usage });
+    }
+  }
+
   function receiveSnapshot(snapshot: ConversationSnapshot | null) {
     if (!connected) {
       return;
@@ -136,6 +170,7 @@ export function createConversationSession(
     });
 
     if (result.kind === "current") {
+      receiveContextUsage(snapshot?.contextUsage);
       agent.setMessages(result.messages);
       store.setState({
         messages: [...agent.messages],
@@ -328,6 +363,17 @@ export function createConversationSession(
       onMessagesChanged() {
         if (connected) {
           store.setState({ messages: [...agent.messages] });
+        }
+      },
+
+      onStateChanged({ state }) {
+        if (
+          connected &&
+          state &&
+          typeof state === "object" &&
+          "context_usage" in state
+        ) {
+          receiveContextUsage(state.context_usage);
         }
       },
 

@@ -17,6 +17,24 @@ let app: (typeof import("../app"))["app"];
 let unavailable = false;
 let stateReads = 0;
 let listedRuns: unknown[] = [];
+let compactedCheckpoint = false;
+const contextUsage = {
+  model: "deepseek-flash",
+  usedTokens: 1200,
+  contextWindow: 1000000,
+  triggerTokens: 800000,
+  breakdown: {
+    system: 100,
+    tools: 200,
+    conversation: 300,
+    toolResults: 100,
+    summary: 500,
+  },
+  lastInputTokens: 1600,
+  compactions: 1,
+  lastCompaction: { beforeTokens: 810000, afterTokens: 1200 },
+  revision: 4,
+};
 const upstream = createServer((request, response) => {
   response.writeHead(unavailable ? 503 : 200, {
     "Content-Type": "application/json",
@@ -29,6 +47,23 @@ const upstream = createServer((request, response) => {
     response.end(
       JSON.stringify({
         values: {
+          ...(compactedCheckpoint
+            ? {
+                context_usage: contextUsage,
+                response_messages: [
+                  {
+                    id: "earlier-reply",
+                    type: "ai",
+                    content: "Earlier response from this run",
+                  },
+                  {
+                    id: "latest-reply",
+                    type: "ai",
+                    content: "Latest response",
+                  },
+                ],
+              }
+            : {}),
           messages: [
             { id: "checkpoint-reply", type: "ai", content: "Saved reply" },
             {
@@ -277,6 +312,35 @@ void test("a completed checkpoint is synchronized once and only adds missing mes
     snapshot?.messages.map((message) => message.id),
     [`${run.threadId}-message`, "checkpoint-reply", "checkpoint-followup"],
   );
+});
+
+void test("a compacted checkpoint recovers usage and replies removed from model history", async () => {
+  compactedCheckpoint = true;
+
+  try {
+    const { synchronizeConversation } = await import("./checkpoint-sync");
+    const { conversationSnapshot } = await import("./conversation-snapshot");
+    const run = await admit("compacted-checkpoint");
+
+    await runStore.recordAegraRun(run.aguiRunId, "upstream-run");
+    await database.db
+      .update(schema.conversationRuns)
+      .set({ status: "completed" })
+      .where(eq(schema.conversationRuns.aguiRunId, run.aguiRunId));
+    await synchronizeConversation(run.threadId);
+    const beforeReads = stateReads;
+    const snapshot = await conversationSnapshot(run.threadId);
+
+    assert.deepEqual(snapshot?.contextUsage, contextUsage);
+    assert.deepEqual(
+      snapshot?.messages.map((message) => message.id),
+      [`${run.threadId}-message`, "earlier-reply", "latest-reply"],
+    );
+    await synchronizeConversation(run.threadId);
+    assert.equal(stateReads, beforeReads);
+  } finally {
+    compactedCheckpoint = false;
+  }
 });
 
 void test("a resumed review no longer blocks the next ordinary message", async () => {

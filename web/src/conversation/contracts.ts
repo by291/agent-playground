@@ -5,6 +5,7 @@ import {
 } from "@ag-ui/client";
 import { z } from "zod";
 import { runStatuses } from "../../../shared/run-status";
+import { contextUsageSchema } from "../../../shared/context-usage";
 import { parseA2UIOutput } from "../a2ui/outputs";
 
 export const pendingSubmissionSchema = z.object({
@@ -18,6 +19,7 @@ export const pendingSubmissionSchema = z.object({
 export type PendingSubmission = z.infer<typeof pendingSubmissionSchema>;
 
 export const conversationSnapshotSchema = z.object({
+  contextUsage: contextUsageSchema.nullable().optional(),
   messages: MessageSchema.array(),
   interrupts: InterruptSchema.array(),
   outputs: z

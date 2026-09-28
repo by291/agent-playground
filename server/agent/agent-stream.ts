@@ -48,7 +48,10 @@ export function streamAgent(
         await lastValueFrom(
           execution.events.pipe(
             filter((event) => {
-              if (event.type === EventType.RAW) {
+              if (
+                event.type === EventType.RAW ||
+                event.type === EventType.MESSAGES_SNAPSHOT
+              ) {
                 return false;
               }
 
@@ -71,6 +74,21 @@ export function streamAgent(
               const clean = { ...output } as Record<string, unknown>;
 
               delete clean.rawEvent;
+
+              if (
+                event.type === EventType.STATE_SNAPSHOT &&
+                event.snapshot &&
+                typeof event.snapshot === "object"
+              ) {
+                const snapshot = {
+                  ...(event.snapshot as Record<string, unknown>),
+                };
+
+                // Public messages are recovered from the archive, not compressed model state.
+                delete snapshot.messages;
+                delete snapshot.response_messages;
+                clean.snapshot = snapshot;
+              }
 
               return clean;
             }),

@@ -1,0 +1,2 @@
+# Preserve Drizzle's generated database snapshot format.
+server/drizzle/meta/*_snapshot.json

@@ -152,7 +152,9 @@ void test("a rejected submission unlocks an existing conversation without discar
     ) as SavedConversation;
 
     assert.equal(saved.pending?.runId, inputs[0]?.runId);
-    assert.deepEqual(saved.pending?.messages, inputs[0]?.messages);
+    assert.equal(inputs[0]?.messages.length, 1);
+    assert.deepEqual(saved.pending?.messages.at(-1), inputs[0]?.messages[0]);
+    assert.equal(saved.pending?.messages[0]?.id, "saved-message");
 
     session.receiveSnapshot(previous);
     assert.equal(session.store.getState().running, false);
@@ -265,6 +267,70 @@ void test("reload retries a prepared submission once with the original input", a
     });
     stream.finish(input);
     await waitFor(() => !session.store.getState().running);
+  } finally {
+    disconnect();
+  }
+});
+
+void test("context usage streams and recovers without replaying archived messages", async () => {
+  const stream = streamingAgent("context-thread");
+  const session = createConversationSession(
+    { threadId: "context-thread" },
+    stream.agent,
+  );
+  const initial = snapshot();
+  const usage = {
+    model: "deepseek-flash",
+    usedTokens: 1200,
+    contextWindow: 1000000,
+    triggerTokens: 800000,
+    breakdown: {
+      system: 100,
+      tools: 200,
+      conversation: 300,
+      toolResults: 100,
+      summary: 500,
+    },
+    lastInputTokens: 1600,
+    compactions: 1,
+    lastCompaction: { beforeTokens: 810000, afterTokens: 1200 },
+    revision: 4,
+  };
+  const disconnect = connectSession(session, () => Promise.resolve(initial));
+
+  try {
+    session.receiveSnapshot(initial);
+    const completion = session.store.getState().send("Continue");
+    const input = await stream.requested;
+
+    assert.equal(input.messages.length, 1);
+    assert.equal(input.messages[0]?.role, "user");
+    assert.equal(session.store.getState().messages[0]?.id, "saved-message");
+    stream.emit({
+      type: "RUN_STARTED",
+      threadId: input.threadId,
+      runId: input.runId,
+    });
+    stream.emit({ type: "STATE_SNAPSHOT", snapshot: { context_usage: usage } });
+    await waitFor(() => session.store.getState().contextUsage?.revision === 4);
+    assert.deepEqual(session.store.getState().contextUsage, usage);
+
+    const stale = {
+      ...initial,
+      runs: [{ runId: input.runId, status: "running" as const }],
+      contextUsage: { ...usage, revision: 2 },
+    };
+
+    session.receiveSnapshot(stale);
+    assert.equal(session.store.getState().contextUsage?.revision, 4);
+    stream.finish(input);
+    await completion;
+    session.receiveSnapshot({
+      ...initial,
+      runs: [{ runId: input.runId, status: "completed" }],
+      contextUsage: usage,
+    });
+    assert.deepEqual(session.store.getState().contextUsage, usage);
   } finally {
     disconnect();
   }

@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ChatPane } from "./chat/ChatPane";
 import { Composer } from "./chat/Composer";
+import { ContextIndicator } from "./chat/ContextIndicator";
 import {
   loadConversation,
   newConversation,
@@ -84,6 +85,7 @@ function ConversationPage({
           </div>
 
           <div className="flex shrink-0 items-center gap-1.5 sm:gap-3">
+            <ContextIndicator />
             <ConnectionStatus />
             <a
               href="/a2ui"
