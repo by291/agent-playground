@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/message-scroller";
 import type { A2UISurfaceView } from "../a2ui/runtime";
 import { MessageRow, preloadMarkdownMessage, Thinking } from "./MessageRow";
+import { hasMessageText, waitingForAssistantText } from "./presentation";
 import { ReviewPanel } from "./ReviewPanel";
 import { useConversation } from "../conversation/useConversation";
 import { parsePlanReview } from "../conversation/planReview";
@@ -73,6 +74,7 @@ export function ChatPane() {
   const visible = messages.filter(
     (message) => message.role === "user" || message.role === "assistant",
   );
+  const waiting = waitingForAssistantText(visible, running);
   const surfacesByCall = new Map<string, A2UISurfaceView[]>();
 
   for (const view of surfaces) {
@@ -111,12 +113,14 @@ export function ChatPane() {
                 {/* Checkpoint IDs can replace stream IDs at the same position. */}
                 {visible.map((message, index) => (
                   <Fragment key={index}>
-                    <MessageScrollerItem>
-                      <MessageRow
-                        message={message}
-                        smoothText={animatedMessageId === message.id}
-                      />
-                    </MessageScrollerItem>
+                    {hasMessageText(message) && (
+                      <MessageScrollerItem>
+                        <MessageRow
+                          message={message}
+                          smoothText={animatedMessageId === message.id}
+                        />
+                      </MessageScrollerItem>
+                    )}
                     {message.role === "assistant" &&
                       message.toolCalls?.map((call) => {
                         return surfacesByCall.get(call.id)?.map((view) => (
@@ -148,7 +152,7 @@ export function ChatPane() {
                     />
                   </MessageScrollerItem>
                 )}
-                {running && visible.at(-1)?.role === "user" && (
+                {waiting && (
                   <MessageScrollerItem key="thinking">
                     <Thinking />
                   </MessageScrollerItem>
