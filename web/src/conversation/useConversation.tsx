@@ -10,7 +10,7 @@ import {
 import { useStore } from "zustand";
 import { conversationQueryOptions } from "./queries";
 import { createConversationSession, type ConversationState } from "./session";
-import type { SavedConversation } from "./storage";
+import type { ConversationReference } from "./storage";
 
 const ConversationContext = createContext<ReturnType<
   typeof createConversationSession
@@ -20,10 +20,14 @@ export function ConversationProvider({
   conversation,
   children,
 }: {
-  conversation: SavedConversation;
+  conversation: ConversationReference;
   children: ReactNode;
 }) {
   const [session] = useState(() => createConversationSession(conversation));
+  const snapshotEnabled = useStore(
+    session.store,
+    (state) => state.snapshotEnabled,
+  );
   const snapshotPolling = useStore(
     session.store,
     (state) => state.snapshotPolling,
@@ -36,9 +40,10 @@ export function ConversationProvider({
     refetch,
     dataUpdatedAt,
     errorUpdatedAt,
-  } = useQuery(
-    conversationQueryOptions(conversation.threadId, snapshotPolling),
-  );
+  } = useQuery({
+    ...conversationQueryOptions(conversation.threadId, snapshotPolling),
+    enabled: snapshotEnabled,
+  });
   const refresh = useCallback(async () => {
     await refetch({ throwOnError: true });
   }, [refetch]);

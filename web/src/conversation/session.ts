@@ -10,7 +10,7 @@ import { parseA2UIEvent, type A2UIOutput } from "../a2ui/outputs";
 import { createA2UIRuntime, type A2UISurfaceView } from "../a2ui/runtime";
 import { reviewEntries, type PlanReviewResponse } from "./planReview";
 import { reconcileSnapshot, pendingRecovery } from "./reconciliation";
-import { saveConversation, type SavedConversation } from "./storage";
+import { saveConversation, type ConversationReference } from "./storage";
 import type { ConversationSnapshot, PendingSubmission } from "./contracts";
 import type { Activity } from "./types";
 import { createSubmissionRunner } from "./submission";
@@ -30,6 +30,7 @@ export interface ConversationState {
   pendingInterrupts: Interrupt[];
   running: boolean;
   recovering: boolean;
+  snapshotEnabled: boolean;
   snapshotPolling: boolean;
   empty: boolean;
   animatedMessageId: string | null;
@@ -43,7 +44,7 @@ export interface ConversationState {
 type RefreshSnapshot = () => Promise<void>;
 
 export function createConversationSession(
-  saved: SavedConversation,
+  saved: ConversationReference,
   agent = new HttpAgent({ url: "/agent", threadId: saved.threadId }),
 ) {
   agent.use((input, next) => {
@@ -76,6 +77,7 @@ export function createConversationSession(
   let a2ui: ReturnType<typeof createA2UIRuntime> | undefined;
   let invalidOutputIssue: string | null = null;
   let recoveringOutputs = false;
+  const fresh = saved.fresh === true && !saved.pending;
 
   const store = createStore<ConversationState>()(() => ({
     contextUsage: null,
@@ -86,7 +88,8 @@ export function createConversationSession(
     activity: [],
     pendingInterrupts: [],
     running: false,
-    recovering: true,
+    recovering: !fresh,
+    snapshotEnabled: !fresh,
     snapshotPolling: false,
     empty: saved.empty === true && !saved.pending,
     animatedMessageId: null,
@@ -134,7 +137,7 @@ export function createConversationSession(
       streamInterrupts = undefined;
 
       if (connected) {
-        store.setState({ snapshotPolling: true });
+        store.setState({ snapshotEnabled: true, snapshotPolling: true });
         await requestSnapshot();
       }
     },

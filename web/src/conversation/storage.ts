@@ -8,11 +8,15 @@ export interface SavedConversation {
   empty?: boolean;
 }
 
-export function newConversation(): SavedConversation {
-  return { threadId: crypto.randomUUID(), empty: true };
+export interface ConversationReference extends SavedConversation {
+  fresh?: true;
 }
 
-export function loadConversation(): SavedConversation {
+export function newConversation(): ConversationReference {
+  return { threadId: crypto.randomUUID(), empty: true, fresh: true };
+}
+
+export function loadConversation(): ConversationReference {
   try {
     const saved: unknown = JSON.parse(
       localStorage.getItem(storageKey) ?? "null",
@@ -41,5 +45,11 @@ export function loadConversation(): SavedConversation {
 }
 
 export function saveConversation(conversation: SavedConversation): void {
-  localStorage.setItem(storageKey, JSON.stringify(conversation));
+  // The fresh marker applies only to this page; reloads must check server history.
+  const { threadId, pending, empty } = conversation;
+
+  localStorage.setItem(
+    storageKey,
+    JSON.stringify({ threadId, pending, empty }),
+  );
 }

@@ -15,7 +15,12 @@ import {
 } from "@ag-ui/client";
 import { createConversationSession } from "./session";
 import type { ConversationSnapshot } from "./contracts";
-import type { SavedConversation } from "./storage";
+import {
+  loadConversation,
+  newConversation,
+  saveConversation,
+  type SavedConversation,
+} from "./storage";
 import type { A2UIOutput } from "../a2ui/outputs";
 import { chatTurns, toolProcess } from "../chat/turns";
 
@@ -326,6 +331,70 @@ async function waitFor(predicate: () => boolean) {
 
   assert.ok(predicate(), "Expected conversation state was not reached");
 }
+
+void test("a fresh conversation can submit before its first snapshot and syncs after the run", async () => {
+  const conversation = newConversation();
+  const stream = streamingAgent(conversation.threadId);
+  const session = createConversationSession(conversation, stream.agent);
+  let reads = 0;
+  let savedSnapshot: ConversationSnapshot | null = null;
+  const disconnect = connectSession(session, () => {
+    reads += 1;
+
+    return Promise.resolve(savedSnapshot);
+  });
+
+  try {
+    assert.equal(session.store.getState().recovering, false);
+    assert.equal(session.store.getState().snapshotEnabled, false);
+    const completion = session.store.getState().send("Hello");
+    const input = await stream.requested;
+
+    assert.equal(input.messages[0]?.content, "Hello");
+    assert.equal(reads, 0);
+    assert.equal(session.store.getState().snapshotEnabled, false);
+    savedSnapshot = snapshot(input.runId);
+    stream.emit({
+      type: "RUN_STARTED",
+      threadId: input.threadId,
+      runId: input.runId,
+    });
+    stream.finish(input);
+    await completion;
+    assert.equal(reads, 1);
+    assert.equal(session.store.getState().snapshotEnabled, true);
+    assert.equal(session.store.getState().snapshotPolling, false);
+    assert.equal(session.store.getState().messages[0]?.content, "Saved reply");
+  } finally {
+    disconnect();
+  }
+});
+
+void test("restoring an empty conversation still requires a snapshot before sending", async () => {
+  const conversation = newConversation();
+
+  saveConversation(conversation);
+  assert.deepEqual(
+    JSON.parse(localStorage.getItem("agent-playground-conversation")!),
+    { threadId: conversation.threadId, empty: true },
+    "Only durable conversation fields are saved",
+  );
+  const restored = loadConversation();
+  const stream = streamingAgent(restored.threadId);
+  const session = createConversationSession(restored, stream.agent);
+  const disconnect = connectSession(session, () => Promise.resolve(null));
+
+  try {
+    assert.equal(session.store.getState().recovering, true);
+    assert.equal(session.store.getState().snapshotEnabled, true);
+    await session.store.getState().send("Wait for recovery");
+    assert.equal(stream.requests, 0);
+    session.receiveSnapshot(null);
+    assert.equal(session.store.getState().recovering, false);
+  } finally {
+    disconnect();
+  }
+});
 
 void test("snapshot polling stops for idle and terminal runs and follows unfinished recovery", () => {
   const session = createConversationSession({ threadId: "polling-recovery" });
