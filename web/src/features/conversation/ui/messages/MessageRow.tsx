@@ -12,10 +12,10 @@ import MarkdownMessage from "./MarkdownMessage";
 
 export function MessageRow({
   message,
-  smoothText = false,
+  streaming = false,
 }: {
   message: Message;
-  smoothText?: boolean;
+  streaming?: boolean;
 }) {
   const text = messageText(message);
 
@@ -43,7 +43,7 @@ export function MessageRow({
 
   return (
     <AssistantFrame>
-      <AssistantText message={message} smoothText={smoothText} />
+      <AssistantText message={message} streaming={streaming} />
     </AssistantFrame>
   );
 }
@@ -64,10 +64,10 @@ export function AssistantFrame({ children }: { children: ReactNode }) {
 
 export function AssistantText({
   message,
-  smoothText = false,
+  streaming = false,
 }: {
   message: Message;
-  smoothText?: boolean;
+  streaming?: boolean;
 }) {
   return (
     <Bubble variant="ghost" className="w-full">
@@ -75,7 +75,7 @@ export function AssistantText({
         <MarkdownMessage
           key={message.id}
           text={messageText(message)}
-          animate={smoothText}
+          streaming={streaming}
         />
       </BubbleContent>
     </Bubble>

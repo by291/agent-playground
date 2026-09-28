@@ -2,8 +2,8 @@ import { createRoot } from "react-dom/client";
 import { AppProviders } from "@/app/providers";
 import { appConfig } from "@/app/config";
 import { App } from "@/app/App";
-import "@/styles/index.css";
 import "streamdown/styles.css";
+import "@/styles/index.css";
 
 if (appConfig.observabilityEnabled) {
   const { initializeTracing } = await import("@/observability/bootstrap");

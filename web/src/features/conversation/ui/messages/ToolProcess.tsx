@@ -168,7 +168,7 @@ export function ToolProcess({
               <div className="chat-markdown px-2 text-sm text-muted">
                 <MarkdownMessage
                   text={messageText(entry.message)}
-                  animate={false}
+                  streaming={false}
                 />
               </div>
             )}

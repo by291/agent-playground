@@ -1,6 +1,6 @@
 import { composerState } from "../model/selectors";
 import { ArrowUpIcon } from "@phosphor-icons/react";
-import { useRef, useState, type KeyboardEvent, type SubmitEvent } from "react";
+import { useState, type KeyboardEvent, type SubmitEvent } from "react";
 import { useShallow } from "zustand/react/shallow";
 import {
   InputGroup,
@@ -10,17 +10,19 @@ import {
   InputGroupTextarea,
 } from "@/components/ui/input-group";
 import { useConversation } from "../ConversationProvider";
+import { useReplyPresentationBusy } from "./ReplyPresentation";
 
 export function Composer() {
   const { running, recovering, waitingForReview, onSend } = useConversation(
     useShallow(composerState),
   );
-  const disabled = running || recovering || waitingForReview;
+  const presenting = useReplyPresentationBusy();
+  const responding = running || presenting;
+  const disabled = responding || recovering || waitingForReview;
   const [prompt, setPrompt] = useState("");
-  const input = useRef<HTMLTextAreaElement>(null);
 
   let placeholder = "Message Agent Playground";
-  let sendLabel = running ? "Agent is responding" : "Send message";
+  let sendLabel = responding ? "Agent is responding" : "Send message";
 
   if (recovering) {
     sendLabel = "Restoring conversation";
@@ -39,7 +41,7 @@ export function Composer() {
     const message = prompt;
 
     setPrompt("");
-    void onSend(message).finally(() => input.current?.focus());
+    void onSend(message);
   }
 
   function handleKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
@@ -59,7 +61,6 @@ export function Composer() {
         <form onSubmit={submit}>
           <InputGroup className="h-auto flex-col items-stretch gap-1 rounded-[22px] border-line bg-white p-3 shadow-[0_8px_32px_rgba(28,41,34,0.08)] transition-[border-color,box-shadow] duration-200 focus-within:border-accent-line focus-within:shadow-[0_10px_36px_rgba(49,94,69,0.13)] sm:p-4">
             <InputGroupTextarea
-              ref={input}
               rows={1}
               value={prompt}
               onChange={(event) => setPrompt(event.target.value)}

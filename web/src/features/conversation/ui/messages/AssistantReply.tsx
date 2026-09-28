@@ -43,7 +43,7 @@ export function AssistantReply({
         <AssistantText
           key={message.id}
           message={message}
-          smoothText={animatedMessageId === message.id}
+          streaming={active && animatedMessageId === message.id}
         />
       ))}
       {active && !toolsRunning && !final.length && (

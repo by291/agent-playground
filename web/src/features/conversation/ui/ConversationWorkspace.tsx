@@ -10,6 +10,7 @@ import { useConversation } from "@/features/conversation/ConversationProvider";
 import { ActivityPanel } from "@/features/conversation/ui/ActivityPanel";
 import { ConnectionStatus } from "@/components/ConnectionStatus";
 import { Sidebar } from "@/features/conversation/ui/Sidebar";
+import { ReplyPresentationProvider } from "./ReplyPresentation";
 
 export function ConversationWorkspace({
   conversation,
@@ -87,8 +88,10 @@ export function ConversationWorkspace({
           <main
             className={`${showActivity ? "hidden lg:flex" : "flex"} min-w-0 flex-1 flex-col`}
           >
-            <ChatPane />
-            <Composer />
+            <ReplyPresentationProvider>
+              <ChatPane />
+              <Composer />
+            </ReplyPresentationProvider>
           </main>
           {showActivity && (
             <ActivityPanel

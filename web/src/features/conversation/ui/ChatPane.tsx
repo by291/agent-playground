@@ -5,7 +5,7 @@ import {
   isEmpty,
   conversationIssue,
 } from "../model/selectors";
-import { lazy, Suspense, useMemo } from "react";
+import { Fragment, lazy, Suspense, useMemo } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
@@ -97,7 +97,7 @@ export function ChatPane() {
               <MessageScrollerContent className="mx-auto w-full max-w-205 gap-8 px-4 pt-8 pb-12 sm:px-8 sm:pt-12">
                 {turns.map(({ turn, artifacts, hasReply, reviewKey }) => {
                   return (
-                    <div key={turn.id} className="contents">
+                    <Fragment key={turn.id}>
                       {turn.user && (
                         <MessageScrollerItem>
                           <MessageRow message={turn.user} />
@@ -143,7 +143,7 @@ export function ChatPane() {
                           </AssistantReply>
                         </MessageScrollerItem>
                       )}
-                    </div>
+                    </Fragment>
                   );
                 })}
                 {unattachedSurfaces.map((view) => (

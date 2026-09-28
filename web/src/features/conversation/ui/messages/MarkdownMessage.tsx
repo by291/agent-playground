@@ -1,43 +1,118 @@
-import { useState } from "react";
-import { Streamdown, type AnimateOptions } from "streamdown";
+import {
+  createContext,
+  memo,
+  useContext,
+  useMemo,
+  useState,
+  type ComponentProps,
+} from "react";
+import {
+  Block,
+  Streamdown,
+  parseMarkdownIntoBlocks,
+  type BlockProps,
+  type Components,
+  type ExtraProps,
+} from "streamdown";
+import { compactStreamingText, segmentStreamingText } from "./streamingText";
+import { textReveal, usePacedText } from "./usePacedText";
+import { useReportReplyPresentation } from "../ReplyPresentation";
 
-const streamingAnimation: AnimateOptions = {
-  animation: "fadeIn",
-  duration: 700,
-  easing: "cubic-bezier(0.37, 0.55, 0.86, 0.88)",
-  sep: "word",
-  stagger: 24,
-  maxBacklogMs: 320,
-};
-
-const cjkAnimation: AnimateOptions = {
-  ...streamingAnimation,
-  sep: "char",
-  stagger: 16,
-};
-
-const cjkText =
-  /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u;
-
-export default function MarkdownMessage({
-  text,
-  animate,
-}: {
+interface MarkdownProps {
   text: string;
-  animate: boolean;
-}) {
-  // Word splitting treats unspaced CJK text as one large fading block.
-  const [animation] = useState(() =>
-    cjkText.test(text) ? cjkAnimation : streamingAnimation,
+  streaming: boolean;
+}
+
+interface MarkdownContentProps extends MarkdownProps {
+  animated: boolean;
+}
+
+const lastBlockContext = createContext(-1);
+const fadeOptions = {
+  animation: "fadeIn",
+  duration: textReveal.fadeDurationMs,
+  easing: "ease-in-out",
+  sep: "word",
+  stagger: 0,
+} as const;
+
+function FadingSpan({
+  node,
+  style,
+  ...props
+}: ComponentProps<"span"> & ExtraProps) {
+  // Streamdown resets previous tokens to 0ms on each tick. Keep the original
+  // timing until the mounted token finishes, even as later text arrives.
+  const [animationStyle] = useState(() =>
+    node?.properties["data-sd-animate"]
+      ? { ...style, "--sd-delay": "0ms", animationFillMode: "backwards" }
+      : undefined,
+  );
+
+  return <span {...props} style={animationStyle ?? style} />;
+}
+
+const components: Components = { span: FadingSpan };
+
+function StreamingBlock(props: BlockProps) {
+  const lastBlock = useContext(lastBlockContext);
+  const active = props.index === lastBlock;
+  const rehypePlugins = useMemo(() => {
+    const animate = props.animatePlugin?.rehypePlugin;
+    const base =
+      props.rehypePlugins?.filter((plugin) => plugin !== animate) ?? [];
+
+    if (!active || !animate) {
+      return base;
+    }
+
+    return [...base, segmentStreamingText, animate, compactStreamingText];
+  }, [active, props.rehypePlugins, props.animatePlugin]);
+
+  return (
+    <Block
+      {...props}
+      rehypePlugins={rehypePlugins}
+      animatePlugin={active ? (props.animatePlugin ?? null) : null}
+    />
+  );
+}
+
+const MarkdownContent = memo(function MarkdownContent({
+  text,
+  streaming,
+  animated,
+}: MarkdownContentProps) {
+  const blocks = useMemo(
+    () => (streaming ? parseMarkdownIntoBlocks(text) : []),
+    [text, streaming],
+  );
+  const parseBlocks = useMemo(
+    () => (markdown: string) =>
+      markdown === text ? blocks : parseMarkdownIntoBlocks(markdown),
+    [text, blocks],
   );
 
   return (
-    <Streamdown
-      mode={animate ? "streaming" : "static"}
-      animated={animate ? animation : false}
-      isAnimating={animate}
-    >
-      {text}
-    </Streamdown>
+    <lastBlockContext.Provider value={blocks.length - 1}>
+      <Streamdown
+        mode={streaming ? "streaming" : "static"}
+        animated={animated ? fadeOptions : false}
+        isAnimating={streaming}
+        components={components}
+        BlockComponent={StreamingBlock}
+        parseMarkdownIntoBlocksFn={parseBlocks}
+      >
+        {text}
+      </Streamdown>
+    </lastBlockContext.Provider>
   );
+});
+
+export default function MarkdownMessage({ text, streaming }: MarkdownProps) {
+  const display = usePacedText(text, streaming);
+
+  useReportReplyPresentation(display.streaming);
+
+  return <MarkdownContent {...display} />;
 }
