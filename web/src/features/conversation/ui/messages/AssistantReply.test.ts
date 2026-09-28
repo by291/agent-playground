@@ -1,11 +1,11 @@
+import { test } from "vitest";
 import assert from "node:assert/strict";
-import test from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { AssistantReply } from "./AssistantReply";
 import { chatTurns, type ChatTurn } from "../../model/turns";
 
-void test("a tool reply uses one avatar, keeps commentary collapsed and renders the final Markdown", () => {
+test("a tool reply uses one avatar, keeps commentary collapsed and renders the final Markdown", () => {
   const turn = chatTurns(
     [
       { id: "question", role: "user", content: "Time?" },
@@ -38,7 +38,7 @@ void test("a tool reply uses one avatar, keeps commentary collapsed and renders 
   assert.doesNotMatch(markup, /get_current_time/);
 });
 
-void test("tool-only waiting and failures retain their reply while cards remain outside the fold", () => {
+test("tool-only waiting and failures retain their reply while cards remain outside the fold", () => {
   const turn = chatTurns(
     [
       { id: "question", role: "user", content: "Build a plan" },
@@ -77,7 +77,7 @@ void test("tool-only waiting and failures retain their reply while cards remain 
   assert.match(failure, /aria-expanded="false"/);
 });
 
-void test("completed replies release streaming controls for the latest streamed message", () => {
+test("completed replies release streaming controls for the latest streamed message", () => {
   const turn: ChatTurn = {
     id: "question",
     user: { id: "question", role: "user", content: "Compare seasons" },

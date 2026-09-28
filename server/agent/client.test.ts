@@ -1,5 +1,5 @@
+import { test } from "vitest";
 import assert from "node:assert/strict";
-import test from "node:test";
 import { context, trace } from "@opentelemetry/api";
 import {
   NodeTracerProvider,
@@ -9,7 +9,7 @@ import {
 import { W3CTraceContextPropagator } from "@opentelemetry/core";
 import { prepareAegraRequest } from "./client";
 
-void test("continuation sends only the newest user turn and never restores compacted state", () => {
+test("continuation sends only the newest user turn and never restores compacted state", () => {
   const init = prepareAegraRequest(
     new URL("http://aegra/threads/thread/runs/stream"),
     {
@@ -36,7 +36,7 @@ void test("continuation sends only the newest user turn and never restores compa
   });
 });
 
-void test("Aegra submission persists the active server span, preserves resume and metadata", async () => {
+test("Aegra submission persists the active server span, preserves resume and metadata", async () => {
   const exporter = new InMemorySpanExporter();
   const provider = new NodeTracerProvider({
     spanProcessors: [new SimpleSpanProcessor(exporter)],

@@ -1,9 +1,9 @@
+import { test } from "vitest";
 import assert from "node:assert/strict";
-import test from "node:test";
 import { InterruptSchema } from "@ag-ui/client";
 import { parsePlanReview, reviewEntries } from "./planReview";
 
-void test("review ownership identifies its plan without adding UI metadata to resume payloads", () => {
+test("review ownership identifies its plan without adding UI metadata to resume payloads", () => {
   const interrupt = InterruptSchema.parse({
     id: "review",
     reason: "Review",

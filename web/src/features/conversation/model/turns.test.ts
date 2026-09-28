@@ -1,5 +1,5 @@
+import { test } from "vitest";
 import assert from "node:assert/strict";
-import test from "node:test";
 import type { Message } from "@ag-ui/client";
 import { chatTurns, toolProcess } from "./turns";
 
@@ -32,7 +32,7 @@ const messages: Message[] = [
   { id: "answer", role: "assistant", content: "It is noon." },
 ];
 
-void test("a user turn owns one reply with parallel tools matched by call ID", () => {
+test("a user turn owns one reply with parallel tools matched by call ID", () => {
   const turns = chatTurns(messages, [
     { runId: "run", messageId: "question", status: "completed" },
   ]);
@@ -50,7 +50,7 @@ void test("a user turn owns one reply with parallel tools matched by call ID", (
   );
 });
 
-void test("tool argument completion is not execution completion", () => {
+test("tool argument completion is not execution completion", () => {
   const turn = chatTurns(messages.slice(0, 2), [
     { runId: "run", messageId: "question", status: "running" },
   ])[0]!;
@@ -58,7 +58,7 @@ void test("tool argument completion is not execution completion", () => {
   assert.equal(toolProcess(turn)[0]?.calls[0]?.status, "running");
 });
 
-void test("review resumes stay in the same reply and a new question starts another", () => {
+test("review resumes stay in the same reply and a new question starts another", () => {
   const turns = chatTurns(
     [...messages, { id: "next", role: "user", content: "Hello" }],
     [
@@ -73,7 +73,7 @@ void test("review resumes stay in the same reply and a new question starts anoth
   assert.equal(turns[1]?.status, "running");
 });
 
-void test("failed results and unfinished interrupted calls retain distinct statuses", () => {
+test("failed results and unfinished interrupted calls retain distinct statuses", () => {
   const failed = {
     id: "failed",
     role: "tool" as const,

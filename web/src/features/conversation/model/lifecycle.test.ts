@@ -1,12 +1,12 @@
+import { test } from "vitest";
 import assert from "node:assert/strict";
-import test from "node:test";
 import {
   initialLifecycle,
   snapshotPolicy,
   transitionLifecycle,
 } from "./lifecycle";
 
-void test("a fresh submission stays query-free until its stream settles", () => {
+test("a fresh submission stays query-free until its stream settles", () => {
   const initial = initialLifecycle({
     threadId: "fresh",
     fresh: true,
@@ -45,7 +45,7 @@ void test("a fresh submission stays query-free until its stream settles", () => 
   );
 });
 
-void test("restored runs and output gaps keep distinct execution and synchronization states", () => {
+test("restored runs and output gaps keep distinct execution and synchronization states", () => {
   const initial = initialLifecycle({ threadId: "restored", empty: true });
   const running = transitionLifecycle(initial, {
     type: "snapshot-received",
@@ -84,7 +84,7 @@ void test("restored runs and output gaps keep distinct execution and synchroniza
   assert.deepEqual(snapshotPolicy(ready), { enabled: true, polling: false });
 });
 
-void test("a recovery error keeps initialization blocked and enables polling", () => {
+test("a recovery error keeps initialization blocked and enables polling", () => {
   const initial = initialLifecycle({ threadId: "restore" });
   const failed = transitionLifecycle(initial, {
     type: "snapshot-failed",

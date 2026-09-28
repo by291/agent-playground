@@ -1,10 +1,10 @@
+import { test } from "vitest";
 import assert from "node:assert/strict";
-import test from "node:test";
 import { InterruptSchema, type Message } from "@ag-ui/client";
 import { createA2UIRuntime, workflowCatalog } from "@/features/a2ui";
 import { conversationView } from "./view";
 
-void test("tool surfaces attach once to their owning turn and orphan surfaces remain visible", () => {
+test("tool surfaces attach once to their owning turn and orphan surfaces remain visible", () => {
   const runtime = createA2UIRuntime();
   const messages: Message[] = [
     { id: "first", role: "user", content: "Plan" },
@@ -77,7 +77,7 @@ void test("tool surfaces attach once to their owning turn and orphan surfaces re
   }
 });
 
-void test("an active turn retains its reply before text arrives and reviews survive missing history", () => {
+test("an active turn retains its reply before text arrives and reviews survive missing history", () => {
   const interrupt = InterruptSchema.parse({
     id: "review",
     reason: "Review plan",
@@ -112,7 +112,7 @@ void test("an active turn retains its reply before text arrives and reviews surv
   );
 });
 
-void test("partial workflow completion preserves the review batch identity for remaining edits", () => {
+test("partial workflow completion preserves the review batch identity for remaining edits", () => {
   const runtime = createA2UIRuntime();
   const calls = ["first-plan", "second-plan"].map((id) => ({
     id,

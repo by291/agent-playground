@@ -1,10 +1,10 @@
+import { test } from "vitest";
 import type { ResumeEntry } from "@ag-ui/client";
 import assert from "node:assert/strict";
-import { test } from "node:test";
 import { ReviewLangGraphAgent } from "./hitl";
 import { prepareAegraRequest } from "./client";
 
-void test("sends only the resume command to Aegra", () => {
+test("sends only the resume command to Aegra", () => {
   const url = new URL("http://127.0.0.1:2026/threads/thread/runs/stream");
   const init = {
     method: "POST",
@@ -29,7 +29,7 @@ class TestAgent extends ReviewLangGraphAgent {
   }
 }
 
-void test("resumes parallel reviews by LangGraph interrupt id", () => {
+test("resumes parallel reviews by LangGraph interrupt id", () => {
   const agent = new TestAgent({
     graphId: "agent",
     deploymentUrl: "http://127.0.0.1:2026",
@@ -55,7 +55,7 @@ void test("resumes parallel reviews by LangGraph interrupt id", () => {
   );
 });
 
-void test("preserves the adapter's single-review resume value", () => {
+test("preserves the adapter's single-review resume value", () => {
   const agent = new TestAgent({
     graphId: "agent",
     deploymentUrl: "http://127.0.0.1:2026",

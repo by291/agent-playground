@@ -1,5 +1,5 @@
+import { describe, test } from "vitest";
 import assert from "node:assert/strict";
-import test from "node:test";
 import { trace, SpanStatusCode } from "@opentelemetry/api";
 import {
   WebTracerProvider,
@@ -26,7 +26,7 @@ import {
 import type { A2UIOutput } from "@/features/a2ui";
 import { chatTurns, toolProcess } from "../model/turns";
 
-void test("a resumed tool argument stream replaces saved arguments instead of appending them", async () => {
+test("a resumed tool argument stream replaces saved arguments instead of appending them", async () => {
   const stream = streamingAgent("tool-resume");
   const session = createConversationSession(
     { threadId: "tool-resume" },
@@ -119,7 +119,7 @@ void test("a resumed tool argument stream replaces saved arguments instead of ap
   disconnect();
 });
 
-void test("new tool calls accumulate each argument fragment while execution remains running", async () => {
+test("new tool calls accumulate each argument fragment while execution remains running", async () => {
   const stream = streamingAgent("new-tool");
   const session = createConversationSession(
     { threadId: "new-tool" },
@@ -172,7 +172,7 @@ void test("new tool calls accumulate each argument fragment while execution rema
   disconnect();
 });
 
-void test("a handled tool error is visible before the model finishes its fallback reply", async () => {
+test("a handled tool error is visible before the model finishes its fallback reply", async () => {
   const stream = streamingAgent("handled-error");
   const session = createConversationSession(
     { threadId: "handled-error" },
@@ -334,7 +334,7 @@ async function waitFor(predicate: () => boolean) {
   assert.ok(predicate(), "Expected conversation state was not reached");
 }
 
-void test("a fresh conversation can submit before its first snapshot and syncs after the run", async () => {
+test("a fresh conversation can submit before its first snapshot and syncs after the run", async () => {
   const conversation = newConversation();
   const stream = streamingAgent(conversation.threadId);
   const session = createConversationSession(conversation, stream.agent);
@@ -384,7 +384,7 @@ void test("a fresh conversation can submit before its first snapshot and syncs a
   }
 });
 
-void test("restoring an empty conversation still requires a snapshot before sending", async () => {
+test("restoring an empty conversation still requires a snapshot before sending", async () => {
   const conversation = newConversation();
 
   saveConversation(conversation);
@@ -413,7 +413,7 @@ void test("restoring an empty conversation still requires a snapshot before send
   }
 });
 
-void test("snapshot polling stops for idle and terminal runs and follows unfinished recovery", () => {
+test("snapshot polling stops for idle and terminal runs and follows unfinished recovery", () => {
   const session = createConversationSession({ threadId: "polling-recovery" });
   const disconnect = connectSession(session, () => Promise.resolve(null));
 
@@ -451,7 +451,7 @@ void test("snapshot polling stops for idle and terminal runs and follows unfinis
   }
 });
 
-void test("a failed initial snapshot enables recovery until a successful fetch", () => {
+test("a failed initial snapshot enables recovery until a successful fetch", () => {
   const session = createConversationSession({ threadId: "polling-error" });
   const disconnect = connectSession(session, () => Promise.resolve(null));
 
@@ -472,7 +472,7 @@ void test("a failed initial snapshot enables recovery until a successful fetch",
   }
 });
 
-void test("live SSE suppresses polling and a failed final sync resumes recovery", async () => {
+test("live SSE suppresses polling and a failed final sync resumes recovery", async () => {
   const stream = streamingAgent("polling-stream");
   const session = createConversationSession(
     { threadId: "polling-stream" },
@@ -535,7 +535,7 @@ void test("live SSE suppresses polling and a failed final sync resumes recovery"
   }
 });
 
-void test("a stale final snapshot keeps recovery enabled until the current run is saved", async () => {
+test("a stale final snapshot keeps recovery enabled until the current run is saved", async () => {
   const stream = streamingAgent("polling-stale");
   const session = createConversationSession(
     { threadId: "polling-stale" },
@@ -576,7 +576,7 @@ void test("a stale final snapshot keeps recovery enabled until the current run i
   }
 });
 
-void test("a saved A2UI sequence gap keeps recovery enabled until missing output arrives", () => {
+test("a saved A2UI sequence gap keeps recovery enabled until missing output arrives", () => {
   const session = createConversationSession({ threadId: "polling-output-gap" });
   const disconnect = connectSession(session, () => Promise.resolve(null));
   const first: A2UIOutput = {
@@ -615,7 +615,7 @@ void test("a saved A2UI sequence gap keeps recovery enabled until missing output
   }
 });
 
-void test("restoring a saved conversation never publishes a completed empty state", async (t) => {
+describe("restoring a saved conversation never publishes a completed empty state", () => {
   const savedText = snapshot();
   const savedSurface: ConversationSnapshot = {
     ...snapshot(),
@@ -641,7 +641,7 @@ void test("restoring a saved conversation never publishes a completed empty stat
     ["text history", savedText],
     ["surface history", savedSurface],
   ] as const) {
-    await t.test(name, () => {
+    test(name, () => {
       const session = createConversationSession({ threadId: name });
       const disconnect = connectSession(session, () => Promise.resolve(saved));
       const completedStates: { messages: number; surfaces: number }[] = [];
@@ -678,7 +678,7 @@ void test("restoring a saved conversation never publishes a completed empty stat
   }
 });
 
-void test("an empty conversation finishes recovery without inventing history", () => {
+test("an empty conversation finishes recovery without inventing history", () => {
   const session = createConversationSession({ threadId: "empty-thread" });
   const disconnect = connectSession(session, () => Promise.resolve(null));
 
@@ -698,7 +698,7 @@ void test("an empty conversation finishes recovery without inventing history", (
   }
 });
 
-void test("a rejected submission unlocks an existing conversation without discarding its pending input", async () => {
+test("a rejected submission unlocks an existing conversation without discarding its pending input", async () => {
   const inputs: RunAgentInput[] = [];
   const agent = new HttpAgent({
     threadId: "rejected-thread",
@@ -752,7 +752,7 @@ void test("a rejected submission unlocks an existing conversation without discar
   }
 });
 
-void test("a stale completed snapshot cannot erase a new stream or leak into another session", async () => {
+test("a stale completed snapshot cannot erase a new stream or leak into another session", async () => {
   const stream = streamingAgent("thread-one");
   const first = createConversationSession(
     { threadId: "thread-one" },
@@ -819,7 +819,7 @@ void test("a stale completed snapshot cannot erase a new stream or leak into ano
   }
 });
 
-void test("reload retries a prepared submission once with the original input", async () => {
+test("reload retries a prepared submission once with the original input", async () => {
   const stream = streamingAgent("retry-thread");
   const saved: SavedConversation = {
     threadId: "retry-thread",
@@ -858,7 +858,7 @@ void test("reload retries a prepared submission once with the original input", a
   }
 });
 
-void test("context usage streams and recovers without replaying archived messages", async () => {
+test("context usage streams and recovers without replaying archived messages", async () => {
   const stream = streamingAgent("context-thread");
   const session = createConversationSession(
     { threadId: "context-thread" },
@@ -922,7 +922,7 @@ void test("context usage streams and recovers without replaying archived message
   }
 });
 
-void test("an unknown server submission is recovered without resending it", () => {
+test("an unknown server submission is recovered without resending it", () => {
   const stream = streamingAgent("unknown-thread");
   const session = createConversationSession(
     {
@@ -948,7 +948,7 @@ void test("an unknown server submission is recovered without resending it", () =
   }
 });
 
-void test("repeated outputs share the same surface and conflicts remain visible", () => {
+test("repeated outputs share the same surface and conflicts remain visible", () => {
   const session = createConversationSession({ threadId: "card-thread" });
   const disconnect = connectSession(session, () => Promise.resolve(null));
 
@@ -987,7 +987,7 @@ void test("repeated outputs share the same surface and conflicts remain visible"
   }
 });
 
-void test("disconnect prevents late recovery from overwriting the new conversation pointer", () => {
+test("disconnect prevents late recovery from overwriting the new conversation pointer", () => {
   const stream = streamingAgent("old-thread");
   const session = createConversationSession(
     {
@@ -1016,7 +1016,7 @@ void test("disconnect prevents late recovery from overwriting the new conversati
   );
 });
 
-void test("out-of-order live A2UI updates recover through a snapshot and do not replay on completion", async () => {
+test("out-of-order live A2UI updates recover through a snapshot and do not replay on completion", async () => {
   const exporter = new InMemorySpanExporter();
   const provider = new WebTracerProvider({
     spanProcessors: [new SimpleSpanProcessor(exporter)],
@@ -1129,7 +1129,7 @@ void test("out-of-order live A2UI updates recover through a snapshot and do not 
   }
 });
 
-void test("invalid A2UI events remain visible without interrupting the text stream", async () => {
+test("invalid A2UI events remain visible without interrupting the text stream", async () => {
   const stream = streamingAgent("invalid-output-thread");
   const session = createConversationSession(
     { threadId: "invalid-output-thread" },
@@ -1182,7 +1182,7 @@ void test("invalid A2UI events remain visible without interrupting the text stre
   }
 });
 
-void test("review submission covers each interrupt once and blocks duplicate sends", async () => {
+test("review submission covers each interrupt once and blocks duplicate sends", async () => {
   const stream = streamingAgent("review-thread");
   const session = createConversationSession(
     { threadId: "review-thread" },

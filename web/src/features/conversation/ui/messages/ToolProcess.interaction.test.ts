@@ -1,15 +1,13 @@
-import "../../../../../tests/dom";
+// @vitest-environment jsdom
+import { test } from "vitest";
 import assert from "node:assert/strict";
-import test, { afterEach } from "node:test";
 import { createElement } from "react";
-import { cleanup, render } from "@testing-library/react";
+import { render } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ToolProcess } from "./ToolProcess";
 import { chatTurns, toolProcess } from "../../model/turns";
 
-afterEach(cleanup);
-
-void test("tool commentary and parameters open independently without changing the reply", async () => {
+test("tool commentary and parameters open independently without changing the reply", async () => {
   const turn = chatTurns(
     [
       {

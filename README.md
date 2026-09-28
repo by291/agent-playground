@@ -125,3 +125,15 @@ GitHub Actions runs the Python, server, and web checks in parallel for pull requ
 Pyrefly uses its strict preset. Ruff keeps its default checks and adds import sorting, common bug checks, and Python syntax upgrades; its formatter uses the default 88-character line length. Both TypeScript projects enable strict checking, unchecked index access, exact optional properties, and verbatim module syntax. ESLint uses the JavaScript and type-aware TypeScript recommended rules, with React Hooks rules for the web app. Prettier uses its defaults, while `.editorconfig` defines indentation and line endings for editors.
 
 The Python and server PostgreSQL tests use Testcontainers to start temporary `postgres:18-alpine` containers. `make test` and `make check` need a running Docker daemon, but do not need the Compose database or a `TEST_DATABASE_URL` variable.
+
+TypeScript tests use Vitest. `pnpm test` runs all server and web tests, including the PostgreSQL integration suite. Server tests use the Node environment; web DOM tests opt into jsdom and use React Testing Library with jest-dom assertions. The web test setup releases mounted components, resets browser storage, and restores mocks and timers after each test. Type checking remains a separate `pnpm check` step.
+
+```sh
+pnpm --filter agent-playground-server test:unit
+pnpm --filter agent-playground-server test:integration
+pnpm --filter agent-playground-server test:watch
+pnpm --filter agent-playground-web test:watch
+pnpm test:coverage
+```
+
+The server unit and watch commands do not start Docker; integration tests are named `*.integration.test.ts` and run with longer startup and test timeouts. Coverage uses V8 and writes HTML and LCOV reports to `server/coverage/` and `web/coverage/`. Browser smoke flows remain separate from `pnpm test` and do not run as part of coverage collection.

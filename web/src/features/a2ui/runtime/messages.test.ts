@@ -1,10 +1,10 @@
+import { test } from "vitest";
 import assert from "node:assert/strict";
-import test from "node:test";
 import { EventType } from "@ag-ui/client";
 import { parseA2UIMessages } from "./messages";
 import { parseA2UIEvent, parseA2UIOutput } from "./outputs";
 
-void test("accepts the official message wrapper and update-only message lists", () => {
+test("accepts the official message wrapper and update-only message lists", () => {
   const messages = [
     {
       version: "v0.9",
@@ -22,7 +22,7 @@ void test("accepts the official message wrapper and update-only message lists", 
   );
 });
 
-void test("the transport adapter validates output identity and does not parse ordinary tool results", () => {
+test("the transport adapter validates output identity and does not parse ordinary tool results", () => {
   const value = {
     id: "output",
     outputSeq: 1,

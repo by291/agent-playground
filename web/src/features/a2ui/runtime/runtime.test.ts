@@ -1,5 +1,5 @@
+import { test } from "vitest";
 import assert from "node:assert/strict";
-import test from "node:test";
 import { NodeResolver, getValue, type A2uiMessage } from "@a2ui/web_core/v0_9";
 import { workflowCatalog } from "../catalog/index";
 import { createA2UIRuntime } from "./runtime";
@@ -36,7 +36,7 @@ function creation(surfaceId = "main"): A2uiMessage[] {
   ];
 }
 
-void test("one processor keeps surfaces alive across component and data updates, then deletes them", () => {
+test("one processor keeps surfaces alive across component and data updates, then deletes them", () => {
   const runtime = createA2UIRuntime();
   const initial = runtime.ingest([
     output(1, [...creation(), ...creation("second")]),
@@ -103,7 +103,7 @@ void test("one processor keeps surfaces alive across component and data updates,
   runtime.dispose();
 });
 
-void test("a failed batch hides its touched surfaces and cannot leave a partial preview", () => {
+test("a failed batch hides its touched surfaces and cannot leave a partial preview", () => {
   const runtime = createA2UIRuntime();
 
   runtime.ingest([output(1, creation("saved"))]);
@@ -152,7 +152,7 @@ for (const text of [
     returnType: "string",
   },
 ] as const) {
-  void test(`invalid incremental binding paths fail before reactive callbacks: ${JSON.stringify(text)}`, () => {
+  test(`invalid incremental binding paths fail before reactive callbacks: ${JSON.stringify(text)}`, () => {
     const runtime = createA2UIRuntime();
     const initial = runtime.ingest([output(1, creation())]);
     const resolver = new NodeResolver(
@@ -187,7 +187,7 @@ for (const text of [
   });
 }
 
-void test("a missing output waits for recovery and an older snapshot cannot replay creation or revert data", () => {
+test("a missing output waits for recovery and an older snapshot cannot replay creation or revert data", () => {
   const runtime = createA2UIRuntime();
   const first = output(1, creation());
   const second = output(2, [
@@ -213,7 +213,7 @@ void test("a missing output waits for recovery and an older snapshot cannot repl
   runtime.dispose();
 });
 
-void test("JSON object key order does not make a repeated output conflict", () => {
+test("JSON object key order does not make a repeated output conflict", () => {
   const runtime = createA2UIRuntime();
   const first = output(1, creation());
 
@@ -243,7 +243,7 @@ void test("JSON object key order does not make a repeated output conflict", () =
   runtime.dispose();
 });
 
-void test("conflicting output identities keep the original surface and report an error", () => {
+test("conflicting output identities keep the original surface and report an error", () => {
   const runtime = createA2UIRuntime();
   const first = output(1, creation());
   const initial = runtime.ingest([first]);
@@ -265,7 +265,7 @@ void test("conflicting output identities keep the original surface and report an
   runtime.dispose();
 });
 
-void test("unknown catalogs and surfaces report processing failures without hiding earlier output", () => {
+test("unknown catalogs and surfaces report processing failures without hiding earlier output", () => {
   const runtime = createA2UIRuntime();
 
   runtime.ingest([output(1, creation())]);
@@ -305,7 +305,7 @@ void test("unknown catalogs and surfaces report processing failures without hidi
   other.dispose();
 });
 
-void test("runtime state belongs to one conversation and disposal releases its surfaces", () => {
+test("runtime state belongs to one conversation and disposal releases its surfaces", () => {
   const first = createA2UIRuntime();
   const second = createA2UIRuntime();
 

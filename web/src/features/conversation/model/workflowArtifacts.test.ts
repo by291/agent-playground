@@ -1,5 +1,5 @@
+import { test } from "vitest";
 import assert from "node:assert/strict";
-import test from "node:test";
 import type { ToolCall } from "@ag-ui/client";
 import type { A2uiMessage } from "@a2ui/web_core/v0_9";
 import { workflowCatalog } from "@/features/a2ui";
@@ -45,7 +45,7 @@ function output(sequence: number, callId: string, stage: string) {
   };
 }
 
-void test("workflow stages share one current card and preserve earlier cards as history", () => {
+test("workflow stages share one current card and preserve earlier cards as history", () => {
   const runtime = createA2UIRuntime();
   const outputs = [
     output(1, "plan", "idea"),
@@ -80,7 +80,7 @@ void test("workflow stages share one current card and preserve earlier cards as 
   }
 });
 
-void test("review edits replace the review prompt and disappear when their result arrives", () => {
+test("review edits replace the review prompt and disappear when their result arrives", () => {
   const runtime = createA2UIRuntime();
   const review = {
     interruptId: "review",
@@ -112,7 +112,7 @@ void test("review edits replace the review prompt and disappear when their resul
   }
 });
 
-void test("parallel workflow cards and unrelated surfaces remain independently visible", () => {
+test("parallel workflow cards and unrelated surfaces remain independently visible", () => {
   const runtime = createA2UIRuntime();
 
   try {

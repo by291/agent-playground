@@ -1,14 +1,12 @@
-import "../../tests/dom";
+// @vitest-environment jsdom
+import { test, vi } from "vitest";
 import assert from "node:assert/strict";
-import test, { afterEach } from "node:test";
 import { createElement } from "react";
-import { cleanup, render } from "@testing-library/react";
+import { render } from "@testing-library/react";
 import { PageBoundary } from "./PageBoundary";
 
-afterEach(cleanup);
-
-void test("a page render failure shows a reload action instead of a blank page", (context) => {
-  context.mock.method(console, "error", () => undefined);
+test("a page render failure shows a reload action instead of a blank page", () => {
+  vi.spyOn(console, "error").mockImplementation(() => undefined);
 
   function FailedPage(): never {
     throw new Error("Page module failed");

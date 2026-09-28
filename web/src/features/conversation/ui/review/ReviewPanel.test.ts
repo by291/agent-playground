@@ -1,5 +1,5 @@
+import { test } from "vitest";
 import assert from "node:assert/strict";
-import test from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { ReviewPanel } from "./ReviewPanel";
@@ -10,7 +10,7 @@ const review = {
   steps: ["Run a trial."],
 };
 
-void test("a single plan exposes direct approval and rejection beside editable fields", () => {
+test("a single plan exposes direct approval and rejection beside editable fields", () => {
   const markup = renderToStaticMarkup(
     createElement(ReviewPanel, {
       reviews: [review],
@@ -25,7 +25,7 @@ void test("a single plan exposes direct approval and rejection beside editable f
   assert.match(markup, /<textarea[^>]*>Run a trial\./);
 });
 
-void test("an empty plan cannot be approved but can still be rejected", () => {
+test("an empty plan cannot be approved but can still be rejected", () => {
   const markup = renderToStaticMarkup(
     createElement(ReviewPanel, {
       reviews: [{ ...review, title: "", steps: [] }],

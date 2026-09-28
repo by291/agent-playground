@@ -1,22 +1,14 @@
-import "../../../../tests/dom";
+// @vitest-environment jsdom
+import { test, onTestFinished, vi, expect } from "vitest";
 import assert from "node:assert/strict";
-import test, { afterEach, type TestContext } from "node:test";
 import { createElement } from "react";
-import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
+import { fireEvent, render, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ConversationProvider } from "../ConversationProvider";
 import type { ConversationSnapshot } from "../api/contracts";
 import { ConversationWorkspace } from "./ConversationWorkspace";
 
-afterEach(() => {
-  cleanup();
-  localStorage.removeItem("agent-playground-sidebar-collapsed");
-});
-
-function renderWorkspace(
-  context: TestContext,
-  snapshot: ConversationSnapshot | null = null,
-) {
+function renderWorkspace(snapshot: ConversationSnapshot | null = null) {
   const client = new QueryClient();
   const conversation = {
     threadId: "navigation",
@@ -24,8 +16,8 @@ function renderWorkspace(
     empty: snapshot === null,
   };
 
-  context.after(() => client.clear());
-  context.mock.method(globalThis, "fetch", (url: string) => {
+  onTestFinished(() => client.clear());
+  vi.stubGlobal("fetch", (url: string) => {
     if (url === "/health") {
       return Promise.resolve(new Response());
     }
@@ -36,9 +28,9 @@ function renderWorkspace(
     configurable: true,
     value: () => undefined,
   });
-  context.after(() =>
-    Reflect.deleteProperty(HTMLElement.prototype, "scrollTo"),
-  );
+  onTestFinished(() => {
+    Reflect.deleteProperty(HTMLElement.prototype, "scrollTo");
+  });
 
   return render(
     createElement(
@@ -56,8 +48,8 @@ function renderWorkspace(
   );
 }
 
-void test("collapsing and expanding navigation preserves the unsent composer draft", (context) => {
-  const page = renderWorkspace(context);
+test("collapsing and expanding navigation preserves the unsent composer draft", () => {
+  const page = renderWorkspace();
   const input = page.getByRole("textbox", {
     name: "Message",
   }) as HTMLTextAreaElement;
@@ -84,8 +76,8 @@ void test("collapsing and expanding navigation preserves the unsent composer dra
   assert.equal(input.value, "Keep this unfinished task");
 });
 
-void test("welcome suggestions prepare an editable draft before starting a run", (context) => {
-  const page = renderWorkspace(context);
+test("welcome suggestions prepare an editable draft before starting a run", () => {
+  const page = renderWorkspace();
   const input = page.getByRole("textbox", {
     name: "Message",
   }) as HTMLTextAreaElement;
@@ -93,14 +85,14 @@ void test("welcome suggestions prepare an editable draft before starting a run",
   fireEvent.click(page.getByRole("button", { name: /Draft a plan/ }));
 
   assert.equal(input.value, "Create a plan for validating an agent workflow.");
-  assert.equal(input.disabled, false);
+  expect(input).toBeEnabled();
   assert.ok(
     page.getByRole("heading", { name: "What would you like to work on?" }),
   );
 });
 
-void test("navigation restores the saved collapse preference on a new page", (context) => {
-  const page = renderWorkspace(context);
+test("navigation restores the saved collapse preference on a new page", () => {
+  const page = renderWorkspace();
 
   fireEvent.click(page.getByRole("button", { name: "Collapse sidebar" }));
 
@@ -109,7 +101,7 @@ void test("navigation restores the saved collapse preference on a new page", (co
     "true",
   );
   page.unmount();
-  const restored = renderWorkspace(context);
+  const restored = renderWorkspace();
 
   assert.ok(restored.getByRole("button", { name: "Expand sidebar" }));
   assert.equal(
@@ -123,14 +115,14 @@ void test("navigation restores the saved collapse preference on a new page", (co
     "false",
   );
   restored.unmount();
-  const expanded = renderWorkspace(context);
+  const expanded = renderWorkspace();
 
   assert.ok(expanded.getByRole("button", { name: "Collapse sidebar" }));
   assert.ok(expanded.getByRole("separator", { name: "Sidebar width" }));
 });
 
-void test("navigation changes preserve pending review edits and keep new messages blocked", async (context) => {
-  const page = renderWorkspace(context, {
+test("navigation changes preserve pending review edits and keep new messages blocked", async () => {
+  const page = renderWorkspace({
     messages: [],
     outputs: [],
     runs: [{ runId: "review-run", status: "interrupted" }],
@@ -165,22 +157,15 @@ void test("navigation changes preserve pending review edits and keep new message
   assert.equal(page.getByLabelText("Title"), title);
   assert.equal(title.value, "My edited plan");
   assert.equal(steps.value, "Keep these edited steps");
-  assert.equal(
-    (
-      page.getByRole("textbox", {
-        name: "Message",
-      }) as HTMLTextAreaElement
-    ).disabled,
-    true,
-  );
+  expect(page.getByRole("textbox", { name: "Message" })).toBeDisabled();
 });
 
-void test("sidebar width can be adjusted with the keyboard and survives collapse", (context) => {
+test("sidebar width can be adjusted with the keyboard and survives collapse", () => {
   localStorage.removeItem("agent-playground-sidebar-width");
-  context.after(() =>
+  onTestFinished(() =>
     localStorage.removeItem("agent-playground-sidebar-width"),
   );
-  const page = renderWorkspace(context);
+  const page = renderWorkspace();
   const separator = page.getByRole("separator", { name: "Sidebar width" });
   const input = page.getByRole("textbox", {
     name: "Message",

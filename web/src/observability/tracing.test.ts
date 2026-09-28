@@ -1,5 +1,5 @@
+import { test } from "vitest";
 import assert from "node:assert/strict";
-import test from "node:test";
 import {
   WebTracerProvider,
   InMemorySpanExporter,
@@ -9,7 +9,7 @@ import { startSubmissionTrace } from "./tracing";
 import { propagation } from "@opentelemetry/api";
 import { W3CTraceContextPropagator } from "@opentelemetry/core";
 
-void test("browser submission propagates its span and summarizes first text and failure", () => {
+test("browser submission propagates its span and summarizes first text and failure", () => {
   const exporter = new InMemorySpanExporter();
   const provider = new WebTracerProvider({
     spanProcessors: [new SimpleSpanProcessor(exporter)],

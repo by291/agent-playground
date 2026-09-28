@@ -1,9 +1,9 @@
+import { test } from "vitest";
 import { EventType } from "@ag-ui/client";
 import assert from "node:assert/strict";
-import { test } from "node:test";
 import { normalizeRunEvent } from "./run-events";
 
-void test("normalizes both terminal and start IDs across adapter mutation", () => {
+test("normalizes both terminal and start IDs across adapter mutation", () => {
   const expected = "client-run";
   const started = normalizeRunEvent(
     { type: EventType.RUN_STARTED, runId: expected, threadId: "thread" },

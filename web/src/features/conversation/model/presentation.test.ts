@@ -1,9 +1,9 @@
+import { test } from "vitest";
 import assert from "node:assert/strict";
-import test from "node:test";
 import { EventType, HttpAgent, type Message } from "@ag-ui/client";
 import { hasMessageText, waitingForAssistantText } from "./presentation";
 
-void test("tool events and empty text starts keep the assistant waiting until visible text arrives", async () => {
+test("tool events and empty text starts keep the assistant waiting until visible text arrives", async () => {
   const input: Message = {
     id: "question",
     role: "user",

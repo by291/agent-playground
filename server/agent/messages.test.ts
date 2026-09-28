@@ -1,8 +1,8 @@
+import { test } from "vitest";
 import assert from "node:assert/strict";
-import test from "node:test";
 import { completedMessages } from "./messages";
 
-void test("checkpoint replies preserve tool calls, empty assistant messages and failed results", () => {
+test("checkpoint replies preserve tool calls, empty assistant messages and failed results", () => {
   const messages = completedMessages({
     messages: [],
     response_messages: [
@@ -66,7 +66,7 @@ void test("checkpoint replies preserve tool calls, empty assistant messages and 
   assert.equal(messages[3]?.content, "Sorry, try later.");
 });
 
-void test("checkpoint recovery includes results from older AI-only response archives", () => {
+test("checkpoint recovery includes results from older AI-only response archives", () => {
   const call = {
     id: "request",
     type: "ai",

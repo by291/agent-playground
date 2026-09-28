@@ -1,11 +1,11 @@
+import { test } from "vitest";
 import assert from "node:assert/strict";
-import test from "node:test";
 import { EventType, EventSchemas, type RunAgentInput } from "@ag-ui/client";
 import { Hono } from "hono";
 import { of } from "rxjs";
 import { streamAgent } from "./agent-stream";
 
-void test("model context snapshots cannot replace the public transcript or expose summaries", async () => {
+test("model context snapshots cannot replace the public transcript or expose summaries", async () => {
   const input: RunAgentInput = {
     threadId: "thread",
     runId: "run",
@@ -104,7 +104,7 @@ void test("model context snapshots cannot replace the public transcript or expos
   );
 });
 
-void test("stream deduplicates public state while preserving tool error updates", async () => {
+test("stream deduplicates public state while preserving tool error updates", async () => {
   const input: RunAgentInput = {
     threadId: "thread",
     runId: "run",

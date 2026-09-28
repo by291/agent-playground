@@ -1,23 +1,24 @@
+import { test, vi } from "vitest";
 import assert from "node:assert/strict";
-import test from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { App } from "./App";
 import type { SavedConversation } from "@/features/conversation";
 
+// Production route guards are evaluated when App and its config are imported.
+vi.hoisted(() => {
+  vi.stubEnv("DEV", false);
+});
+
 function renderInitialPage(saved: SavedConversation | null, pathname = "/") {
-  Object.defineProperty(globalThis, "window", {
-    value: { location: { pathname } },
-    configurable: true,
+  vi.stubGlobal("window", {
+    location: { pathname },
   });
-  Object.defineProperty(globalThis, "localStorage", {
-    value: {
-      getItem: () => JSON.stringify(saved),
-      setItem: () =>
-        assert.fail("Initial rendering must preserve the conversation"),
-    },
-    configurable: true,
+  vi.stubGlobal("localStorage", {
+    getItem: () => JSON.stringify(saved),
+    setItem: () =>
+      assert.fail("Initial rendering must preserve the conversation"),
   });
   const client = new QueryClient();
 
@@ -27,12 +28,10 @@ function renderInitialPage(saved: SavedConversation | null, pathname = "/") {
     );
   } finally {
     client.clear();
-    Reflect.deleteProperty(globalThis, "window");
-    Reflect.deleteProperty(globalThis, "localStorage");
   }
 }
 
-void test("refreshing a conversation renders its page layout while history recovers", () => {
+test("refreshing a conversation renders its page layout while history recovers", () => {
   const markup = renderInitialPage({ threadId: "saved-conversation" });
 
   assert.match(
@@ -47,7 +46,7 @@ void test("refreshing a conversation renders its page layout while history recov
   assert.doesNotMatch(markup, /What would you like/);
 });
 
-void test("a new or saved empty conversation renders the welcome screen immediately", () => {
+test("a new or saved empty conversation renders the welcome screen immediately", () => {
   for (const saved of [null, { threadId: "empty-conversation", empty: true }]) {
     const markup = renderInitialPage(saved);
 
@@ -59,7 +58,7 @@ void test("a new or saved empty conversation renders the welcome screen immediat
   }
 });
 
-void test("a pending submission requires recovery even when its old empty marker remains", () => {
+test("a pending submission requires recovery even when its old empty marker remains", () => {
   const markup = renderInitialPage({
     threadId: "pending-conversation",
     empty: true,
@@ -75,14 +74,14 @@ void test("a pending submission requires recovery even when its old empty marker
   assert.doesNotMatch(markup, /What would you like/);
 });
 
-void test("rendering without development mode omits debug tool controls", () => {
+test("rendering without development mode omits debug tool controls", () => {
   const markup = renderInitialPage(null);
 
   assert.doesNotMatch(markup, /A2UI components \(opens in a new tab\)/);
   assert.doesNotMatch(markup, /Show run activity/);
 });
 
-void test("developer and retired routes are unavailable without development mode", () => {
+test("developer and retired routes are unavailable without development mode", () => {
   for (const path of ["/dev/a2ui-components", "/a2ui"]) {
     const markup = renderInitialPage(null, path);
 

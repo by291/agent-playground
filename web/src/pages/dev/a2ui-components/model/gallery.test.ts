@@ -1,5 +1,5 @@
+import { test } from "vitest";
 import assert from "node:assert/strict";
-import test from "node:test";
 import { MessageProcessor } from "@a2ui/web_core/v0_9";
 import { catalogExamples } from "./examples";
 import { workflowCatalog } from "@/features/a2ui";
@@ -31,7 +31,7 @@ const validJson = JSON.stringify({
   ],
 });
 
-void test("edited JSON produces the surface used for the preview", () => {
+test("edited JSON produces the surface used for the preview", () => {
   const result = createGalleryPreview("WorkflowText", validJson);
 
   assert.equal(result.error, null);
@@ -42,14 +42,14 @@ void test("edited JSON produces the surface used for the preview", () => {
   result.dispose();
 });
 
-void test("invalid JSON leaves no replacement preview", () => {
+test("invalid JSON leaves no replacement preview", () => {
   const result = createGalleryPreview("WorkflowText", "{");
 
   assert.ok(result.surfaces === null);
   assert.match(result.error ?? "", /valid JSON/i);
 });
 
-void test("a different catalog cannot replace the selected preview", () => {
+test("a different catalog cannot replace the selected preview", () => {
   const result = createGalleryPreview(
     "WorkflowText",
     validJson.replace(workflowCatalog.id, "urn:unknown:catalog"),
@@ -59,7 +59,7 @@ void test("a different catalog cannot replace the selected preview", () => {
   assert.match(result.error ?? "", /catalog/i);
 });
 
-void test("unknown component types cannot replace a valid preview", () => {
+test("unknown component types cannot replace a valid preview", () => {
   const result = createGalleryPreview(
     "WorkflowText",
     validJson.replace('"component":"WorkflowText"', '"component":"Unknown"'),
@@ -69,7 +69,7 @@ void test("unknown component types cannot replace a valid preview", () => {
   assert.match(result.error ?? "", /Unknown.*catalog/i);
 });
 
-void test("replacement, invalid edits, reset and unmount own the preview resources", async () => {
+test("replacement, invalid edits, reset and unmount own the preview resources", async () => {
   const { createGalleryPreviews } = await import("./galleryPreviews");
   const examples = [
     { component: "WorkflowText", source: validJson },
@@ -137,7 +137,7 @@ void test("replacement, invalid edits, reset and unmount own the preview resourc
   assert.equal(disposed.length, 6);
 });
 
-void test("every registered component has a processable gallery preview", () => {
+test("every registered component has a processable gallery preview", () => {
   assert.deepEqual(
     catalogExamples.map((example) => example.component).sort(),
     [...workflowCatalog.components.keys()].sort(),

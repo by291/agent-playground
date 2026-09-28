@@ -1,14 +1,8 @@
-import "../../../tests/dom";
+// @vitest-environment jsdom
+import { test, onTestFinished, vi } from "vitest";
 import assert from "node:assert/strict";
-import test, { afterEach } from "node:test";
 import { createElement, useState } from "react";
-import {
-  act,
-  cleanup,
-  fireEvent,
-  render,
-  waitFor,
-} from "@testing-library/react";
+import { act, fireEvent, render, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { RunAgentInputSchema } from "@ag-ui/client";
@@ -16,8 +10,6 @@ import { ConversationProvider, useConversation } from "./ConversationProvider";
 import { Composer } from "./ui/Composer";
 import type { ConversationSnapshot } from "./api/contracts";
 import { messageText } from "./model/presentation";
-
-afterEach(cleanup);
 
 function Messages() {
   const text = useConversation((state) =>
@@ -33,95 +25,89 @@ function DraftComposer() {
   return createElement(Composer, { prompt, onPromptChange: setPrompt });
 }
 
-void test("a fresh page makes no snapshot request until its stream settles and restored history is delivered", async (context) => {
+test("a fresh page makes no snapshot request until its stream settles and restored history is delivered", async () => {
   const client = new QueryClient();
 
-  context.after(() => client.clear());
+  onTestFinished(() => client.clear());
   let snapshots = 0;
   let submissions = 0;
   let snapshot: ConversationSnapshot | null = null;
   let finishStream: (() => void) | undefined;
 
-  context.mock.method(
-    globalThis,
-    "fetch",
-    (url: string, init?: RequestInit) => {
-      if (url.startsWith("/conversations/")) {
-        snapshots++;
-
-        return Promise.resolve(
-          snapshot
-            ? Response.json(snapshot)
-            : new Response(null, { status: 404 }),
-        );
-      }
-
-      assert.equal(url, "/agent");
-      assert.equal(typeof init?.body, "string");
-      const input = RunAgentInputSchema.parse(JSON.parse(init!.body as string));
-
-      submissions++;
-      const finalMessage = {
-        id: "reply",
-        role: "assistant" as const,
-        content: "Hello back",
-      };
+  vi.stubGlobal("fetch", (url: string, init?: RequestInit) => {
+    if (url.startsWith("/conversations/")) {
+      snapshots++;
 
       return Promise.resolve(
-        new Response(
-          new ReadableStream({
-            start(controller) {
-              function emit(event: object) {
-                controller.enqueue(
-                  new TextEncoder().encode(
-                    `data: ${JSON.stringify(event)}\n\n`,
-                  ),
-                );
-              }
+        snapshot
+          ? Response.json(snapshot)
+          : new Response(null, { status: 404 }),
+      );
+    }
 
+    assert.equal(url, "/agent");
+    assert.equal(typeof init?.body, "string");
+    const input = RunAgentInputSchema.parse(JSON.parse(init!.body as string));
+
+    submissions++;
+    const finalMessage = {
+      id: "reply",
+      role: "assistant" as const,
+      content: "Hello back",
+    };
+
+    return Promise.resolve(
+      new Response(
+        new ReadableStream({
+          start(controller) {
+            function emit(event: object) {
+              controller.enqueue(
+                new TextEncoder().encode(`data: ${JSON.stringify(event)}\n\n`),
+              );
+            }
+
+            emit({
+              type: "RUN_STARTED",
+              threadId: input.threadId,
+              runId: input.runId,
+            });
+            finishStream = () => {
+              snapshot = {
+                messages: [...input.messages, finalMessage],
+                outputs: [],
+                interrupts: [],
+                runs: [
+                  {
+                    runId: input.runId,
+                    messageId: input.messages.at(-1)!.id,
+                    status: "completed",
+                  },
+                ],
+              };
               emit({
-                type: "RUN_STARTED",
+                type: "TEXT_MESSAGE_START",
+                messageId: "reply",
+                role: "assistant",
+              });
+              emit({
+                type: "TEXT_MESSAGE_CONTENT",
+                messageId: "reply",
+                delta: "Hello back",
+              });
+              emit({ type: "TEXT_MESSAGE_END", messageId: "reply" });
+              emit({
+                type: "RUN_FINISHED",
                 threadId: input.threadId,
                 runId: input.runId,
               });
-              finishStream = () => {
-                snapshot = {
-                  messages: [...input.messages, finalMessage],
-                  outputs: [],
-                  interrupts: [],
-                  runs: [
-                    {
-                      runId: input.runId,
-                      messageId: input.messages.at(-1)!.id,
-                      status: "completed",
-                    },
-                  ],
-                };
-                emit({
-                  type: "TEXT_MESSAGE_START",
-                  messageId: "reply",
-                  role: "assistant",
-                });
-                emit({
-                  type: "TEXT_MESSAGE_CONTENT",
-                  messageId: "reply",
-                  delta: "Hello back",
-                });
-                emit({ type: "TEXT_MESSAGE_END", messageId: "reply" });
-                emit({
-                  type: "RUN_FINISHED",
-                  threadId: input.threadId,
-                  runId: input.runId,
-                });
-                controller.close();
-              };
-            },
-          }),
-          { headers: { "Content-Type": "text/event-stream" } },
-        ),
-      );
-    },
-  );
+              controller.close();
+            };
+          },
+        }),
+        { headers: { "Content-Type": "text/event-stream" } },
+      ),
+    );
+  });
 
   function page(fresh: boolean) {
     return createElement(

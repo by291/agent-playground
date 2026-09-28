@@ -1,5 +1,5 @@
+import { test, beforeAll, afterAll } from "vitest";
 import assert from "node:assert/strict";
-import { after, before, test } from "node:test";
 import { createServer } from "node:http";
 import {
   PostgreSqlContainer,
@@ -126,7 +126,7 @@ const upstream = createServer((request, response) => {
   }
 });
 
-before(async () => {
+beforeAll(async () => {
   postgres = await new PostgreSqlContainer("postgres:18-alpine").start();
   process.env.APP_DATABASE_URL = postgres.getConnectionUri();
   await new Promise<void>((resolve) =>
@@ -153,11 +153,20 @@ before(async () => {
   `);
 });
 
-after(async () => {
-  upstream.closeAllConnections();
-  await new Promise<void>((resolve) => upstream.close(() => resolve()));
-  await database?.db.$client.end();
-  await postgres?.stop();
+afterAll(async () => {
+  try {
+    upstream.closeAllConnections();
+
+    if (upstream.listening) {
+      await new Promise<void>((resolve) => upstream.close(() => resolve()));
+    }
+  } finally {
+    try {
+      await database?.db.$client.end();
+    } finally {
+      await postgres?.stop();
+    }
+  }
 });
 
 function inputFor(threadId: string): RunAgentInput {
@@ -224,7 +233,7 @@ async function pauseForReview(threadId: string) {
   return { run, input };
 }
 
-void test("a late creation callback preserves an already completed run", async () => {
+test("a late creation callback preserves an already completed run", async () => {
   const row = await admit("late-callback");
 
   await runStore.recordAegraRun(row.aguiRunId, "aegra-run");
@@ -241,7 +250,7 @@ void test("a late creation callback preserves an already completed run", async (
   assert.equal(saved?.status, "completed");
 });
 
-void test("a stale missing-mapping lookup cannot overwrite a successful creation callback", async () => {
+test("a stale missing-mapping lookup cannot overwrite a successful creation callback", async () => {
   const stale = await admit("stale-lookup");
 
   await runStore.recordAegraRun(stale.aguiRunId, "confirmed-run");
@@ -257,7 +266,7 @@ void test("a stale missing-mapping lookup cannot overwrite a successful creation
   assert.equal(saved?.status, "running");
 });
 
-void test("an unavailable upstream is reported as unavailable rather than an admission conflict", async () => {
+test("an unavailable upstream is reported as unavailable rather than an admission conflict", async () => {
   const row = await admit("unavailable-upstream");
 
   await runStore.recordAegraRun(row.aguiRunId, "upstream-run");
@@ -283,7 +292,7 @@ void test("an unavailable upstream is reported as unavailable rather than an adm
   }
 });
 
-void test("an older running observation cannot reopen a completed run", async () => {
+test("an older running observation cannot reopen a completed run", async () => {
   const admitted = await admit("stale-terminal");
 
   await runStore.recordAegraRun(admitted.aguiRunId, "upstream-run");
@@ -299,7 +308,7 @@ void test("an older running observation cannot reopen a completed run", async ()
   assert.equal(reconciled.status, "completed");
 });
 
-void test("a completed checkpoint is synchronized once and only adds missing messages", async () => {
+test("a completed checkpoint is synchronized once and only adds missing messages", async () => {
   const { synchronizeConversation } = await import("./checkpoint-sync");
   const run = await admit("checkpoint-once");
 
@@ -341,7 +350,7 @@ void test("a completed checkpoint is synchronized once and only adds missing mes
   );
 });
 
-void test("a compacted checkpoint recovers usage and replies removed from model history", async () => {
+test("a compacted checkpoint recovers usage and replies removed from model history", async () => {
   compactedCheckpoint = true;
 
   try {
@@ -370,7 +379,7 @@ void test("a compacted checkpoint recovers usage and replies removed from model 
   }
 });
 
-void test("tool calls and errors survive archival and repeated conversation refreshes", async () => {
+test("tool calls and errors survive archival and repeated conversation refreshes", async () => {
   toolCheckpoint = true;
 
   try {
@@ -406,7 +415,7 @@ void test("tool calls and errors survive archival and repeated conversation refr
   }
 });
 
-void test("a resumed review no longer blocks the next ordinary message", async () => {
+test("a resumed review no longer blocks the next ordinary message", async () => {
   const { run: interrupted, input: resume } =
     await pauseForReview("resumed-review");
 
@@ -441,7 +450,7 @@ void test("a resumed review no longer blocks the next ordinary message", async (
   assert.equal(admitted.row.submitSeq, 3);
 });
 
-void test("an identical prepared review submission can be claimed after restart", async () => {
+test("an identical prepared review submission can be claimed after restart", async () => {
   const { prepareConversationRun } = await import("./service");
   const { input } = await pauseForReview("prepared-review");
 
@@ -460,7 +469,7 @@ void test("an identical prepared review submission can be claimed after restart"
   );
 });
 
-void test("an unknown submission can recover its newest confirmed native mapping", async () => {
+test("an unknown submission can recover its newest confirmed native mapping", async () => {
   const { synchronizeConversation } = await import("./checkpoint-sync");
   const run = await admit("unknown-mapping");
 

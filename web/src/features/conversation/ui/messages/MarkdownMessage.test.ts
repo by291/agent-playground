@@ -1,23 +1,15 @@
-import "../../../../../tests/dom";
+// @vitest-environment jsdom
+import { test, onTestFinished, vi } from "vitest";
 import assert from "node:assert/strict";
-import test, { afterEach, type TestContext } from "node:test";
 import { createElement } from "react";
-import {
-  act,
-  cleanup,
-  fireEvent,
-  render,
-  waitFor,
-} from "@testing-library/react";
+import { act, fireEvent, render, waitFor } from "@testing-library/react";
 import MarkdownMessage from "./MarkdownMessage";
 import {
   ReplyPresentationProvider,
   useReplyPresentationBusy,
 } from "../ReplyPresentation";
 
-afterEach(cleanup);
-
-void test("code blocks highlight syntax and copy the original source", async (context) => {
+test("code blocks highlight syntax and copy the original source", async () => {
   const source = "int main(void) {\n  return 0;\n}\n";
   const copied: string[] = [];
   const clipboardDescriptor = Object.getOwnPropertyDescriptor(
@@ -35,7 +27,7 @@ void test("code blocks highlight syntax and copy the original source", async (co
       },
     },
   });
-  context.after(() => {
+  onTestFinished(() => {
     if (clipboardDescriptor) {
       Object.defineProperty(navigator, "clipboard", clipboardDescriptor);
     } else {
@@ -74,27 +66,20 @@ Object.defineProperty(HTMLElement.prototype, "scrollTo", {
   value: () => undefined,
 });
 
-function animationClock(context: TestContext) {
+function animationClock() {
   let now = 0;
   let nextId = 0;
   const frames = new Map<number, FrameRequestCallback>();
 
-  context.mock.timers.enable({ apis: ["setTimeout"] });
-  context.mock.method(Date, "now", () => now);
-  context.mock.method(
-    globalThis,
-    "requestAnimationFrame",
-    (callback: FrameRequestCallback) => {
-      const id = ++nextId;
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"], now });
+  vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
+    const id = ++nextId;
 
-      frames.set(id, callback);
+    frames.set(id, callback);
 
-      return id;
-    },
-  );
-  context.mock.method(globalThis, "cancelAnimationFrame", (id: number) =>
-    frames.delete(id),
-  );
+    return id;
+  });
+  vi.stubGlobal("cancelAnimationFrame", (id: number) => frames.delete(id));
 
   return {
     frames,
@@ -109,7 +94,7 @@ function animationClock(context: TestContext) {
 
         frames.clear();
         act(() => {
-          context.mock.timers.tick(elapsed);
+          vi.advanceTimersByTime(elapsed);
 
           for (const callback of pending) {
             callback(now);
@@ -120,8 +105,8 @@ function animationClock(context: TestContext) {
   };
 }
 
-void test("live bursts reveal gradually and continue draining after the source finishes", (context) => {
-  const clock = animationClock(context);
+test("live bursts reveal gradually and continue draining after the source finishes", () => {
+  const clock = animationClock();
   const text = "清晨的城市逐渐醒来，人们走向各自的生活。".repeat(30);
   const page = render(
     createElement(MarkdownMessage, { text, streaming: true }),
@@ -146,8 +131,8 @@ void test("live bursts reveal gradually and continue draining after the source f
   assert.equal(page.container.querySelectorAll("[data-sd-animate]").length, 0);
 });
 
-void test("a completed source keeps its final fade mounted until the last reveal settles", (context) => {
-  const clock = animationClock(context);
+test("a completed source keeps its final fade mounted until the last reveal settles", () => {
+  const clock = animationClock();
   const text = "A calm morning in the city.";
   const page = render(
     createElement(MarkdownMessage, { text, streaming: true }),
@@ -170,8 +155,8 @@ void test("a completed source keeps its final fade mounted until the last reveal
   assert.equal(page.container.querySelectorAll("[data-sd-animate]").length, 0);
 });
 
-void test("a fade that already finished does not add another delay when the source completes", (context) => {
-  const clock = animationClock(context);
+test("a fade that already finished does not add another delay when the source completes", () => {
+  const clock = animationClock();
   const text = "Hello.";
   const page = render(
     createElement(MarkdownMessage, { text, streaming: true }),
@@ -185,8 +170,8 @@ void test("a fade that already finished does not add another delay when the sour
   assert.equal(page.container.querySelectorAll("[data-sd-animate]").length, 0);
 });
 
-void test("removed replies release their display locks without unlocking another live reply", (context) => {
-  const clock = animationClock(context);
+test("removed replies release their display locks without unlocking another live reply", () => {
+  const clock = animationClock();
 
   function SendButton() {
     const busy = useReplyPresentationBusy();
@@ -222,8 +207,8 @@ void test("removed replies release their display locks without unlocking another
   assert.equal(clock.frames.size, 0);
 });
 
-void test("history renders immediately and live text updates do not restart the reveal", (context) => {
-  const clock = animationClock(context);
+test("history renders immediately and live text updates do not restart the reveal", () => {
+  const clock = animationClock();
   const page = render(
     createElement(MarkdownMessage, { text: "旧的回复", streaming: false }),
   );
@@ -262,8 +247,8 @@ void test("history renders immediately and live text updates do not restart the 
   assert.equal(clock.frames.size, 0);
 });
 
-void test("a replaced source never displays stale text and stops the old reveal", (context) => {
-  const clock = animationClock(context);
+test("a replaced source never displays stale text and stops the old reveal", () => {
+  const clock = animationClock();
   const page = render(
     createElement(MarkdownMessage, {
       text: "旧内容".repeat(200),
@@ -286,8 +271,8 @@ void test("a replaced source never displays stale text and stops the old reveal"
   assert.equal(clock.frames.size, 0);
 });
 
-void test("revealed prefixes keep emoji and combining characters intact", (context) => {
-  const clock = animationClock(context);
+test("revealed prefixes keep emoji and combining characters intact", () => {
+  const clock = animationClock();
   const graphemes = ["👩🏽‍💻", "e\u0301", "中", "🇨🇳"];
   const text = graphemes.join("").repeat(20);
   const boundaries = new Set<number>([0]);
@@ -320,8 +305,8 @@ void test("revealed prefixes keep emoji and combining characters intact", (conte
   }
 });
 
-void test("long paced Markdown keeps finished blocks stable and avoids per-character DOM", (context) => {
-  const clock = animationClock(context);
+test("long paced Markdown keeps finished blocks stable and avoids per-character DOM", () => {
+  const clock = animationClock();
   const paragraph = "清晨的城市逐渐醒来，人们走向各自的生活。".repeat(20);
   const page = render(
     createElement(MarkdownMessage, { text: paragraph, streaming: true }),
@@ -347,8 +332,8 @@ void test("long paced Markdown keeps finished blocks stable and avoids per-chara
   );
 });
 
-void test("copy controls remain disabled until the display buffer finishes", (context) => {
-  const clock = animationClock(context);
+test("copy controls remain disabled until the display buffer finishes", () => {
+  const clock = animationClock();
   const text =
     "| Season | Weather |\n| --- | --- |\n| Spring | Mild |\n\n" +
     "More details. ".repeat(80);
@@ -365,8 +350,8 @@ void test("copy controls remain disabled until the display buffer finishes", (co
   assert.equal(page.getByTitle("Copy table").hasAttribute("disabled"), false);
 });
 
-void test("even a large final burst drains within three seconds after the model finishes", (context) => {
-  const clock = animationClock(context);
+test("even a large final burst drains within three seconds after the model finishes", () => {
+  const clock = animationClock();
   const text = "城市中的日常生活。".repeat(1000);
   const page = render(
     createElement(MarkdownMessage, { text, streaming: true }),
@@ -380,8 +365,8 @@ void test("even a large final burst drains within three seconds after the model 
   assert.equal(clock.frames.size, 0);
 });
 
-void test("reduced-motion preferences show live output immediately and release the scheduler", (context) => {
-  const clock = animationClock(context);
+test("reduced-motion preferences show live output immediately and release the scheduler", () => {
+  const clock = animationClock();
   let matches = false;
   const media = new EventTarget();
 
@@ -389,7 +374,9 @@ void test("reduced-motion preferences show live output immediately and release t
     configurable: true,
     value: () => Object.assign(media, { matches }),
   });
-  context.after(() => Reflect.deleteProperty(window, "matchMedia"));
+  onTestFinished(() => {
+    Reflect.deleteProperty(window, "matchMedia");
+  });
   const text = "Read this without delay. ".repeat(30).trim();
   const page = render(
     createElement(MarkdownMessage, { text, streaming: true }),
@@ -407,8 +394,8 @@ void test("reduced-motion preferences show live output immediately and release t
   assert.equal(page.container.querySelectorAll("[data-sd-animate]").length, 0);
 });
 
-void test("many source chunks in one frame do not bypass the display cadence", (context) => {
-  const clock = animationClock(context);
+test("many source chunks in one frame do not bypass the display cadence", () => {
+  const clock = animationClock();
   const page = render(
     createElement(MarkdownMessage, { text: "", streaming: true }),
   );
@@ -431,8 +418,8 @@ void test("many source chunks in one frame do not bypass the display cadence", (
   assert.equal(clock.frames.size, 0);
 });
 
-void test("new text keeps its fade while later display ticks arrive", (context) => {
-  const clock = animationClock(context);
+test("new text keeps its fade while later display ticks arrive", () => {
+  const clock = animationClock();
   const page = render(
     createElement(MarkdownMessage, {
       text: "清晨的城市正在醒来。".repeat(20),
@@ -453,8 +440,8 @@ void test("new text keeps its fade while later display ticks arrive", (context) 
   assert.equal(first.style.getPropertyValue("--sd-delay"), "0ms");
 });
 
-void test("a long unbroken paragraph keeps a fading tail without thousands of character elements", (context) => {
-  const clock = animationClock(context);
+test("a long unbroken paragraph keeps a fading tail without thousands of character elements", () => {
+  const clock = animationClock();
   const text = "城市中的日常生活总会带来新的发现。".repeat(350);
   const page = render(
     createElement(MarkdownMessage, { text, streaming: true }),
@@ -474,8 +461,8 @@ void test("a long unbroken paragraph keeps a fading tail without thousands of ch
   assert.equal(page.container.querySelectorAll("[data-sd-animate]").length, 0);
 });
 
-void test("compacting old text does not restart the currently fading tail", (context) => {
-  const clock = animationClock(context);
+test("compacting old text does not restart the currently fading tail", () => {
+  const clock = animationClock();
   const text = "城市中的日常生活总会带来新的发现。".repeat(350);
   const page = render(
     createElement(MarkdownMessage, { text, streaming: true }),

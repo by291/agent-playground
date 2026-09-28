@@ -1,10 +1,10 @@
+import { test, vi } from "vitest";
 import assert from "node:assert/strict";
-import test from "node:test";
 import { QueryClient } from "@tanstack/react-query";
 import { conversationQueryOptions } from "./queries";
 
-void test("thread-specific queries fetch the correct snapshot and treat a new thread as empty", async (context) => {
-  context.mock.method(globalThis, "fetch", (url: string) =>
+test("thread-specific queries fetch the correct snapshot and treat a new thread as empty", async () => {
+  vi.stubGlobal("fetch", (url: string) =>
     Promise.resolve(
       url === "/conversations/existing%2Fthread"
         ? Response.json({
@@ -37,22 +37,18 @@ void test("thread-specific queries fetch the correct snapshot and treat a new th
   }
 });
 
-void test("cancelling a conversation query aborts its HTTP request", async (context) => {
+test("cancelling a conversation query aborts its HTTP request", async () => {
   let signal: AbortSignal | undefined;
 
-  context.mock.method(
-    globalThis,
-    "fetch",
-    (_url: string, init: RequestInit) => {
-      signal = init.signal ?? undefined;
+  vi.stubGlobal("fetch", (_url: string, init: RequestInit) => {
+    signal = init.signal ?? undefined;
 
-      return new Promise<Response>((_resolve, reject) => {
-        signal?.addEventListener("abort", () =>
-          reject(new DOMException("Aborted", "AbortError")),
-        );
-      });
-    },
-  );
+    return new Promise<Response>((_resolve, reject) => {
+      signal?.addEventListener("abort", () =>
+        reject(new DOMException("Aborted", "AbortError")),
+      );
+    });
+  });
   const client = new QueryClient();
   const options = conversationQueryOptions("old-thread");
   const request = client.query(options);
@@ -64,8 +60,8 @@ void test("cancelling a conversation query aborts its HTTP request", async (cont
   client.clear();
 });
 
-void test("recovery rejects legacy A2UI output wrappers", async (context) => {
-  context.mock.method(globalThis, "fetch", () =>
+test("recovery rejects legacy A2UI output wrappers", async () => {
+  vi.stubGlobal("fetch", () =>
     Promise.resolve(
       Response.json({
         messages: [],
@@ -89,8 +85,8 @@ void test("recovery rejects legacy A2UI output wrappers", async (context) => {
   }
 });
 
-void test("an unknown run status cannot unlock the composer as a valid snapshot", async (context) => {
-  context.mock.method(globalThis, "fetch", () =>
+test("an unknown run status cannot unlock the composer as a valid snapshot", async () => {
+  vi.stubGlobal("fetch", () =>
     Promise.resolve(
       Response.json({
         messages: [],

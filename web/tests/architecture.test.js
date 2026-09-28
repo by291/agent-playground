@@ -1,5 +1,5 @@
+import { test } from "vitest";
 import assert from "node:assert/strict";
-import test from "node:test";
 import path from "node:path";
 import { Linter } from "eslint";
 import { architectureRule } from "../eslint.architecture.js";
@@ -17,7 +17,7 @@ function lintImport(file, code) {
   );
 }
 
-void test("imports cannot point back to application or page layers", () => {
+test("imports cannot point back to application or page layers", () => {
   for (const [file, code] of [
     [
       "features/conversation/model/state.js",
@@ -36,7 +36,7 @@ void test("imports cannot point back to application or page layers", () => {
   }
 });
 
-void test("cross-module imports use public entries and explicit dependency directions", () => {
+test("cross-module imports use public entries and explicit dependency directions", () => {
   for (const code of [
     'import { runtime } from "@/features/a2ui/runtime/runtime";',
     'const page = import("@/pages/dev/a2ui-components/ComponentsPage");',
@@ -50,7 +50,7 @@ void test("cross-module imports use public entries and explicit dependency direc
   }
 });
 
-void test("page composition and internal module imports remain allowed", () => {
+test("page composition and internal module imports remain allowed", () => {
   for (const [file, code] of [
     ["app/App.js", 'import Page from "@/pages/chat/ChatPage";'],
     [
@@ -75,7 +75,7 @@ void test("page composition and internal module imports remain allowed", () => {
   }
 });
 
-void test("feature internals cannot cycle through their own public entry", () => {
+test("feature internals cannot cycle through their own public entry", () => {
   for (const source of ["@/features/conversation", "../index", "../index.ts"]) {
     assert.equal(
       lintImport(
@@ -95,7 +95,7 @@ void test("feature internals cannot cycle through their own public entry", () =>
   );
 });
 
-void test("models stay independent of shared UI and development pages stay independent of each other", () => {
+test("models stay independent of shared UI and development pages stay independent of each other", () => {
   for (const [file, code] of [
     [
       "features/conversation/model/state.js",

@@ -1,21 +1,13 @@
-import "../../../../tests/dom";
+// @vitest-environment jsdom
+import { test, onTestFinished, vi } from "vitest";
 import assert from "node:assert/strict";
-import test, { afterEach } from "node:test";
 import { createElement } from "react";
-import {
-  act,
-  cleanup,
-  fireEvent,
-  render,
-  waitFor,
-} from "@testing-library/react";
+import { act, fireEvent, render, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { RunAgentInputSchema } from "@ag-ui/client";
 import { ConversationProvider, useConversation } from "../ConversationProvider";
 import type { ConversationSnapshot } from "../api/contracts";
 import { ConversationWorkspace } from "./ConversationWorkspace";
-
-afterEach(cleanup);
 
 function ExecutionStatus() {
   const execution = useConversation((state) => state.lifecycle.execution);
@@ -23,96 +15,90 @@ function ExecutionStatus() {
   return createElement("output", { "data-testid": "execution" }, execution);
 }
 
-void test("the composer waits for the display buffer and final fade after the run completes", async (context) => {
+test("the composer waits for the display buffer and final fade after the run completes", async () => {
   const client = new QueryClient();
   const text = "清晨的城市逐渐醒来，人们走向各自的生活。".repeat(80);
   let snapshot: ConversationSnapshot | null = null;
   let finish: (() => void) | undefined;
   let emitText: (() => void) | undefined;
 
-  context.after(() => client.clear());
+  onTestFinished(() => client.clear());
   Object.defineProperty(HTMLElement.prototype, "scrollTo", {
     configurable: true,
     value: () => undefined,
   });
-  context.after(() =>
-    Reflect.deleteProperty(HTMLElement.prototype, "scrollTo"),
-  );
-  context.mock.method(
-    globalThis,
-    "fetch",
-    (url: string, init?: RequestInit) => {
-      if (url === "/health") {
-        return Promise.resolve(new Response());
-      }
+  onTestFinished(() => {
+    Reflect.deleteProperty(HTMLElement.prototype, "scrollTo");
+  });
+  vi.stubGlobal("fetch", (url: string, init?: RequestInit) => {
+    if (url === "/health") {
+      return Promise.resolve(new Response());
+    }
 
-      if (url.startsWith("/conversations/")) {
-        return Promise.resolve(Response.json(snapshot));
-      }
+    if (url.startsWith("/conversations/")) {
+      return Promise.resolve(Response.json(snapshot));
+    }
 
-      assert.equal(url, "/agent");
-      const input = RunAgentInputSchema.parse(JSON.parse(init!.body as string));
+    assert.equal(url, "/agent");
+    const input = RunAgentInputSchema.parse(JSON.parse(init!.body as string));
 
-      return Promise.resolve(
-        new Response(
-          new ReadableStream({
-            start(controller) {
-              function emit(event: object) {
-                controller.enqueue(
-                  new TextEncoder().encode(
-                    `data: ${JSON.stringify(event)}\n\n`,
-                  ),
-                );
-              }
+    return Promise.resolve(
+      new Response(
+        new ReadableStream({
+          start(controller) {
+            function emit(event: object) {
+              controller.enqueue(
+                new TextEncoder().encode(`data: ${JSON.stringify(event)}\n\n`),
+              );
+            }
 
+            emit({
+              type: "RUN_STARTED",
+              threadId: input.threadId,
+              runId: input.runId,
+            });
+            emitText = () => {
               emit({
-                type: "RUN_STARTED",
+                type: "TEXT_MESSAGE_START",
+                messageId: "reply",
+                role: "assistant",
+              });
+              emit({
+                type: "TEXT_MESSAGE_CONTENT",
+                messageId: "reply",
+                delta: text,
+              });
+            };
+            finish = () => {
+              snapshot = {
+                messages: [
+                  ...input.messages,
+                  { id: "reply", role: "assistant", content: text },
+                ],
+                outputs: [],
+                interrupts: [],
+                runs: [
+                  {
+                    runId: input.runId,
+                    messageId: input.messages.at(-1)!.id,
+                    status: "completed",
+                  },
+                ],
+              };
+              emit({ type: "TEXT_MESSAGE_END", messageId: "reply" });
+              emit({
+                type: "RUN_FINISHED",
                 threadId: input.threadId,
                 runId: input.runId,
               });
-              emitText = () => {
-                emit({
-                  type: "TEXT_MESSAGE_START",
-                  messageId: "reply",
-                  role: "assistant",
-                });
-                emit({
-                  type: "TEXT_MESSAGE_CONTENT",
-                  messageId: "reply",
-                  delta: text,
-                });
-              };
-              finish = () => {
-                snapshot = {
-                  messages: [
-                    ...input.messages,
-                    { id: "reply", role: "assistant", content: text },
-                  ],
-                  outputs: [],
-                  interrupts: [],
-                  runs: [
-                    {
-                      runId: input.runId,
-                      messageId: input.messages.at(-1)!.id,
-                      status: "completed",
-                    },
-                  ],
-                };
-                emit({ type: "TEXT_MESSAGE_END", messageId: "reply" });
-                emit({
-                  type: "RUN_FINISHED",
-                  threadId: input.threadId,
-                  runId: input.runId,
-                });
-                controller.close();
-              };
-            },
-          }),
-          { headers: { "Content-Type": "text/event-stream" } },
-        ),
-      );
-    },
-  );
+              controller.close();
+            };
+          },
+        }),
+        { headers: { "Content-Type": "text/event-stream" } },
+      ),
+    );
+  });
   const conversation = {
     threadId: "display-completion",
     fresh: true as const,

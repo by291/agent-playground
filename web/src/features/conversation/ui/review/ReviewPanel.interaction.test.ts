@@ -1,15 +1,13 @@
-import "../../../../../tests/dom";
+// @vitest-environment jsdom
+import { test } from "vitest";
 import assert from "node:assert/strict";
-import test, { afterEach } from "node:test";
 import { createElement } from "react";
-import { cleanup, render } from "@testing-library/react";
+import { render } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ReviewPanel } from "./ReviewPanel";
 import type { PlanReviewResponse } from "../../model/planReview";
 
-afterEach(cleanup);
-
-void test("review approval submits edited values and running prevents another decision", async () => {
+test("review approval submits edited values and running prevents another decision", async () => {
   const decisions: PlanReviewResponse[][] = [];
   const props = {
     reviews: [

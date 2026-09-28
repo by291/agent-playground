@@ -1,10 +1,10 @@
+import { test } from "vitest";
 import assert from "node:assert/strict";
-import test from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { MessageRow } from "./MessageRow";
 
-void test("restored assistant replies render Markdown paragraphs on their first render", () => {
+test("restored assistant replies render Markdown paragraphs on their first render", () => {
   const markup = renderToStaticMarkup(
     createElement(MessageRow, {
       message: {
