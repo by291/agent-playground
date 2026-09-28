@@ -21,6 +21,7 @@ export function initializeTracing() {
       ),
     ],
   });
+
   provider.register({ propagator: new W3CTraceContextPropagator() });
   window.addEventListener("error", (event) => reportClientError(event.error));
   window.addEventListener("unhandledrejection", (event) =>

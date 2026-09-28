@@ -43,6 +43,7 @@ class SurfaceErrorBoundary extends Component<
           typeof error === "object" && error !== null && "message" in error
             ? String(error.message)
             : "Rendering failed";
+
         this.setState({ error: detail });
         reportClientError(new Error(detail), {
           "app.surface_id": this.props.surfaceId,
@@ -75,6 +76,7 @@ class SurfaceErrorBoundary extends Component<
         </Alert>
       );
     }
+
     return this.props.children;
   }
 }

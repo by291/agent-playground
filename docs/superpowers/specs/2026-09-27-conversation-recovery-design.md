@@ -18,8 +18,8 @@ Aegra 的内部表和 checkpoint 位于 `aegra` schema；会话和 workflow 输�
 ## 数据模型与身份
 
 - `thread_id` 标识会话。浏览器生成的 AG-UI `runId` 标识一次提交，Aegra run ID 标识底层执行；二者分开保存。审核恢复使用新的 AG-UI run。
-- `conversation_runs` 以 AG-UI run ID 为主键，记录 thread、提交序号、输入 message ID、可空的 Aegra run ID、原请求和状态。提交状态包括 `prepared`、`dispatching`、`running`、`interrupted`、`completed`、`failed` 和 `submission_unknown`。
-- `conversation_messages` 保存用户消息和已提交 checkpoint 的完整 assistant 文本消息，`(thread_id, message_id)` 唯一。会话内的提交序号决定消息所在回合。
+- `conversation_runs` 以 AG-UI run ID 为主键，记录 thread、提交序号、输入 message ID、可空的 Aegra run ID、原请求和状态，并保存 checkpoint 同步标记和 interrupt 集合。提交状态包括 `prepared`、`dispatching`、`running`、`interrupted`、`completed`、`failed` 和 `submission_unknown`。
+- `conversation_messages` 保存用户消息和已提交 checkpoint 的完整 assistant 文本消息，`(thread_id, message_id)` 唯一。会话内的提交序号决定消息所在回合，`message_order` 保存同一回合内的 checkpoint 顺序；用户消息为 0，assistant 消息从 1 开始。
 - `workflow_outputs` 保存完整的 A2UI v0.9 消息、稳定输出 ID、首次产生它的 AG-UI run ID、workflow 调用 ID、步骤 ID、版本和会话输出序号。一个 workflow 调用跨审核前后保持同一个 `ToolRuntime.tool_call_id`。
 
 Workflow surface 使用 `urn:agent-playground:workflow:v1` 自定义 catalog。Python 输出 `WorkflowPanel`、`WorkflowText` 和 `WorkflowSteps` 组件消息；Web 将同名组件注册为 React 实现。`WorkflowText.text` 使用官方 `DynamicString` schema，支持字面量和数据路径绑定。`/a2ui` 预览页每次选择一个组件，左侧用本地 Monaco 编辑器展示并修改 `web/src/a2ui/examples/` 中的 JSON 文件内容，右侧用同一 A2UI renderer 展示结果；解析或组件校验失败时保留上次有效预览。
@@ -40,15 +40,17 @@ Workflow surface 使用 `urn:agent-playground:workflow:v1` 自定义 catalog。P
 1. Web 在请求前保存 thread ID、message ID、AG-UI run ID 和提交内容。server 在锁定会话行的事务中检查当前运行与审核状态，记录提交和用户消息，再独占地将 `prepared` 改为 `dispatching`。
 2. server 忽略浏览器提供的 `forwardedProps`，自行注入 `metadata.agui_run_id`、`onDisconnect: "continue"` 和 `onRunCreated`。回调保存 Aegra run ID；server 对外发送的 `RUN_STARTED`、`RUN_FINISHED` 始终使用本次 AG-UI run ID。
 3. Python workflow 从运行配置获取 thread ID 和 AG-UI run ID。每个步骤先写入 `workflow_outputs`，再发送带有输出 ID、原 run 归属和 A2UI payload 的 `a2ui` 事件。写入失败时步骤失败，不进入缺少持久审核卡片的 interrupt。
-4. 审核 interrupt 携带 workflow 调用 ID。server 从 Aegra 当前 thread state 读取完整 interrupt 集合，核对提交的 ID 和已持久化的审核输出，再将响应交给 Aegra 恢复执行。
+4. 审核 interrupt 携带 workflow 调用 ID。server 将终态 checkpoint 的完整 interrupt 集合同步到应用表，在准入事务中核对提交的 ID 和已持久化的审核输出，再将响应交给 Aegra 恢复执行。相同的已准备请求先按原内容识别，避免重启重试被新审核校验拒绝。
 
-同一 thread 同时只允许一个待提交或运行中的请求。普通消息不能越过未处理的审核。重复的相同提交只入库一次；已开始 dispatch 的请求不再次调用 Aegra。
+同一 thread 同时只允许一个待提交或运行中的请求。准入只检查最新运行，普通消息不能越过当前未处理的审核；历史暂停记录不阻塞已恢复后的新消息。重复的相同提交只入库一次；已开始 dispatch 的请求不再次调用 Aegra。
 
 ## 恢复与对账
 
 `GET /conversations/:threadId` 返回持久消息、按会话输出序号排序的卡片、运行摘要和当前 interrupt；`GET /conversations` 返回最近的会话 ID。Web 以 message ID 和输出 ID 合并实时内容与快照，页面重载后先读取 server。只有服务端没有该提交或提交仍为 `prepared` 时，Web 才用原 ID 和原内容继续提交。运行中定期刷新快照；完整 assistant 文本可从 Aegra checkpoint 补齐。
 
-正常路径通过已保存的 Aegra run ID 直接查询状态。若 server 在 Aegra 创建 run 后、保存回调映射前退出，恢复时最多读取该 thread 最新的一条 Aegra run；仅当其 `config.metadata.agui_run_id` 精确匹配时回填。无法确认映射时标记 `submission_unknown`，停止自动重发，不遍历历史 run。外部绕过 server 在同一 thread 创建更新的 run 时，也按此规则保守处理。
+正常路径通过已保存的 Aegra run ID 直接查询状态。若 server 在 Aegra 创建 run 后、保存回调映射前退出，恢复时最多读取该 thread 最新的一条 Aegra run；仅当其 `config.metadata.agui_run_id` 精确匹配时回填。无法确认映射时标记 `submission_unknown`，停止自动重发，不遍历历史 run；后续读取仍可通过同样的有限查询确认映射。外部绕过 server 在同一 thread 创建更新的 run 时，也按此规则保守处理。
+
+快照读取与上游同步分开。只有最新运行进入终态且尚未同步时才读取 checkpoint，批量补入缺失消息并持久化同步标记；后续轮询读取应用表。恢复观察结果只能更新自己读取时的运行状态和映射，避免旧查询覆盖新的回调或终态。
 
 浏览器断开不取消 Aegra 执行。步骤输出已写入但实时事件未送达时，快照仍能恢复卡片；server 重启后继续从 Aegra 和应用表读取状态。
 
@@ -57,7 +59,7 @@ Workflow surface 使用 `urn:agent-playground:workflow:v1` 自定义 catalog。P
 - `workflow_outputs` 与 Aegra checkpoint 不共享事务。若输出已提交而 checkpoint 未提交，该卡片可能对应最终失败的 run；界面需同时呈现运行状态。
 - 保存有序的 A2UI 消息批次，重载时从头送入会话 processor；实时期间只补充未处理的输出。
 - 不保存完整 AG-UI 事件流或运行中 token。精确事件回放不属于本设计。
-- `submission_unknown` 表示无法确认底层 run 是否创建，需要人工对账；它不表示执行成功，也不能作为自动重试依据。
+- `submission_unknown` 表示暂时无法确认底层 run 是否创建；后续有限查询仍无法确认时需要人工对账。它不表示执行成功，也不能作为自动重发依据。
 
 ## 验收要求
 

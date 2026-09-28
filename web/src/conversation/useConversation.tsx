@@ -24,22 +24,41 @@ export function ConversationProvider({
   children: ReactNode;
 }) {
   const [session] = useState(() => createConversationSession(conversation));
-  const { data, isFetchedAfterMount, isSuccess, error, refetch } = useQuery(
-    conversationQueryOptions(conversation.threadId),
-  );
+  const {
+    data,
+    isFetchedAfterMount,
+    isSuccess,
+    error,
+    refetch,
+    dataUpdatedAt,
+    errorUpdatedAt,
+  } = useQuery(conversationQueryOptions(conversation.threadId));
   const refresh = useCallback(async () => {
-    const result = await refetch({ throwOnError: true });
-    return result.data ?? null;
+    await refetch({ throwOnError: true });
   }, [refetch]);
 
   useEffect(() => session.connect(refresh), [session, refresh]);
   useEffect(() => {
-    // Cached data may predate a saved submission. Recovery waits for a fresh fetch.
-    if (isFetchedAfterMount && isSuccess) session.applySnapshot(data ?? null);
-  }, [session, data, isFetchedAfterMount, isSuccess]);
-  useEffect(() => {
-    session.store.setState({ snapshotIssue: error?.message ?? null });
-  }, [session, error]);
+    // Each completed fetch is delivered once, even when Query preserves the same data object.
+    // Cached data predating mount cannot decide whether to retry a saved submission.
+    if (!isFetchedAfterMount) {
+      return;
+    }
+
+    if (isSuccess) {
+      session.receiveSnapshot(data ?? null);
+    } else if (error) {
+      session.receiveSnapshotError(error);
+    }
+  }, [
+    session,
+    data,
+    isFetchedAfterMount,
+    isSuccess,
+    error,
+    dataUpdatedAt,
+    errorUpdatedAt,
+  ]);
 
   return <ConversationContext value={session}>{children}</ConversationContext>;
 }
@@ -48,6 +67,10 @@ export function useConversation<T>(
   selector: (state: ConversationState) => T,
 ): T {
   const session = useContext(ConversationContext);
-  if (!session) throw new Error("ConversationProvider is missing");
+
+  if (!session) {
+    throw new Error("ConversationProvider is missing");
+  }
+
   return useStore(session.store, selector);
 }

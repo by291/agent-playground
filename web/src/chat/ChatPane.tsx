@@ -57,26 +57,35 @@ export function ChatPane() {
     () =>
       pendingInterrupts.flatMap((item) => {
         const review = parsePlanReview(item);
+
         return review ? [review] : [];
       }),
     [pendingInterrupts],
   );
+
   useEffect(() => {
     // Start loading the renderer while the agent prepares its first text event.
-    if (running) preloadMarkdownMessage();
+    if (running) {
+      preloadMarkdownMessage();
+    }
   }, [running]);
 
   const visible = messages.filter(
     (message) => message.role === "user" || message.role === "assistant",
   );
   const surfacesByCall = new Map<string, A2UISurfaceView[]>();
+
   for (const view of surfaces) {
-    if (!view.toolCallId) continue;
+    if (!view.toolCallId) {
+      continue;
+    }
+
     surfacesByCall.set(view.toolCallId, [
       ...(surfacesByCall.get(view.toolCallId) ?? []),
       view,
     ]);
   }
+
   const attachedCalls = new Set(
     visible.flatMap((message) =>
       message.role === "assistant"

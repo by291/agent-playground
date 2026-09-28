@@ -52,6 +52,7 @@ export function ReviewPanel({
         .map((step) => step.trim())
         .filter(Boolean),
     }));
+
     void onReview(responses);
   }
 

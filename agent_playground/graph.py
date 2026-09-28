@@ -16,9 +16,9 @@ from langchain_mcp_adapters.client import MultiServerMCPClient
 from langgraph.types import Checkpointer
 from langgraph_sdk.runtime import ServerRuntime
 
+from agent_playground.db.connection import prepare_output_store
 from agent_playground.observability import execution_trace
 from agent_playground.workflow import run_experiment_workflow
-from agent_playground.workflow_outputs import prepare_output_store
 
 
 @tool
@@ -46,6 +46,7 @@ def make_graph(
 ):
     if model is None:
         model = ChatDeepSeek(model=os.getenv("DEEPSEEK_MODEL", "deepseek-flash"))
+
     return create_agent(
         model=model,
         tools=[get_current_time, *(mcp_tools or []), run_experiment_workflow],
@@ -66,6 +67,7 @@ async def base_graph():
     """Share graph setup; Aegra copies it and injects persistence for each run."""
     prepare_output_store()
     tools = await mcp_client().get_tools()
+
     return make_graph(mcp_tools=tools)
 
 
@@ -73,8 +75,10 @@ async def base_graph():
 async def graph(config: RunnableConfig, runtime: ServerRuntime[dict[str, object]]):
     """Aegra keeps this context open for the complete worker execution."""
     compiled = await base_graph()
+
     if runtime.execution_runtime is None:
         yield compiled
         return
+
     with execution_trace(config):
         yield compiled

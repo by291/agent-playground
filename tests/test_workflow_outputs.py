@@ -4,14 +4,14 @@ import pytest
 from sqlalchemy import select
 from testcontainers.community.postgres import PostgresContainer
 
-from agent_playground.workflow_outputs import (
-    _engine,
-    _store,
+from agent_playground.db.connection import output_engine
+from agent_playground.db.schema import (
     conversation_runs,
     conversations,
     metadata,
     workflow_outputs,
 )
+from agent_playground.db.workflow_outputs import _store
 
 
 def test_old_outputs_are_rejected_and_current_outputs_are_idempotent(
@@ -24,10 +24,12 @@ def test_old_outputs_are_rejected_and_current_outputs_are_idempotent(
 
     with PostgresContainer("postgres:18-alpine") as postgres:
         monkeypatch.setenv("APP_DATABASE_URL", postgres.get_connection_url(driver=None))
-        _engine.cache_clear()
-        engine = _engine()
+        output_engine.cache_clear()
+        engine = output_engine()
+
         try:
             metadata.create_all(engine)
+
             with engine.begin() as connection:
                 connection.execute(
                     conversations.insert().values(thread_id="thread", next_output_seq=2)
@@ -54,15 +56,46 @@ def test_old_outputs_are_rejected_and_current_outputs_are_idempotent(
                 )
 
             with pytest.raises(ValueError, match="Unsupported workflow output version"):
-                _store("thread", "new-run", "call", "review", 3, new_payload)
+                _store(
+                    thread_id="thread",
+                    agui_run_id="new-run",
+                    workflow_call_id="call",
+                    step_id="review",
+                    step_seq=3,
+                    payload=new_payload,
+                )
 
-            fresh = _store("thread", "new-run", "new-call", "idea", 1, new_payload)
+            fresh = _store(
+                thread_id="thread",
+                agui_run_id="new-run",
+                workflow_call_id="new-call",
+                step_id="idea",
+                step_seq=1,
+                payload=new_payload,
+            )
+
             assert fresh.payload == new_payload
             assert (
-                _store("thread", "new-run", "new-call", "idea", 1, new_payload) == fresh
+                _store(
+                    thread_id="thread",
+                    agui_run_id="old-run",
+                    workflow_call_id="new-call",
+                    step_id="idea",
+                    step_seq=1,
+                    payload=new_payload,
+                )
+                == fresh
             )
+
             with pytest.raises(ValueError, match="payload conflict"):
-                _store("thread", "new-run", "new-call", "idea", 1, old_payload)
+                _store(
+                    thread_id="thread",
+                    agui_run_id="new-run",
+                    workflow_call_id="new-call",
+                    step_id="idea",
+                    step_seq=1,
+                    payload=old_payload,
+                )
 
             with engine.connect() as connection:
                 versions = (
@@ -74,7 +107,8 @@ def test_old_outputs_are_rejected_and_current_outputs_are_idempotent(
                     .scalars()
                     .all()
                 )
+
             assert versions == [1, 3]
         finally:
-            _engine.cache_clear()
+            output_engine.cache_clear()
             engine.dispose()

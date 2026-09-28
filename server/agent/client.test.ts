@@ -7,14 +7,16 @@ import {
   SimpleSpanProcessor,
 } from "@opentelemetry/sdk-trace-node";
 import { W3CTraceContextPropagator } from "@opentelemetry/core";
-import { prepareAegraRequest } from "./tracing";
+import { prepareAegraRequest } from "./client";
 
 void test("Aegra submission persists the active server span, preserves resume and metadata", async () => {
   const exporter = new InMemorySpanExporter();
   const provider = new NodeTracerProvider({
     spanProcessors: [new SimpleSpanProcessor(exporter)],
   });
+
   provider.register({ propagator: new W3CTraceContextPropagator() });
+
   try {
     trace.getTracer("test").startActiveSpan("server.agent", (span) => {
       const init = prepareAegraRequest(
@@ -29,6 +31,7 @@ void test("Aegra submission persists the active server span, preserves resume an
           }),
         },
       );
+
       assert.equal(typeof init.body, "string");
       const body = JSON.parse(init.body as string) as {
         config: { metadata: { otel_trace_context: { traceparent: string } } };
@@ -43,6 +46,7 @@ void test("Aegra submission persists the active server span, preserves resume an
           get: (value: Record<string, string>, key: string) => value[key],
         },
       );
+
       assert.equal(
         trace.getSpanContext(restored)?.traceId,
         span.spanContext().traceId,
@@ -64,6 +68,7 @@ void test("Aegra submission persists the active server span, preserves resume an
       new URL("http://aegra/threads/thread/runs"),
       { method: "GET" },
     );
+
     assert.equal(plain.body, undefined);
   } finally {
     await provider.shutdown();

@@ -7,9 +7,10 @@
 
 ## 仓库导航
 
-- `agent_playground/`：Python agent、tools、MCP 和 workflow，由 Aegra 提供 Agent Protocol 服务。
+- `agent_playground/`：Python agent、tools、MCP 和 workflow，由 Aegra 提供 Agent Protocol 服务；`db/` 管理数据库契约、连接和输出持久化，workflow 输出发布与业务步骤分开。
 - `server/`：TypeScript 后端；`agent/` 适配 Aegra 与 AG-UI，`conversation/` 管理运行和恢复，`db/` 管理应用数据，根目录保留 HTTP 入口和配置。
 - `web/`：TypeScript 前端，展示对话和 A2UI 内容；`src/components/ui/` 存放 shadcn/ui 基础控件。
+- `shared/`：TypeScript 应用共用的运行状态契约；AG-UI 和 A2UI 类型继续使用官方库。
 - `compose.yaml`：本地 PostgreSQL、Redis 等基础设施；`tests/`：Python 侧测试。
 - 完整启动步骤、当前能力、协议传递方式和已知限制见 `README.md`；不要把容易变化的项目现状重复写进本文件。
 
@@ -20,6 +21,20 @@
 - Python 使用 uv，TypeScript 使用 pnpm；通过各自的包管理器增删依赖并更新锁文件。仅在验证目标需要时引入新库或基础设施。
 - 基础设施通过 Docker Compose 维护。根目录、`server/` 和 `web/` 各自使用自己的 `.env`，避免跨项目读取配置。
 - 代码是写给人阅读的：使用清晰命名和直接结构；只在意图、边界条件或不直观的处理需要解释时添加注释，不要让文件主要由注释构成。
+- 运行状态写入归 conversation 层，恢复查询不能覆盖更新后的映射或终态；快照读取与上游同步分开。前端 Query 负责取数和交付结果，session 负责状态协调，资源由创建者明确释放。
+
+## 代码风格与可读性
+
+参考 [Google TypeScript Style Guide](https://google.github.io/styleguide/tsguide.html#control-flow-statements-and-blocks) 的控制流与函数排版，以及 [PEP 8](https://peps.python.org/pep-0008/#blank-lines) 的逻辑分段。以下是本项目的明确要求；TypeScript 不采用指南中允许单行 `if` 的例外。
+
+- TypeScript 的 `if`、`else`、`for`、`while`、`do` 始终使用花括号，语句另起一行。即使只有 `return`、`throw` 或 `continue` 也一样；禁止 `if (condition) return value;` 和无花括号的多行分支。
+- Python 的分支、循环和异常处理也将语句另起一行；禁止 `if condition: return value` 和用分号拼接多条语句。
+- 函数内部按逻辑阶段分组，例如输入校验、准备数据、执行或持久化、组装返回值。不同阶段之间保留一个空行，相关的连续声明或操作可以放在一起；不要每行都加空行，也不要把多阶段函数挤成连续代码。
+- TypeScript 的声明组后、控制流块前后、最终 `return` 前保留一个空行；块内只有一条语句时不额外加空行。函数或方法之间保留一个空行。Python 模块级函数和类之间保留两个空行，类方法之间保留一个空行。
+- 简单的三元表达式和单表达式箭头函数可以保留；禁止嵌套三元表达式。涉及多个判断、赋值或副作用时使用展开的分支或具名函数。
+- 使用表达领域含义的变量和函数名。复杂条件先提取具名变量，避免让读者同时解码条件、状态和副作用；不要仅为缩短行数增加抽象层。
+- 注释解释意图、协议边界、竞争条件和非直观处理，不重复代码正在做的事情。必要注释紧贴对应逻辑分组。
+- Prettier 与 Ruff 负责缩进、换行和基础格式；共享的 `eslint.style.mjs` 约束 TypeScript 花括号、嵌套三元和语句间空行。自动格式化不能替代对逻辑分组的人工检查。源码与测试采用相同规则，第三方生成的数据库快照保持生成格式。
 
 ## 开发与验证
 

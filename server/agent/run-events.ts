@@ -10,5 +10,6 @@ export function normalizeRunEvent<T extends { type: EventType }>(
   ) {
     return event;
   }
+
   return { ...event, runId };
 }

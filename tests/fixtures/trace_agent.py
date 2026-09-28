@@ -16,9 +16,9 @@ from langchain_core.outputs import ChatGeneration, ChatGenerationChunk, ChatResu
 from langchain_core.runnables import RunnableConfig
 from langgraph_sdk.runtime import ServerRuntime
 
+from agent_playground.db.connection import prepare_output_store
 from agent_playground.graph import make_graph
 from agent_playground.observability import execution_trace
-from agent_playground.workflow_outputs import prepare_output_store
 
 
 class TraceModel(BaseChatModel):
@@ -48,6 +48,7 @@ class TraceModel(BaseChatModel):
                     {"id": str(uuid4()), "name": "get_current_time", "args": {}}
                 ],
             )
+
         return ChatResult(generations=[ChatGeneration(message=message)])
 
     @override
@@ -59,6 +60,7 @@ class TraceModel(BaseChatModel):
         **kwargs: Any,
     ) -> ChatResult:
         await asyncio.sleep(0.15)
+
         return self._generate(messages)
 
     @override
@@ -70,11 +72,13 @@ class TraceModel(BaseChatModel):
         **kwargs: Any,
     ) -> AsyncIterator[ChatGenerationChunk]:
         await asyncio.sleep(0.15)
+
         if isinstance(messages[-1], ToolMessage):
             for text in ["The clock ", "was checked."]:
                 yield ChatGenerationChunk(message=AIMessageChunk(content=text))
         else:
             call_id = str(uuid4())
+
             yield ChatGenerationChunk(
                 message=AIMessageChunk(
                     content="",
@@ -101,8 +105,10 @@ class TraceModel(BaseChatModel):
 @asynccontextmanager
 async def graph(config: RunnableConfig, runtime: ServerRuntime[dict[str, object]]):
     prepare_output_store()
+
     if runtime.execution_runtime is None:
         yield make_graph(model=TraceModel())
         return
+
     with execution_trace(config):
         yield make_graph(model=TraceModel())

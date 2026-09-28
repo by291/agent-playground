@@ -1,5 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { trace, SpanStatusCode } from "@opentelemetry/api";
+import {
+  WebTracerProvider,
+  InMemorySpanExporter,
+  SimpleSpanProcessor,
+} from "@opentelemetry/sdk-trace-web";
 import { setTimeout as delay } from "node:timers/promises";
 import {
   HttpAgent,
@@ -8,11 +14,12 @@ import {
   type RunAgentInput,
 } from "@ag-ui/client";
 import { createConversationSession } from "./session";
-import type { ConversationSnapshot } from "./snapshot";
+import type { ConversationSnapshot } from "./contracts";
 import type { SavedConversation } from "./storage";
 import type { A2UIOutput } from "../a2ui/outputs";
 
 const savedValues = new Map<string, string>();
+
 Object.defineProperty(globalThis, "localStorage", {
   value: {
     getItem: (key: string) => savedValues.get(key) ?? null,
@@ -21,9 +28,23 @@ Object.defineProperty(globalThis, "localStorage", {
   configurable: true,
 });
 
+function connectSession(
+  session: ReturnType<typeof createConversationSession>,
+  fetchSnapshot: () => Promise<ConversationSnapshot | null>,
+) {
+  return session.connect(async () => {
+    try {
+      session.receiveSnapshot(await fetchSnapshot());
+    } catch (error) {
+      session.receiveSnapshotError(error);
+      throw error;
+    }
+  });
+}
+
 function snapshot(
   runId = "old-run",
-  status = "completed",
+  status: import("../../../shared/run-status").RunStatus = "completed",
 ): ConversationSnapshot {
   return {
     messages: [
@@ -49,12 +70,14 @@ function streamingAgent(threadId: string) {
       requests += 1;
       assert.equal(typeof init.body, "string");
       const input = RunAgentInputSchema.parse(JSON.parse(init.body as string));
+
       resolveRequest(input);
       const body = new ReadableStream<Uint8Array>({
         start(next) {
           controller = next;
         },
       });
+
       return Promise.resolve(
         new Response(body, {
           headers: { "Content-Type": "text/event-stream" },
@@ -62,17 +85,21 @@ function streamingAgent(threadId: string) {
       );
     },
   });
+
   return {
     agent,
     requested,
+
     get requests() {
       return requests;
     },
+
     emit(event: Record<string, unknown>) {
       controller.enqueue(
         new TextEncoder().encode(`data: ${JSON.stringify(event)}\n\n`),
       );
     },
+
     finish(input: RunAgentInput) {
       this.emit({ type: "RUN_FINISHED", threadId, runId: input.runId });
       controller.close();
@@ -82,7 +109,11 @@ function streamingAgent(threadId: string) {
 
 async function waitFor(predicate: () => boolean) {
   const deadline = Date.now() + 1000;
-  while (!predicate() && Date.now() < deadline) await delay(1);
+
+  while (!predicate() && Date.now() < deadline) {
+    await delay(1);
+  }
+
   assert.ok(predicate(), "Expected conversation state was not reached");
 }
 
@@ -94,6 +125,7 @@ void test("a rejected submission unlocks an existing conversation without discar
     fetch: (_url, init) => {
       assert.equal(typeof init.body, "string");
       inputs.push(RunAgentInputSchema.parse(JSON.parse(init.body as string)));
+
       return Promise.reject(new Error("Request failed before admission"));
     },
   });
@@ -102,9 +134,10 @@ void test("a rejected submission unlocks an existing conversation without discar
     agent,
   );
   const previous = snapshot();
-  const disconnect = session.connect(() => Promise.resolve(previous));
+  const disconnect = connectSession(session, () => Promise.resolve(previous));
+
   try {
-    session.applySnapshot(previous);
+    session.receiveSnapshot(previous);
     await session.store.getState().send("Keep this pending input");
 
     assert.equal(agent.isRunning, false);
@@ -117,10 +150,11 @@ void test("a rejected submission unlocks an existing conversation without discar
     const saved = JSON.parse(
       localStorage.getItem("agent-playground-conversation") ?? "null",
     ) as SavedConversation;
+
     assert.equal(saved.pending?.runId, inputs[0]?.runId);
     assert.deepEqual(saved.pending?.messages, inputs[0]?.messages);
 
-    session.applySnapshot(previous);
+    session.receiveSnapshot(previous);
     assert.equal(session.store.getState().running, false);
     assert.equal(inputs.length, 1);
     await session.store.getState().send("Another attempt");
@@ -138,13 +172,17 @@ void test("a stale completed snapshot cannot erase a new stream or leak into ano
   );
   const second = createConversationSession({ threadId: "thread-two" });
   let finalSnapshot = snapshot();
-  const disconnect = first.connect(() => Promise.resolve(finalSnapshot));
-  const disconnectSecond = second.connect(() => Promise.resolve(null));
+  const disconnect = connectSession(first, () =>
+    Promise.resolve(finalSnapshot),
+  );
+  const disconnectSecond = connectSession(second, () => Promise.resolve(null));
+
   try {
-    first.applySnapshot(snapshot());
-    second.applySnapshot(null);
+    first.receiveSnapshot(snapshot());
+    second.receiveSnapshot(null);
     const completion = first.store.getState().send("New question");
     const input = await stream.requested;
+
     stream.emit({
       type: "RUN_STARTED",
       threadId: input.threadId,
@@ -164,7 +202,7 @@ void test("a stale completed snapshot cannot erase a new stream or leak into ano
       () => first.store.getState().messages.at(-1)?.content === "Live reply",
     );
 
-    first.applySnapshot(snapshot());
+    first.receiveSnapshot(snapshot());
     assert.equal(first.store.getState().messages.at(-1)?.content, "Live reply");
     assert.equal(first.store.getState().running, true);
     assert.deepEqual(second.store.getState().messages, []);
@@ -174,7 +212,7 @@ void test("a stale completed snapshot cannot erase a new stream or leak into ano
     finalSnapshot.messages = [
       { id: "checkpoint-message", role: "assistant", content: "Final reply" },
     ];
-    first.applySnapshot(finalSnapshot);
+    first.receiveSnapshot(finalSnapshot);
     assert.equal(first.store.getState().messages.at(-1)?.id, "stream-message");
     assert.equal(
       first.store
@@ -207,13 +245,15 @@ void test("reload retries a prepared submission once with the original input", a
     },
   };
   const session = createConversationSession(saved, stream.agent);
-  const disconnect = session.connect(() =>
+  const disconnect = connectSession(session, () =>
     Promise.resolve(snapshot("original-run")),
   );
+
   try {
-    session.applySnapshot(snapshot("original-run", "prepared"));
-    session.applySnapshot(snapshot("original-run", "prepared"));
+    session.receiveSnapshot(snapshot("original-run", "prepared"));
+    session.receiveSnapshot(snapshot("original-run", "prepared"));
     const input = await stream.requested;
+
     assert.equal(input.runId, "original-run");
     assert.deepEqual(input.messages, saved.pending?.messages);
     assert.deepEqual(input.state, { selected: "original" });
@@ -244,9 +284,10 @@ void test("an unknown server submission is recovered without resending it", () =
     },
     stream.agent,
   );
-  const disconnect = session.connect(() => Promise.resolve(null));
+  const disconnect = connectSession(session, () => Promise.resolve(null));
+
   try {
-    session.applySnapshot(snapshot("unknown-run", "submission_unknown"));
+    session.receiveSnapshot(snapshot("unknown-run", "submission_unknown"));
     assert.equal(stream.requests, 0);
     assert.equal(session.store.getState().recovering, false);
     assert.match(session.store.getState().recoveryIssue ?? "", /unknown/i);
@@ -257,9 +298,11 @@ void test("an unknown server submission is recovered without resending it", () =
 
 void test("repeated outputs share the same surface and conflicts remain visible", () => {
   const session = createConversationSession({ threadId: "card-thread" });
-  const disconnect = session.connect(() => Promise.resolve(null));
+  const disconnect = connectSession(session, () => Promise.resolve(null));
+
   try {
     const initial = snapshot();
+
     initial.outputs = [
       {
         id: "output",
@@ -275,12 +318,13 @@ void test("repeated outputs share the same surface and conflicts remain visible"
         ],
       },
     ];
-    session.applySnapshot(initial);
+    session.receiveSnapshot(initial);
     const surface = session.store.getState().surfaces[0]!.surface;
-    session.applySnapshot(initial);
+
+    session.receiveSnapshot(initial);
     assert.equal(session.store.getState().surfaces.length, 1);
     assert.equal(session.store.getState().surfaces[0]!.surface, surface);
-    session.applySnapshot({
+    session.receiveSnapshot({
       ...initial,
       outputs: [{ ...initial.outputs[0]!, messages: [] }],
     });
@@ -305,13 +349,14 @@ void test("disconnect prevents late recovery from overwriting the new conversati
     },
     stream.agent,
   );
-  const disconnect = session.connect(() => Promise.resolve(null));
+  const disconnect = connectSession(session, () => Promise.resolve(null));
+
   disconnect();
   localStorage.setItem(
     "agent-playground-conversation",
     JSON.stringify({ threadId: "new-thread" }),
   );
-  session.applySnapshot(snapshot("old-run"));
+  session.receiveSnapshot(snapshot("old-run"));
   assert.equal(stream.requests, 0);
   assert.deepEqual(
     JSON.parse(localStorage.getItem("agent-playground-conversation") ?? "null"),
@@ -320,6 +365,12 @@ void test("disconnect prevents late recovery from overwriting the new conversati
 });
 
 void test("out-of-order live A2UI updates recover through a snapshot and do not replay on completion", async () => {
+  const exporter = new InMemorySpanExporter();
+  const provider = new WebTracerProvider({
+    spanProcessors: [new SimpleSpanProcessor(exporter)],
+  });
+
+  trace.setGlobalTracerProvider(provider);
   const stream = streamingAgent("output-thread");
   const session = createConversationSession(
     { threadId: "output-thread" },
@@ -368,15 +419,19 @@ void test("out-of-order live A2UI updates recover through a snapshot and do not 
   };
   let reads = 0;
   let recovered = snapshot();
+
   recovered.outputs = [first, second];
-  const disconnect = session.connect(() => {
+  const disconnect = connectSession(session, () => {
     reads += 1;
+
     return Promise.resolve(recovered);
   });
+
   try {
-    session.applySnapshot(null);
+    session.receiveSnapshot(null);
     const completion = session.store.getState().send("Show a surface");
     const input = await stream.requested;
+
     stream.emit({
       type: "RUN_STARTED",
       threadId: input.threadId,
@@ -387,6 +442,7 @@ void test("out-of-order live A2UI updates recover through a snapshot and do not 
     await waitFor(() => session.store.getState().surfaces.length === 1);
     assert.equal(reads, 1);
     const surface = session.store.getState().surfaces[0]!.surface;
+
     assert.equal(surface.dataModel.get("/title"), "Recovered update");
     assert.equal(session.store.getState().a2uiIssue, null);
     recovered = {
@@ -395,11 +451,19 @@ void test("out-of-order live A2UI updates recover through a snapshot and do not 
     };
     stream.finish(input);
     await completion;
+    const span = exporter
+      .getFinishedSpans()
+      .find((item) => item.name === "web.submit");
+
+    assert.ok(span);
+    assert.notEqual(span.status.code, SpanStatusCode.ERROR);
+    assert.equal(span.attributes["app.stream.outcome"], "finished");
     assert.equal(session.store.getState().surfaces[0]!.surface, surface);
     assert.equal(session.store.getState().a2uiIssue, null);
     disconnect();
-    const reconnect = session.connect(() => Promise.resolve(recovered));
-    session.applySnapshot(recovered);
+    const reconnect = connectSession(session, () => Promise.resolve(recovered));
+
+    session.receiveSnapshot(recovered);
     assert.notEqual(session.store.getState().surfaces[0]!.surface, surface);
     assert.equal(
       session.store.getState().surfaces[0]!.surface.dataModel.get("/title"),
@@ -408,6 +472,8 @@ void test("out-of-order live A2UI updates recover through a snapshot and do not 
     reconnect();
   } finally {
     disconnect();
+    trace.disable();
+    await provider.shutdown();
   }
 });
 
@@ -417,11 +483,13 @@ void test("invalid A2UI events remain visible without interrupting the text stre
     { threadId: "invalid-output-thread" },
     stream.agent,
   );
-  const disconnect = session.connect(() => Promise.resolve(snapshot()));
+  const disconnect = connectSession(session, () => Promise.resolve(snapshot()));
+
   try {
-    session.applySnapshot(null);
+    session.receiveSnapshot(null);
     const completion = session.store.getState().send("Keep streaming");
     const input = await stream.requested;
+
     stream.emit({
       type: "RUN_STARTED",
       threadId: input.threadId,
@@ -469,14 +537,18 @@ void test("review submission covers each interrupt once and blocks duplicate sen
     stream.agent,
   );
   let finalSnapshot = snapshot();
-  const disconnect = session.connect(() => Promise.resolve(finalSnapshot));
+  const disconnect = connectSession(session, () =>
+    Promise.resolve(finalSnapshot),
+  );
+
   try {
     const reviewSnapshot = snapshot("paused-run", "interrupted");
+
     reviewSnapshot.interrupts = [
       InterruptSchema.parse({ id: "review-a", reason: "Review draft A" }),
       InterruptSchema.parse({ id: "review-b", reason: "Review draft B" }),
     ];
-    session.applySnapshot(reviewSnapshot);
+    session.receiveSnapshot(reviewSnapshot);
     await session.store.getState().send("Cannot bypass the review");
     const answerA = {
       interruptId: "review-a",
@@ -490,12 +562,15 @@ void test("review submission covers each interrupt once and blocks duplicate sen
       title: "Edited B",
       steps: ["Step B"],
     };
+
     await session.store.getState().reviewPlan([answerA, answerA]);
     assert.equal(stream.requests, 0);
 
     const completion = session.store.getState().reviewPlan([answerA, answerB]);
+
     await session.store.getState().reviewPlan([answerA, answerB]);
     const input = await stream.requested;
+
     assert.equal(stream.requests, 1);
     assert.deepEqual(input.resume, [
       {

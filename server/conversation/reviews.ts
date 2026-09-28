@@ -1,0 +1,70 @@
+import type { Interrupt, RunAgentInput } from "@ag-ui/client";
+import { and, eq, inArray } from "drizzle-orm";
+import type { db } from "../db/database";
+import { workflowOutputs } from "../db/workflow-schema";
+import type { RunRow } from "../db/schema";
+import { SubmissionError } from "./errors";
+
+function workflowCallId(interrupt: Interrupt): string | null {
+  const metadata: unknown = interrupt.metadata?.langgraph;
+
+  if (!metadata || typeof metadata !== "object" || !("raw" in metadata)) {
+    return null;
+  }
+
+  const raw: unknown = metadata.raw;
+
+  if (!raw || typeof raw !== "object" || !("workflowCallId" in raw)) {
+    return null;
+  }
+
+  return typeof raw.workflowCallId === "string" ? raw.workflowCallId : null;
+}
+
+async function reviewOutputsPersisted(
+  threadId: string,
+  interrupts: Interrupt[],
+  database: Pick<typeof db, "select">,
+) {
+  const callIds = interrupts.map(workflowCallId);
+
+  if (!callIds.length || !callIds.every((id): id is string => id !== null)) {
+    return false;
+  }
+
+  const saved = await database
+    .select({ callId: workflowOutputs.workflowCallId })
+    .from(workflowOutputs)
+    .where(
+      and(
+        eq(workflowOutputs.threadId, threadId),
+        eq(workflowOutputs.stepId, "review"),
+        inArray(workflowOutputs.workflowCallId, callIds),
+      ),
+    );
+  const savedIds = new Set(saved.map((row) => row.callId));
+
+  return callIds.every((id) => savedIds.has(id));
+}
+
+export async function validateReview(
+  input: RunAgentInput,
+  run: RunRow | null,
+  database: Pick<typeof db, "select">,
+): Promise<void> {
+  const interrupts = run?.interrupts ?? [];
+  const submitted = input.resume ?? [];
+  const currentIds = new Set(interrupts.map((interrupt) => interrupt.id));
+  const submittedIds = new Set(submitted.map((entry) => entry.interruptId));
+
+  if (
+    run?.status !== "interrupted" ||
+    !interrupts.length ||
+    interrupts.length !== submitted.length ||
+    currentIds.size !== submittedIds.size ||
+    [...currentIds].some((id) => !submittedIds.has(id)) ||
+    !(await reviewOutputsPersisted(input.threadId, interrupts, database))
+  ) {
+    throw new SubmissionError("Review is no longer current", 409);
+  }
+}

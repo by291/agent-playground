@@ -3,6 +3,7 @@ import betterTailwindcss from "eslint-plugin-better-tailwindcss";
 import reactHooks from "eslint-plugin-react-hooks";
 import { defineConfig } from "eslint/config";
 import tseslint from "typescript-eslint";
+import codeStyle from "../eslint.style.mjs";
 
 export default defineConfig([
   {
@@ -12,6 +13,7 @@ export default defineConfig([
       tseslint.configs.recommendedTypeChecked,
       tseslint.configs.stylisticTypeChecked,
       reactHooks.configs.flat.recommended,
+      codeStyle,
     ],
     languageOptions: {
       parserOptions: {

@@ -14,6 +14,7 @@ void test("accepts the official message wrapper and update-only message lists", 
       updateDataModel: { surfaceId: "main", path: "/title", value: "Updated" },
     },
   ];
+
   assert.deepEqual(parseA2UIMessages({ messages }), messages);
   assert.deepEqual(parseA2UIMessages(messages), messages);
   assert.equal(
@@ -30,6 +31,7 @@ void test("the transport adapter validates output identity and does not parse or
     outputSeq: 1,
     messages: [{ version: "v0.9", deleteSurface: { surfaceId: "main" } }],
   };
+
   assert.equal(
     parseA2UIEvent({ type: EventType.CUSTOM, name: "a2ui", value })?.id,
     "output",
@@ -69,8 +71,10 @@ void test("every registered component has a processable gallery preview", () => 
     catalogExamples.map((example) => example.component).sort(),
     [...workflowCatalog.components.keys()].sort(),
   );
+
   for (const example of catalogExamples) {
     const processor = new MessageProcessor([workflowCatalog]);
+
     processor.processMessages(example.messages);
     assert.ok(
       [...processor.model.surfacesMap.values()].every((surface) =>

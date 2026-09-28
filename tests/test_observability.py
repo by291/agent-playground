@@ -30,6 +30,7 @@ class TraceState(BaseModel):
 def tracing():
     exporter = InMemorySpanExporter()
     provider = TracerProvider()
+
     provider.add_span_processor(SimpleSpanProcessor(exporter))
     trace.set_tracer_provider(provider)
     LangChainInstrumentor().instrument(tracer_provider=provider)
@@ -43,12 +44,16 @@ def test_factory_restores_persisted_parent_and_cleans_up(
     tracing: Tracing, failure: bool
 ):
     tracer, exporter = tracing
+
     exporter.clear()
+
     with tracer.start_as_current_span("server.agent") as parent:
         carrier: dict[str, str] = {}
+
         TraceContextTextMapPropagator().inject(carrier)
         trace_id = parent.get_span_context().trace_id
         parent_id = parent.get_span_context().span_id
+
     config: RunnableConfig = json.loads(
         json.dumps(
             {
@@ -66,6 +71,7 @@ def test_factory_restores_persisted_parent_and_cleans_up(
                 return {"value": state.value}
 
             builder = StateGraph(TraceState)
+
             builder.add_node("work", work)
             builder.add_edge(START, "work")
             builder.add_edge("work", END)
@@ -73,20 +79,24 @@ def test_factory_restores_persisted_parent_and_cleans_up(
 
     async def execute():
         before = trace.get_current_span().get_span_context()
+
         try:
             # This is Aegra's supported lifecycle for a context-manager factory.
             async with generate_graph(factory(), "tracing-test") as graph:
                 assert not isinstance(graph, StateGraph)
                 await graph.ainvoke({"value": "work"})
+
                 if failure:
                     raise RuntimeError("Controlled failure")
         except RuntimeError:
             assert failure
+
         assert trace.get_current_span().get_span_context() == before
 
     asyncio.run(execute())
     spans = exporter.get_finished_spans()
     execution = next(span for span in spans if span.name == "agent.execute")
+
     assert execution.context is not None
     assert execution.parent is not None
     assert execution.attributes is not None
@@ -101,12 +111,15 @@ def test_factory_restores_persisted_parent_and_cleans_up(
 
 def test_concurrent_executions_keep_their_own_trace(tracing: Tracing):
     tracer, exporter = tracing
+
     exporter.clear()
     configs: list[RunnableConfig] = []
     expected: list[int] = []
+
     for _ in range(2):
         with tracer.start_as_current_span("submit") as parent:
             carrier: dict[str, str] = {}
+
             TraceContextTextMapPropagator().inject(carrier)
             configs.append({"metadata": {"otel_trace_context": carrier}})
             expected.append(parent.get_span_context().trace_id)
@@ -115,6 +128,7 @@ def test_concurrent_executions_keep_their_own_trace(tracing: Tracing):
         with execution_trace(config):
             await asyncio.sleep(0.01)
             assert trace.get_current_span().get_span_context().is_valid
+
             return trace.get_current_span().get_span_context().trace_id
 
     async def check():
@@ -128,7 +142,10 @@ def test_concurrent_executions_keep_their_own_trace(tracing: Tracing):
 
 def test_invalid_carrier_is_ignored(tracing: Tracing):
     _, exporter = tracing
+
     exporter.clear()
+
     with execution_trace({"metadata": {"otel_trace_context": {"traceparent": 42}}}):
         assert trace.get_current_span().get_span_context().is_valid
+
     assert not trace.get_current_span().get_span_context().is_valid

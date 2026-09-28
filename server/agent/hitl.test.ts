@@ -1,7 +1,8 @@
 import type { ResumeEntry } from "@ag-ui/client";
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { omitInputOnResume, ReviewLangGraphAgent } from "./hitl";
+import { ReviewLangGraphAgent } from "./hitl";
+import { prepareAegraRequest } from "./client";
 
 void test("sends only the resume command to Aegra", () => {
   const url = new URL("http://127.0.0.1:2026/threads/thread/runs/stream");
@@ -12,10 +13,14 @@ void test("sends only the resume command to Aegra", () => {
       command: { resume: "approve" },
     }),
   };
-  const result = omitInputOnResume(url, init);
-  assert.deepEqual(JSON.parse(result.body as string), {
-    command: { resume: "approve" },
-  });
+  const result = prepareAegraRequest(url, init);
+  const body = JSON.parse(result.body as string) as {
+    command: unknown;
+    input?: unknown;
+  };
+
+  assert.deepEqual(body.command, { resume: "approve" });
+  assert.equal("input" in body, false);
 });
 
 class TestAgent extends ReviewLangGraphAgent {

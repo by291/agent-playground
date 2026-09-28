@@ -38,14 +38,17 @@ export function observeAgentStream(
         const started = performance.now();
         let outcome = "unknown";
         let firstText = false;
+
         stream.onAbort(() => {
           outcome = "disconnected";
         });
+
         try {
           await execute(stream, {
             runCreated: (id) => {
               span.setAttribute("langfuse.trace.metadata.aegra_run_id", id);
             },
+
             event(event) {
               if (
                 event.type === EventType.TEXT_MESSAGE_CONTENT &&
@@ -58,18 +61,22 @@ export function observeAgentStream(
                   duration_ms: performance.now() - started,
                 });
               }
+
               if (event.type === EventType.RUN_ERROR) {
                 outcome = "error";
                 recordError(span, new Error(String(event.message)));
               }
+
               if (event.type === EventType.RUN_FINISHED) {
                 const finished = event as unknown as RunFinishedEvent;
+
                 outcome =
                   finished.outcome?.type === "interrupt"
                     ? "interrupted"
                     : "finished";
               }
             },
+
             failed(error) {
               outcome = "error";
               recordError(span, error);

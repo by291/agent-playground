@@ -1,6 +1,7 @@
 import js from "@eslint/js";
 import { defineConfig } from "eslint/config";
 import tseslint from "typescript-eslint";
+import codeStyle from "../eslint.style.mjs";
 
 export default defineConfig([
   {
@@ -9,6 +10,7 @@ export default defineConfig([
       js.configs.recommended,
       tseslint.configs.recommendedTypeChecked,
       tseslint.configs.stylisticTypeChecked,
+      codeStyle,
     ],
     languageOptions: {
       parserOptions: {

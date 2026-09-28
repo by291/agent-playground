@@ -14,11 +14,16 @@ export function ConnectionStatus() {
   });
   const connected = healthy === true && !isError;
 
-  const label = isPending
-    ? "Checking gateway"
-    : connected
-      ? "Gateway online"
-      : "Gateway offline";
+  let label = "Gateway offline";
+  let statusColor = "bg-red-500";
+
+  if (isPending) {
+    label = "Checking gateway";
+    statusColor = "bg-amber-400";
+  } else if (connected) {
+    label = "Gateway online";
+    statusColor = "bg-emerald-600";
+  }
 
   return (
     <Badge
@@ -26,15 +31,7 @@ export function ConnectionStatus() {
       role="status"
       className="hidden h-7 items-center gap-2 border-line bg-white px-2.5 text-xs text-muted md:inline-flex"
     >
-      <span
-        className={`size-2 rounded-full ${
-          isPending
-            ? "bg-amber-400"
-            : connected
-              ? "bg-emerald-600"
-              : "bg-red-500"
-        }`}
-      />
+      <span className={`size-2 rounded-full ${statusColor}`} />
       {label}
     </Badge>
   );

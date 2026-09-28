@@ -27,6 +27,7 @@ export function ConversationApp() {
 
   function startNewConversation() {
     const next = newConversation();
+
     saveConversation(next);
     setConversation(next);
   }
@@ -143,7 +144,11 @@ function ConversationPage({
 
 function ActivityCount() {
   const count = useConversation((state) => state.activity.length);
-  if (!count) return null;
+
+  if (!count) {
+    return null;
+  }
+
   return (
     <Badge
       variant="secondary"

@@ -17,6 +17,7 @@ export function ActivityPanel({
   onClose: () => void;
 }) {
   const activity = useConversation((state) => state.activity);
+
   return (
     <aside
       aria-label="Run activity"
@@ -90,28 +91,21 @@ export function ActivityPanel({
 }
 
 function ActivityItem({ event }: { event: Activity }) {
-  const kind = event.type.startsWith("RUN_")
-    ? "run"
-    : event.type.startsWith("TOOL_")
-      ? "tool"
-      : "message";
-  const Icon =
-    kind === "run"
-      ? PulseIcon
-      : kind === "tool"
-        ? LightningIcon
-        : ChatCircleDotsIcon;
+  let Icon = ChatCircleDotsIcon;
+  let iconColor = "bg-sidebar text-muted";
+
+  if (event.type.startsWith("RUN_")) {
+    Icon = PulseIcon;
+    iconColor = "bg-accent-soft text-accent";
+  } else if (event.type.startsWith("TOOL_")) {
+    Icon = LightningIcon;
+    iconColor = "bg-amber-50 text-amber-700";
+  }
 
   return (
     <li className="flex gap-3 rounded-xl border border-line bg-white p-3">
       <span
-        className={`flex size-8 shrink-0 items-center justify-center rounded-lg ${
-          kind === "tool"
-            ? "bg-amber-50 text-amber-700"
-            : kind === "run"
-              ? "bg-accent-soft text-accent"
-              : "bg-sidebar text-muted"
-        }`}
+        className={`flex size-8 shrink-0 items-center justify-center rounded-lg ${iconColor}`}
       >
         <Icon size={17} aria-hidden="true" />
       </span>

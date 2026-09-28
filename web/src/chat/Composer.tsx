@@ -23,10 +23,26 @@ export function Composer() {
   const [prompt, setPrompt] = useState("");
   const input = useRef<HTMLTextAreaElement>(null);
 
+  let placeholder = "Message Agent Playground";
+  let sendLabel = running ? "Agent is responding" : "Send message";
+
+  if (recovering) {
+    placeholder = "Loading conversation…";
+    sendLabel = "Loading conversation";
+  } else if (waitingForReview) {
+    placeholder = "Review the plan above to continue";
+    sendLabel = "Review the plan to continue";
+  }
+
   function submit(event?: SubmitEvent<HTMLFormElement>) {
     event?.preventDefault();
-    if (!prompt.trim() || disabled) return;
+
+    if (!prompt.trim() || disabled) {
+      return;
+    }
+
     const message = prompt;
+
     setPrompt("");
     void onSend(message).finally(() => input.current?.focus());
   }
@@ -53,13 +69,7 @@ export function Composer() {
               value={prompt}
               onChange={(event) => setPrompt(event.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder={
-                recovering
-                  ? "Loading conversation…"
-                  : waitingForReview
-                    ? "Review the plan above to continue"
-                    : "Message Agent Playground"
-              }
+              placeholder={placeholder}
               aria-label="Message"
               disabled={disabled}
               className="max-h-48 min-h-12 px-1 py-3 text-base/6"
@@ -79,15 +89,7 @@ export function Composer() {
                 variant="default"
                 size="icon-sm"
                 disabled={disabled || !prompt.trim()}
-                aria-label={
-                  recovering
-                    ? "Loading conversation"
-                    : waitingForReview
-                      ? "Review the plan to continue"
-                      : running
-                        ? "Agent is responding"
-                        : "Send message"
-                }
+                aria-label={sendLabel}
                 className="size-11 rounded-xl"
               >
                 <ArrowUpIcon size={19} weight="bold" aria-hidden="true" />

@@ -3,20 +3,16 @@ import {
   HttpAgent,
   type Interrupt,
   type Message,
-  type ResumeEntry,
 } from "@ag-ui/client";
 import { createStore } from "zustand/vanilla";
 import { parseA2UIEvent, type A2UIOutput } from "../a2ui/outputs";
 import { createA2UIRuntime, type A2UISurfaceView } from "../a2ui/runtime";
-import type { PlanReviewResponse } from "./planReview";
-import { mergeMessages, type ConversationSnapshot } from "./snapshot";
-import {
-  saveConversation,
-  type PendingSubmission,
-  type SavedConversation,
-} from "./storage";
+import { reviewEntries, type PlanReviewResponse } from "./planReview";
+import { reconcileSnapshot, pendingRecovery } from "./reconciliation";
+import { saveConversation, type SavedConversation } from "./storage";
+import type { ConversationSnapshot, PendingSubmission } from "./contracts";
 import type { Activity } from "./types";
-import { startSubmissionTrace } from "../observability/tracing";
+import { createSubmissionRunner } from "./submission";
 
 export interface ConversationState {
   messages: Message[];
@@ -33,22 +29,22 @@ export interface ConversationState {
   reviewPlan: (responses: PlanReviewResponse[]) => Promise<void>;
 }
 
-type RefreshSnapshot = () => Promise<ConversationSnapshot | null>;
+// Query ownership stays outside the session; a refresh requests a new result.
+type RefreshSnapshot = () => Promise<void>;
 
 export function createConversationSession(
   saved: SavedConversation,
   agent = new HttpAgent({ url: "/agent", threadId: saved.threadId }),
 ) {
   let connected = false;
-  let submitting = false;
   let pending = saved.pending;
   let submittedRunId: string | undefined;
   let streamInterrupts: Interrupt[] | undefined;
   let refresh: RefreshSnapshot;
   let a2ui: ReturnType<typeof createA2UIRuntime> | undefined;
   let invalidOutputIssue: string | null = null;
-  let fillingOutputGap = false;
-  let submissionTrace: ReturnType<typeof startSubmissionTrace> | undefined;
+  let recoveringOutputs = false;
+
   const store = createStore<ConversationState>()(() => ({
     messages: [],
     surfaces: [],
@@ -63,17 +59,58 @@ export function createConversationSession(
     send,
     reviewPlan,
   }));
+  const submission = createSubmissionRunner(saved.threadId, agent, {
+    started() {
+      streamInterrupts = undefined;
+      store.setState({
+        messages: [...agent.messages],
+        running: true,
+        recoveryIssue: null,
+      });
+    },
+
+    failed(error) {
+      if (connected) {
+        store.setState({
+          recoveryIssue: errorDetail(error, "Agent run failed"),
+        });
+      }
+    },
+
+    async settled() {
+      streamInterrupts = undefined;
+
+      if (connected) {
+        await requestSnapshot();
+      }
+    },
+  });
 
   function receiveOutputs(outputs: A2UIOutput[]) {
     const result = a2ui?.ingest(outputs);
-    if (!result) return false;
-    if (result.issue && result.issue !== store.getState().a2uiIssue)
-      submissionTrace?.error(new Error(result.issue));
+
+    if (!result) {
+      return false;
+    }
+
+    let issue: string | null = null;
+
+    if (result.kind === "failed") {
+      issue = result.error;
+    } else if (result.kind === "waiting") {
+      issue = `Waiting for A2UI output ${result.missingOutputSeq} to recover.`;
+    }
+
+    if (result.kind === "failed" && issue !== store.getState().a2uiIssue) {
+      submission.trace?.error(new Error(result.error));
+    }
+
     store.setState({
       surfaces: result.surfaces,
-      a2uiIssue: invalidOutputIssue ?? result.issue,
+      a2uiIssue: invalidOutputIssue ?? issue,
     });
-    return result.needsRecovery;
+
+    return result.kind === "waiting";
   }
 
   function clearPending() {
@@ -81,220 +118,201 @@ export function createConversationSession(
     saveConversation({ threadId: saved.threadId });
   }
 
-  function applySnapshot(snapshot: ConversationSnapshot | null) {
-    if (!connected) return;
-    const pendingRecovery = store.getState().recovering ? pending : undefined;
-    store.setState({ recovering: false, snapshotIssue: null });
-    const latest = snapshot?.runs.at(-1);
-    const serverRunning =
-      latest?.status === "prepared" ||
-      latest?.status === "dispatching" ||
-      latest?.status === "running";
+  function receiveSnapshot(snapshot: ConversationSnapshot | null) {
+    if (!connected) {
+      return;
+    }
 
-    // A request started before this submission can return the previous run.
-    // It must not replace the new stream or unlock its composer.
-    if (!submittedRunId || latest?.runId === submittedRunId) {
-      const finished =
-        latest?.status === "completed" ||
-        latest?.status === "failed" ||
-        latest?.status === "interrupted";
-      const canonical = finished && !submitting && !agent.isRunning;
-      if (snapshot && !submitting && !agent.isRunning) {
-        // Preserve a disconnected preview until the final checkpoint replaces its IDs.
-        agent.setMessages(
-          canonical
-            ? snapshot.messages
-            : mergeMessages(snapshot.messages, agent.messages),
-        );
-      }
+    const initialPending = store.getState().recovering ? pending : undefined;
+
+    store.setState({ recovering: false, snapshotIssue: null });
+
+    const result = reconcileSnapshot(snapshot, {
+      submittedRunId,
+      submitting: submission.active,
+      streaming: agent.isRunning,
+      messages: agent.messages,
+      interrupts: streamInterrupts,
+    });
+
+    if (result.kind === "current") {
+      agent.setMessages(result.messages);
       store.setState({
         messages: [...agent.messages],
-        pendingInterrupts: streamInterrupts ?? snapshot?.interrupts ?? [],
-        running: submitting || agent.isRunning || serverRunning,
-        recoveryIssue:
-          latest?.status === "submission_unknown"
-            ? "Submission status is unknown. Review the server state before retrying."
-            : latest?.status === "failed"
-              ? "The agent run failed. Saved cards remain available."
-              : null,
+        pendingInterrupts: result.interrupts,
+        running: result.running,
+        recoveryIssue: result.issue,
       });
-      if (canonical) submittedRunId = undefined;
-    } else if (!submitting && !agent.isRunning) {
-      // A rejected request may never appear in server history. Keep its input and error.
-      store.setState({ running: serverRunning });
+
+      if (result.canonical) {
+        submittedRunId = undefined;
+      }
+    } else if (!submission.active && !agent.isRunning) {
+      // Rejected requests may never enter server history. Keep their input and error.
+      store.setState({ running: result.running });
     }
+
     receiveOutputs(snapshot?.outputs ?? []);
 
-    const savedRun = snapshot?.runs.find((run) => run.runId === pending?.runId);
-    if (savedRun && savedRun.status !== "prepared") clearPending();
-    if (pendingRecovery && (!savedRun || savedRun.status === "prepared")) {
-      // A reload resends the original input and run ID only while admission is unconfirmed.
-      void runSubmission(pendingRecovery);
+    if (pending && pendingRecovery(snapshot, pending) === "confirmed") {
+      clearPending();
+    }
+
+    if (
+      initialPending &&
+      pendingRecovery(snapshot, initialPending) === "retry"
+    ) {
+      // Only an unconfirmed admission is retried with its original run ID and input.
+      void runSubmission(initialPending);
     }
   }
 
-  async function refreshSnapshot() {
+  function receiveSnapshotError(error: unknown) {
+    if (!connected) {
+      return;
+    }
+
+    submission.trace?.event("snapshot_recovery_failed");
+    store.setState({ snapshotIssue: errorDetail(error, "Recovery failed") });
+  }
+
+  async function requestSnapshot() {
     try {
-      applySnapshot(await refresh());
-    } catch (error) {
-      submissionTrace?.event("snapshot_recovery_failed");
-      if (connected)
-        store.setState({
-          snapshotIssue: errorDetail(error, "Recovery failed"),
-        });
+      await refresh();
+    } catch {
+      // The query owner delivers errors through receiveSnapshotError.
     }
   }
 
   async function recoverOutputGap() {
-    if (fillingOutputGap) return;
-    fillingOutputGap = true;
+    if (recoveringOutputs) {
+      return;
+    }
+
+    recoveringOutputs = true;
+
     try {
-      await refreshSnapshot();
+      await requestSnapshot();
     } finally {
-      fillingOutputGap = false;
+      recoveringOutputs = false;
     }
   }
 
-  async function runSubmission(submission: PendingSubmission) {
-    if (!connected || submitting) return;
-    submitting = true;
-    submissionTrace = startSubmissionTrace(saved.threadId, submission.runId);
-    const originalHeaders = agent.headers;
-    agent.headers = { ...originalHeaders, ...submissionTrace.headers };
-    submittedRunId = submission.runId;
-    streamInterrupts = undefined;
-    agent.setMessages(submission.messages);
-    agent.setState(submission.state);
-    store.setState({
-      messages: [...agent.messages],
-      running: true,
-      recoveryIssue: null,
-    });
-    try {
-      await agent.runAgent({
-        runId: submission.runId,
-        ...(submission.resume ? { resume: submission.resume } : {}),
-      });
-    } catch (error) {
-      submissionTrace.error(error);
-      if (connected)
-        store.setState({
-          recoveryIssue: errorDetail(error, "Agent run failed"),
-        });
-    } finally {
-      submissionTrace.finish();
-      submissionTrace = undefined;
-      agent.headers = originalHeaders;
-      submitting = false;
-      streamInterrupts = undefined;
-      if (connected) await refreshSnapshot();
+  function runSubmission(input: PendingSubmission) {
+    if (!connected || submission.active) {
+      return Promise.resolve();
     }
+
+    submittedRunId = input.runId;
+
+    return submission.run(input);
   }
 
-  function submit(submission: PendingSubmission) {
-    // Persist before sending so a reload can retry exactly the same admission.
-    saveConversation({ threadId: saved.threadId, pending: submission });
-    pending = submission;
-    return runSubmission(submission);
+  function submit(input: PendingSubmission) {
+    // Save before sending so a reload can retry exactly the same admission.
+    saveConversation({ threadId: saved.threadId, pending: input });
+    pending = input;
+
+    return runSubmission(input);
   }
 
   function busy() {
     const state = store.getState();
-    return (
-      !connected ||
-      state.recovering ||
-      state.running ||
-      submitting ||
-      agent.isRunning
-    );
+
+    return !connected || state.recovering || state.running;
   }
 
   function send(content: string): Promise<void> {
     const text = content.trim();
-    if (!text || busy() || store.getState().pendingInterrupts.length)
+
+    if (!text || busy() || store.getState().pendingInterrupts.length) {
       return Promise.resolve();
+    }
+
     const message: Message = {
       id: crypto.randomUUID(),
       role: "user",
       content: text,
     };
+
     return submit({
       runId: crypto.randomUUID(),
       messageId: message.id,
       messages: [...agent.messages, message],
-      state: structuredClone<Record<string, unknown>>(
-        agent.state as Record<string, unknown>,
-      ),
-      userMessage: message,
+      state: structuredClone(agent.state as Record<string, unknown>),
     });
   }
 
   function reviewPlan(responses: PlanReviewResponse[]): Promise<void> {
-    if (busy()) return Promise.resolve();
-    const expected = new Set(
-      store.getState().pendingInterrupts.map((item) => item.id),
-    );
-    const received = new Set(responses.map((item) => item.interruptId));
-    if (
-      !expected.size ||
-      expected.size !== responses.length ||
-      received.size !== expected.size ||
-      responses.some((item) => !expected.has(item.interruptId))
-    )
+    if (busy()) {
       return Promise.resolve();
-    const resume: ResumeEntry[] = responses.map(
-      ({ interruptId, decision, title, steps }) => ({
-        interruptId,
-        status: "resolved",
-        payload: { decision, title, steps },
-      }),
-    );
+    }
+
+    const resume = reviewEntries(responses, store.getState().pendingInterrupts);
+
+    if (!resume) {
+      return Promise.resolve();
+    }
+
     const runId = crypto.randomUUID();
+
     return submit({
       runId,
       messageId: runId,
       messages: [...agent.messages],
-      state: structuredClone<Record<string, unknown>>(
-        agent.state as Record<string, unknown>,
-      ),
+      state: structuredClone(agent.state as Record<string, unknown>),
       resume,
     });
   }
 
-  function connect(refreshSnapshot: RefreshSnapshot) {
+  function connect(requestRefresh: RefreshSnapshot) {
     connected = true;
-    refresh = refreshSnapshot;
+    refresh = requestRefresh;
     a2ui = createA2UIRuntime();
     invalidOutputIssue = null;
     store.setState({ surfaces: [], a2uiIssue: null });
+
     const subscription = agent.subscribe({
       onEvent({ event }) {
-        if (!connected) return;
+        if (!connected) {
+          return;
+        }
+
         if (
           event.type === EventType.TEXT_MESSAGE_CONTENT &&
           typeof event.delta === "string" &&
-          event.delta.length > 0 &&
+          event.delta.length &&
           typeof event.messageId === "string"
         ) {
-          submissionTrace?.firstText();
+          submission.trace?.firstText();
           store.setState({ animatedMessageId: event.messageId });
         }
+
         try {
           const output = parseA2UIEvent(event);
-          if (output && receiveOutputs([output])) void recoverOutputGap();
+
+          if (output && receiveOutputs([output])) {
+            void recoverOutputGap();
+          }
         } catch (error) {
-          submissionTrace?.error(error);
+          submission.trace?.error(error);
           invalidOutputIssue = errorDetail(error, "Invalid A2UI output");
           store.setState({ a2uiIssue: invalidOutputIssue });
         }
-        if (event.type === EventType.RUN_ERROR)
-          submissionTrace?.error(new Error(String(event.message)));
+
+        if (event.type === EventType.RUN_ERROR) {
+          submission.trace?.error(new Error(String(event.message)));
+        }
+
         if (
           event.type === EventType.RAW ||
           event.type === EventType.STATE_SNAPSHOT
-        )
+        ) {
           return;
+        }
+
         const detail = "name" in event ? String(event.name) : undefined;
+
         store.setState((state) => ({
           activity: [
             {
@@ -306,22 +324,31 @@ export function createConversationSession(
           ].slice(0, 30),
         }));
       },
+
       onMessagesChanged() {
-        if (connected) store.setState({ messages: [...agent.messages] });
+        if (connected) {
+          store.setState({ messages: [...agent.messages] });
+        }
       },
+
       onRunFinishedEvent({ event }) {
-        submissionTrace?.outcome(
+        submission.trace?.outcome(
           event.outcome?.type === "interrupt" ? "interrupted" : "finished",
         );
-        if (!connected) return;
+
+        if (!connected) {
+          return;
+        }
+
         streamInterrupts =
           event.outcome?.type === "interrupt" ? event.outcome.interrupts : [];
         store.setState({ pendingInterrupts: streamInterrupts });
       },
     });
+
     return () => {
       connected = false;
-      submissionTrace?.outcome("disconnected");
+      submission.trace?.outcome("disconnected");
       subscription.unsubscribe();
       a2ui?.dispose();
       a2ui = undefined;
@@ -330,7 +357,7 @@ export function createConversationSession(
     };
   }
 
-  return { store, connect, applySnapshot };
+  return { store, connect, receiveSnapshot, receiveSnapshotError };
 }
 
 function errorDetail(error: unknown, fallback: string) {

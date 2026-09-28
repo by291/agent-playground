@@ -15,6 +15,7 @@ import { OTLPMetricExporter } from "@opentelemetry/exporter-metrics-otlp-http";
 import { metrics } from "@opentelemetry/api";
 
 const endpoint = process.env.OTEL_EXPORTER_OTLP_ENDPOINT;
+
 if (endpoint) {
   const resource = resourceFromAttributes({
     "service.name": "agent-playground-server",
@@ -30,6 +31,7 @@ if (endpoint) {
       ),
     ],
   });
+
   provider.register({ propagator: new W3CTraceContextPropagator() });
   const meterProvider = new MeterProvider({
     resource,
@@ -57,7 +59,9 @@ if (endpoint) {
       }),
     ],
   });
+
   metrics.setGlobalMeterProvider(meterProvider);
+
   for (const signal of ["SIGTERM", "SIGINT"] as const) {
     process.once(signal, () => {
       void Promise.allSettled([

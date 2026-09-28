@@ -24,6 +24,7 @@ export interface A2UIOutput {
 export function parseA2UIOutput(value: unknown): A2UIOutput {
   try {
     const output = outputSchema.parse(value);
+
     return {
       id: output.id,
       outputSeq: output.outputSeq,
@@ -32,11 +33,15 @@ export function parseA2UIOutput(value: unknown): A2UIOutput {
     };
   } catch (error) {
     const detail = error instanceof Error ? error.message : "Invalid payload";
+
     throw new Error(`Invalid A2UI output: ${detail}`, { cause: error });
   }
 }
 
 export function parseA2UIEvent(event: BaseEvent): A2UIOutput | null {
-  if (event.type !== EventType.CUSTOM || event.name !== "a2ui") return null;
+  if (event.type !== EventType.CUSTOM || event.name !== "a2ui") {
+    return null;
+  }
+
   return parseA2UIOutput(event.value);
 }

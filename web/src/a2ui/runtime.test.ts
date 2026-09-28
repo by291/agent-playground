@@ -41,6 +41,7 @@ void test("one processor keeps surfaces alive across component and data updates,
   const initial = runtime.ingest([
     output(1, [...creation(), ...creation("second")]),
   ]);
+
   assert.equal(initial.surfaces.length, 2);
   const surface = initial.surfaces[0]!.surface;
   const updated = runtime.ingest([
@@ -69,10 +70,12 @@ void test("one processor keeps surfaces alive across component and data updates,
       },
     ]),
   ]);
-  assert.equal(updated.issue, null);
+
+  assert.equal(updated.kind, "ready");
   assert.equal(updated.surfaces[0]!.surface, surface);
   assert.equal(surface.dataModel.get("/title"), "Updated");
   const resolver = new NodeResolver(surface, workflowCatalog);
+
   assert.equal(getValue(resolver.rootNode)?.toJSON().text, "Updated");
   runtime.ingest([
     output(3, [
@@ -91,6 +94,7 @@ void test("one processor keeps surfaces alive across component and data updates,
   const removed = runtime.ingest([
     output(4, [{ version: "v0.9", deleteSurface: { surfaceId: "main" } }]),
   ]);
+
   assert.deepEqual(
     removed.surfaces.map((item) => item.surface.id),
     ["second"],
@@ -101,6 +105,7 @@ void test("one processor keeps surfaces alive across component and data updates,
 
 void test("a failed batch hides its touched surfaces and cannot leave a partial preview", () => {
   const runtime = createA2UIRuntime();
+
   runtime.ingest([output(1, creation("saved"))]);
   const result = runtime.ingest([
     output(2, [
@@ -115,7 +120,8 @@ void test("a failed batch hides its touched surfaces and cannot leave a partial 
       },
     ]),
   ]);
-  assert.match(result.issue ?? "", /missing/i);
+
+  assert.match(result.kind === "failed" ? result.error : "", /missing/i);
   assert.deepEqual(
     result.surfaces.map((view) => view.surface.id),
     ["saved"],
@@ -153,6 +159,7 @@ for (const text of [
       initial.surfaces[0]!.surface,
       workflowCatalog,
     );
+
     assert.equal(getValue(resolver.rootNode)?.toJSON().text, "Initial");
     const result = runtime.ingest([
       output(2, [
@@ -172,7 +179,8 @@ for (const text of [
         },
       ]),
     ]);
-    assert.match(result.issue ?? "", /binding path/i);
+
+    assert.match(result.kind === "failed" ? result.error : "", /binding path/i);
     assert.equal(result.surfaces.length, 0);
     resolver.dispose();
     runtime.dispose();
@@ -189,14 +197,17 @@ void test("a missing output waits for recovery and an older snapshot cannot repl
     },
   ]);
   const gap = runtime.ingest([second]);
-  assert.equal(gap.needsRecovery, true);
+
+  assert.equal(gap.kind, "waiting");
   assert.equal(gap.surfaces.length, 0);
-  assert.match(gap.issue ?? "", /output 1/i);
+  assert.equal(gap.kind === "waiting" ? gap.missingOutputSeq : null, 1);
   const recovered = runtime.ingest([second, first]);
-  assert.equal(recovered.needsRecovery, false);
-  assert.equal(recovered.issue, null);
+
+  assert.equal(recovered.kind, "ready");
+  assert.equal(recovered.kind, "ready");
   assert.equal(recovered.surfaces[0]!.surface.dataModel.get("/status"), "done");
   const surface = recovered.surfaces[0]!.surface;
+
   assert.equal(runtime.ingest([first]).surfaces[0]!.surface, surface);
   assert.equal(surface.dataModel.get("/status"), "done");
   runtime.dispose();
@@ -205,6 +216,7 @@ void test("a missing output waits for recovery and an older snapshot cannot repl
 void test("JSON object key order does not make a repeated output conflict", () => {
   const runtime = createA2UIRuntime();
   const first = output(1, creation());
+
   runtime.ingest([first]);
   const reordered = output(1, [
     {
@@ -226,7 +238,8 @@ void test("JSON object key order does not make a repeated output conflict", () =
       },
     },
   ]);
-  assert.equal(runtime.ingest([reordered]).issue, null);
+
+  assert.equal(runtime.ingest([reordered]).kind, "ready");
   runtime.dispose();
 });
 
@@ -237,10 +250,16 @@ void test("conflicting output identities keep the original surface and report an
   const conflict = runtime.ingest([
     { ...first, messages: creation("changed") },
   ]);
-  assert.match(conflict.issue ?? "", /conflicting/i);
-  assert.equal(conflict.surfaces[0]!.surface, initial.surfaces[0]!.surface);
+
   assert.match(
-    runtime.ingest([{ ...first, id: "another-id" }]).issue ?? "",
+    conflict.kind === "failed" ? conflict.error : "",
+    /conflicting/i,
+  );
+  assert.equal(conflict.surfaces[0]!.surface, initial.surfaces[0]!.surface);
+  const repeatedConflict = runtime.ingest([{ ...first, id: "another-id" }]);
+
+  assert.match(
+    repeatedConflict.kind === "failed" ? repeatedConflict.error : "",
     /conflicting/i,
   );
   runtime.dispose();
@@ -248,6 +267,7 @@ void test("conflicting output identities keep the original surface and report an
 
 void test("unknown catalogs and surfaces report processing failures without hiding earlier output", () => {
   const runtime = createA2UIRuntime();
+
   runtime.ingest([output(1, creation())]);
   const result = runtime.ingest([
     output(2, [
@@ -261,7 +281,11 @@ void test("unknown catalogs and surfaces report processing failures without hidi
       },
     ]),
   ]);
-  assert.match(result.issue ?? "", /surface.*missing/i);
+
+  assert.match(
+    result.kind === "failed" ? result.error : "",
+    /surface.*missing/i,
+  );
   assert.equal(result.surfaces.length, 1);
   runtime.dispose();
   const other = createA2UIRuntime();
@@ -273,13 +297,18 @@ void test("unknown catalogs and surfaces report processing failures without hidi
       },
     ]),
   ]);
-  assert.match(unsupported.issue ?? "", /catalog.*unknown/i);
+
+  assert.match(
+    unsupported.kind === "failed" ? unsupported.error : "",
+    /catalog.*unknown/i,
+  );
   other.dispose();
 });
 
 void test("runtime state belongs to one conversation and disposal releases its surfaces", () => {
   const first = createA2UIRuntime();
   const second = createA2UIRuntime();
+
   first.ingest([output(1, creation())]);
   assert.equal(second.ingest([]).surfaces.length, 0);
   first.dispose();

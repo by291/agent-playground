@@ -1,4 +1,5 @@
-import { and, eq, inArray, isNull, or } from "drizzle-orm";
+import { and, desc, eq, isNull, or } from "drizzle-orm";
+import type { Message, RunAgentInput } from "@ag-ui/client";
 import { isDeepStrictEqual } from "node:util";
 import { db } from "../db/database";
 import {
@@ -7,13 +8,20 @@ import {
   conversations,
   type RunRow,
 } from "../db/schema";
+import { SubmissionError } from "./errors";
+import {
+  isRunActive,
+  isRunFinished,
+  type RunStatus,
+} from "../../shared/run-status";
+import { validateReview } from "./reviews";
 
 interface RunSubmission {
   threadId: string;
   runId: string;
   messageId: string;
-  request: unknown;
-  userMessage: unknown;
+  request: RunAgentInput;
+  userMessage: Message | null;
   isResume: boolean;
 }
 
@@ -24,7 +32,7 @@ export async function admitRun({
   request,
   userMessage,
   isResume,
-}: RunSubmission): Promise<{ row: RunRow; fresh: boolean }> {
+}: RunSubmission): Promise<{ row: RunRow }> {
   return db.transaction(async (tx) => {
     await tx.insert(conversations).values({ threadId }).onConflictDoNothing();
 
@@ -54,40 +62,49 @@ export async function admitRun({
 
     if (existing.length) {
       const row = existing[0];
+
       if (!row) {
         throw new Error("Conversation submission lookup failed");
       }
+
       const sameSubmission =
         existing.length === 1 &&
         row.aguiRunId === runId &&
         row.threadId === threadId &&
         row.messageId === messageId &&
         isDeepStrictEqual(row.request, request);
+
       if (!sameSubmission) {
-        throw new Error("Conflicting submission IDs or payload");
+        throw new SubmissionError("Conflicting submission IDs or payload", 409);
       }
-      return { row, fresh: false };
+
+      return { row };
     }
 
-    const pending = await tx
-      .select({ status: conversationRuns.status })
+    const [current] = await tx
+      .select()
       .from(conversationRuns)
-      .where(
-        and(
-          eq(conversationRuns.threadId, threadId),
-          inArray(conversationRuns.status, [
-            "prepared",
-            "dispatching",
-            "running",
-            "interrupted",
-            "submission_unknown",
-          ]),
-        ),
-      );
+      .where(eq(conversationRuns.threadId, threadId))
+      .orderBy(desc(conversationRuns.submitSeq))
+      .limit(1);
 
-    const hasActiveRun = pending.some((row) => row.status !== "interrupted");
-    if (hasActiveRun || (!isResume && pending.length > 0)) {
-      throw new Error("Conversation has an active run or review");
+    // Historical pauses remain immutable; only the newest run can block admission.
+    if (
+      current &&
+      (isRunActive(current.status) ||
+        current.status === "submission_unknown" ||
+        (!isResume && current.status === "interrupted"))
+    ) {
+      throw new SubmissionError(
+        "Conversation has an active run or review",
+        409,
+      );
+    }
+
+    // Existing prepared submissions returned above. Only a new review is validated,
+    // under the same conversation lock that protects its admission.
+    if (isResume) {
+      await validateReview(request, current ?? null, tx);
     }
 
     const [row] = await tx
@@ -119,7 +136,8 @@ export async function admitRun({
       .update(conversations)
       .set({ nextSubmitSeq: conversation.nextSubmitSeq + 1 })
       .where(eq(conversations.threadId, threadId));
-    return { row, fresh: true };
+
+    return { row };
   });
 }
 
@@ -134,6 +152,7 @@ export async function claimPrepared(runId: string): Promise<boolean> {
       ),
     )
     .returning({ id: conversationRuns.aguiRunId });
+
   return rows.length === 1;
 }
 
@@ -141,21 +160,70 @@ export async function recordAegraRun(
   runId: string,
   aegraRunId: string,
 ): Promise<void> {
-  const rows = await db
+  await db.transaction(async (tx) => {
+    const [row] = await tx
+      .select()
+      .from(conversationRuns)
+      .where(eq(conversationRuns.aguiRunId, runId))
+      .for("update");
+
+    if (!row || (row.aegraRunId && row.aegraRunId !== aegraRunId)) {
+      throw new Error("Aegra run mapping conflict");
+    }
+
+    // Recovery may finish the run before its creation callback reaches the database.
+    await tx
+      .update(conversationRuns)
+      .set({
+        aegraRunId,
+        status: isRunFinished(row.status) ? row.status : "running",
+      })
+      .where(eq(conversationRuns.aguiRunId, runId));
+  });
+}
+
+export async function latestRun(threadId: string): Promise<RunRow | null> {
+  const [row] = await db
+    .select()
+    .from(conversationRuns)
+    .where(eq(conversationRuns.threadId, threadId))
+    .orderBy(desc(conversationRuns.submitSeq))
+    .limit(1);
+
+  return row ?? null;
+}
+
+export async function saveRunObservation(
+  expected: RunRow,
+  observation: { status: RunStatus; aegraRunId: string | null },
+): Promise<RunRow> {
+  // An upstream read cannot overwrite a callback or a newer terminal observation.
+  const [updated] = await db
     .update(conversationRuns)
-    .set({ aegraRunId, status: "running" })
+    .set(observation)
     .where(
       and(
-        eq(conversationRuns.aguiRunId, runId),
-        or(
-          eq(conversationRuns.aegraRunId, aegraRunId),
-          isNull(conversationRuns.aegraRunId),
-        ),
+        eq(conversationRuns.aguiRunId, expected.aguiRunId),
+        eq(conversationRuns.status, expected.status),
+        expected.aegraRunId === null
+          ? isNull(conversationRuns.aegraRunId)
+          : eq(conversationRuns.aegraRunId, expected.aegraRunId),
       ),
     )
-    .returning({ id: conversationRuns.aguiRunId });
+    .returning();
 
-  if (rows.length !== 1) {
-    throw new Error("Aegra run mapping conflict");
+  if (updated) {
+    return updated;
   }
+
+  const [current] = await db
+    .select()
+    .from(conversationRuns)
+    .where(eq(conversationRuns.aguiRunId, expected.aguiRunId));
+
+  if (!current) {
+    throw new Error("Conversation run disappeared during recovery");
+  }
+
+  return current;
 }

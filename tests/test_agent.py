@@ -20,9 +20,9 @@ from testcontainers.community.postgres import PostgresContainer
 
 os.environ.setdefault("DEEPSEEK_API_KEY", "test")
 
+from agent_playground.db.workflow_outputs import WorkflowOutput
 from agent_playground.graph import make_graph, mcp_client
 from agent_playground.workflow import ExperimentState, experiment_workflow
-from agent_playground.workflow_outputs import WorkflowOutput
 
 
 @pytest.fixture(autouse=True)
@@ -42,7 +42,9 @@ def isolate_workflow_output_store(monkeypatch: pytest.MonkeyPatch):
             payload=payload,
         )
 
-    monkeypatch.setattr("agent_playground.workflow.store_workflow_output", save_card)
+    monkeypatch.setattr(
+        "agent_playground.workflow_outputs.store_workflow_output", save_card
+    )
 
 
 class FakeToolModel(FakeMessagesListChatModel):
@@ -81,6 +83,7 @@ def fake_model() -> FakeToolModel:
 def test_tool_and_followup_response():
     graph = make_graph(model=fake_model())
     output = graph.invoke({"messages": [HumanMessage(content="What time is it?")]})
+
     assert output["messages"][-1].content == "The clock was checked."
     assert output["messages"][-2].name == "get_current_time"
 
@@ -88,6 +91,7 @@ def test_tool_and_followup_response():
 def test_mcp_tool_and_followup_response():
     async def check():
         mcp_tools = await mcp_client().get_tools()
+
         assert [tool.name for tool in mcp_tools] == ["calculate_sum"]
 
         model = FakeToolModel(
@@ -109,6 +113,7 @@ def test_mcp_tool_and_followup_response():
             {"messages": [HumanMessage(content="Add two numbers.")]}
         )
         results = {message.name: message.content for message in output["messages"]}
+
         assert "5.0" in str(results["calculate_sum"])
         assert output["messages"][-1].content == "The sum is ready."
 
@@ -129,9 +134,11 @@ def test_workflow_streams_each_step_and_waits_for_review(
         result = await experiment_workflow.ainvoke(
             ExperimentState(idea=state.idea, card_group_id="call-plan")
         )
+
         return {"result": result}
 
     builder = StateGraph(ReviewState)
+
     builder.add_node("workflow", call_workflow)
     builder.add_edge(START, "workflow")
     builder.add_edge("workflow", END)
@@ -143,13 +150,16 @@ def test_workflow_streams_each_step_and_waits_for_review(
 
     async def cards_for(input_value: object) -> list[dict[str, Any]]:
         cards: list[dict[str, Any]] = []
+
         async for event in graph.astream_events(input_value, config, version="v2"):
             if event["event"] == "on_custom_event" and event["name"] == "a2ui":
                 cards.append(cast("dict[str, Any]", event["data"]))
+
         return cards
 
     async def check():
         before = await cards_for({"idea": "Test an agent workflow"})
+
         assert [card["id"] for card in before] == [
             "experiment-call-plan-idea",
             "experiment-call-plan-draft",
@@ -157,6 +167,7 @@ def test_workflow_streams_each_step_and_waits_for_review(
         ]
         assert all("kind" not in card and "messages" in card for card in before)
         review = graph.get_state(config).tasks[0].interrupts[0].value
+
         assert review["kind"] == "experiment_plan_review"
         assert review["title"] == "Test an agent workflow"
         assert len(review["steps"]) == 3
@@ -170,8 +181,10 @@ def test_workflow_streams_each_step_and_waits_for_review(
                 }
             )
         )
+
         assert after[-1]["id"] == "experiment-call-plan-reviewed"
         components = after[-1]["messages"][1]["updateComponents"]["components"]
+
         assert any(component.get("text") == expected_title for component in components)
         assert any(
             component.get("text") == expected_line.removeprefix("1. ")
@@ -206,6 +219,7 @@ def test_agent_resumes_workflow_tool_after_review():
         }
 
         cards: list[dict[str, Any]] = []
+
         async for event in first_graph.astream_events(
             {"messages": [HumanMessage(content="Make a plan.")]},
             config,
@@ -213,6 +227,7 @@ def test_agent_resumes_workflow_tool_after_review():
         ):
             if event["event"] == "on_custom_event" and event["name"] == "a2ui":
                 cards.append(cast("dict[str, Any]", event["data"]))
+
         assert [card["id"] for card in cards] == [
             "experiment-call-plan-idea",
             "experiment-call-plan-draft",
@@ -244,6 +259,7 @@ def test_agent_resumes_workflow_tool_after_review():
             for message in completed["messages"]
             if getattr(message, "name", None) == "run_experiment_workflow"
         )
+
         assert result == "Approved experiment plan: Approved title\n1. Run one trial."
         assert completed["messages"][-1].content == "The approved plan is ready."
 
@@ -282,6 +298,7 @@ def test_agent_resumes_parallel_workflow_reviews():
             {"messages": [HumanMessage(content="Plan both ideas.")]}, config
         )
         interrupts = paused["__interrupt__"]
+
         assert len(interrupts) == 2
 
         completed = await graph.ainvoke(
@@ -302,6 +319,7 @@ def test_agent_resumes_parallel_workflow_reviews():
             for message in completed["messages"]
             if getattr(message, "name", None) == "run_experiment_workflow"
         }
+
         assert "Approved experiment plan: First idea" in results["call-first"]
         assert "Approved experiment plan: Second idea" in results["call-second"]
         assert completed["messages"][-1].content == "Both reviews are complete."
@@ -312,12 +330,14 @@ def test_agent_resumes_parallel_workflow_reviews():
 def test_postgres_checkpoint_survives_graph_recreation():
     async def check(database_url: str):
         thread_id = str(uuid4())
+
         async with AsyncPostgresSaver.from_conn_string(database_url) as first_saver:
             await first_saver.setup()
             first_graph = make_graph(
                 model=FakeToolModel(responses=[AIMessage(content="First answer")]),
                 checkpointer=first_saver,
             )
+
             await first_graph.ainvoke(
                 {"messages": [HumanMessage(content="First turn")]},
                 {"configurable": {"thread_id": thread_id}},
@@ -338,6 +358,7 @@ def test_postgres_checkpoint_survives_graph_recreation():
             for message in result["messages"]
             if isinstance(message, HumanMessage)
         ]
+
         assert user_turns == ["First turn", "Second turn"]
 
     with PostgresContainer("postgres:18-alpine") as postgres:

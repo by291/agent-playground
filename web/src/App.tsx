@@ -14,6 +14,7 @@ const ConversationApp = lazy(() =>
 
 export function App() {
   const isGallery = window.location.pathname === "/a2ui";
+
   return (
     <Suspense
       fallback={

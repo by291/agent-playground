@@ -14,71 +14,27 @@ import {
   NativeSelectOption,
 } from "@/components/ui/native-select";
 import { A2UISurface } from "./A2UISurface";
-import type { A2UISurfaceView } from "./runtime";
 import { workflowCatalog, workflowComponentNames } from "./catalog";
-import { catalogExamples, parseGalleryPreview } from "./examples";
+import { catalogExamples } from "./examples";
+import { useGalleryPreviews } from "./useGalleryPreviews";
 
 const JsonEditor = lazy(() =>
   import("./JsonEditor").then(({ JsonEditor }) => ({ default: JsonEditor })),
 );
 
-interface Preview {
-  surfaces: A2UISurfaceView[];
-  source: string;
-  error: string | null;
-}
-
 export function GalleryPage() {
   const [component, setComponent] = useState(
     catalogExamples[0]?.component ?? "",
   );
-  const [drafts, setDrafts] = useState<Record<string, string>>({});
-  const [previews, setPreviews] = useState<Record<string, Preview>>(() =>
-    Object.fromEntries(
-      catalogExamples.map((example) => [
-        example.component,
-        {
-          surfaces:
-            parseGalleryPreview(example.component, example.source).surfaces ??
-            [],
-          source: example.source,
-          error: null,
-        },
-      ]),
-    ),
-  );
+  const { previews, updateSource, resetSource } = useGalleryPreviews();
   const example = catalogExamples.find((item) => item.component === component);
-  const source = drafts[component] ?? example?.source ?? "";
   const preview = previews[component];
-  if (!example || !preview) return null;
 
-  function updateSource(next: string) {
-    setDrafts((current) => ({ ...current, [component]: next }));
-    const updated = parseGalleryPreview(component, next);
-    setPreviews((current) => ({
-      ...current,
-      [component]: updated.surfaces
-        ? { surfaces: updated.surfaces, source: next, error: null }
-        : { ...current[component]!, error: updated.error },
-    }));
+  if (!example || !preview) {
+    return null;
   }
 
-  function resetSource() {
-    setDrafts((current) => {
-      const next = { ...current };
-      delete next[component];
-      return next;
-    });
-    const reset = parseGalleryPreview(component, example!.source);
-    setPreviews((current) => ({
-      ...current,
-      [component]: {
-        surfaces: reset.surfaces ?? [],
-        source: example!.source,
-        error: reset.error,
-      },
-    }));
-  }
+  const source = preview.draft;
 
   return (
     <div className="min-h-dvh bg-canvas font-sans text-ink">
@@ -155,8 +111,8 @@ export function GalleryPage() {
               <Button
                 type="button"
                 variant="ghost"
-                onClick={resetSource}
-                disabled={drafts[component] === undefined}
+                onClick={() => resetSource(component)}
+                disabled={source === example.source}
                 className="min-h-11 px-2 text-xs text-muted hover:bg-accent-soft hover:text-ink"
               >
                 <ArrowCounterClockwiseIcon size={15} aria-hidden="true" />
@@ -172,7 +128,7 @@ export function GalleryPage() {
                 <JsonEditor
                   component={component}
                   value={source}
-                  onChange={updateSource}
+                  onChange={(next) => updateSource(component, next)}
                 />
               </Suspense>
             </div>

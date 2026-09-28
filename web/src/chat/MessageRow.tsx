@@ -21,9 +21,16 @@ export function preloadMarkdownMessage() {
 }
 
 function messageText(message: Message): string {
-  if (typeof message.content === "string") return message.content;
-  if (!Array.isArray(message.content)) return "";
+  if (typeof message.content === "string") {
+    return message.content;
+  }
+
+  if (!Array.isArray(message.content)) {
+    return "";
+  }
+
   const parts: unknown[] = message.content;
+
   return parts
     .filter(
       (part): part is { type: "text"; text: string } =>
@@ -46,7 +53,10 @@ export function MessageRow({
   smoothText?: boolean;
 }) {
   const text = messageText(message);
-  if (!text) return null;
+
+  if (!text) {
+    return null;
+  }
 
   if (message.role === "user") {
     return (

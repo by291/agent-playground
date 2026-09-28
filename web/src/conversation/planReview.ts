@@ -1,4 +1,12 @@
-import type { Interrupt } from "@ag-ui/client";
+import type { Interrupt, ResumeEntry } from "@ag-ui/client";
+import { z } from "zod";
+
+const reviewPayloadSchema = z.object({
+  kind: z.literal("experiment_plan_review"),
+  title: z.string(),
+  steps: z.string().array(),
+});
+const reviewMetadataSchema = z.object({ raw: reviewPayloadSchema });
 
 export interface PlanReview {
   interruptId: string;
@@ -11,14 +19,36 @@ export interface PlanReviewResponse extends PlanReview {
 }
 
 export function parsePlanReview(interrupt: Interrupt): PlanReview | null {
-  const langgraph: unknown = interrupt.metadata?.langgraph;
-  if (typeof langgraph !== "object" || langgraph === null) return null;
-  const raw: unknown = "raw" in langgraph ? langgraph.raw : null;
-  if (typeof raw !== "object" || raw === null) return null;
-  if (!("kind" in raw) || raw.kind !== "experiment_plan_review") return null;
-  if (!("title" in raw) || typeof raw.title !== "string") return null;
-  if (!("steps" in raw) || !Array.isArray(raw.steps)) return null;
-  if (!raw.steps.every((step) => typeof step === "string")) return null;
+  const parsed = reviewMetadataSchema.safeParse(interrupt.metadata?.langgraph);
 
-  return { interruptId: interrupt.id, title: raw.title, steps: raw.steps };
+  if (!parsed.success) {
+    return null;
+  }
+
+  const { title, steps } = parsed.data.raw;
+
+  return { interruptId: interrupt.id, title, steps };
+}
+
+export function reviewEntries(
+  responses: PlanReviewResponse[],
+  interrupts: Interrupt[],
+): ResumeEntry[] | null {
+  const expected = new Set(interrupts.map((item) => item.id));
+  const received = new Set(responses.map((item) => item.interruptId));
+
+  if (
+    !expected.size ||
+    responses.length !== expected.size ||
+    received.size !== expected.size ||
+    responses.some((response) => !expected.has(response.interruptId))
+  ) {
+    return null;
+  }
+
+  return responses.map(({ interruptId, decision, title, steps }) => ({
+    interruptId,
+    status: "resolved",
+    payload: { decision, title, steps },
+  }));
 }

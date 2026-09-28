@@ -14,12 +14,14 @@ void test("browser submission propagates its span and summarizes first text and 
   const provider = new WebTracerProvider({
     spanProcessors: [new SimpleSpanProcessor(exporter)],
   });
+
   propagation.setGlobalPropagator(new W3CTraceContextPropagator());
   const operation = startSubmissionTrace(
     "thread",
     "run",
     provider.getTracer("test"),
   );
+
   assert.match(
     operation.headers.traceparent ?? "",
     /^00-[a-f0-9]{32}-[a-f0-9]{16}-01$/,
@@ -30,8 +32,10 @@ void test("browser submission propagates its span and summarizes first text and 
   operation.finish();
   operation.finish();
   const spans = exporter.getFinishedSpans();
+
   assert.equal(spans.length, 1);
   const span = spans[0];
+
   assert.equal(span?.attributes["langfuse.session.id"], "thread");
   assert.equal(span?.status.code, 2);
   assert.equal(

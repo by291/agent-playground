@@ -10,6 +10,11 @@ export interface A2UISurfaceView {
   surface: SurfaceModel<ReactComponentImplementation>;
 }
 
+export type A2UIIngestResult =
+  | { kind: "ready"; surfaces: A2UISurfaceView[] }
+  | { kind: "waiting"; surfaces: A2UISurfaceView[]; missingOutputSeq: number }
+  | { kind: "failed"; surfaces: A2UISurfaceView[]; error: string };
+
 export function createA2UIRuntime() {
   const processor = new MessageProcessor([workflowCatalog]);
   const outputs = new Map<number, A2UIOutput>();
@@ -37,10 +42,11 @@ export function createA2UIRuntime() {
     surfaces = surfaces.filter((view) => view.surface.id !== id);
   });
 
-  function ingest(incoming: A2UIOutput[]) {
+  function ingest(incoming: A2UIOutput[]): A2UIIngestResult {
     if (!disposed) {
       for (const output of incoming) {
         const existing = byId.get(output.id) ?? outputs.get(output.outputSeq);
+
         if (existing) {
           if (
             existing.id !== output.id ||
@@ -51,8 +57,10 @@ export function createA2UIRuntime() {
           ) {
             failure = `Conflicting A2UI output: ${output.id}`;
           }
+
           continue;
         }
+
         byId.set(output.id, output);
         outputs.set(output.outputSeq, output);
         highestOutputSeq = Math.max(highestOutputSeq, output.outputSeq);
@@ -62,8 +70,13 @@ export function createA2UIRuntime() {
       // A gap waits for recovery instead of applying an update before its creation.
       while (!failure) {
         const output = outputs.get(nextOutputSeq);
-        if (!output) break;
+
+        if (!output) {
+          break;
+        }
+
         currentOutput = output;
+
         try {
           // Data binding must not mutate the saved payload used to detect duplicates.
           processor.processMessages(structuredClone(output.messages));
@@ -71,35 +84,41 @@ export function createA2UIRuntime() {
         } catch (error) {
           const detail =
             error instanceof Error ? error.message : "Processing failed";
+
           failure = `Could not apply A2UI output ${output.id}: ${detail}`;
+
           // The processor cannot roll back a batch. Hide every touched surface
           // rather than show a partially applied result as a completed output.
           for (const message of output.messages) {
-            const operation =
-              "createSurface" in message
-                ? message.createSurface
-                : "updateComponents" in message
-                  ? message.updateComponents
-                  : "updateDataModel" in message
-                    ? message.updateDataModel
-                    : message.deleteSurface;
-            processor.model.deleteSurface(operation.surfaceId);
+            let surfaceId: string;
+
+            if ("createSurface" in message) {
+              surfaceId = message.createSurface.surfaceId;
+            } else if ("updateComponents" in message) {
+              surfaceId = message.updateComponents.surfaceId;
+            } else if ("updateDataModel" in message) {
+              surfaceId = message.updateDataModel.surfaceId;
+            } else {
+              surfaceId = message.deleteSurface.surfaceId;
+            }
+
+            processor.model.deleteSurface(surfaceId);
           }
         }
+
         currentOutput = undefined;
       }
     }
-    const needsRecovery =
-      !disposed && !failure && highestOutputSeq >= nextOutputSeq;
-    return {
-      surfaces,
-      issue:
-        failure ??
-        (needsRecovery
-          ? `Waiting for A2UI output ${nextOutputSeq} to recover.`
-          : null),
-      needsRecovery,
-    };
+
+    if (failure) {
+      return { kind: "failed", surfaces, error: failure };
+    }
+
+    if (!disposed && highestOutputSeq >= nextOutputSeq) {
+      return { kind: "waiting", surfaces, missingOutputSeq: nextOutputSeq };
+    }
+
+    return { kind: "ready", surfaces };
   }
 
   function dispose() {

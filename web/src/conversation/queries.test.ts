@@ -19,6 +19,7 @@ void test("thread-specific queries fetch the correct snapshot and treat a new th
     ),
   );
   const client = new QueryClient();
+
   try {
     const existing = await client.fetchQuery(
       conversationQueryOptions("existing/thread"),
@@ -26,6 +27,7 @@ void test("thread-specific queries fetch the correct snapshot and treat a new th
     const empty = await client.fetchQuery(
       conversationQueryOptions("new-thread"),
     );
+
     assert.equal(existing?.messages[0]?.content, "Recovered");
     assert.equal(empty, null);
     assert.equal(
@@ -39,11 +41,13 @@ void test("thread-specific queries fetch the correct snapshot and treat a new th
 
 void test("cancelling a conversation query aborts its HTTP request", async (context) => {
   let signal: AbortSignal | undefined;
+
   context.mock.method(
     globalThis,
     "fetch",
     (_url: string, init: RequestInit) => {
       signal = init.signal ?? undefined;
+
       return new Promise<Response>((_resolve, reject) => {
         signal?.addEventListener("abort", () =>
           reject(new DOMException("Aborted", "AbortError")),
@@ -55,6 +59,7 @@ void test("cancelling a conversation query aborts its HTTP request", async (cont
   const options = conversationQueryOptions("old-thread");
   const request = client.fetchQuery(options);
   const rejected = assert.rejects(request);
+
   await client.cancelQueries({ queryKey: options.queryKey });
   await rejected;
   assert.equal(signal?.aborted, true);
@@ -75,10 +80,36 @@ void test("recovery rejects legacy A2UI output wrappers", async (context) => {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
+
   try {
     await assert.rejects(
       client.fetchQuery(conversationQueryOptions("legacy-thread")),
       /Invalid A2UI output/,
+    );
+  } finally {
+    client.clear();
+  }
+});
+
+void test("an unknown run status cannot unlock the composer as a valid snapshot", async (context) => {
+  context.mock.method(globalThis, "fetch", () =>
+    Promise.resolve(
+      Response.json({
+        messages: [],
+        outputs: [],
+        interrupts: [],
+        runs: [{ runId: "run", status: "unexpected" }],
+      }),
+    ),
+  );
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+
+  try {
+    await assert.rejects(
+      client.fetchQuery(conversationQueryOptions("invalid-status")),
+      /Invalid conversation snapshot/,
     );
   } finally {
     client.clear();

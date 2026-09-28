@@ -1,5 +1,7 @@
 import {
   bigint,
+  boolean,
+  integer,
   jsonb,
   pgTable,
   primaryKey,
@@ -7,6 +9,8 @@ import {
   timestamp,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
+import type { Interrupt, Message, RunAgentInput } from "@ag-ui/client";
+import { runStatuses } from "../../shared/run-status";
 
 export const conversations = pgTable("conversations", {
   threadId: text("thread_id").primaryKey(),
@@ -30,19 +34,11 @@ export const conversationRuns = pgTable(
       .references(() => conversations.threadId),
     submitSeq: bigint("submit_seq", { mode: "number" }).notNull(),
     messageId: text("message_id").notNull(),
-    request: jsonb("request").notNull(),
+    request: jsonb("request").$type<RunAgentInput>().notNull(),
     aegraRunId: text("aegra_run_id"),
-    status: text("status", {
-      enum: [
-        "prepared",
-        "dispatching",
-        "running",
-        "interrupted",
-        "completed",
-        "failed",
-        "submission_unknown",
-      ],
-    }).notNull(),
+    status: text("status", { enum: runStatuses }).notNull(),
+    checkpointSynced: boolean("checkpoint_synced").notNull().default(false),
+    interrupts: jsonb("interrupts").$type<Interrupt[]>().notNull().default([]),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -67,7 +63,8 @@ export const conversationMessages = pgTable(
       .notNull()
       .references(() => conversations.threadId),
     submitSeq: bigint("submit_seq", { mode: "number" }).notNull(),
-    message: jsonb("message").notNull(),
+    messageOrder: integer("message_order").notNull().default(0),
+    message: jsonb("message").$type<Message>().notNull(),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),

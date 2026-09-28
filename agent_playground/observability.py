@@ -23,6 +23,7 @@ def execution_trace(config: RunnableConfig) -> Iterator[None]:
     )
     parent = _propagator.extract(carrier, context=context.Context())
     token = context.attach(parent)
+
     try:
         configurable = config.get("configurable", {})
         attributes = {
@@ -31,10 +32,12 @@ def execution_trace(config: RunnableConfig) -> Iterator[None]:
             "langfuse.trace.metadata.agui_run_id": str(metadata.get("agui_run_id", "")),
             "langfuse.trace.metadata.aegra_run_id": str(configurable.get("run_id", "")),
         }
+
         with _tracer.start_as_current_span(
             "agent.execute", attributes=attributes
         ) as span:
             span_context = span.get_span_context()
+
             with bound_contextvars(
                 trace_id=f"{span_context.trace_id:032x}",
                 span_id=f"{span_context.span_id:016x}",

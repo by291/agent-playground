@@ -12,6 +12,16 @@ from a2ui.core.schema import (
 from a2ui.core.schema.common_types import ComponentId
 from pydantic import BaseModel
 
+from agent_playground.workflow_outputs import publish_workflow_output
+
+ExperimentStage = Literal["idea", "draft", "review", "reviewed"]
+EXPERIMENT_STEP_SEQUENCE: dict[ExperimentStage, int] = {
+    "idea": 1,
+    "draft": 2,
+    "review": 3,
+    "reviewed": 4,
+}
+
 WORKFLOW_CATALOG_ID = "urn:agent-playground:workflow:v1"
 
 
@@ -35,10 +45,15 @@ class WorkflowSteps(BaseModel):
 
 
 def experiment_card(
-    card_group_id: str, title: str, stage: str, heading: str, lines: list[str]
+    *,
+    workflow_call_id: str,
+    title: str,
+    stage: ExperimentStage,
+    heading: str,
+    lines: list[str],
 ) -> A2uiMessageListWrapper:
     """Return protocol messages for one workflow step."""
-    surface_id = f"experiment-{card_group_id}-{stage}"
+    surface_id = f"experiment-{workflow_call_id}-{stage}"
     step_ids = [ComponentId(f"step-{index}") for index in range(len(lines))]
     components: list[WorkflowPanel | WorkflowText | WorkflowSteps] = [
         WorkflowPanel(
@@ -57,6 +72,7 @@ def experiment_card(
             for step_id, line in zip(step_ids, lines, strict=True)
         ],
     ]
+
     return A2uiMessageListWrapper(
         messages=[
             CreateSurfaceMessage(
@@ -70,4 +86,26 @@ def experiment_card(
                 )
             ),
         ]
+    )
+
+
+async def publish_experiment_card(
+    *,
+    workflow_call_id: str,
+    title: str,
+    stage: ExperimentStage,
+    heading: str,
+    lines: list[str],
+) -> None:
+    await publish_workflow_output(
+        workflow_call_id=workflow_call_id,
+        step_id=stage,
+        step_seq=EXPERIMENT_STEP_SEQUENCE[stage],
+        card=experiment_card(
+            workflow_call_id=workflow_call_id,
+            title=title,
+            stage=stage,
+            heading=heading,
+            lines=lines,
+        ),
     )

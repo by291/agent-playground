@@ -3,8 +3,3 @@ export interface Activity {
   type: string;
   detail?: string;
 }
-
-export interface RunSummary {
-  runId: string;
-  status: string;
-}
