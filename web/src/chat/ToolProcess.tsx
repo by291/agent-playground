@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import {
   CaretDownIcon,
   CheckIcon,
@@ -129,8 +129,10 @@ function ToolDetails({ step }: { step: ToolStep }) {
 
 export function ToolProcess({
   process,
+  children,
 }: {
   process: ReturnType<typeof toolProcess>;
+  children?: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
   const steps = process.flatMap((entry) => entry.calls);
@@ -175,6 +177,7 @@ export function ToolProcess({
             ))}
           </div>
         ))}
+        {children}
       </CollapsibleContent>
     </Collapsible>
   );

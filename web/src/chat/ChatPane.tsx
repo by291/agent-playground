@@ -19,6 +19,7 @@ import { ReviewPanel } from "./ReviewPanel";
 import { useConversation } from "../conversation/useConversation";
 import { parsePlanReview } from "../conversation/planReview";
 import { Welcome } from "./Welcome";
+import { workflowArtifacts } from "./workflowArtifacts";
 
 const A2UISurface = lazy(() =>
   import("../a2ui/A2UISurface").then(({ A2UISurface }) => ({
@@ -26,10 +27,16 @@ const A2UISurface = lazy(() =>
   })),
 );
 
-function Surface({ view }: { view: A2UISurfaceView }) {
+function Surface({
+  view,
+  inChat = true,
+}: {
+  view: A2UISurfaceView;
+  inChat?: boolean;
+}) {
   return (
     <Suspense fallback={null}>
-      <A2UISurface view={view} />
+      <A2UISurface view={view} inChat={inChat} />
     </Suspense>
   );
 }
@@ -128,6 +135,13 @@ export function ChatPane() {
                   const views = calls.flatMap(
                     (call) => surfacesByCall.get(call.id) ?? [],
                   );
+                  const turnReviews =
+                    turn.id === turns.at(-1)?.id ? reviews : [];
+                  const artifacts = workflowArtifacts(
+                    calls,
+                    views,
+                    turnReviews,
+                  );
                   const hasReply =
                     turn.messages.some(
                       (message) =>
@@ -135,7 +149,8 @@ export function ChatPane() {
                         (hasMessageText(message) || message.toolCalls?.length),
                     ) ||
                     (turn.status !== null && isRunActive(turn.status)) ||
-                    views.length > 0;
+                    views.length > 0 ||
+                    artifacts.reviews.length > 0;
 
                   return (
                     <div key={turn.id} className="contents">
@@ -149,12 +164,40 @@ export function ChatPane() {
                           <AssistantReply
                             turn={turn}
                             animatedMessageId={animatedMessageId}
+                            processDetails={
+                              artifacts.history.length > 0 && (
+                                <div className="space-y-3 pt-2">
+                                  <p className="px-2 text-xs font-medium text-muted">
+                                    Previous workflow steps
+                                  </p>
+                                  {artifacts.history.map((view) => (
+                                    <Surface
+                                      key={view.id}
+                                      view={view}
+                                      inChat={false}
+                                    />
+                                  ))}
+                                </div>
+                              )
+                            }
                           >
-                            {views.length > 0
-                              ? views.map((view) => (
-                                  <Surface key={view.id} view={view} />
-                                ))
-                              : undefined}
+                            {artifacts.current.map((view) => (
+                              <Surface
+                                key={view.id}
+                                view={view}
+                                inChat={false}
+                              />
+                            ))}
+                            {artifacts.reviews.length > 0 && (
+                              <ReviewPanel
+                                key={turnReviews
+                                  .map((review) => review.interruptId)
+                                  .join(",")}
+                                reviews={artifacts.reviews}
+                                running={running}
+                                onReview={onReview}
+                              />
+                            )}
                           </AssistantReply>
                         </MessageScrollerItem>
                       )}
@@ -171,7 +214,7 @@ export function ChatPane() {
                       <Surface view={view} />
                     </MessageScrollerItem>
                   ))}
-                {reviews.length > 0 && (
+                {reviews.length > 0 && turns.length === 0 && (
                   <MessageScrollerItem
                     key={reviews.map((review) => review.interruptId).join(",")}
                   >

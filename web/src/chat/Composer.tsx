@@ -28,7 +28,7 @@ export function Composer() {
 
   if (recovering) {
     sendLabel = "Restoring conversation";
-  } else if (waitingForReview) {
+  } else if (waitingForReview && !running) {
     placeholder = "Review the plan above to continue";
     sendLabel = "Review the plan to continue";
   }

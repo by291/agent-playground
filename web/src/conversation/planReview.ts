@@ -3,6 +3,7 @@ import { z } from "zod";
 
 const reviewPayloadSchema = z.object({
   kind: z.literal("experiment_plan_review"),
+  workflowCallId: z.string().optional(),
   title: z.string(),
   steps: z.string().array(),
 });
@@ -10,6 +11,7 @@ const reviewMetadataSchema = z.object({ raw: reviewPayloadSchema });
 
 export interface PlanReview {
   interruptId: string;
+  workflowCallId?: string;
   title: string;
   steps: string[];
 }
@@ -25,9 +27,14 @@ export function parsePlanReview(interrupt: Interrupt): PlanReview | null {
     return null;
   }
 
-  const { title, steps } = parsed.data.raw;
+  const { title, steps, workflowCallId } = parsed.data.raw;
 
-  return { interruptId: interrupt.id, title, steps };
+  return {
+    interruptId: interrupt.id,
+    ...(workflowCallId ? { workflowCallId } : {}),
+    title,
+    steps,
+  };
 }
 
 export function reviewEntries(

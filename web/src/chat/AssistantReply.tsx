@@ -9,10 +9,12 @@ export function AssistantReply({
   turn,
   animatedMessageId,
   children,
+  processDetails,
 }: {
   turn: ChatTurn;
   animatedMessageId: string | null;
   children?: ReactNode;
+  processDetails?: ReactNode;
 }) {
   const process = toolProcess(turn);
   const final = turn.messages.filter(
@@ -33,7 +35,9 @@ export function AssistantReply({
 
   return (
     <AssistantFrame>
-      {process.length > 0 && <ToolProcess process={process} />}
+      {process.length > 0 && (
+        <ToolProcess process={process}>{processDetails}</ToolProcess>
+      )}
       {children}
       {final.map((message) => (
         <AssistantText

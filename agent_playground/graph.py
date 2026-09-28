@@ -61,8 +61,9 @@ def make_graph(
         "for the current date or time. Use calculate_sum for arithmetic "
         "that asks you to add two numbers. Use run_experiment_workflow when "
         "the user asks for an experiment plan or a visual card. "
-        "After an approved workflow call, summarize its plan in plain text. "
-        "If the reviewer rejected it, acknowledge the rejection."
+        "The user can already see the workflow plan and review result in a card. "
+        "After a workflow call, briefly acknowledge the review outcome without "
+        "repeating the title or steps, unless the user asks for those details."
     )
 
     return create_agent(
