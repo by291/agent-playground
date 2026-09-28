@@ -13,25 +13,34 @@ export function App() {
   const path = window.location.pathname;
 
   if (path === "/") {
-    return <ConversationApp />;
+    return (
+      <>
+        <title>Agent Chat · Agent Playground</title>
+        <ConversationApp />
+      </>
+    );
   }
 
   if (path === "/dev/a2ui-components" && GalleryPage) {
     return (
-      <Suspense
-        fallback={
-          <div className="min-h-dvh bg-canvas p-8 text-sm text-muted">
-            Loading components…
-          </div>
-        }
-      >
-        <GalleryPage />
-      </Suspense>
+      <>
+        <title>A2UI Components · Agent Playground</title>
+        <Suspense
+          fallback={
+            <div className="min-h-dvh bg-canvas p-8 text-sm text-muted">
+              Loading components…
+            </div>
+          }
+        >
+          <GalleryPage />
+        </Suspense>
+      </>
     );
   }
 
   return (
     <main className="flex min-h-dvh flex-col items-center justify-center gap-3 bg-canvas p-6 text-ink">
+      <title>Page Not Found · Agent Playground</title>
       <h1 className="text-lg font-semibold">Page not found</h1>
       <a
         href="/"

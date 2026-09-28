@@ -96,7 +96,7 @@ function ConversationPage({
                   rel="noopener noreferrer"
                   aria-label="A2UI components (opens in a new tab)"
                   title="A2UI components (opens in a new tab)"
-                  className="inline-flex h-11 min-w-11 items-center justify-center gap-2 rounded-xl px-2 text-muted hover:bg-sidebar hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent xl:px-3"
+                  className="inline-flex h-11 min-w-11 items-center justify-center gap-2 rounded-xl px-2 font-medium text-muted hover:bg-sidebar hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent xl:px-3"
                 >
                   <SquaresFourIcon size={20} aria-hidden="true" />
                   <span className="hidden text-xs xl:inline">Components</span>
@@ -109,7 +109,7 @@ function ConversationPage({
                     activityOpen ? "Hide run activity" : "Show run activity"
                   }
                   aria-pressed={activityOpen}
-                  className={`h-11 rounded-xl px-3 hover:bg-sidebar ${
+                  className={`h-11 rounded-xl px-3 text-xs hover:bg-sidebar ${
                     activityOpen
                       ? "bg-accent-soft text-accent"
                       : "text-muted hover:bg-sidebar hover:text-ink"

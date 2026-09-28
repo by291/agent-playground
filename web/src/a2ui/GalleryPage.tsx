@@ -10,9 +10,13 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
-  NativeSelect,
-  NativeSelectOption,
-} from "@/components/ui/native-select";
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { A2UISurface } from "./A2UISurface";
 import { workflowCatalog, workflowComponentNames } from "./catalog";
 import { catalogExamples } from "./examples";
@@ -87,18 +91,23 @@ export function GalleryPage() {
             >
               Component
             </label>
-            <NativeSelect
-              id="gallery-component"
-              value={component}
-              onChange={(event) => setComponent(event.target.value)}
-              className="min-w-0 flex-1 sm:w-56 [&_select]:min-h-11 [&_select]:rounded-xl [&_select]:bg-white [&_select]:font-medium"
-            >
-              {catalogExamples.map((item) => (
-                <NativeSelectOption key={item.component} value={item.component}>
-                  {item.component}
-                </NativeSelectOption>
-              ))}
-            </NativeSelect>
+            <Select value={component} onValueChange={setComponent}>
+              <SelectTrigger
+                id="gallery-component"
+                className="min-h-11 min-w-0 flex-1 rounded-xl bg-surface px-3 font-medium sm:w-56"
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent position="popper" align="end" sideOffset={6}>
+                <SelectGroup>
+                  {catalogExamples.map((item) => (
+                    <SelectItem key={item.component} value={item.component}>
+                      {item.component}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+              </SelectContent>
+            </Select>
           </div>
         </div>
 

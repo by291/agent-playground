@@ -23,6 +23,7 @@
     "@radix-ui/react-collapsible": "^1.1.20",
     "@radix-ui/react-popover": "^1.1.23",
     "@radix-ui/react-radio-group": "^1.4.7",
+    "@radix-ui/react-select": "^2.3.7",
     "@radix-ui/react-slot": "^1.3.3",
     "@shadcn/react": "^0.3.1",
     "@tanstack/react-query": "^5.104.0",
