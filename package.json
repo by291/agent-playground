@@ -11,7 +11,9 @@
     "build": "pnpm --filter agent-playground-web build",
     "format": "prettier --write 'server/**/*.{ts,tsx,js,json}' 'shared/**/*.ts' 'web/src/**/*.{ts,tsx,css}' 'web/tests/**/*.{ts,js}' 'web/*.{js,ts,html,json}' package.json pnpm-workspace.yaml eslint.style.mjs",
     "format:check": "prettier --check 'server/**/*.{ts,tsx,js,json}' 'shared/**/*.ts' 'web/src/**/*.{ts,tsx,css}' 'web/tests/**/*.{ts,js}' 'web/*.{js,ts,html,json}' package.json pnpm-workspace.yaml eslint.style.mjs",
-    "test:coverage": "pnpm --filter agent-playground-server test:coverage && pnpm --filter agent-playground-web test:coverage"
+    "test:coverage": "pnpm --filter agent-playground-server test:coverage && pnpm --filter agent-playground-web test:coverage",
+    "test:e2e": "pnpm --filter agent-playground-web test:e2e",
+    "test:e2e:live": "pnpm --filter agent-playground-web test:e2e:live"
   },
   "devDependencies": {
     "@stylistic/eslint-plugin": "^5.10.0",

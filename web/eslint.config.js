@@ -8,7 +8,7 @@ import { architectureRule } from "./eslint.architecture.js";
 
 export default defineConfig([
   {
-    files: ["src/**/*.{ts,tsx}", "tests/**/*.ts"],
+    files: ["src/**/*.{ts,tsx}", "tests/**/*.ts", "*.ts"],
     extends: [
       js.configs.recommended,
       tseslint.configs.recommendedTypeChecked,

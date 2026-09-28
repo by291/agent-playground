@@ -120,13 +120,13 @@ make format
 
 `make check` runs Pyrefly and TypeScript type checking, Ruff and ESLint linting, Ruff and Prettier format checks, Python, server and web tests, and the web build. `make format` applies the Python and frontend formatters. Individual targets such as `make typecheck`, `make lint`, `make format-check`, `make test`, and `make build` are available when a faster check is useful. Web linting checks Tailwind class names, including canonical forms such as `max-w-205`.
 
-GitHub Actions runs the Python, server, and web checks in parallel for pull requests and pushes to `main`. The Python job uses Testcontainers and needs no DeepSeek API key.
+GitHub Actions runs the Python, server, web, and browser E2E checks in parallel for pull requests and pushes to `main`. The Python job uses Testcontainers and needs no DeepSeek API key.
 
 Pyrefly uses its strict preset. Ruff keeps its default checks and adds import sorting, common bug checks, and Python syntax upgrades; its formatter uses the default 88-character line length. Both TypeScript projects enable strict checking, unchecked index access, exact optional properties, and verbatim module syntax. ESLint uses the JavaScript and type-aware TypeScript recommended rules, with React Hooks rules for the web app. Prettier uses its defaults, while `.editorconfig` defines indentation and line endings for editors.
 
 The Python and server PostgreSQL tests use Testcontainers to start temporary `postgres:18-alpine` containers. `make test` and `make check` need a running Docker daemon, but do not need the Compose database or a `TEST_DATABASE_URL` variable.
 
-TypeScript tests use Vitest. `pnpm test` runs all server and web tests, including the PostgreSQL integration suite. Server tests use the Node environment; web DOM tests opt into jsdom and use React Testing Library with jest-dom assertions. The web test setup releases mounted components, resets browser storage, and restores mocks and timers after each test. Type checking remains a separate `pnpm check` step.
+TypeScript unit, integration, and DOM interaction tests use Vitest. `pnpm test` runs these server and web tests, including the PostgreSQL integration suite. Server tests use the Node environment; web DOM tests opt into jsdom and use React Testing Library with jest-dom assertions. The web test setup releases mounted components, resets browser storage, and restores mocks and timers after each test. Type checking remains a separate `pnpm check` step.
 
 ```sh
 pnpm --filter agent-playground-server test:unit
@@ -136,4 +136,22 @@ pnpm --filter agent-playground-web test:watch
 pnpm test:coverage
 ```
 
-The server unit and watch commands do not start Docker; integration tests are named `*.integration.test.ts` and run with longer startup and test timeouts. Coverage uses V8 and writes HTML and LCOV reports to `server/coverage/` and `web/coverage/`. Browser smoke flows remain separate from `pnpm test` and do not run as part of coverage collection.
+The server unit and watch commands do not start Docker; integration tests are named `*.integration.test.ts` and run with longer startup and test timeouts. Coverage uses V8 and writes HTML and LCOV reports to `server/coverage/` and `web/coverage/`. Browser E2E tests run separately from `pnpm test` and coverage collection.
+
+Browser tests use Playwright Test. Install Chromium once, then run the controlled regression suite:
+
+```sh
+pnpm --filter agent-playground-web exec playwright install chromium
+pnpm test:e2e
+pnpm --filter agent-playground-web test:e2e:ui
+```
+
+`pnpm test:e2e` needs Docker and starts an isolated PostgreSQL container, the real TypeScript backend on `127.0.0.1:4300`, and Vite on `127.0.0.1:4173`. These ports must be free. The harness supplies deterministic Aegra HTTP responses and durable workflow outputs; it does not run the Python agent or contact a model. Browser requests pass through the real frontend, AG-UI adapter, API and database. Playwright owns the servers, and the harness releases its container and connections on shutdown. Tests cover welcome restoration, tool details, streamed code and copying, reload during a run, edited workflow approval, sidebar resizing and the development gallery. CI installs Chromium with its Linux dependencies and uploads HTML reports, failure screenshots and traces.
+
+To run smoke tests with the real Python agent and configured model, start the development stack described above and explicitly select its frontend:
+
+```sh
+E2E_BASE_URL=http://127.0.0.1:5173 pnpm test:e2e:live
+```
+
+The live suite creates test conversations and may consume model tokens. It connects to the existing stack without starting a fixture, uses a fresh browser context per test, and is excluded from normal CI. Its gallery case needs the development frontend. HTML reports are written to `web/playwright-report/`; traces and screenshots are kept under `web/test-results/` on failure. Use `pnpm --filter agent-playground-web exec playwright show-report` to view the latest regression report, or append `playwright-report/live` for the live report.

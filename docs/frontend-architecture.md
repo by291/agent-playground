@@ -32,9 +32,9 @@ web/
     observability/                   Browser tracing and error reporting
     styles/                          Theme, base rules and shared motion
   tests/
-    dom.ts                           JSDOM setup for colocated interaction tests
+    setup.ts                         DOM cleanup and Vitest mock/timer restoration
     architecture.test.js             Import-boundary regression tests
-    e2e/flows.js                      Browser smoke flows with a caller-owned tab
+    e2e/                             Playwright regression and live smoke suites
 ```
 
 There is one conversation feature, including its chat UI. `pages/chat` is its route entry. The component workspace owns development-only editor state and examples; shared A2UI processing stays in the A2UI feature.
@@ -103,6 +103,8 @@ Unit, SDK session and DOM interaction tests are colocated with their modules and
 
 `pnpm --filter agent-playground-web test:watch` reruns affected tests during development. `pnpm --filter agent-playground-web test:coverage` collects V8 coverage and writes HTML and LCOV reports under `web/coverage/`. The test configuration reuses the application's Vite transforms and module resolution. Test execution does not replace the separate TypeScript check.
 
-Browser smoke flows live in `web/tests/e2e/flows.js`. They accept a caller-owned tab exposing the browser tool's Playwright locator API and run against the local backend. Invoke `verifyFreshWelcome`, then `verifyToolReply`; invoke `startWorkflowReview`, reload while paused, then `approveWorkflowReview`; open the development gallery in another tab and invoke `verifyGallerySelection`. These flows create test conversations and use the configured model. They run through the browser tool and are not launched by `pnpm test`; a passing DOM suite alone does not establish browser or real-model compatibility.
+Browser tests live in `web/tests/e2e/` and run with Playwright Test. `flows.ts` shares browser assertions between the regression and live smoke suites. `pnpm test:e2e` starts Vite and the real TypeScript backend against a temporary PostgreSQL database; `server/tests/e2e/` controls only the Aegra HTTP boundary and its workflow output writes. Browser requests are not intercepted. Playwright stops its servers after the suite, and the backend harness closes its HTTP listeners, database pool and container. The suite covers tool folds, streamed code, recovery during an active run, review restoration and edited approval, navigation preferences and the development gallery.
+
+`E2E_BASE_URL=http://127.0.0.1:5173 pnpm test:e2e:live` runs the shared smoke flows against an already running development stack and the configured model. It creates conversations and uses model tokens. CI runs the controlled suite in Chromium and retains reports and failure traces; it does not run live smoke. Both suites remain separate from Vitest and its coverage reports. A passing controlled browser suite validates the TypeScript and browser path, while actual Python runtime and model compatibility require the live suite.
 
 Keep real-model/browser validation separate from controlled-response tests. Production bundle validation establishes development-code exclusion, while browser validation establishes visible behavior. The existing authentication and durable event-replay limitations remain outside this frontend reorganization.

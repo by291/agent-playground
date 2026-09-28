@@ -42,7 +42,8 @@
 
 - `make help` 查看快捷命令，`make setup` 准备依赖和环境文件，`make dev` 启动本地开发环境。
 - 修改后运行与改动相关的检查；涉及跨项目链路时可运行 `make check`。`make test` 和 `make check` 的 PostgreSQL 测试通过 Testcontainers 启动临时容器，需要 Docker daemon。
-- TypeScript 测试使用 Vitest；纯逻辑与服务端测试使用 Node 环境，前端 DOM 交互测试通过文件级 `@vitest-environment jsdom` 指定环境。前端共享 setup 负责 DOM 清理与 mock、timer 的恢复；需要 PostgreSQL 的服务端测试使用 `.integration.test.ts` 命名，以便单独运行。
+- TypeScript 单元、集成与 DOM 交互测试使用 Vitest；纯逻辑与服务端测试使用 Node 环境，前端 DOM 交互测试通过文件级 `@vitest-environment jsdom` 指定环境。前端共享 setup 负责 DOM 清理与 mock、timer 的恢复；需要 PostgreSQL 的服务端测试使用 `.integration.test.ts` 命名，以便单独运行。
+- 浏览器 E2E 使用 Playwright Test，放在 `web/tests/e2e/`。常规回归通过临时 PostgreSQL、真实 TypeScript 后端和可控 Aegra HTTP 夹具运行；真实模型 smoke 使用单独命令连接已有开发环境。测试服务与临时资源由创建者释放，不复用日常开发数据库。
 - 运行方式、环境变量、对外行为或已知限制发生变化时更新 `README.md`；长期约定或目录职责发生变化时更新本文件。
 
 ## 语言与提交
