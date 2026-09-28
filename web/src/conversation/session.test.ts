@@ -327,6 +327,164 @@ async function waitFor(predicate: () => boolean) {
   assert.ok(predicate(), "Expected conversation state was not reached");
 }
 
+void test("snapshot polling stops for idle and terminal runs and follows unfinished recovery", () => {
+  const session = createConversationSession({ threadId: "polling-recovery" });
+  const disconnect = connectSession(session, () => Promise.resolve(null));
+
+  try {
+    session.receiveSnapshot(null);
+    assert.equal(session.store.getState().snapshotPolling, false);
+
+    for (const status of [
+      "prepared",
+      "dispatching",
+      "running",
+      "submission_unknown",
+    ] as const) {
+      session.receiveSnapshot(snapshot("recovered-run", status));
+      assert.equal(session.store.getState().snapshotPolling, true, status);
+    }
+
+    for (const status of ["completed", "failed", "interrupted"] as const) {
+      session.receiveSnapshot(snapshot("recovered-run", status));
+      assert.equal(session.store.getState().snapshotPolling, false, status);
+    }
+  } finally {
+    disconnect();
+  }
+});
+
+void test("a failed initial snapshot enables recovery until a successful fetch", () => {
+  const session = createConversationSession({ threadId: "polling-error" });
+  const disconnect = connectSession(session, () => Promise.resolve(null));
+
+  try {
+    session.receiveSnapshotError(new Error("Gateway unavailable"));
+    assert.equal(session.store.getState().snapshotPolling, true);
+    session.receiveSnapshot(null);
+    assert.equal(session.store.getState().snapshotPolling, false);
+    assert.equal(session.store.getState().snapshotIssue, null);
+  } finally {
+    disconnect();
+  }
+});
+
+void test("live SSE suppresses polling and a failed final sync resumes recovery", async () => {
+  const stream = streamingAgent("polling-stream");
+  const session = createConversationSession(
+    { threadId: "polling-stream" },
+    stream.agent,
+  );
+  let reads = 0;
+  const disconnect = connectSession(session, () => {
+    reads += 1;
+
+    return Promise.reject(new Error("Final snapshot unavailable"));
+  });
+
+  try {
+    session.receiveSnapshot(null);
+    const run = session.store.getState().send("Hello");
+    const input = await stream.requested;
+    const duringSubmission = session.store.getState().snapshotPolling;
+
+    stream.emit({
+      type: "RUN_STARTED",
+      threadId: input.threadId,
+      runId: input.runId,
+    });
+    session.receiveSnapshot(snapshot(input.runId, "running"));
+    const duringStream = session.store.getState().snapshotPolling;
+
+    session.receiveSnapshotError(new Error("Focus refresh unavailable"));
+    const afterRefreshError = session.store.getState().snapshotPolling;
+
+    stream.finish(input);
+    await run;
+    assert.equal(
+      reads,
+      1,
+      "A settled stream immediately requests one snapshot",
+    );
+    assert.equal(duringSubmission, false);
+    assert.equal(duringStream, false);
+    assert.equal(afterRefreshError, false);
+    assert.equal(session.store.getState().snapshotPolling, true);
+
+    session.receiveSnapshot(snapshot(input.runId));
+    assert.equal(session.store.getState().snapshotPolling, false);
+    assert.equal(session.store.getState().running, false);
+    assert.equal(session.store.getState().messages[0]?.content, "Saved reply");
+  } finally {
+    disconnect();
+  }
+});
+
+void test("a stale final snapshot keeps recovery enabled until the current run is saved", async () => {
+  const stream = streamingAgent("polling-stale");
+  const session = createConversationSession(
+    { threadId: "polling-stale" },
+    stream.agent,
+  );
+  const previous = snapshot();
+  const disconnect = connectSession(session, () => Promise.resolve(previous));
+
+  try {
+    session.receiveSnapshot(previous);
+    const run = session.store.getState().send("Hello");
+    const input = await stream.requested;
+
+    stream.emit({
+      type: "RUN_STARTED",
+      threadId: input.threadId,
+      runId: input.runId,
+    });
+    stream.finish(input);
+    await run;
+    assert.equal(session.store.getState().snapshotPolling, true);
+
+    session.receiveSnapshot(snapshot(input.runId, "running"));
+    assert.equal(session.store.getState().snapshotPolling, true);
+    session.receiveSnapshot(snapshot(input.runId));
+    assert.equal(session.store.getState().snapshotPolling, false);
+  } finally {
+    disconnect();
+  }
+});
+
+void test("a saved A2UI sequence gap keeps recovery enabled until missing output arrives", () => {
+  const session = createConversationSession({ threadId: "polling-output-gap" });
+  const disconnect = connectSession(session, () => Promise.resolve(null));
+  const first: A2UIOutput = {
+    id: "create",
+    outputSeq: 1,
+    messages: [
+      {
+        version: "v0.9",
+        createSurface: {
+          surfaceId: "gap",
+          catalogId: "urn:agent-playground:workflow:v1",
+        },
+      },
+    ],
+  };
+  const second: A2UIOutput = {
+    id: "delete",
+    outputSeq: 2,
+    messages: [{ version: "v0.9", deleteSurface: { surfaceId: "gap" } }],
+  };
+
+  try {
+    session.receiveSnapshot({ ...snapshot(), outputs: [second] });
+    assert.equal(session.store.getState().snapshotPolling, true);
+    session.receiveSnapshot({ ...snapshot(), outputs: [first, second] });
+    assert.equal(session.store.getState().snapshotPolling, false);
+    assert.equal(session.store.getState().a2uiIssue, null);
+  } finally {
+    disconnect();
+  }
+});
+
 void test("restoring a saved conversation never publishes a completed empty state", async (t) => {
   const savedText = snapshot();
   const savedSurface: ConversationSnapshot = {
@@ -435,6 +593,7 @@ void test("a rejected submission unlocks an existing conversation without discar
 
     assert.equal(agent.isRunning, false);
     assert.equal(session.store.getState().running, false);
+    assert.equal(session.store.getState().snapshotPolling, false);
     assert.match(session.store.getState().recoveryIssue ?? "", /admission/i);
     assert.equal(
       session.store.getState().messages.at(-1)?.content,

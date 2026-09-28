@@ -24,6 +24,10 @@ export function ConversationProvider({
   children: ReactNode;
 }) {
   const [session] = useState(() => createConversationSession(conversation));
+  const snapshotPolling = useStore(
+    session.store,
+    (state) => state.snapshotPolling,
+  );
   const {
     data,
     isFetchedAfterMount,
@@ -32,7 +36,9 @@ export function ConversationProvider({
     refetch,
     dataUpdatedAt,
     errorUpdatedAt,
-  } = useQuery(conversationQueryOptions(conversation.threadId));
+  } = useQuery(
+    conversationQueryOptions(conversation.threadId, snapshotPolling),
+  );
   const refresh = useCallback(async () => {
     await refetch({ throwOnError: true });
   }, [refetch]);

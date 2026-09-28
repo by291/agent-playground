@@ -30,6 +30,7 @@ export interface ConversationState {
   pendingInterrupts: Interrupt[];
   running: boolean;
   recovering: boolean;
+  snapshotPolling: boolean;
   empty: boolean;
   animatedMessageId: string | null;
   recoveryIssue: string | null;
@@ -69,6 +70,7 @@ export function createConversationSession(
   let pending = saved.pending;
   let savedEmpty = saved.empty;
   let submittedRunId: string | undefined;
+  let awaitingCheckpoint = false;
   let streamInterrupts: Interrupt[] | undefined;
   let refresh: RefreshSnapshot;
   let a2ui: ReturnType<typeof createA2UIRuntime> | undefined;
@@ -85,6 +87,7 @@ export function createConversationSession(
     pendingInterrupts: [],
     running: false,
     recovering: true,
+    snapshotPolling: false,
     empty: saved.empty === true && !saved.pending,
     animatedMessageId: null,
     recoveryIssue: null,
@@ -95,6 +98,7 @@ export function createConversationSession(
   const submission = createSubmissionRunner(saved.threadId, agent, {
     started() {
       streamInterrupts = undefined;
+      awaitingCheckpoint = false;
       const runs = store
         .getState()
         .runs.filter((run) => run.runId !== submittedRunId);
@@ -111,6 +115,7 @@ export function createConversationSession(
         runs,
         messages: [...agent.messages],
         running: true,
+        snapshotPolling: false,
         empty: false,
         recoveryIssue: null,
       });
@@ -129,6 +134,7 @@ export function createConversationSession(
       streamInterrupts = undefined;
 
       if (connected) {
+        store.setState({ snapshotPolling: true });
         await requestSnapshot();
       }
     },
@@ -213,13 +219,22 @@ export function createConversationSession(
 
       if (result.canonical) {
         submittedRunId = undefined;
+        awaitingCheckpoint = false;
       }
     } else if (!submission.active && !agent.isRunning) {
       // Rejected requests may never enter server history. Keep their input and error.
       store.setState({ running: result.running });
     }
 
-    receiveOutputs(snapshot?.outputs ?? []);
+    const waitingForOutputs = receiveOutputs(snapshot?.outputs ?? []);
+    const waitingForRun =
+      result.running ||
+      snapshot?.runs.at(-1)?.status === "submission_unknown" ||
+      (result.kind === "stale" && awaitingCheckpoint);
+    const snapshotPolling =
+      !submission.active &&
+      !agent.isRunning &&
+      (waitingForRun || waitingForOutputs);
 
     const pendingConfirmed =
       pending && pendingRecovery(snapshot, pending) === "confirmed";
@@ -246,7 +261,12 @@ export function createConversationSession(
       savedEmpty = empty;
     }
 
-    store.setState({ recovering: false, snapshotIssue: null, empty });
+    store.setState({
+      recovering: false,
+      snapshotIssue: null,
+      snapshotPolling,
+      empty,
+    });
 
     if (
       initialPending &&
@@ -263,7 +283,10 @@ export function createConversationSession(
     }
 
     submission.trace?.event("snapshot_recovery_failed");
-    store.setState({ snapshotIssue: errorDetail(error, "Recovery failed") });
+    store.setState({
+      snapshotIssue: errorDetail(error, "Recovery failed"),
+      snapshotPolling: !submission.active && !agent.isRunning,
+    });
   }
 
   async function requestSnapshot() {
@@ -371,6 +394,11 @@ export function createConversationSession(
       onEvent({ event }) {
         if (!connected) {
           return;
+        }
+
+        if (event.type === EventType.RUN_STARTED) {
+          // An accepted stream must eventually be represented in the saved snapshot.
+          awaitingCheckpoint = true;
         }
 
         if (
