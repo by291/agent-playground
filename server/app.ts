@@ -2,6 +2,7 @@ import { RunAgentInputSchema } from "@ag-ui/client";
 import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { streamAgent } from "./agent/agent-stream";
+import { fetchAgentInfo } from "./agent/info";
 import {
   conversationSnapshot,
   listConversations,
@@ -20,6 +21,14 @@ export const app = new Hono();
 app.route("/telemetry", telemetry);
 app.use("/agent", observeRequest);
 app.get("/health", (context) => context.text("ok"));
+
+app.get("/agent-info", async (context) => {
+  try {
+    return context.json(await fetchAgentInfo());
+  } catch {
+    return context.json({ error: "Agent metadata is unavailable" }, 503);
+  }
+});
 
 app.get("/conversations", async (context) => {
   return context.json({ conversations: await listConversations() });

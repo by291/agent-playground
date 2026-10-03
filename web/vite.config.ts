@@ -39,6 +39,7 @@ export default defineConfig(({ mode }) => {
       port: 5173,
       proxy: {
         "/agent": backendUrl,
+        "/agent-info": backendUrl,
         "/conversations": backendUrl,
         "/health": backendUrl,
         "/telemetry": backendUrl,

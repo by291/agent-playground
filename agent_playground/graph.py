@@ -1,6 +1,5 @@
 """The agent graph served through Aegra's Agent Protocol API."""
 
-import os
 import sys
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
@@ -16,6 +15,7 @@ from langchain_mcp_adapters.client import MultiServerMCPClient
 from langgraph.types import Checkpointer
 from langgraph_sdk.runtime import ServerRuntime
 
+from agent_playground.config import configured_model_name
 from agent_playground.context import ContextMiddleware
 from agent_playground.db.connection import prepare_output_store
 from agent_playground.observability import execution_trace
@@ -47,7 +47,7 @@ def make_graph(
     summary_model: BaseChatModel | None = None,
 ):
     if model is None:
-        model_name = os.getenv("DEEPSEEK_MODEL", "deepseek-flash")
+        model_name = configured_model_name()
         model = ChatDeepSeek(model=model_name, stream_usage=True)
         summary_model = summary_model or ChatDeepSeek(
             model=model_name,

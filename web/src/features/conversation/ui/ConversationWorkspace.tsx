@@ -9,7 +9,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ChatPane } from "@/features/conversation/ui/ChatPane";
 import { Composer } from "@/features/conversation/ui/Composer";
-import { ContextIndicator } from "@/features/conversation/ui/ContextIndicator";
 import { useConversation } from "@/features/conversation/ConversationProvider";
 import { ActivityPanel } from "@/features/conversation/ui/ActivityPanel";
 import { Sidebar } from "@/features/conversation/ui/Sidebar";
@@ -145,7 +144,6 @@ export function ConversationWorkspace({
           </div>
 
           <div className="flex shrink-0 items-center gap-1.5 sm:gap-3">
-            <ContextIndicator />
             {development && (
               <>
                 <a

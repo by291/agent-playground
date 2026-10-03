@@ -50,6 +50,8 @@ export function controlledAegra(database: typeof db) {
   const api = new Hono();
   const threads = new Map<string, Thread>();
 
+  api.get("/agent-info", (context) => context.json({ model: "test-model" }));
+
   function threadFor(id: string) {
     let thread = threads.get(id);
 

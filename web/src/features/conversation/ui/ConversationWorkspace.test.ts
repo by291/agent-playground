@@ -31,6 +31,10 @@ test("the composer waits for the display buffer and final fade after the run com
     Reflect.deleteProperty(HTMLElement.prototype, "scrollTo");
   });
   vi.stubGlobal("fetch", (url: string, init?: RequestInit) => {
+    if (url === "/agent-info") {
+      return Promise.resolve(Response.json({ model: "test-model" }));
+    }
+
     if (url === "/health") {
       return Promise.resolve(new Response());
     }

@@ -35,6 +35,10 @@ test("a fresh page makes no snapshot request until its stream settles and restor
   let finishStream: (() => void) | undefined;
 
   vi.stubGlobal("fetch", (url: string, init?: RequestInit) => {
+    if (url === "/agent-info") {
+      return Promise.resolve(Response.json({ model: "test-model" }));
+    }
+
     if (url.startsWith("/conversations/")) {
       snapshots++;
 

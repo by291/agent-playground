@@ -1,7 +1,9 @@
 import * as Popover from "@radix-ui/react-popover";
 import { XIcon } from "@phosphor-icons/react";
+import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { useConversation } from "../ConversationProvider";
+import { agentInfoQueryOptions } from "../api/agent-info";
 import type { ContextUsage } from "@shared/context-usage";
 
 const compactNumber = new Intl.NumberFormat("en-US", {
@@ -18,7 +20,10 @@ const categories = [
 ] as const;
 
 export function ContextIndicator() {
-  const usage = useConversation((state) => state.contextUsage);
+  const reportedUsage = useConversation((state) => state.contextUsage);
+  const { data: agentInfo } = useQuery(agentInfoQueryOptions());
+  const model = agentInfo?.model ?? reportedUsage?.model ?? "Model";
+  const usage = reportedUsage?.model === model ? reportedUsage : null;
   const ratio = usage ? usage.usedTokens / usage.contextWindow : 0;
   const percentage = Math.round(ratio * 100);
   let label = "—";
@@ -35,16 +40,17 @@ export function ContextIndicator() {
         <Button
           variant="ghost"
           type="button"
-          className="workspace-toolbar-button h-10 gap-1.5 px-2 sm:gap-2 sm:px-3"
+          className="workspace-toolbar-button h-10 min-w-0 shrink gap-2 px-2.5"
+          title={usage ? `${model} · Context ${label}` : model}
           aria-label={
             usage
-              ? `Estimated context usage ${label}. Show details`
-              : "Show context usage"
+              ? `${model}. Estimated context usage ${label}. Show details`
+              : `${model}. Show details`
           }
         >
           <svg
             viewBox="0 0 24 24"
-            className={`size-5 shrink-0 ${nearLimit ? "text-amber-600" : "text-muted"}`}
+            className={`size-4 shrink-0 ${nearLimit ? "text-amber-600" : "text-muted"}`}
             fill="none"
             aria-hidden="true"
           >
@@ -68,14 +74,14 @@ export function ContextIndicator() {
               transform="rotate(-90 12 12)"
             />
           </svg>
-          <span className="hidden text-xs sm:inline">Context</span>
-          <span className="text-xs tabular-nums">{label}</span>
+          <span className="max-w-44 truncate text-xs font-medium">{model}</span>
         </Button>
       </Popover.Trigger>
 
       <Popover.Portal>
         <Popover.Content
           align="end"
+          side="top"
           sideOffset={8}
           collisionPadding={16}
           className="z-50 w-80 max-w-[calc(100vw-2rem)] rounded-lg border border-line bg-surface p-5 text-ink shadow-lg outline-none"

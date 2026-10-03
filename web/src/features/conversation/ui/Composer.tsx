@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/input-group";
 import { useConversation } from "../ConversationProvider";
 import { useReplyPresentationBusy } from "./ReplyPresentation";
+import { ContextIndicator } from "./ContextIndicator";
 
 export function Composer({
   prompt,
@@ -79,22 +80,22 @@ export function Composer({
               align="block-end"
               className="justify-between gap-3 px-1 pb-0"
             >
-              <InputGroupText className="hidden text-[11px] text-soft sm:inline">
+              <InputGroupText className="hidden min-w-0 truncate text-[11px] text-soft sm:block">
                 Enter to send · Shift + Enter for a new line
               </InputGroupText>
-              <InputGroupText className="text-[11px] text-soft sm:hidden">
-                Ask anything
-              </InputGroupText>
-              <InputGroupButton
-                type="submit"
-                variant="default"
-                size="icon-sm"
-                disabled={disabled || !prompt.trim()}
-                aria-label={sendLabel}
-                className="size-10 rounded-md"
-              >
-                <ArrowUpIcon size={19} weight="bold" aria-hidden="true" />
-              </InputGroupButton>
+              <div className="ml-auto flex min-w-0 items-center gap-2">
+                <ContextIndicator />
+                <InputGroupButton
+                  type="submit"
+                  variant="default"
+                  size="icon-sm"
+                  disabled={disabled || !prompt.trim()}
+                  aria-label={sendLabel}
+                  className="size-10 rounded-md"
+                >
+                  <ArrowUpIcon size={19} weight="bold" aria-hidden="true" />
+                </InputGroupButton>
+              </div>
             </InputGroupAddon>
           </InputGroup>
         </form>

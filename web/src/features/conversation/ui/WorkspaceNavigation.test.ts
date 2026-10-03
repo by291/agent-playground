@@ -18,6 +18,10 @@ function renderWorkspace(snapshot: ConversationSnapshot | null = null) {
 
   onTestFinished(() => client.clear());
   vi.stubGlobal("fetch", (url: string) => {
+    if (url === "/agent-info") {
+      return Promise.resolve(Response.json({ model: "test-model" }));
+    }
+
     if (url === "/health") {
       return Promise.resolve(new Response());
     }
@@ -76,6 +80,31 @@ test("collapsing and expanding navigation preserves the unsent composer draft", 
   assert.equal(input.value, "Keep this unfinished task");
 });
 
+test("the model control opens context details beside send without losing the draft", async () => {
+  const page = renderWorkspace();
+  const input = page.getByRole("textbox", { name: "Message" });
+
+  fireEvent.change(input, { target: { value: "Keep this task" } });
+  const model = await page.findByRole("button", {
+    name: /test-model.*Show details/,
+  });
+  const send = page.getByRole("button", { name: "Send message" });
+
+  assert.ok(input.closest("form")?.contains(model));
+  assert.equal(model.parentElement, send.parentElement);
+  assert.ok(!page.container.querySelector("header")?.contains(model));
+  model.focus();
+  fireEvent.click(model);
+  assert.ok(page.getByLabelText("Context usage details"));
+  fireEvent.keyDown(document, { key: "Escape" });
+  await waitFor(() =>
+    assert.equal(page.queryByLabelText("Context usage details"), null),
+  );
+
+  assert.equal(document.activeElement, model);
+  assert.equal((input as HTMLTextAreaElement).value, "Keep this task");
+});
+
 test("welcome suggestions prepare an editable draft before starting a run", () => {
   const page = renderWorkspace();
   const input = page.getByRole("textbox", {
@@ -89,6 +118,44 @@ test("welcome suggestions prepare an editable draft before starting a run", () =
   assert.ok(
     page.getByRole("heading", { name: "What would you like to work on?" }),
   );
+});
+
+test("restored context usage remains available from the model control", async () => {
+  const page = renderWorkspace({
+    messages: [],
+    outputs: [],
+    interrupts: [],
+    runs: [],
+    contextUsage: {
+      model: "test-model",
+      usedTokens: 1000,
+      contextWindow: 100_000,
+      triggerTokens: 80_000,
+      breakdown: {
+        system: 200,
+        tools: 100,
+        conversation: 700,
+        toolResults: 0,
+        summary: 0,
+      },
+      lastInputTokens: null,
+      compactions: 0,
+      lastCompaction: null,
+      revision: 1,
+    },
+  });
+  const model = await page.findByRole("button", {
+    name: "test-model. Estimated context usage 1%. Show details",
+  });
+
+  fireEvent.click(model);
+  assert.equal(
+    page
+      .getByRole("progressbar", { name: "Estimated context usage" })
+      .getAttribute("aria-valuenow"),
+    "1000",
+  );
+  assert.ok(page.getByText("Auto-compacts at 80%."));
 });
 
 test("navigation restores the saved collapse preference on a new page", () => {
