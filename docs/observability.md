@@ -48,6 +48,8 @@ Langfuse 自动初始化 `Agent Playground` project。前端通过同源 `/telem
 
 Grafana 自动载入 `Agent Playground` 看板，展示采集目标健康状态、SSE 连接结果及 p95 耗时、Collector 导出队列和错误。`make dev-observability` 启动应用后才会产生对应指标；只有基础设施启动时，Aegra 采集目标可能显示为不可用。
 
+应用进程在后台运行，日志写入 `.dev/`。运行 `make dev-stop` 停止三个应用进程；观测基础设施可用 `make infra-down` 停止。
+
 也可分别执行 `make observability-up`、`make agent-observability`、`make server-observability` 和 `make web-observability`。应用各自读取自己的 `.env`，这些命令通过进程环境设置本地观测入口。
 
 手动配置时，Python 的 `OTEL_EXPORTER_OTLP_ENDPOINT` 需要完整 `/v1/traces` 路径，server 使用不带路径的 OTLP base URL，web 设置 `VITE_OBSERVABILITY_ENABLED=true`。修改 frontend 开关后需要重启 Vite；正式构建需在构建时配置该变量。

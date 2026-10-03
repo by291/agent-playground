@@ -38,7 +38,7 @@ make dev
 
 The agent uses LangChain's `ChatDeepSeek` integration and defaults to `deepseek-flash`. Set `DEEPSEEK_API_KEY` in the root `.env`; `DEEPSEEK_MODEL` can override the model. `ChatDeepSeek` supplies the default API endpoint, and `DEEPSEEK_API_BASE` is only needed for a custom endpoint. If you already have a root `.env`, replace its old `OPENAI_*` entries with the `DEEPSEEK_*` entries from `.env.example`.
 
-`make dev` starts the infrastructure and all three application processes. Stop it with Ctrl+C. To run a process in its own terminal instead, use:
+`make dev` waits for the infrastructure, starts the agent, server, and web app in the background, and then returns to the shell. Application logs and process IDs are stored in `.dev/`; use `tail -f .dev/*.log` to follow startup output. Run `make dev-stop` to stop all three application process groups; use `make infra-down` separately to stop PostgreSQL and Redis. To run a process in its own terminal instead, use:
 
 ```sh
 make infra-up

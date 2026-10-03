@@ -2,6 +2,7 @@ node_modules/
 .pnpm-store/
 .env
 dist/
+.dev/
 coverage/
 playwright-report/
 test-results/

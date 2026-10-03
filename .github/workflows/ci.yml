@@ -40,6 +40,7 @@ jobs:
       - run: pnpm --filter agent-playground-server check
       - run: pnpm --filter agent-playground-server lint
       - run: pnpm --filter agent-playground-server test
+      - run: pnpm test:dev
 
   web:
     name: Web
