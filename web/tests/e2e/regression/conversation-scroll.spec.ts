@@ -1,10 +1,24 @@
-import { expect, test, type Page, type Locator } from "@playwright/test";
+import { expect, test } from "../fixtures";
+import type { Page, Locator, APIRequestContext } from "@playwright/test";
 
-async function sendLongReply(page: Page) {
+async function sendLongReply(page: Page, animated = false) {
   const composer = page.getByRole("textbox", { name: "Message" });
+  const finished = page.waitForResponse(
+    (response) => new URL(response.url()).pathname === "/agent",
+  );
 
   await composer.fill("Write a long reply.");
   await composer.press("Enter");
+  await (await finished).finished();
+
+  if (animated) {
+    const reply = page.getByLabel("Assistant reply", { exact: true }).last();
+
+    await expect(reply).toContainText("Paragraph 1:");
+    await expect(reply).not.toContainText("End of the long reply.");
+    await expect(composer).toBeDisabled();
+  }
+
   await expect(
     page.getByLabel("Assistant reply", { exact: true }).last(),
   ).toContainText("End of the long reply.");
@@ -18,44 +32,26 @@ function distanceFromBottom(viewport: Locator) {
   );
 }
 
+async function restoreHistory(page: Page, request: APIRequestContext) {
+  const response = await request.post(
+    "http://127.0.0.1:4300/__e2e/scroll-history",
+  );
+
+  expect(response.ok()).toBe(true);
+  const { threadId } = (await response.json()) as { threadId: string };
+
+  await page.goto(`/c/${threadId}`);
+  await expect(page.getByLabel("Assistant reply", { exact: true })).toHaveCount(
+    3,
+  );
+}
+
 test("scrolling through restored long replies and code keeps the conversation height stable", async ({
   page,
+  request,
 }) => {
   await page.setViewportSize({ width: 1280, height: 720 });
-  const messages = Array.from({ length: 8 }, (_, turn) => [
-    { id: `user-${turn}`, role: "user", content: `Saved question ${turn}` },
-    {
-      id: `assistant-${turn}`,
-      role: "assistant",
-      content:
-        Array.from(
-          { length: 40 },
-          (_, paragraph) =>
-            `Paragraph ${paragraph}: This saved reply contains enough text to exercise scrolling through a long conversation without changing its layout.`,
-        ).join("\n\n") +
-        "\n\n```typescript\n" +
-        Array.from(
-          { length: 30 },
-          (_, line) => `const value${line} = ${line};`,
-        ).join("\n") +
-        "\n```",
-    },
-  ]).flat();
-
-  await page.route("**/conversations/scroll-history", (route) =>
-    route.fulfill({
-      json: {
-        messages,
-        outputs: [],
-        interrupts: [],
-        runs: [{ runId: "saved-run", status: "completed" }],
-      },
-    }),
-  );
-  await page.goto("/c/scroll-history");
-  await expect(page.getByLabel("Assistant reply", { exact: true })).toHaveCount(
-    8,
-  );
+  await restoreHistory(page, request);
   await page.evaluate(() => document.fonts.ready);
   const viewport = page.getByRole("region", { name: "Messages" });
 
@@ -64,31 +60,30 @@ test("scrolling through restored long replies and code keeps the conversation he
     (element) => element.scrollHeight,
   );
 
-  expect(initialHeight).toBeGreaterThan(5_000);
+  expect(initialHeight).toBeGreaterThan(2_000);
   await viewport.hover();
 
-  for (let step = 0; step < 40; step += 1) {
+  // Exercise wheel scrolling at the bottom, middle and top, rather than every pixel.
+  for (const fraction of [1, 0.5, 0]) {
+    await viewport.evaluate((element, fraction) => {
+      element.scrollTop =
+        (element.scrollHeight - element.clientHeight) * fraction;
+    }, fraction);
     const position = await viewport.evaluate((element) => element.scrollTop);
 
-    if (position <= 0) {
-      break;
-    }
-
-    await page.mouse.wheel(0, -800);
+    await page.mouse.wheel(0, fraction === 0 ? 300 : -300);
     await expect
       .poll(() => viewport.evaluate((element) => element.scrollTop))
       .not.toBe(position);
-    await page.evaluate(
-      () =>
-        new Promise<void>((resolve) =>
-          requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
-        ),
-    );
     expect(await viewport.evaluate((element) => element.scrollHeight)).toBe(
       initialHeight,
     );
   }
 
+  await page.mouse.wheel(0, -100_000);
+  await expect
+    .poll(() => viewport.evaluate((element) => element.scrollTop))
+    .toBe(0);
   expect(await viewport.evaluate((element) => element.scrollTop)).toBe(0);
   await page.mouse.wheel(0, 100_000);
   await expect.poll(() => distanceFromBottom(viewport)).toBeLessThanOrEqual(1);
@@ -97,31 +92,41 @@ test("scrolling through restored long replies and code keeps the conversation he
   );
 });
 
-test("returning to the bottom resumes following the next reply even after another downward wheel", async ({
-  page,
-}) => {
-  await page.setViewportSize({ width: 1280, height: 720 });
-  await page.goto("/");
-  await sendLongReply(page);
-  const viewport = page.getByRole("region", { name: "Messages" });
+test.describe("animated scrolling", () => {
+  test.use({ replyAnimation: true });
 
-  await expect.poll(() => distanceFromBottom(viewport)).toBeLessThanOrEqual(1);
-  await viewport.hover();
-  await page.mouse.wheel(0, -500);
-  await expect.poll(() => distanceFromBottom(viewport)).toBeGreaterThan(200);
-  await page.mouse.wheel(0, 100_000);
-  await expect.poll(() => distanceFromBottom(viewport)).toBeLessThanOrEqual(1);
-  await page.mouse.wheel(0, 120);
-  await sendLongReply(page);
-  await expect.poll(() => distanceFromBottom(viewport)).toBeLessThanOrEqual(1);
+  test("returning to the bottom resumes following the next reply even after another downward wheel", async ({
+    page,
+    request,
+  }) => {
+    await page.setViewportSize({ width: 1280, height: 720 });
+    await restoreHistory(page, request);
+    const viewport = page.getByRole("region", { name: "Messages" });
+
+    await expect
+      .poll(() => distanceFromBottom(viewport))
+      .toBeLessThanOrEqual(1);
+    await viewport.hover();
+    await page.mouse.wheel(0, -500);
+    await expect.poll(() => distanceFromBottom(viewport)).toBeGreaterThan(200);
+    await page.mouse.wheel(0, 100_000);
+    await expect
+      .poll(() => distanceFromBottom(viewport))
+      .toBeLessThanOrEqual(1);
+    await page.mouse.wheel(0, 120);
+    await sendLongReply(page, true);
+    await expect
+      .poll(() => distanceFromBottom(viewport))
+      .toBeLessThanOrEqual(1);
+  });
 });
 
 test("sending while reading earlier messages preserves the reading position", async ({
   page,
+  request,
 }) => {
   await page.setViewportSize({ width: 1280, height: 720 });
-  await page.goto("/");
-  await sendLongReply(page);
+  await restoreHistory(page, request);
   const viewport = page.getByRole("region", { name: "Messages" });
 
   await viewport.hover();

@@ -1,22 +1,24 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./fixtures";
 import {
   approveWorkflowReview,
   startWorkflowReview,
-  verifyFreshWelcome,
   verifyGallerySelection,
   verifyToolReply,
 } from "../flows";
 
-test("a real agent tool reply survives refresh", async ({ page }) => {
-  await page.goto("/");
-  await verifyFreshWelcome(page);
+test("a real agent tool reply survives refresh", async ({
+  page,
+  createConversation,
+}) => {
+  await createConversation();
   await verifyToolReply(page);
 });
 
 test("a real workflow pauses, restores and resumes the edited review", async ({
   page,
+  createConversation,
 }) => {
-  await page.goto("/");
+  await createConversation();
   await startWorkflowReview(page);
   await page.reload();
   await expect(

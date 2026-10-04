@@ -44,10 +44,6 @@ export async function verifyToolReply(page: Page) {
 }
 
 export async function startWorkflowReview(page: Page) {
-  await page
-    .getByRole("button", { name: "New conversation", exact: true })
-    .filter({ visible: true })
-    .click();
   await page.getByRole("textbox", { name: "Message" }).fill(reviewPrompt);
   await page.getByRole("textbox", { name: "Message" }).press("Enter");
   await expect(
@@ -104,4 +100,15 @@ export async function verifyGallerySelection(page: Page) {
   await expect(
     page.getByRole("status").filter({ hasText: "Valid A2UI JSON" }),
   ).toBeVisible();
+  const preview = page.locator("section").filter({
+    has: page.getByRole("heading", { name: "Rendered preview", exact: true }),
+  });
+
+  await expect(
+    preview.getByRole("heading", { name: "A clear heading", exact: true }),
+  ).toBeVisible();
+  await expect(preview).toContainText(
+    "Supporting context stays readable at any width.",
+  );
+  await expect(preview.getByRole("alert")).toHaveCount(0);
 }

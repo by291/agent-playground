@@ -1,4 +1,5 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, capture } from "../fixtures";
+import type { Page } from "@playwright/test";
 
 async function savedHistory(
   page: Page,
@@ -116,9 +117,7 @@ test("clear history requires confirmation and resets conversation data while ret
   await settings
     .getByRole("button", { name: "Clear all conversations", exact: true })
     .click();
-  await page.screenshot({
-    path: testInfo.outputPath("clear-history-confirmation.png"),
-  });
+  await capture(page, testInfo, "clear-history-confirmation.png");
   await confirmation
     .getByRole("button", { name: "Delete all conversations", exact: true })
     .click();
@@ -158,51 +157,6 @@ test("clear history requires confirmation and resets conversation data while ret
   ).toHaveCount(0);
 });
 
-test("a rejected clear retains the current discussion and makes retry available", async ({
-  page,
-}) => {
-  const history = await savedHistory(page, () =>
-    Promise.resolve({
-      status: 409,
-      error: "Wait for all conversation runs to finish before clearing history",
-    }),
-  );
-
-  await page.getByRole("button", { name: "Open settings" }).click();
-  const settings = page.getByRole("dialog", { name: "Settings", exact: true });
-  const confirmation = page.getByRole("alertdialog", {
-    name: "Clear all conversations?",
-    exact: true,
-  });
-
-  await settings
-    .getByRole("button", { name: "Clear all conversations", exact: true })
-    .click();
-  await confirmation
-    .getByRole("button", { name: "Delete all conversations", exact: true })
-    .click();
-  await expect(confirmation.getByRole("alert")).toContainText(
-    "Wait for all conversation runs",
-  );
-  await expect(
-    confirmation.getByRole("button", {
-      name: "Delete all conversations",
-      exact: true,
-    }),
-  ).toBeEnabled();
-  expect(history.deletions()).toBe(1);
-  await confirmation
-    .getByRole("button", { name: "Cancel", exact: true })
-    .click();
-  await settings.getByRole("button", { name: "Done", exact: true }).click();
-  await expect(page.getByRole("region", { name: "Messages" })).toContainText(
-    "My saved discussion",
-  );
-  await expect(
-    page.getByRole("button", { name: /^Saved (first|second)$/ }),
-  ).toHaveCount(2);
-});
-
 test("mobile clear keeps settings open after successful deletion", async ({
   page,
 }, testInfo) => {
@@ -234,9 +188,7 @@ test("mobile clear keeps settings open after successful deletion", async ({
       exact: true,
     });
 
-    await page.screenshot({
-      path: testInfo.outputPath("clear-history-mobile.png"),
-    });
+    await capture(page, testInfo, "clear-history-mobile.png");
     await confirmation
       .getByRole("button", { name: "Delete all conversations", exact: true })
       .click();

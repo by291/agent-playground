@@ -8,13 +8,28 @@ export default defineConfig({
   workers: process.env.CI ? 1 : 2,
   timeout: 30_000,
   expect: { timeout: 10_000 },
-  reporter: [["list"], ["html", { open: "never" }]],
+  reporter: [
+    ["list"],
+    ["html", { open: "never" }],
+    ["./tests/e2e/runtime-reporter.ts"],
+  ],
   use: {
     baseURL: "http://127.0.0.1:4173",
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
   },
-  projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
+  projects: [
+    {
+      name: "production-chromium",
+      testIgnore: ["**/activity.spec.ts", "**/gallery.spec.ts"],
+      use: { ...devices["Desktop Chrome"] },
+    },
+    {
+      name: "development-chromium",
+      testMatch: ["**/activity.spec.ts", "**/gallery.spec.ts"],
+      use: { ...devices["Desktop Chrome"], baseURL: "http://127.0.0.1:4174" },
+    },
+  ],
   webServer: [
     {
       name: "Backend",
@@ -26,13 +41,26 @@ export default defineConfig({
       gracefulShutdown: { signal: "SIGTERM", timeout: 15_000 },
     },
     {
-      name: "Frontend",
-      command: "pnpm exec vite --host 127.0.0.1 --port 4173 --strictPort",
+      name: "Production frontend",
+      command:
+        "pnpm exec vite build && pnpm exec vite preview --host 127.0.0.1 --port 4173 --strictPort",
       env: {
         BACKEND_URL: "http://127.0.0.1:4300",
         VITE_OBSERVABILITY_ENABLED: "false",
       },
       url: "http://127.0.0.1:4173",
+      timeout: 60_000,
+      reuseExistingServer: false,
+      gracefulShutdown: { signal: "SIGTERM", timeout: 5_000 },
+    },
+    {
+      name: "Development frontend",
+      command: "pnpm exec vite --host 127.0.0.1 --port 4174 --strictPort",
+      env: {
+        BACKEND_URL: "http://127.0.0.1:4300",
+        VITE_OBSERVABILITY_ENABLED: "false",
+      },
+      url: "http://127.0.0.1:4174",
       timeout: 60_000,
       reuseExistingServer: false,
       gracefulShutdown: { signal: "SIGTERM", timeout: 5_000 },

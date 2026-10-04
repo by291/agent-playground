@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "../fixtures";
 
 test("external progress updates live, and a closed conversation completes in the background", async ({
   page,

@@ -1,4 +1,6 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test } from "../fixtures";
+import type { Page } from "@playwright/test";
+import { randomUUID } from "node:crypto";
 import {
   approveWorkflowReview,
   startWorkflowReview,
@@ -46,7 +48,7 @@ async function startHeldReply(page: Page) {
 
   await page
     .getByRole("textbox", { name: "Message" })
-    .fill("Stream a code sample.");
+    .fill(`Stream a code sample. ${randomUUID()}`);
   await page.getByRole("textbox", { name: "Message" }).press("Enter");
   const input = (await submitted).postDataJSON() as { threadId: string };
 
@@ -58,27 +60,31 @@ async function startHeldReply(page: Page) {
   return input.threadId;
 }
 
-test("partial text streams before completion and the highlighted code copies its source", async ({
-  page,
-  context,
-  request,
-}) => {
-  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
-  const threadId = await startHeldReply(page);
-  const released = await request.post(
-    `http://127.0.0.1:4300/__e2e/release/${threadId}`,
-  );
+test.describe("animated streaming", () => {
+  test.use({ replyAnimation: true });
 
-  expect(released.ok()).toBe(true);
-  await expect(page.getByRole("textbox", { name: "Message" })).toBeEnabled();
-  const reply = page.getByLabel("Assistant reply", { exact: true });
+  test("partial text streams before completion and the highlighted code copies its source", async ({
+    page,
+    context,
+    request,
+  }) => {
+    await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+    const threadId = await startHeldReply(page);
+    const released = await request.post(
+      `http://127.0.0.1:4300/__e2e/release/${threadId}`,
+    );
 
-  await expect(reply.locator('[data-streamdown="code-block"]')).toBeVisible();
-  await expect(reply.locator("code span[style]").first()).toBeVisible();
-  await reply.getByTitle("Copy code").click();
-  await expect
-    .poll(() => page.evaluate(() => navigator.clipboard.readText()))
-    .toBe("int main(void) {\n  return 0;\n}\n");
+    expect(released.ok()).toBe(true);
+    await expect(page.getByRole("textbox", { name: "Message" })).toBeEnabled();
+    const reply = page.getByLabel("Assistant reply", { exact: true });
+
+    await expect(reply.locator('[data-streamdown="code-block"]')).toBeVisible();
+    await expect(reply.locator("code span[style]").first()).toBeVisible();
+    await reply.getByTitle("Copy code").click();
+    await expect
+      .poll(() => page.evaluate(() => navigator.clipboard.readText()))
+      .toBe("int main(void) {\n  return 0;\n}\n");
+  });
 });
 
 test("reloading during a run recovers the completed reply without resubmitting", async ({

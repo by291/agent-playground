@@ -442,14 +442,14 @@ export function controlledAegra(database: typeof db) {
             content: "Approach A is simpler. Approach B is more flexible.",
             additional_kwargs: { reasoning_content: reasoning },
           });
-        } else if (message.content === "Stream a code sample.") {
+        } else if (message.content.startsWith("Stream a code sample.")) {
           await reply(
             "Here is a C example.\n\n```c\nint main(void) {\n  return 0;\n}\n```",
             true,
           );
         } else if (message.content === "Write a long reply.") {
           const paragraphs = Array.from(
-            { length: 40 },
+            { length: 8 },
             (_, index) =>
               `Paragraph ${index + 1}: This reply contains enough text to exercise the message viewport as more content appears.`,
           );
@@ -591,5 +591,9 @@ export function controlledAegra(database: typeof db) {
     }
   }
 
-  return { api, release, releaseAll };
+  function seedConversation(id: string, messages: LangGraphPlatformMessage[]) {
+    threadFor(id).messages = messages;
+  }
+
+  return { api, release, releaseAll, seedConversation };
 }

@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, capture } from "../fixtures";
 
 test("the configured model sits beside send and opens context details on desktop and mobile", async ({
   page,
@@ -37,8 +37,6 @@ test("the configured model sits beside send and opens context details on desktop
     await expect(page.getByRole("textbox", { name: "Message" })).toHaveValue(
       "Keep this draft",
     );
-    await page.screenshot({
-      path: testInfo.outputPath(`composer-${width}.png`),
-    });
+    await capture(page, testInfo, `composer-${width}.png`);
   }
 });

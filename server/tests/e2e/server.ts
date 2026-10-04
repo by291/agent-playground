@@ -7,6 +7,9 @@ import {
 import { Hono } from "hono";
 import { eq, sql } from "drizzle-orm";
 import { controlledAegra } from "./aegra";
+import { randomUUID } from "node:crypto";
+import { conversations, conversationMessages } from "../../db/schema";
+import { scrollHistory } from "./scroll-history";
 
 let postgres: StartedPostgreSqlContainer | undefined;
 let database: typeof import("../../db/database") | undefined;
@@ -95,6 +98,32 @@ async function start() {
   stopWorker = startExternalTaskWorker();
   const harness = new Hono();
 
+  harness.post("/__e2e/scroll-history", async (context) => {
+    const threadId = randomUUID();
+    const messages = scrollHistory();
+
+    await database!.db.transaction(async (tx) => {
+      await tx
+        .insert(conversations)
+        .values({ threadId, title: "Scroll history" });
+      await tx.insert(conversationMessages).values(
+        messages.map((message, messageOrder) => ({
+          threadId,
+          messageId: message.id,
+          submitSeq: 0,
+          messageOrder,
+          message: {
+            id: message.id,
+            role: message.role,
+            content: message.content,
+          },
+        })),
+      );
+    });
+    agent!.seedConversation(threadId, messages);
+
+    return context.json({ threadId });
+  });
   harness.post("/__e2e/release/:threadId", (context) => {
     const released = agent!.release(context.req.param("threadId"));
 

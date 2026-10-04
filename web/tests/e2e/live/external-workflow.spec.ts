@@ -1,11 +1,12 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./fixtures";
 
 test("a real asynchronous report updates live and completes after the page closes", async ({
   page,
   context,
   request,
+  createConversation,
 }) => {
-  await page.goto("/");
+  const ownedThreadId = await createConversation();
   const submitted = page.waitForRequest(
     (request) =>
       request.method() === "POST" &&
@@ -17,6 +18,8 @@ test("a real asynchronous report updates live and completes after the page close
     .click();
   await page.getByRole("textbox", { name: "Message" }).press("Enter");
   const { threadId } = (await submitted).postDataJSON() as { threadId: string };
+
+  expect(threadId).toBe(ownedThreadId);
   const task = page.getByLabel("Generate report");
 
   await expect(task).toContainText("Preparing report data");
@@ -28,20 +31,27 @@ test("a real asynchronous report updates live and completes after the page close
   await expect
     .poll(
       async () => {
-        const response = await request.get(
-          "http://127.0.0.1:3000/conversations",
-        );
-        const conversations = (await response.json()) as {
-          conversations: { threadId: string; status: string }[];
+        const response = await request.get(`/conversations/${threadId}`);
+
+        expect(response.ok()).toBe(true);
+        const snapshot = (await response.json()) as {
+          externalTasks: { status: string }[];
+          messages: { role: string; content: string }[];
+          runs: { status: string }[];
         };
 
-        return conversations.conversations.find(
-          (conversation) => conversation.threadId === threadId,
-        )?.status;
+        return (
+          snapshot.externalTasks.some((task) => task.status === "succeeded") &&
+          snapshot.runs.at(-1)?.status === "completed" &&
+          snapshot.messages.some(
+            (message) =>
+              message.role === "assistant" && message.content.length > 0,
+          )
+        );
       },
       { timeout: 90000 },
     )
-    .toBe("completed");
+    .toBe(true);
   const restored = await context.newPage();
 
   await restored.goto(`/c/${threadId}`);

@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "../fixtures";
 
 test("sidebar dragging and keyboard resizing survive collapse and reload without losing the draft", async ({
   page,

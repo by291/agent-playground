@@ -1,11 +1,12 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, capture } from "../fixtures";
+import { randomUUID } from "node:crypto";
 
 test("history opens, renames and deletes a saved conversation after reload", async ({
   page,
 }, testInfo) => {
   await page.goto("/");
   const message = page.getByRole("textbox", { name: "Message" });
-  const title = `History check ${Date.now()}`;
+  const title = `History check ${randomUUID()}`;
 
   await message.fill(title);
   await message.press("Enter");
@@ -32,20 +33,20 @@ test("history opens, renames and deletes a saved conversation after reload", asy
     .getByRole("button", { name: `Actions for ${title}` })
     .click();
   await page.getByRole("button", { name: "Rename", exact: true }).click();
-  await page
-    .getByRole("textbox", { name: "Conversation title" })
-    .fill("Renamed history check");
+  const renamed = `Renamed ${title}`;
+
+  await page.getByRole("textbox", { name: "Conversation title" }).fill(renamed);
   await page.getByRole("button", { name: "Save title" }).click();
   await expect(
-    page.getByRole("heading", { name: "Renamed history check", exact: true }),
+    page.getByRole("heading", { name: renamed, exact: true }),
   ).toBeVisible();
   await page.reload();
   await expect(
-    page.getByRole("heading", { name: "Renamed history check", exact: true }),
+    page.getByRole("heading", { name: renamed, exact: true }),
   ).toBeVisible();
-  await page.screenshot({ path: testInfo.outputPath("history-desktop.png") });
+  await capture(page, testInfo, "history-desktop.png");
   await navigation
-    .getByRole("button", { name: "Actions for Renamed history check" })
+    .getByRole("button", { name: `Actions for ${renamed}` })
     .click();
   await page.getByRole("button", { name: "Delete", exact: true }).click();
   await page
@@ -53,7 +54,7 @@ test("history opens, renames and deletes a saved conversation after reload", asy
     .click();
   await expect(
     navigation.getByRole("button", {
-      name: "Renamed history check",
+      name: renamed,
       exact: true,
     }),
   ).toHaveCount(0);
@@ -63,7 +64,7 @@ test("history opens, renames and deletes a saved conversation after reload", asy
   await page.reload();
   await expect(
     navigation.getByRole("button", {
-      name: "Renamed history check",
+      name: renamed,
       exact: true,
     }),
   ).toHaveCount(0);
@@ -80,7 +81,9 @@ test("switching away from a live run preserves its recovery and does not resubmi
   );
   const message = page.getByRole("textbox", { name: "Message" });
 
-  await message.fill("Stream a code sample.");
+  const title = `Stream a code sample. ${randomUUID()}`;
+
+  await message.fill(title);
   await message.press("Enter");
   const { threadId } = (await submitted).postDataJSON() as { threadId: string };
 
@@ -92,8 +95,7 @@ test("switching away from a live run preserves its recovery and does not resubmi
   });
 
   await navigation
-    .getByRole("button", { name: "Actions for Stream a code sample." })
-    .first()
+    .getByRole("button", { name: `Actions for ${title}`, exact: true })
     .click();
   await expect(
     page.getByRole("button", { name: "Delete", exact: true }),
@@ -117,10 +119,8 @@ test("switching away from a live run preserves its recovery and does not resubmi
       submissions += 1;
     }
   });
-  await navigation
-    .getByRole("button", { name: "Stream a code sample.", exact: true })
-    .first()
-    .click();
+  await navigation.getByRole("button", { name: title, exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`/c/${threadId}$`));
   await expect(
     page.getByLabel("Assistant reply", { exact: true }),
   ).toContainText("int main(void)");
@@ -133,7 +133,7 @@ test("mobile navigation supports rename and delete without leaving the drawer", 
 }, testInfo) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
-  const title = `Mobile history ${Date.now()}`;
+  const title = `Mobile history ${randomUUID()}`;
   const message = page.getByRole("textbox", { name: "Message" });
 
   await message.fill(title);
@@ -152,17 +152,15 @@ test("mobile navigation supports rename and delete without leaving the drawer", 
   expect(bounds).not.toBeNull();
   expect(bounds!.x).toBeGreaterThanOrEqual(0);
   expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(390);
-  await page
-    .getByRole("textbox", { name: "Conversation title" })
-    .fill("Mobile renamed");
-  await page.screenshot({ path: testInfo.outputPath("history-mobile.png") });
+  const renamed = `Renamed ${title}`;
+
+  await page.getByRole("textbox", { name: "Conversation title" }).fill(renamed);
+  await capture(page, testInfo, "history-mobile.png");
   await page.getByRole("button", { name: "Save title" }).click();
   await expect(
-    page.getByRole("button", { name: "Mobile renamed", exact: true }),
+    page.getByRole("button", { name: renamed, exact: true }),
   ).toBeVisible();
-  await page
-    .getByRole("button", { name: "Actions for Mobile renamed" })
-    .click();
+  await page.getByRole("button", { name: `Actions for ${renamed}` }).click();
   await page.getByRole("button", { name: "Delete", exact: true }).click();
   await page
     .getByRole("button", { name: "Delete conversation", exact: true })

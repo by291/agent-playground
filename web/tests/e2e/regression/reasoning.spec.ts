@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, capture } from "../fixtures";
 
 test("reasoning streams before the answer, folds for text and survives checkpoint recovery and reload", async ({
   page,
@@ -22,9 +22,7 @@ test("reasoning streams before the answer, folds for text and survives checkpoin
   ).toHaveAttribute("aria-expanded", "true");
   await expect(reply).toContainText(reasoning);
   await expect(reply).not.toContainText("Approach A is simpler.");
-  await page.screenshot({
-    path: testInfo.outputPath("reasoning-streaming.png"),
-  });
+  await capture(page, testInfo, "reasoning-streaming.png");
   const reasoningReleased = await request.post(
     `http://127.0.0.1:4300/__e2e/release/${input.threadId}`,
   );
@@ -52,9 +50,7 @@ test("reasoning streams before the answer, folds for text and survives checkpoin
   await toggle.click();
   await expect(reply).toContainText(reasoning);
   await expect(reply).toContainText("Approach B is more flexible.");
-  await page.screenshot({
-    path: testInfo.outputPath("reasoning-restored.png"),
-  });
+  await capture(page, testInfo, "reasoning-restored.png");
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(toggle).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(

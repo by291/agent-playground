@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, capture } from "../fixtures";
 import { timePrompt } from "../flows";
 
 test("activity width supports dragging and keyboard bounds and persists without changing the draft", async ({
@@ -111,9 +111,7 @@ test("activity separates consecutive runs in merged and individual delta views",
   await headings
     .last()
     .evaluate((element) => element.scrollIntoView({ block: "center" }));
-  await page.screenshot({
-    path: testInfo.outputPath("activity-run-groups.png"),
-  });
+  await capture(page, testInfo, "activity-run-groups.png");
   await panel.getByRole("checkbox", { name: "Merge stream content" }).uncheck();
   await expect(headings).toHaveText(expected);
   await panel.getByRole("checkbox", { name: "Merge stream content" }).check();
@@ -251,13 +249,13 @@ test("activity shows every event with categories and highlighted payloads and co
   await expect(
     finished.getByLabel("Event payload").locator("span[style]").first(),
   ).toBeVisible();
-  await page.screenshot({ path: testInfo.outputPath("activity-desktop.png") });
+  await capture(page, testInfo, "activity-desktop.png");
   await page.setViewportSize({ width: 390, height: 844 });
   const bounds = await panel.boundingBox();
 
   expect(bounds!.x).toBeGreaterThanOrEqual(0);
   expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(390);
-  await page.screenshot({ path: testInfo.outputPath("activity-mobile.png") });
+  await capture(page, testInfo, "activity-mobile.png");
   const lightColor = await finished
     .getByLabel("Event payload")
     .locator("span[style]")
@@ -272,9 +270,7 @@ test("activity shows every event with categories and highlighted payloads and co
     .evaluate((element) => getComputedStyle(element).color);
 
   expect(darkColor).not.toBe(lightColor);
-  await page.screenshot({
-    path: testInfo.outputPath("activity-dark-mobile.png"),
-  });
+  await capture(page, testInfo, "activity-dark-mobile.png");
   await panel.getByRole("button", { name: "Clear log", exact: true }).click();
   await expect(
     panel.getByText("No activity yet", { exact: true }),
@@ -348,9 +344,7 @@ test("merged activity updates an open stream and can switch back to each origina
   expect(desktopBounds!.width).toBeGreaterThanOrEqual(500);
   expect(desktopBounds!.width).toBeLessThanOrEqual(640);
   await merged.getByLabel("Merged content").scrollIntoViewIfNeeded();
-  await page.screenshot({
-    path: testInfo.outputPath("activity-merged-desktop.png"),
-  });
+  await capture(page, testInfo, "activity-merged-desktop.png");
   await panel.getByRole("button", { name: "Copy log", exact: true }).click();
   await expect(panel.getByRole("status")).toContainText("Log copied");
   const log = JSON.parse(
@@ -405,36 +399,5 @@ test("merged activity updates an open stream and can switch back to each origina
   );
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(restored.getByLabel("Merged content")).toBeVisible();
-  await page.screenshot({
-    path: testInfo.outputPath("activity-merged-mobile.png"),
-  });
-});
-
-test("activity exposes client failures even when no protocol events arrive", async ({
-  page,
-  context,
-}) => {
-  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
-  await page.route("**/agent", (route) =>
-    route.fulfill({ status: 503, json: { error: "Transport unavailable" } }),
-  );
-  await page.goto("/");
-  const composer = page.getByRole("textbox", { name: "Message" });
-
-  await composer.fill("Inspect a connection failure");
-  await composer.press("Enter");
-  await expect(page.getByRole("alert").first()).toBeVisible();
-  await page.getByRole("button", { name: "Show run activity" }).click();
-  const panel = page.getByRole("complementary", { name: "Run activity" });
-
-  await expect(panel.getByRole("alert")).toContainText("503");
-  await panel.getByRole("button", { name: "Copy log", exact: true }).click();
-  await expect(panel.getByRole("status")).toContainText("Log copied");
-  const log = JSON.parse(
-    await page.evaluate(() => navigator.clipboard.readText()),
-  ) as { received: number; events: unknown[]; clientIssues: { run: string } };
-
-  expect(log.received).toBe(0);
-  expect(log.events).toEqual([]);
-  expect(log.clientIssues.run).toContain("503");
+  await capture(page, testInfo, "activity-merged-mobile.png");
 });

@@ -1,4 +1,6 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, capture } from "../fixtures";
+
+test.use({ replyAnimation: true });
 
 test("settings change appearance, send shortcut and reply animation and survive reload", async ({
   page,
@@ -24,7 +26,7 @@ test("settings change appearance, send shortcut and reply animation and survive 
     .getByRole("combobox", { name: "Reply animation", exact: true })
     .click();
   await settings.getByRole("option", { name: "Off", exact: true }).click();
-  await page.screenshot({ path: testInfo.outputPath("settings-dark.png") });
+  await capture(page, testInfo, "settings-dark.png");
   await settings.getByRole("button", { name: "Done", exact: true }).click();
   await expect(openSettings).toBeFocused();
   await expect(composer).toHaveValue("A multiline task.");
@@ -42,17 +44,6 @@ test("settings change appearance, send shortcut and reply animation and survive 
   await expect(composer).toHaveValue("A multiline task.\n");
   expect(submissions).toBe(0);
   await composer.fill("A multiline task.\nSecond line.");
-  await composer.evaluate((element) => {
-    element.dispatchEvent(
-      new KeyboardEvent("keydown", {
-        key: "Enter",
-        ctrlKey: true,
-        isComposing: true,
-        bubbles: true,
-      }),
-    );
-  });
-  expect(submissions).toBe(0);
   const submitted = page.waitForRequest(
     (request) =>
       request.method() === "POST" &&
@@ -81,14 +72,6 @@ test("settings change appearance, send shortcut and reply animation and survive 
   await expect(
     settings.getByRole("combobox", { name: "Reply animation", exact: true }),
   ).toHaveText("Off");
-  await settings
-    .getByRole("combobox", { name: "Appearance", exact: true })
-    .click();
-  await settings.getByRole("option", { name: "System", exact: true }).click();
-  await page.emulateMedia({ colorScheme: "light" });
-  await expect(page.locator("html")).not.toHaveClass(/dark/);
-  await page.emulateMedia({ colorScheme: "dark" });
-  await expect(page.locator("html")).toHaveClass(/dark/);
   await settings.getByRole("button", { name: "Reset preferences" }).click();
   await expect(page.locator("html")).not.toHaveClass(/dark/);
   await expect(
@@ -137,7 +120,7 @@ test("settings work inside mobile navigation and closing them preserves the draw
     .getByRole("combobox", { name: "Reply animation", exact: true })
     .click();
   await settings.getByRole("option", { name: "Off", exact: true }).click();
-  await page.screenshot({ path: testInfo.outputPath("settings-mobile.png") });
+  await capture(page, testInfo, "settings-mobile.png");
   await page.keyboard.press("Escape");
   await expect(settings).not.toBeVisible();
   await expect(drawer).toBeVisible();

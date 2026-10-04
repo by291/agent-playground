@@ -1,4 +1,6 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test } from "../fixtures";
+import type { Page } from "@playwright/test";
+import { randomUUID } from "node:crypto";
 
 async function saveDiscussion(page: Page, title: string) {
   const message = page.getByRole("textbox", { name: "Message" });
@@ -18,7 +20,7 @@ test("a copied conversation URL opens its discussion in a browser without local 
   browser,
 }) => {
   await page.goto("/");
-  const title = `Linked discussion ${Date.now()}`;
+  const title = `Linked discussion ${randomUUID()}`;
   const link = await saveDiscussion(page, title);
 
   expect(new URL(link).pathname).toMatch(/^\/c\/[^/]+$/);
@@ -63,7 +65,7 @@ test("conversation URLs override the local pointer and browser history switches 
   page,
 }) => {
   await page.goto("/?source=links#chat");
-  const firstTitle = `First linked discussion ${Date.now()}`;
+  const firstTitle = `First linked discussion ${randomUUID()}`;
   const first = await saveDiscussion(page, firstTitle);
   const navigation = page.getByRole("complementary", {
     name: "Conversation navigation",
@@ -79,7 +81,7 @@ test("conversation URLs override the local pointer and browser history switches 
   await expect(
     page.getByRole("heading", { name: "What would you like to work on?" }),
   ).toBeVisible();
-  const secondTitle = `Second linked discussion ${Date.now()}`;
+  const secondTitle = `Second linked discussion ${randomUUID()}`;
   const second = await saveDiscussion(page, secondTitle);
 
   expect(second).not.toBe(first);
