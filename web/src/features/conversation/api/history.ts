@@ -38,7 +38,7 @@ export function conversationHistoryOptions() {
 export async function renameSavedConversation(threadId: string, title: string) {
   const body = renameConversationSchema.parse({ title });
 
-  await manageConversation(threadId, {
+  await manageConversation(`/conversations/${encodeURIComponent(threadId)}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -46,14 +46,17 @@ export async function renameSavedConversation(threadId: string, title: string) {
 }
 
 export async function deleteSavedConversation(threadId: string) {
-  await manageConversation(threadId, { method: "DELETE" });
+  await manageConversation(`/conversations/${encodeURIComponent(threadId)}`, {
+    method: "DELETE",
+  });
 }
 
-async function manageConversation(threadId: string, init: RequestInit) {
-  const response = await fetch(
-    `/conversations/${encodeURIComponent(threadId)}`,
-    init,
-  );
+export async function clearSavedConversations() {
+  await manageConversation("/conversations", { method: "DELETE" });
+}
+
+async function manageConversation(url: string, init: RequestInit) {
+  const response = await fetch(url, init);
 
   if (!response.ok) {
     const body: unknown = await response.json().catch(() => null);

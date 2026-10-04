@@ -12,6 +12,7 @@ import {
 import { useConversation } from "../ConversationProvider";
 import { useReplyPresentationBusy } from "./ReplyPresentation";
 import { ContextIndicator } from "./ContextIndicator";
+import { useUserPreferences } from "@/lib/preferences";
 
 export function Composer({
   prompt,
@@ -20,6 +21,7 @@ export function Composer({
   prompt: string;
   onPromptChange: (prompt: string) => void;
 }) {
+  const { preferences } = useUserPreferences();
   const { running, recovering, waitingForReview, onSend } = useConversation(
     useShallow(composerState),
   );
@@ -51,10 +53,16 @@ export function Composer({
   }
 
   function handleKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
+    const modifierPressed = event.ctrlKey || event.metaKey;
+    const shortcutMatches =
+      preferences.sendShortcut === "enter" || modifierPressed;
+
     if (
       event.key === "Enter" &&
       !event.shiftKey &&
-      !event.nativeEvent.isComposing
+      !event.altKey &&
+      !event.nativeEvent.isComposing &&
+      shortcutMatches
     ) {
       event.preventDefault();
       submit();
@@ -81,7 +89,9 @@ export function Composer({
               className="justify-between gap-3 px-1 pb-0"
             >
               <InputGroupText className="hidden min-w-0 truncate text-[11px] text-soft sm:block">
-                Enter to send · Shift + Enter for a new line
+                {preferences.sendShortcut === "enter"
+                  ? "Enter to send · Shift + Enter for a new line"
+                  : "Ctrl/Cmd + Enter to send · Enter for a new line"}
               </InputGroupText>
               <div className="ml-auto flex min-w-0 items-center gap-2">
                 <ContextIndicator />

@@ -6,6 +6,7 @@ import { fetchAgentInfo } from "./agent/info";
 import { conversationSnapshot } from "./conversation/conversation-snapshot";
 import {
   conversationExists,
+  deleteAllConversations,
   deleteConversation,
   listConversations,
   parseConversationCursor,
@@ -83,6 +84,22 @@ app.patch(
     }
   },
 );
+
+app.delete("/conversations", async (context) => {
+  try {
+    await deleteAllConversations();
+
+    return context.body(null, 204);
+  } catch (error) {
+    if (error instanceof SubmissionError) {
+      return context.json({ error: error.message }, error.status);
+    }
+
+    logger.error({ err: error }, "Conversation clearing failed");
+
+    return context.json({ error: "Conversation clearing is unavailable" }, 503);
+  }
+});
 
 app.delete("/conversations/:threadId", async (context) => {
   try {

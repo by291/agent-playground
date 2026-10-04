@@ -1,6 +1,10 @@
 // @vitest-environment jsdom
 import { expect, test } from "vitest";
-import { loadConversation, saveConversation } from "./storage";
+import {
+  forgetAllConversations,
+  loadConversation,
+  saveConversation,
+} from "./storage";
 
 test("switching conversations keeps each unconfirmed submission recoverable", () => {
   const pending = {
@@ -35,4 +39,27 @@ test("the legacy current pointer can still be opened by ID", () => {
     threadId: "legacy",
     empty: false,
   });
+});
+
+test("clearing conversation pointers preserves preferences and other browser data", () => {
+  saveConversation({ threadId: "first", empty: false });
+  saveConversation({ threadId: "second", empty: false });
+  localStorage.setItem("agent-playground-preferences", '{"theme":"dark"}');
+  localStorage.setItem("agent-playground-sidebar-width", "336");
+  localStorage.setItem("other-app-data", "keep");
+
+  forgetAllConversations();
+
+  expect(localStorage.getItem("agent-playground-conversation")).toBeNull();
+  expect(
+    localStorage.getItem("agent-playground-conversation:first"),
+  ).toBeNull();
+  expect(
+    localStorage.getItem("agent-playground-conversation:second"),
+  ).toBeNull();
+  expect(localStorage.getItem("agent-playground-preferences")).toBe(
+    '{"theme":"dark"}',
+  );
+  expect(localStorage.getItem("agent-playground-sidebar-width")).toBe("336");
+  expect(localStorage.getItem("other-app-data")).toBe("keep");
 });

@@ -78,3 +78,23 @@ export function forgetConversation(threadId: string): void {
     localStorage.removeItem(storageKey);
   }
 }
+
+export function forgetAllConversations(): void {
+  try {
+    const keys: string[] = [];
+
+    for (let index = 0; index < localStorage.length; index += 1) {
+      const key = localStorage.key(index);
+
+      if (key === storageKey || key?.startsWith(`${storageKey}:`)) {
+        keys.push(key);
+      }
+    }
+
+    for (const key of keys) {
+      localStorage.removeItem(key);
+    }
+  } catch {
+    // Unavailable browser storage must not prevent leaving a deleted conversation.
+  }
+}

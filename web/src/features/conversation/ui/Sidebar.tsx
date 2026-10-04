@@ -6,6 +6,7 @@ import {
 } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
 import { ConnectionStatus } from "@/components/ConnectionStatus";
+import { SettingsControl } from "@/components/SettingsControl";
 import { ConversationList } from "./ConversationList";
 import type { ConversationHistory } from "../model/useConversationHistory";
 import type { RunStatus } from "@shared/run-status";
@@ -41,7 +42,7 @@ export function Sidebar({
       id={mobile ? "mobile-navigation-content" : "workspace-sidebar"}
       aria-label="Conversation navigation"
       data-collapsed={collapsed}
-      className="workspace-sidebar flex size-full shrink-0 flex-col overflow-hidden border-r border-line bg-sidebar px-3 py-6"
+      className="workspace-sidebar flex size-full shrink-0 flex-col overflow-hidden border-r border-line bg-sidebar px-3 pt-6 pb-2"
     >
       <div className="flex h-10 shrink-0 items-center gap-2.5 px-1">
         <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground">
@@ -125,9 +126,10 @@ export function Sidebar({
         </>
       )}
       <div
-        className={`mt-auto w-full border-t border-line pt-4 ${collapsed ? "text-center" : "px-2"}`}
+        className={`mt-auto flex w-full shrink-0 items-center border-t border-line pt-2 ${collapsed ? "flex-col gap-1" : "justify-between gap-2 px-2"}`}
       >
         <ConnectionStatus compact={collapsed} />
+        <SettingsControl onClearConversations={history?.clear} />
       </div>
     </aside>
   );

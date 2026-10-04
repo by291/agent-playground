@@ -39,7 +39,7 @@ export function ActivityPanel({
           size="icon-lg"
           onClick={onClose}
           aria-label="Close run activity"
-          className="size-11 text-muted hover:bg-white hover:text-ink"
+          className="size-11 text-muted hover:bg-surface hover:text-ink"
         >
           <XIcon size={18} aria-hidden="true" />
         </Button>
@@ -58,7 +58,7 @@ export function ActivityPanel({
           </Badge>
         </div>
         {activity.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-line bg-white px-5 py-8 text-center">
+          <div className="rounded-2xl border border-dashed border-line bg-surface px-5 py-8 text-center">
             <PulseIcon
               size={26}
               className="mx-auto text-soft"
@@ -78,7 +78,7 @@ export function ActivityPanel({
         )}
       </div>
 
-      <div className="border-t border-line bg-white/70 px-5 py-4">
+      <div className="border-t border-line bg-surface/70 px-5 py-4">
         <p className="text-[10px] font-semibold tracking-[0.14em] text-soft uppercase">
           Thread ID
         </p>
@@ -103,7 +103,7 @@ function ActivityItem({ event }: { event: Activity }) {
   }
 
   return (
-    <li className="flex gap-3 rounded-xl border border-line bg-white p-3">
+    <li className="flex gap-3 rounded-xl border border-line bg-surface p-3">
       <span
         className={`flex size-8 shrink-0 items-center justify-center rounded-lg ${iconColor}`}
       >

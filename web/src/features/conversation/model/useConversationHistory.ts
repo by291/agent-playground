@@ -4,10 +4,11 @@ import type { ConversationSummary } from "@shared/conversation";
 import {
   conversationHistoryKey,
   conversationHistoryOptions,
+  clearSavedConversations,
   deleteSavedConversation,
   renameSavedConversation,
 } from "../api/history";
-import { forgetConversation } from "./storage";
+import { forgetAllConversations, forgetConversation } from "./storage";
 
 export interface ConversationHistory {
   conversations: ConversationSummary[];
@@ -21,11 +22,13 @@ export interface ConversationHistory {
   refresh: () => void;
   rename: (threadId: string, title: string) => Promise<void>;
   remove: (threadId: string) => Promise<void>;
+  clear: () => Promise<void>;
 }
 
 export function useConversationHistory(
   select: (threadId: string) => void,
   onDeleted: (threadId: string) => void,
+  onCleared: () => void,
 ): ConversationHistory {
   const client = useQueryClient();
   const query = useInfiniteQuery(conversationHistoryOptions());
@@ -76,6 +79,21 @@ export function useConversationHistory(
       onDeleted(threadId);
       await client.cancelQueries({ queryKey: ["conversation", threadId] });
       client.removeQueries({ queryKey: ["conversation", threadId] });
+      await client.invalidateQueries({ queryKey: conversationHistoryKey });
+    },
+    async clear() {
+      await clearSavedConversations();
+      await Promise.all([
+        client.cancelQueries({ queryKey: conversationHistoryKey }),
+        client.cancelQueries({ queryKey: ["conversation"] }),
+      ]);
+      forgetAllConversations();
+      client.removeQueries({ queryKey: ["conversation"] });
+      client.setQueryData(conversationHistoryKey, {
+        pages: [{ conversations: [], nextCursor: null }],
+        pageParams: [null],
+      });
+      onCleared();
       await client.invalidateQueries({ queryKey: conversationHistoryKey });
     },
   };

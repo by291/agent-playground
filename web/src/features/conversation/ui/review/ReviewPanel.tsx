@@ -122,7 +122,7 @@ export function ReviewPanel({
                   update(index, { title: event.target.value })
                 }
                 disabled={running}
-                className="mt-1 h-11 bg-white"
+                className="mt-1 h-11 bg-surface"
               />
             </label>
             <label className="block text-xs font-medium text-ink">
@@ -137,7 +137,7 @@ export function ReviewPanel({
                   8,
                   Math.max(3, draft.stepsText.split("\n").length),
                 )}
-                className="mt-1 resize-y bg-white"
+                className="mt-1 resize-y bg-surface"
               />
             </label>
             <div className="flex flex-wrap gap-2">

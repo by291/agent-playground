@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
-import { test, onTestFinished, vi } from "vitest";
+import { test, onTestFinished, vi, expect } from "vitest";
 import assert from "node:assert/strict";
 import { createElement } from "react";
 import { act, fireEvent, render, waitFor } from "@testing-library/react";
 import MarkdownMessage from "./MarkdownMessage";
+import { UserPreferencesProvider, useUserPreferences } from "@/lib/preferences";
 import {
   ReplyPresentationProvider,
   useReplyPresentationBusy,
@@ -104,6 +105,38 @@ function animationClock() {
     },
   };
 }
+
+test("disabling reply animation during a stream reveals received text and releases its scheduler", () => {
+  const clock = animationClock();
+  const text = "Display the received reply immediately. ".repeat(30).trim();
+
+  function PreferencesToggle() {
+    const { updatePreferences } = useUserPreferences();
+
+    return createElement("button", {
+      onClick: () => updatePreferences({ replyAnimation: false }),
+      children: "Disable reply animation",
+    });
+  }
+
+  const page = render(
+    createElement(UserPreferencesProvider, {
+      children: [
+        createElement(PreferencesToggle, { key: "preferences" }),
+        createElement(MarkdownMessage, { key: "reply", text, streaming: true }),
+      ],
+    }),
+  );
+
+  clock.advance(340);
+  expect(page.queryByText(text)).toBeNull();
+  fireEvent.click(
+    page.getByRole("button", { name: "Disable reply animation" }),
+  );
+  expect(page.getByText(text)).toBeVisible();
+  expect(clock.frames.size).toBe(0);
+  expect(page.container.querySelectorAll("[data-sd-animate]").length).toBe(0);
+});
 
 test("live bursts reveal gradually and continue draining after the source finishes", () => {
   const clock = animationClock();

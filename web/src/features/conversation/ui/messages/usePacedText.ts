@@ -1,4 +1,5 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
+import { useUserPreferences } from "@/lib/preferences";
 
 // Adapted from assistant-ui's TextStreamAnimator (MIT); see usePacedText.LICENSE.txt.
 // https://github.com/assistant-ui/assistant-ui/blob/main/packages/react/src/utils/smooth/useSmooth.ts
@@ -123,6 +124,7 @@ function reducedMotion() {
 }
 
 export function usePacedText(text: string, streaming: boolean) {
+  const { preferences } = useUserPreferences();
   const reduceMotion = useSyncExternalStore(
     subscribeReducedMotion,
     reducedMotion,
@@ -155,7 +157,7 @@ export function usePacedText(text: string, streaming: boolean) {
     setHasStreamed(true);
   }
 
-  const enabled = hasStreamed && !reduceMotion;
+  const enabled = hasStreamed && !reduceMotion && preferences.replyAnimation;
 
   useEffect(() => {
     animator.update(text, enabled, streaming);

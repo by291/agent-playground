@@ -41,6 +41,24 @@
   --radius: 0.5rem;
 }
 
+.dark {
+  --color-canvas: #16191f;
+  --color-sidebar: #1a1d24;
+  --color-surface: #20242c;
+  --color-ink: #eceff4;
+  --color-muted: #a8b0bd;
+  --color-soft: #a8b0bd;
+  --color-line: #343b48;
+  --color-accent: #8daeff;
+  --color-accent-hover: #adc4ff;
+  --color-accent-soft: #273754;
+  --color-accent-line: #405782;
+  --color-selected: #2c333e;
+  --primary: #e5e9f0;
+  --primary-foreground: #1c2028;
+  --destructive: #ff9b94;
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);

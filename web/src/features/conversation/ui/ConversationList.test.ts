@@ -26,6 +26,7 @@ function setup() {
     refresh: vi.fn(),
     rename: vi.fn(),
     remove: vi.fn(),
+    clear: vi.fn(),
   };
 
   vi.stubGlobal("IntersectionObserver", observer);

@@ -1,4 +1,4 @@
-import { and, desc, eq, isNull, lt, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, isNull, lt, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "../db/database";
 import { conversationRuns, conversations } from "../db/schema";
@@ -142,5 +142,47 @@ export async function deleteConversation(threadId: string) {
       .update(conversations)
       .set({ deletedAt: new Date() })
       .where(eq(conversations.threadId, threadId));
+  });
+}
+
+export async function deleteAllConversations() {
+  await db.transaction(async (tx) => {
+    // Match admission's lock and acquire the entire batch in a stable order.
+    const targets = await tx
+      .select({ threadId: conversations.threadId })
+      .from(conversations)
+      .where(isNull(conversations.deletedAt))
+      .orderBy(asc(conversations.threadId))
+      .for("update");
+
+    if (targets.length === 0) {
+      return;
+    }
+
+    const threadIds = sql.param(targets.map((target) => target.threadId));
+    // A separate statement sees admissions committed while row locks were waiting.
+    const latestRuns = await tx
+      .selectDistinctOn([conversationRuns.threadId], {
+        status: conversationRuns.status,
+      })
+      .from(conversationRuns)
+      .where(sql`${conversationRuns.threadId} = ANY(${threadIds}::text[])`)
+      .orderBy(conversationRuns.threadId, desc(conversationRuns.submitSeq));
+    const hasUnfinishedRun = latestRuns.some(
+      (run) => isRunActive(run.status) || run.status === "submission_unknown",
+    );
+
+    if (hasUnfinishedRun) {
+      throw new SubmissionError(
+        "Wait for all conversation runs to finish before clearing conversations",
+        409,
+      );
+    }
+
+    // Only the locked batch is deleted; newly created conversations are unaffected.
+    await tx
+      .update(conversations)
+      .set({ deletedAt: new Date() })
+      .where(sql`${conversations.threadId} = ANY(${threadIds}::text[])`);
   });
 }

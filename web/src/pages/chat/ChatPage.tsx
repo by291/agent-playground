@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { SettingsProvider } from "@/components/SettingsControl";
 import {
   ConversationProvider,
   ConversationWorkspace,
@@ -10,11 +11,15 @@ import {
 
 export function ChatPage({ development }: { development: boolean }) {
   const [conversation, setConversation] = useState(() => loadConversation());
-  const history = useConversationHistory(openConversation, (threadId) => {
-    if (conversation.threadId === threadId) {
-      startNewConversation();
-    }
-  });
+  const history = useConversationHistory(
+    openConversation,
+    (threadId) => {
+      if (conversation.threadId === threadId) {
+        startNewConversation();
+      }
+    },
+    startNewConversation,
+  );
 
   function openConversation(threadId: string) {
     if (threadId === conversation.threadId) {
@@ -30,21 +35,28 @@ export function ChatPage({ development }: { development: boolean }) {
   function startNewConversation() {
     const next = newConversation();
 
-    saveConversation(next);
+    try {
+      saveConversation(next);
+    } catch {
+      // Browser storage is optional; always leave the previous workspace.
+    }
+
     setConversation(next);
   }
 
   return (
-    <ConversationProvider
-      key={conversation.threadId}
-      conversation={conversation}
-    >
-      <ConversationWorkspace
+    <SettingsProvider onClearConversations={history.clear}>
+      <ConversationProvider
+        key={conversation.threadId}
         conversation={conversation}
-        development={development}
-        onNewConversation={startNewConversation}
-        history={history}
-      />
-    </ConversationProvider>
+      >
+        <ConversationWorkspace
+          conversation={conversation}
+          development={development}
+          onNewConversation={startNewConversation}
+          history={history}
+        />
+      </ConversationProvider>
+    </SettingsProvider>
   );
 }

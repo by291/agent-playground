@@ -28,6 +28,7 @@ function renderSidebar() {
     refresh: vi.fn(),
     rename: vi.fn().mockResolvedValue(undefined),
     remove: vi.fn().mockRejectedValue(new Error("Wait for the run to finish")),
+    clear: vi.fn(),
   };
 
   vi.stubGlobal("fetch", () => Promise.resolve(new Response()));
