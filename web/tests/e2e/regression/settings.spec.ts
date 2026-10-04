@@ -11,14 +11,19 @@ test("settings change appearance, send shortcut and reply animation and survive 
   await composer.fill("A multiline task.");
   await openSettings.click();
   await expect(settings).toBeVisible();
-  await settings.getByLabel("Appearance", { exact: true }).selectOption("dark");
+  await settings
+    .getByRole("combobox", { name: "Appearance", exact: true })
+    .click();
+  await settings.getByRole("option", { name: "Dark", exact: true }).click();
   await expect(page.locator("html")).toHaveClass(/dark/);
   await settings
-    .getByLabel("Send shortcut", { exact: true })
-    .selectOption("modifier-enter");
+    .getByRole("combobox", { name: "Send shortcut", exact: true })
+    .click();
+  await settings.getByRole("option", { name: "Ctrl / Cmd + Enter" }).click();
   await settings
-    .getByLabel("Reply animation", { exact: true })
-    .selectOption("off");
+    .getByRole("combobox", { name: "Reply animation", exact: true })
+    .click();
+  await settings.getByRole("option", { name: "Off", exact: true }).click();
   await page.screenshot({ path: testInfo.outputPath("settings-dark.png") });
   await settings.getByRole("button", { name: "Done", exact: true }).click();
   await expect(openSettings).toBeFocused();
@@ -67,18 +72,19 @@ test("settings change appearance, send shortcut and reply animation and survive 
   await page.reload();
   await expect(page.locator("html")).toHaveClass(/dark/);
   await openSettings.click();
-  await expect(settings.getByLabel("Appearance", { exact: true })).toHaveValue(
-    "dark",
-  );
   await expect(
-    settings.getByLabel("Send shortcut", { exact: true }),
-  ).toHaveValue("modifier-enter");
+    settings.getByRole("combobox", { name: "Appearance", exact: true }),
+  ).toHaveText("Dark");
   await expect(
-    settings.getByLabel("Reply animation", { exact: true }),
-  ).toHaveValue("off");
+    settings.getByRole("combobox", { name: "Send shortcut", exact: true }),
+  ).toHaveText("Ctrl / Cmd + Enter");
+  await expect(
+    settings.getByRole("combobox", { name: "Reply animation", exact: true }),
+  ).toHaveText("Off");
   await settings
-    .getByLabel("Appearance", { exact: true })
-    .selectOption("system");
+    .getByRole("combobox", { name: "Appearance", exact: true })
+    .click();
+  await settings.getByRole("option", { name: "System", exact: true }).click();
   await page.emulateMedia({ colorScheme: "light" });
   await expect(page.locator("html")).not.toHaveClass(/dark/);
   await page.emulateMedia({ colorScheme: "dark" });
@@ -86,11 +92,11 @@ test("settings change appearance, send shortcut and reply animation and survive 
   await settings.getByRole("button", { name: "Reset preferences" }).click();
   await expect(page.locator("html")).not.toHaveClass(/dark/);
   await expect(
-    settings.getByLabel("Send shortcut", { exact: true }),
-  ).toHaveValue("enter");
+    settings.getByRole("combobox", { name: "Send shortcut", exact: true }),
+  ).toHaveText("Enter");
   await expect(
-    settings.getByLabel("Reply animation", { exact: true }),
-  ).toHaveValue("on");
+    settings.getByRole("combobox", { name: "Reply animation", exact: true }),
+  ).toHaveText("On");
   await settings.getByRole("button", { name: "Done", exact: true }).click();
   await expect(page.getByRole("region", { name: "Messages" })).toContainText(
     "A multiline task.",
@@ -123,10 +129,14 @@ test("settings work inside mobile navigation and closing them preserves the draw
 
   expect(bounds.x).toBeGreaterThanOrEqual(0);
   expect(bounds.x + bounds.width).toBeLessThanOrEqual(390);
-  await settings.getByLabel("Appearance", { exact: true }).selectOption("dark");
   await settings
-    .getByLabel("Reply animation", { exact: true })
-    .selectOption("off");
+    .getByRole("combobox", { name: "Appearance", exact: true })
+    .click();
+  await settings.getByRole("option", { name: "Dark", exact: true }).click();
+  await settings
+    .getByRole("combobox", { name: "Reply animation", exact: true })
+    .click();
+  await settings.getByRole("option", { name: "Off", exact: true }).click();
   await page.screenshot({ path: testInfo.outputPath("settings-mobile.png") });
   await page.keyboard.press("Escape");
   await expect(settings).not.toBeVisible();
@@ -134,4 +144,38 @@ test("settings work inside mobile navigation and closing them preserves the draw
   await expect(trigger).toBeFocused();
   await drawer.getByRole("button", { name: "Close navigation" }).click();
   await expect(composer).toHaveValue("Keep this draft.");
+});
+
+test("settings dropdowns support keyboard selection and Escape closes only the menu", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open settings" }).click();
+  const settings = page.getByRole("dialog", { name: "Settings", exact: true });
+  const appearance = settings.getByRole("combobox", {
+    name: "Appearance",
+    exact: true,
+  });
+
+  await appearance.focus();
+  await page.keyboard.press("Enter");
+  await expect(settings.getByRole("listbox")).toBeVisible();
+  await expect(
+    settings.getByRole("option", { name: "Light", exact: true }),
+  ).toBeFocused();
+  await page.keyboard.press("ArrowDown");
+  await expect(
+    settings.getByRole("option", { name: "Dark", exact: true }),
+  ).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(appearance).toHaveText("Dark");
+  await expect(appearance).toBeFocused();
+  await expect(page.locator("html")).toHaveClass(/dark/);
+  await appearance.click();
+  await page.keyboard.press("Escape");
+  await expect(settings.getByRole("listbox")).toHaveCount(0);
+  await expect(settings).toBeVisible();
+  await expect(appearance).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(settings).not.toBeVisible();
 });

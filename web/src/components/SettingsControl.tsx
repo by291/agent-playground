@@ -8,7 +8,14 @@ import {
   type ReactNode,
 } from "react";
 import { Button } from "./ui/button";
-import { NativeSelect, NativeSelectOption } from "./ui/native-select";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "./ui/select";
 import {
   sendShortcutSchema,
   themePreferenceSchema,
@@ -31,7 +38,7 @@ export function SettingsProvider({
   onClearConversations?: (() => Promise<void>) | undefined;
 }) {
   const id = useId();
-  const dialog = useRef<HTMLDialogElement>(null);
+  const [dialog, setDialog] = useState<HTMLDialogElement | null>(null);
   const [open, setOpen] = useState(false);
   const confirmation = useRef<HTMLDialogElement>(null);
   const [clearing, setClearing] = useState(false);
@@ -41,7 +48,7 @@ export function SettingsProvider({
 
   function openSettings() {
     setClearError(null);
-    dialog.current?.showModal();
+    dialog?.showModal();
     setOpen(true);
   }
 
@@ -50,7 +57,7 @@ export function SettingsProvider({
       return;
     }
 
-    dialog.current?.close();
+    dialog?.close();
   }
 
   function openConfirmation() {
@@ -94,7 +101,7 @@ export function SettingsProvider({
     <SettingsContext.Provider value={settings}>
       {children ?? <SettingsButton settings={settings} />}
       <dialog
-        ref={dialog}
+        ref={setDialog}
         id={`${id}-dialog`}
         aria-labelledby={`${id}-title`}
         onClose={(event) => {
@@ -161,21 +168,35 @@ export function SettingsProvider({
                   Choose your workspace colors.
                 </p>
               </div>
-              <NativeSelect
-                className="w-full shrink-0 sm:w-44"
-                id={`${id}-theme`}
-                aria-describedby={`${id}-theme-description`}
+              <Select
                 value={preferences.theme}
-                onChange={(event) =>
+                onValueChange={(value) =>
                   updatePreferences({
-                    theme: themePreferenceSchema.parse(event.target.value),
+                    theme: themePreferenceSchema.parse(value),
                   })
                 }
               >
-                <NativeSelectOption value="light">Light</NativeSelectOption>
-                <NativeSelectOption value="dark">Dark</NativeSelectOption>
-                <NativeSelectOption value="system">System</NativeSelectOption>
-              </NativeSelect>
+                <SelectTrigger
+                  className="w-full shrink-0 border-line bg-surface sm:w-44 dark:bg-surface dark:hover:bg-sidebar"
+                  id={`${id}-theme`}
+                  aria-describedby={`${id}-theme-description`}
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent container={dialog} position="popper" align="end">
+                  <SelectGroup className="sm:gap-0.5">
+                    <SelectItem value="light" className="sm:min-h-8 sm:py-1">
+                      Light
+                    </SelectItem>
+                    <SelectItem value="dark" className="sm:min-h-8 sm:py-1">
+                      Dark
+                    </SelectItem>
+                    <SelectItem value="system" className="sm:min-h-8 sm:py-1">
+                      System
+                    </SelectItem>
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
             </div>
             <div className="flex flex-col gap-3 py-5 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
               <div className="min-w-0 flex-1">
@@ -192,22 +213,35 @@ export function SettingsProvider({
                   Shift + Enter always adds a new line.
                 </p>
               </div>
-              <NativeSelect
-                className="w-full shrink-0 sm:w-44"
-                id={`${id}-shortcut`}
-                aria-describedby={`${id}-shortcut-description`}
+              <Select
                 value={preferences.sendShortcut}
-                onChange={(event) =>
+                onValueChange={(value) =>
                   updatePreferences({
-                    sendShortcut: sendShortcutSchema.parse(event.target.value),
+                    sendShortcut: sendShortcutSchema.parse(value),
                   })
                 }
               >
-                <NativeSelectOption value="enter">Enter</NativeSelectOption>
-                <NativeSelectOption value="modifier-enter">
-                  Ctrl / Cmd + Enter
-                </NativeSelectOption>
-              </NativeSelect>
+                <SelectTrigger
+                  className="w-full shrink-0 border-line bg-surface sm:w-44 dark:bg-surface dark:hover:bg-sidebar"
+                  id={`${id}-shortcut`}
+                  aria-describedby={`${id}-shortcut-description`}
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent container={dialog} position="popper" align="end">
+                  <SelectGroup className="sm:gap-0.5">
+                    <SelectItem value="enter" className="sm:min-h-8 sm:py-1">
+                      Enter
+                    </SelectItem>
+                    <SelectItem
+                      value="modifier-enter"
+                      className="sm:min-h-8 sm:py-1"
+                    >
+                      Ctrl / Cmd + Enter
+                    </SelectItem>
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
             </div>
             <div className="flex flex-col gap-3 pt-5 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
               <div className="min-w-0 flex-1">
@@ -224,20 +258,32 @@ export function SettingsProvider({
                   Reveal replies smoothly. Respects reduced motion.
                 </p>
               </div>
-              <NativeSelect
-                className="w-full shrink-0 sm:w-44"
-                id={`${id}-animation`}
-                aria-describedby={`${id}-animation-description`}
+              <Select
                 value={preferences.replyAnimation ? "on" : "off"}
-                onChange={(event) =>
+                onValueChange={(value) =>
                   updatePreferences({
-                    replyAnimation: event.target.value === "on",
+                    replyAnimation: value === "on",
                   })
                 }
               >
-                <NativeSelectOption value="on">On</NativeSelectOption>
-                <NativeSelectOption value="off">Off</NativeSelectOption>
-              </NativeSelect>
+                <SelectTrigger
+                  className="w-full shrink-0 border-line bg-surface sm:w-44 dark:bg-surface dark:hover:bg-sidebar"
+                  id={`${id}-animation`}
+                  aria-describedby={`${id}-animation-description`}
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent container={dialog} position="popper" align="end">
+                  <SelectGroup className="sm:gap-0.5">
+                    <SelectItem value="on" className="sm:min-h-8 sm:py-1">
+                      On
+                    </SelectItem>
+                    <SelectItem value="off" className="sm:min-h-8 sm:py-1">
+                      Off
+                    </SelectItem>
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
             </div>
           </div>
           <p
