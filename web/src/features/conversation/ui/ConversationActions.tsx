@@ -7,6 +7,7 @@ import {
 } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { cn } from "cn";
 import { conversationTitleSchema } from "@shared/conversation";
 import type { ConversationHistory } from "../model/useConversationHistory";
 
@@ -108,17 +109,20 @@ export function ConversationActions({
         <Popover.Content
           side={portalContainer ? "bottom" : "right"}
           align={portalContainer ? "end" : "start"}
-          sideOffset={8}
+          sideOffset={6}
           collisionPadding={12}
           aria-label={mode === "actions" ? "Conversation actions" : actionLabel}
-          className="z-50 w-56 max-w-[calc(100vw-1.5rem)] rounded-lg border border-line bg-surface p-3 text-sm text-ink shadow-lg sm:w-72"
+          className={cn(
+            "z-50 max-w-[calc(100vw-1.5rem)] rounded-lg border border-line bg-surface text-sm text-ink shadow-md",
+            mode === "actions" ? "w-44 p-1" : "w-56 p-3 sm:w-72",
+          )}
         >
           {mode === "actions" ? (
-            <div className="flex flex-col gap-1">
+            <div className="flex flex-col gap-0.5">
               <Button
                 type="button"
                 variant="ghost"
-                className="h-10 justify-start"
+                className="h-11 justify-start gap-2 rounded-md px-2.5 font-normal focus-visible:border-muted focus-visible:bg-selected focus-visible:ring-0 sm:h-8"
                 onClick={() => setMode("rename")}
               >
                 <PencilSimpleIcon aria-hidden="true" />
@@ -127,7 +131,7 @@ export function ConversationActions({
               <Button
                 type="button"
                 variant="ghost"
-                className="h-10 justify-start text-destructive"
+                className="h-11 justify-start gap-2 rounded-md px-2.5 font-normal text-destructive focus-visible:border-muted focus-visible:bg-selected focus-visible:ring-0 sm:h-8"
                 disabled={deletionBlocked}
                 onClick={() => setMode("delete")}
               >
