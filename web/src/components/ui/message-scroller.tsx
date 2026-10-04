@@ -36,8 +36,24 @@ function MessageScroller({
 
 function MessageScrollerViewport({
   className,
+  onWheel,
   ...props
 }: React.ComponentProps<typeof MessageScrollerPrimitive.Viewport>) {
+  const { scrollToEnd } = useMessageScroller();
+
+  function handleWheel(event: React.WheelEvent<HTMLDivElement>) {
+    onWheel?.(event);
+    const viewport = event.currentTarget;
+    const distanceFromEnd =
+      viewport.scrollHeight - viewport.clientHeight - viewport.scrollTop;
+
+    // The primitive pauses on every wheel intent. At the boundary no scroll
+    // event follows to restore its mode, so resume explicitly when moving down.
+    if (!event.defaultPrevented && event.deltaY >= 0 && distanceFromEnd <= 1) {
+      scrollToEnd({ behavior: "auto" });
+    }
+  }
+
   return (
     <MessageScrollerPrimitive.Viewport
       data-slot="message-scroller-viewport"
@@ -45,6 +61,7 @@ function MessageScrollerViewport({
         "size-full min-h-0 min-w-0 scroll-fade-b scrollbar-thin scrollbar-gutter-stable overflow-y-auto overscroll-contain contain-content outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent data-autoscrolling:scrollbar-thumb-transparent data-autoscrolling:scrollbar-track-transparent data-pending-scroll:invisible",
         className,
       )}
+      onWheel={handleWheel}
       {...props}
     />
   );

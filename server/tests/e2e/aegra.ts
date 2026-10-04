@@ -313,6 +313,14 @@ export function controlledAegra(database: typeof db) {
             "Here is a C example.\n\n```c\nint main(void) {\n  return 0;\n}\n```",
             true,
           );
+        } else if (message.content === "Write a long reply.") {
+          const paragraphs = Array.from(
+            { length: 40 },
+            (_, index) =>
+              `Paragraph ${index + 1}: This reply contains enough text to exercise the message viewport as more content appears.`,
+          );
+
+          await reply([...paragraphs, "End of the long reply."].join("\n\n"));
         } else {
           const workflow = message.content.includes("run_experiment_workflow");
           const name = workflow
