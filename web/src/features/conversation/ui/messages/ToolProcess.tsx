@@ -1,12 +1,10 @@
 import { useState, type ReactNode } from "react";
-import {
-  CaretDownIcon,
-  CheckIcon,
-  CircleNotchIcon,
-  ClockIcon,
-  WarningCircleIcon,
-  WrenchIcon,
-} from "@phosphor-icons/react";
+import { CaretDownIcon } from "@phosphor-icons/react/dist/csr/CaretDown";
+import { CheckIcon } from "@phosphor-icons/react/dist/csr/Check";
+import { CircleNotchIcon } from "@phosphor-icons/react/dist/csr/CircleNotch";
+import { ClockIcon } from "@phosphor-icons/react/dist/csr/Clock";
+import { WarningCircleIcon } from "@phosphor-icons/react/dist/csr/WarningCircle";
+import { WrenchIcon } from "@phosphor-icons/react/dist/csr/Wrench";
 import {
   Collapsible,
   CollapsibleContent,

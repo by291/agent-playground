@@ -1,9 +1,7 @@
 import { useEffect, useRef } from "react";
-import {
-  ArrowClockwiseIcon,
-  ChatCircleIcon,
-  CircleNotchIcon,
-} from "@phosphor-icons/react";
+import { ArrowClockwiseIcon } from "@phosphor-icons/react/dist/csr/ArrowClockwise";
+import { ChatCircleIcon } from "@phosphor-icons/react/dist/csr/ChatCircle";
+import { CircleNotchIcon } from "@phosphor-icons/react/dist/csr/CircleNotch";
 import { Button } from "@/components/ui/button";
 import type { ConversationHistory } from "../model/useConversationHistory";
 import { isRunActive, type RunStatus } from "@shared/run-status";

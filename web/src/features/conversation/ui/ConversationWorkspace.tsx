@@ -1,9 +1,7 @@
-import {
-  PlusIcon,
-  PulseIcon,
-  SidebarSimpleIcon,
-  SquaresFourIcon,
-} from "@phosphor-icons/react";
+import { PlusIcon } from "@phosphor-icons/react/dist/csr/Plus";
+import { PulseIcon } from "@phosphor-icons/react/dist/csr/Pulse";
+import { SidebarSimpleIcon } from "@phosphor-icons/react/dist/csr/SidebarSimple";
+import { SquaresFourIcon } from "@phosphor-icons/react/dist/csr/SquaresFour";
 import { useEffect, useRef, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";

@@ -1,4 +1,4 @@
-import { StackIcon } from "@phosphor-icons/react";
+import { StackIcon } from "@phosphor-icons/react/dist/csr/Stack";
 import { Badge } from "./ui/badge";
 import { cn } from "@/lib/utils";
 

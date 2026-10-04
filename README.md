@@ -168,7 +168,7 @@ Pyrefly uses its strict preset. Ruff keeps its default checks and adds import so
 
 The Python and server PostgreSQL tests use Testcontainers to start temporary `postgres:18-alpine` containers. `make test` and `make check` need a running Docker daemon, but do not need the Compose database or a `TEST_DATABASE_URL` variable.
 
-TypeScript unit, integration, and DOM interaction tests use Vitest. `pnpm test` runs these server and web tests, including the PostgreSQL integration suite. Server tests use the Node environment; web DOM tests opt into jsdom and use React Testing Library with jest-dom assertions. The web test setup releases mounted components, resets browser storage, and restores mocks and timers after each test. Type checking remains a separate `pnpm check` step.
+TypeScript unit, integration, and DOM interaction tests use Vitest. `pnpm test` runs these server and web tests, including the PostgreSQL integration suite. Server tests use the Node environment; web tests use the threads pool with file isolation, and DOM tests opt into jsdom and use React Testing Library with jest-dom assertions. The web test setup releases mounted components, resets browser storage, and restores mocks and timers after each test. Type checking remains a separate `pnpm check` step.
 
 ```sh
 pnpm --filter agent-playground-server test:unit
@@ -188,7 +188,7 @@ pnpm test:e2e
 pnpm --filter agent-playground-web test:e2e:ui
 ```
 
-`pnpm test:e2e` needs Docker and starts an isolated PostgreSQL container, the real TypeScript backend on `127.0.0.1:4300`, and Vite on `127.0.0.1:4173`. These ports must be free. The harness supplies deterministic Aegra HTTP responses and durable workflow outputs; it does not run the Python agent or contact a model. Browser requests pass through the real frontend, AG-UI adapter, API and database. Playwright owns the servers, and the harness releases its container and connections on shutdown. Tests cover welcome restoration, tool details, streamed code and copying, reload during a run, edited workflow approval, sidebar resizing, live external-task progress, browser-independent continuation and the development gallery. CI installs Chromium with its Linux dependencies and uploads HTML reports, failure screenshots and traces.
+`pnpm test:e2e` needs Docker and starts an isolated PostgreSQL container, the real TypeScript backend on `127.0.0.1:4300`, and Vite on `127.0.0.1:4173`. These ports must be free. The harness supplies deterministic Aegra HTTP responses and durable workflow outputs; it does not run the Python agent or contact a model. Browser requests pass through the real frontend, AG-UI adapter, API and database. Playwright owns the servers, and the harness releases its container and connections on shutdown. Tests cover welcome restoration, tool details, streamed code and copying, reload during a run, edited workflow approval, sidebar resizing, live external-task progress, browser-independent continuation and the development gallery. CI splits the complete suite into two parallel shards on separate runners, each with one browser worker and its own test services and database. Each shard installs Chromium with its Linux dependencies and uploads its HTML report, failure screenshots and traces as `playwright-report-1` or `playwright-report-2`.
 
 To run smoke tests with the real Python agent and configured model, start the development stack described above and explicitly select its frontend:
 

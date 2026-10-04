@@ -38,7 +38,21 @@ export default defineConfig([
   {
     files: ["src/**/*.{ts,tsx}"],
     plugins: { architecture: { rules: { boundaries: architectureRule } } },
-    rules: { "architecture/boundaries": "error" },
+    rules: {
+      "architecture/boundaries": "error",
+      "no-restricted-imports": [
+        "error",
+        {
+          paths: [
+            {
+              name: "@phosphor-icons/react",
+              message:
+                "Import individual icons from @phosphor-icons/react/dist/csr/<Icon> to avoid loading the entire icon library in development.",
+            },
+          ],
+        },
+      ],
+    },
   },
   {
     files: ["*.js", "tests/**/*.js"],

@@ -1,4 +1,5 @@
-import { GearSixIcon, XIcon } from "@phosphor-icons/react";
+import { GearSixIcon } from "@phosphor-icons/react/dist/csr/GearSix";
+import { XIcon } from "@phosphor-icons/react/dist/csr/X";
 import {
   createContext,
   useContext,

@@ -1,11 +1,9 @@
 import "./gallery.css";
 import { AppBrand } from "@/components/AppBrand";
-import {
-  ArrowCounterClockwiseIcon,
-  BracketsCurlyIcon,
-  EyeIcon,
-  SquaresFourIcon,
-} from "@phosphor-icons/react";
+import { ArrowCounterClockwiseIcon } from "@phosphor-icons/react/dist/csr/ArrowCounterClockwise";
+import { BracketsCurlyIcon } from "@phosphor-icons/react/dist/csr/BracketsCurly";
+import { EyeIcon } from "@phosphor-icons/react/dist/csr/Eye";
+import { SquaresFourIcon } from "@phosphor-icons/react/dist/csr/SquaresFour";
 import { lazy, Suspense, useState } from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";

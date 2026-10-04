@@ -1,5 +1,7 @@
 import { Fragment, useMemo, useState, type CSSProperties } from "react";
-import { CopyIcon, PulseIcon, XIcon } from "@phosphor-icons/react";
+import { CopyIcon } from "@phosphor-icons/react/dist/csr/Copy";
+import { PulseIcon } from "@phosphor-icons/react/dist/csr/Pulse";
+import { XIcon } from "@phosphor-icons/react/dist/csr/X";
 import { Button } from "@/components/ui/button";
 import { useConversation } from "../ConversationProvider";
 import { ActivityItem } from "./ActivityItem";

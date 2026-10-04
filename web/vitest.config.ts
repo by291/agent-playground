@@ -4,6 +4,7 @@ import viteConfig from "./vite.config.ts";
 export default defineConfig((environment) =>
   mergeConfig(viteConfig(environment), {
     test: {
+      pool: "threads",
       environment: "node",
       include: ["src/**/*.test.ts", "tests/**/*.test.js"],
       setupFiles: ["./tests/setup.ts"],

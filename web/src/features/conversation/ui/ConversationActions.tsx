@@ -1,10 +1,8 @@
 import { useRef, useState, type SubmitEvent } from "react";
 import * as Popover from "@radix-ui/react-popover";
-import {
-  DotsThreeIcon,
-  PencilSimpleIcon,
-  TrashIcon,
-} from "@phosphor-icons/react";
+import { DotsThreeIcon } from "@phosphor-icons/react/dist/csr/DotsThree";
+import { PencilSimpleIcon } from "@phosphor-icons/react/dist/csr/PencilSimple";
+import { TrashIcon } from "@phosphor-icons/react/dist/csr/Trash";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "cn";

@@ -1,5 +1,5 @@
 import * as Popover from "@radix-ui/react-popover";
-import { XIcon } from "@phosphor-icons/react";
+import { XIcon } from "@phosphor-icons/react/dist/csr/X";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { useConversation } from "../ConversationProvider";

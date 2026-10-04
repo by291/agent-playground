@@ -1,9 +1,7 @@
-import {
-  ChatCircleIcon,
-  PlusIcon,
-  StackIcon,
-  XIcon,
-} from "@phosphor-icons/react";
+import { ChatCircleIcon } from "@phosphor-icons/react/dist/csr/ChatCircle";
+import { PlusIcon } from "@phosphor-icons/react/dist/csr/Plus";
+import { StackIcon } from "@phosphor-icons/react/dist/csr/Stack";
+import { XIcon } from "@phosphor-icons/react/dist/csr/X";
 import { Button } from "@/components/ui/button";
 import { ConnectionStatus } from "@/components/ConnectionStatus";
 import { SettingsControl } from "@/components/SettingsControl";

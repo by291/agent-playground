@@ -1,9 +1,7 @@
-import {
-  ChatCircleIcon,
-  DatabaseIcon,
-  ListChecksIcon,
-  ChartBarIcon,
-} from "@phosphor-icons/react";
+import { ChatCircleIcon } from "@phosphor-icons/react/dist/csr/ChatCircle";
+import { DatabaseIcon } from "@phosphor-icons/react/dist/csr/Database";
+import { ListChecksIcon } from "@phosphor-icons/react/dist/csr/ListChecks";
+import { ChartBarIcon } from "@phosphor-icons/react/dist/csr/ChartBar";
 import type { ReactNode } from "react";
 
 export function Welcome({ onSelect }: { onSelect: (prompt: string) => void }) {

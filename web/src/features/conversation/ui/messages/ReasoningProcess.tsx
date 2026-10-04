@@ -1,9 +1,7 @@
 import { useState } from "react";
-import {
-  BrainIcon,
-  CaretDownIcon,
-  CircleNotchIcon,
-} from "@phosphor-icons/react";
+import { BrainIcon } from "@phosphor-icons/react/dist/csr/Brain";
+import { CaretDownIcon } from "@phosphor-icons/react/dist/csr/CaretDown";
+import { CircleNotchIcon } from "@phosphor-icons/react/dist/csr/CircleNotch";
 import type { ReasoningMessage } from "@ag-ui/client";
 import {
   Collapsible,

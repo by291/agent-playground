@@ -1,15 +1,13 @@
 import { memo, useState } from "react";
-import {
-  BrainIcon,
-  CaretRightIcon,
-  ChatCircleDotsIcon,
-  CodeIcon,
-  DatabaseIcon,
-  GitBranchIcon,
-  LightningIcon,
-  PulseIcon,
-  WarningCircleIcon,
-} from "@phosphor-icons/react";
+import { BrainIcon } from "@phosphor-icons/react/dist/csr/Brain";
+import { CaretRightIcon } from "@phosphor-icons/react/dist/csr/CaretRight";
+import { ChatCircleDotsIcon } from "@phosphor-icons/react/dist/csr/ChatCircleDots";
+import { CodeIcon } from "@phosphor-icons/react/dist/csr/Code";
+import { DatabaseIcon } from "@phosphor-icons/react/dist/csr/Database";
+import { GitBranchIcon } from "@phosphor-icons/react/dist/csr/GitBranch";
+import { LightningIcon } from "@phosphor-icons/react/dist/csr/Lightning";
+import { PulseIcon } from "@phosphor-icons/react/dist/csr/Pulse";
+import { WarningCircleIcon } from "@phosphor-icons/react/dist/csr/WarningCircle";
 import { EventType } from "@ag-ui/client";
 import { cn } from "cn";
 import { activityDescription, type ActivityStream } from "../model/activity";

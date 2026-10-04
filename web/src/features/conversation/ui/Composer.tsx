@@ -1,5 +1,5 @@
 import { composerState } from "../model/selectors";
-import { ArrowUpIcon } from "@phosphor-icons/react";
+import { ArrowUpIcon } from "@phosphor-icons/react/dist/csr/ArrowUp";
 import { type KeyboardEvent, type SubmitEvent } from "react";
 import { useShallow } from "zustand/react/shallow";
 import {

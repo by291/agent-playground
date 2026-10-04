@@ -1,6 +1,6 @@
 import type { Message } from "@ag-ui/client";
 import { useLayoutEffect, useRef, type ReactNode } from "react";
-import { StackIcon } from "@phosphor-icons/react";
+import { StackIcon } from "@phosphor-icons/react/dist/csr/Stack";
 import { Bubble, BubbleContent } from "@/components/ui/bubble";
 import {
   Message as ConversationMessage,

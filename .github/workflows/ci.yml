@@ -60,9 +60,13 @@ jobs:
       - run: pnpm --filter agent-playground-web build
 
   e2e:
-    name: Browser E2E
+    name: Browser E2E (${{ matrix.shard }}/2)
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/setup@v3
@@ -71,11 +75,11 @@ jobs:
           cache: true
           require-lockfile: true
       - run: pnpm --filter agent-playground-web exec playwright install --with-deps chromium
-      - run: pnpm test:e2e
+      - run: pnpm --filter agent-playground-web exec playwright test --shard=${{ matrix.shard }}/2
       - uses: actions/upload-artifact@v5
         if: ${{ !cancelled() }}
         with:
-          name: playwright-report
+          name: playwright-report-${{ matrix.shard }}
           path: |
             web/playwright-report/
             web/test-results/
