@@ -1,4 +1,8 @@
-import { ChatCircleIcon, ListChecksIcon } from "@phosphor-icons/react";
+import {
+  ChatCircleIcon,
+  DatabaseIcon,
+  ListChecksIcon,
+} from "@phosphor-icons/react";
 import type { ReactNode } from "react";
 
 export function Welcome({ onSelect }: { onSelect: (prompt: string) => void }) {
@@ -21,6 +25,12 @@ export function Welcome({ onSelect }: { onSelect: (prompt: string) => void }) {
           icon={<ListChecksIcon size={17} aria-hidden="true" />}
           title="Draft a plan"
           prompt="Create a plan for validating an agent workflow."
+          onSelect={onSelect}
+        />
+        <Suggestion
+          icon={<DatabaseIcon size={17} aria-hidden="true" />}
+          title="Review SQL"
+          prompt="Start a SQL review workflow to list id and amount from paid orders."
           onSelect={onSelect}
         />
         <Suggestion

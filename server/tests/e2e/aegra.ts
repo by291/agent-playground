@@ -401,7 +401,9 @@ export function controlledAegra(database: typeof db) {
           await reply([...paragraphs, "End of the long reply."].join("\n\n"));
         } else {
           const workflow = message.content.includes("run_experiment_workflow");
-          const sqlWorkflow = message.content.includes("run_sql_workflow");
+          const sqlWorkflow =
+            message.content.includes("run_sql_workflow") ||
+            message.content.includes("SQL review workflow");
           let name = "get_current_time";
 
           if (workflow) {

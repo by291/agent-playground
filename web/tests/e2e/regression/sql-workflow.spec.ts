@@ -21,7 +21,16 @@ test("SQL revisions and explanations survive reload and submit the accepted vers
       new URL(request.url()).pathname === "/agent",
   );
 
-  await send(page, "Use run_sql_workflow to show orders.");
+  await page.getByRole("button", { name: "Review SQL", exact: true }).click();
+  const composer = page.getByRole("textbox", { name: "Message" });
+
+  await expect(composer).toHaveValue(
+    "Start a SQL review workflow to list id and amount from paid orders.",
+  );
+  await expect(
+    page.getByRole("heading", { name: "What would you like to work on?" }),
+  ).toBeVisible();
+  await composer.press("Enter");
   const { threadId } = (await submitted).postDataJSON() as { threadId: string };
 
   await expect(

@@ -6,8 +6,9 @@ test("a real SQL agent revises, explains, restores and submits checked SQL", asy
   await page.goto("/");
   const composer = page.getByRole("textbox", { name: "Message" });
 
-  await composer.fill(
-    "Use run_sql_workflow to list id and amount from paid orders. Use only the demo schema.",
+  await page.getByRole("button", { name: "Review SQL", exact: true }).click();
+  await expect(composer).toHaveValue(
+    "Start a SQL review workflow to list id and amount from paid orders.",
   );
   await composer.press("Enter");
   await expect(
