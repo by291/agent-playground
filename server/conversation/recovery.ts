@@ -1,4 +1,4 @@
-import type { Run } from "@langchain/langgraph-sdk";
+import type { Client, Run } from "@langchain/langgraph-sdk";
 import { aegra } from "../agent/client";
 import type { RunRow } from "../db/schema";
 import { isRunFinished, type RunStatus } from "../../shared/run-status";
@@ -12,9 +12,13 @@ function externalRunId(run: Run): unknown {
   return stored.config?.metadata?.agui_run_id;
 }
 
-export async function findLatestAegraRun(threadId: string, aguiRunId: string) {
+export async function findLatestAegraRun(
+  threadId: string,
+  aguiRunId: string,
+  client: Client = aegra,
+) {
   // One dispatch is admitted per thread. An unmatched newest run is inconclusive.
-  const [latest] = await aegra.runs.list(threadId, { limit: 1 });
+  const [latest] = await client.runs.list(threadId, { limit: 1 });
 
   return latest && externalRunId(latest) === aguiRunId ? latest.run_id : null;
 }
@@ -33,7 +37,10 @@ function localStatus(status: Run["status"]): RunStatus {
   }
 }
 
-export async function reconcileRun(row: RunRow): Promise<RunRow> {
+export async function reconcileRun(
+  row: RunRow,
+  client: Client = aegra,
+): Promise<RunRow> {
   if (row.status === "prepared" || isRunFinished(row.status)) {
     return row;
   }
@@ -42,7 +49,11 @@ export async function reconcileRun(row: RunRow): Promise<RunRow> {
 
   if (!aegraRunId) {
     try {
-      aegraRunId = await findLatestAegraRun(row.threadId, row.aguiRunId);
+      aegraRunId = await findLatestAegraRun(
+        row.threadId,
+        row.aguiRunId,
+        client,
+      );
     } catch {
       // A failed creation lookup cannot prove whether Aegra accepted the submission.
     }
@@ -55,7 +66,7 @@ export async function reconcileRun(row: RunRow): Promise<RunRow> {
     });
   }
 
-  const run = await aegra.runs.get(row.threadId, aegraRunId);
+  const run = await client.runs.get(row.threadId, aegraRunId);
 
   return saveRunObservation(row, {
     aegraRunId,

@@ -12,11 +12,13 @@ export function AssistantReply({
   animatedMessageId,
   children,
   processDetails,
+  externalWaitCallIds = [],
 }: {
   turn: ChatTurn;
   animatedMessageId: string | null;
   children?: ReactNode;
   processDetails?: ReactNode;
+  externalWaitCallIds?: readonly string[];
 }) {
   const [visibleAnswers, setVisibleAnswers] = useState(() => new Set<string>());
   const reportVisibleAnswer = useCallback((messageId: string) => {
@@ -28,7 +30,7 @@ export function AssistantReply({
       return new Set([...previous, messageId]);
     });
   }, []);
-  const process = toolProcess(turn);
+  const process = toolProcess(turn, externalWaitCallIds);
   const final = turn.messages.filter(
     (message) =>
       message.role === "assistant" &&

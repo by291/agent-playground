@@ -1,0 +1,197 @@
+import { randomUUID } from "node:crypto";
+import { eq, isNull } from "drizzle-orm";
+import { RunAgentInputSchema } from "@ag-ui/client";
+import { db } from "../db/database";
+import { externalTasks } from "../db/external-task-schema";
+import { conversationRuns, conversations } from "../db/schema";
+import { aegraUrl, prepareAegraRequest } from "../agent/client";
+import { Client } from "@langchain/langgraph-sdk";
+import {
+  isExternalTaskTerminal,
+  parseExternalWait,
+} from "../../shared/external-task";
+import { isRunFinished } from "../../shared/run-status";
+import {
+  admitRun,
+  claimPrepared,
+  latestRun,
+  recordAegraRun,
+} from "./run-store";
+import { synchronizeConversation } from "./checkpoint-sync";
+import { notifyConversation } from "./changes";
+import { logger } from "../observability/logger";
+
+// Background requests own their deadline and abort signal independently of live streams.
+function createWorkerClient(signal?: AbortSignal) {
+  return new Client({
+    apiUrl: aegraUrl,
+    timeoutMs: 10000,
+    callerOptions: { maxRetries: 0 },
+    onRequest: (url, init) => {
+      const prepared = prepareAegraRequest(url, init);
+
+      return signal
+        ? {
+            ...prepared,
+            signal: AbortSignal.any([
+              signal,
+              ...(prepared.signal ? [prepared.signal] : []),
+            ]),
+          }
+        : prepared;
+    },
+  });
+}
+
+const continuationClient = createWorkerClient();
+
+export async function processExternalTasks(
+  client: Client = continuationClient,
+  signal?: AbortSignal,
+) {
+  const tasks = await db
+    .select({ task: externalTasks, continuation: conversationRuns })
+    .from(externalTasks)
+    .innerJoin(
+      conversations,
+      eq(externalTasks.threadId, conversations.threadId),
+    )
+    .leftJoin(
+      conversationRuns,
+      eq(externalTasks.continuationRunId, conversationRuns.aguiRunId),
+    )
+    .where(isNull(conversations.deletedAt));
+
+  for (const { task, continuation } of tasks) {
+    if (signal?.aborted) {
+      break;
+    }
+
+    if (continuation?.checkpointSynced && isRunFinished(continuation.status)) {
+      continue;
+    }
+
+    try {
+      await synchronizeConversation(task.threadId, client);
+
+      if (!isExternalTaskTerminal(task.status)) {
+        continue;
+      }
+
+      let run = continuation;
+
+      if (!run) {
+        const latest = await latestRun(task.threadId);
+        const wait = latest?.interrupts
+          .map(parseExternalWait)
+          .find(
+            (value) =>
+              value?.taskId === task.taskId &&
+              value.workflowCallId === task.workflowCallId,
+          );
+
+        if (latest?.status !== "interrupted" || !wait) {
+          continue;
+        }
+
+        const runId = randomUUID();
+        const input = RunAgentInputSchema.parse({
+          threadId: task.threadId,
+          runId,
+          messages: [],
+          tools: [],
+          context: [],
+          state: {},
+          resume: [
+            {
+              interruptId: wait.interruptId,
+              status: "resolved",
+              payload: {
+                kind: "external_task_result",
+                taskId: task.taskId,
+                ...task.update,
+              },
+            },
+          ],
+        });
+        const admitted = await admitRun({
+          threadId: task.threadId,
+          runId,
+          messageId: `external-${task.taskId}`,
+          request: input,
+          userMessage: null,
+          isResume: true,
+          externalTaskId: task.taskId,
+        });
+
+        run = admitted.row;
+      }
+
+      if (
+        signal?.aborted ||
+        run.status !== "prepared" ||
+        !(await claimPrepared(run.aguiRunId))
+      ) {
+        continue;
+      }
+
+      const entry = run.request.resume?.[0];
+
+      if (!entry) {
+        throw new Error("External continuation has no resume entry");
+      }
+
+      // A durable admission precedes upstream creation. Unknown outcomes use the
+      // existing mapping reconciliation, never an unconfirmed second creation.
+      const payload: unknown = entry.payload;
+      const config = {
+        configurable: {},
+        metadata: { agui_run_id: run.aguiRunId },
+      };
+      const created = await client.runs.create(task.threadId, "agent", {
+        command: { resume: { [entry.interruptId]: payload } },
+        config,
+        metadata: { agui_run_id: run.aguiRunId },
+        multitaskStrategy: "reject",
+      });
+
+      await recordAegraRun(run.aguiRunId, created.run_id);
+      await synchronizeConversation(task.threadId, client);
+      await notifyConversation(db, task.threadId);
+    } catch (error) {
+      logger.warn(
+        { err: error, task_id: task.taskId },
+        "External task continuation will be reconciled",
+      );
+    }
+  }
+}
+
+export function startExternalTaskWorker() {
+  const controller = new AbortController();
+  const client = createWorkerClient(controller.signal);
+  let stopped = false;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let running = Promise.resolve();
+
+  function tick() {
+    running = processExternalTasks(client, controller.signal)
+      .catch((error: unknown) => {
+        logger.error({ err: error }, "External task scan failed");
+      })
+      .finally(() => {
+        if (!stopped) {
+          timer = setTimeout(tick, 1000);
+        }
+      });
+  }
+
+  tick();
+
+  return async () => {
+    stopped = true;
+    clearTimeout(timer);
+    controller.abort();
+    await running;
+  };
+}

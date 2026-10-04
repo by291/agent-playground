@@ -21,11 +21,16 @@ const toolLabels: Record<string, string> = {
   calculate_sum: "Calculate a sum",
   run_experiment_workflow: "Build an experiment plan",
   run_sql_workflow: "Review SQL",
+  run_report_workflow: "Generate report",
 };
 
 function summary(steps: ToolStep[]) {
   if (steps.some((step) => step.status === "failed")) {
     return "Tool process failed";
+  }
+
+  if (steps.some((step) => step.status === "waiting")) {
+    return "Waiting for external task";
   }
 
   if (steps.some((step) => step.status === "paused")) {
@@ -58,7 +63,7 @@ function StatusIcon({ status }: { status: ToolStep["status"] }) {
     return <CheckIcon aria-hidden="true" size={16} />;
   }
 
-  if (status === "paused") {
+  if (status === "paused" || status === "waiting") {
     return <ClockIcon aria-hidden="true" size={16} />;
   }
 
@@ -83,6 +88,7 @@ function ToolDetails({ step }: { step: ToolStep }) {
     completed: "Completed",
     running: "Running",
     paused: "Waiting for review",
+    waiting: "Waiting for external task",
     failed: "Failed",
     unavailable: "Result unavailable",
   };

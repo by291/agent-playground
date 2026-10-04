@@ -43,6 +43,13 @@
       "when": 1791048164147,
       "tag": "0005_backfill_conversation_titles",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1791107203865,
+      "tag": "0006_external_tasks",
+      "breakpoints": true
     }
   ]
 }

@@ -1,3 +1,4 @@
+import { parseExternalWait } from "@shared/external-task";
 import { conversationView } from "../model/view";
 import {
   isRunning,
@@ -20,6 +21,7 @@ import type { A2UISurfaceView } from "@/features/a2ui";
 import { MessageRow } from "./messages/MessageRow";
 import { AssistantReply } from "./messages/AssistantReply";
 import { ReviewPanel } from "./review/ReviewPanel";
+import { ExternalTaskPanel } from "./ExternalTaskPanel";
 import { WorkflowReviewPanel } from "./review/WorkflowReviewPanel";
 import { useConversation } from "../ConversationProvider";
 import { Welcome } from "./Welcome";
@@ -49,6 +51,7 @@ export function ChatPane({
 }: { onSelectPrompt?: (prompt: string) => void } = {}) {
   const {
     messages,
+    externalTasks,
     runs,
     surfaces,
     pendingInterrupts,
@@ -63,6 +66,7 @@ export function ChatPane({
   } = useConversation(
     useShallow((state) => ({
       messages: state.messages,
+      externalTasks: state.externalTasks,
       runs: state.runs,
       surfaces: state.surfaces,
       pendingInterrupts: state.pendingInterrupts,
@@ -77,11 +81,24 @@ export function ChatPane({
     })),
   );
   const view = useMemo(
-    () => conversationView({ messages, runs, surfaces, pendingInterrupts }),
-    [messages, runs, surfaces, pendingInterrupts],
+    () =>
+      conversationView({
+        messages,
+        runs,
+        surfaces,
+        pendingInterrupts,
+        externalTasks,
+      }),
+    [messages, runs, surfaces, pendingInterrupts, externalTasks],
   );
+  const externalWaitCallIds = pendingInterrupts.flatMap((interrupt) => {
+    const wait = parseExternalWait(interrupt);
+
+    return wait ? [wait.workflowCallId] : [];
+  });
   const {
     turns,
+    unattachedTasks,
     unattachedSurfaces,
     unattachedReviews,
     unattachedWorkflowReviews,
@@ -115,6 +132,7 @@ export function ChatPane({
                     hasReply,
                     reviewKey,
                     workflowReviews,
+                    externalTasks: turnTasks,
                   }) => {
                     return (
                       <Fragment key={turn.id}>
@@ -127,6 +145,7 @@ export function ChatPane({
                           <MessageScrollerItem className="conversation-column">
                             <AssistantReply
                               turn={turn}
+                              externalWaitCallIds={externalWaitCallIds}
                               animatedMessageId={animatedMessageId}
                               processDetails={
                                 artifacts.history.length > 0 && (
@@ -145,6 +164,12 @@ export function ChatPane({
                                 )
                               }
                             >
+                              {turnTasks.map((task) => (
+                                <ExternalTaskPanel
+                                  key={task.taskId}
+                                  task={task}
+                                />
+                              ))}
                               {artifacts.current.map((view) => (
                                 <Surface
                                   key={view.id}
@@ -174,6 +199,14 @@ export function ChatPane({
                     );
                   },
                 )}
+                {unattachedTasks.map((task) => (
+                  <MessageScrollerItem
+                    className="conversation-column"
+                    key={task.taskId}
+                  >
+                    <ExternalTaskPanel task={task} />
+                  </MessageScrollerItem>
+                ))}
                 {unattachedSurfaces.map((view) => (
                   <MessageScrollerItem
                     key={view.id}

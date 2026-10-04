@@ -1,3 +1,4 @@
+import type { ExternalTaskSnapshot } from "@shared/external-task";
 import type { A2UISurfaceView } from "@/features/a2ui";
 import { isRunActive } from "@shared/run-status";
 import { parsePlanReview } from "./planReview";
@@ -10,13 +11,14 @@ import { parseWorkflowReview } from "@shared/workflow-review";
 type ViewInput = Pick<
   ConversationState,
   "messages" | "runs" | "surfaces" | "pendingInterrupts"
->;
+> & { externalTasks?: ExternalTaskSnapshot[] };
 
 export function conversationView({
   messages,
   runs,
   surfaces,
   pendingInterrupts,
+  externalTasks = [],
 }: ViewInput) {
   const reviews = pendingInterrupts.flatMap((interrupt) => {
     const review = parsePlanReview(interrupt);
@@ -102,6 +104,9 @@ export function conversationView({
     const turnReviews = index === turns.length - 1 ? reviews : [];
     const artifacts = workflowArtifacts(calls, views, turnReviews);
     const callIds = new Set(calls.map((call) => call.id));
+    const turnTasks = externalTasks.filter((task) =>
+      callIds.has(task.workflowCallId),
+    );
 
     artifacts.history.push(
       ...history.filter(
@@ -118,10 +123,12 @@ export function conversationView({
       (turn.status !== null && isRunActive(turn.status)) ||
       views.length > 0 ||
       artifacts.reviews.length > 0 ||
-      turnWorkflowReviews.length > 0;
+      turnWorkflowReviews.length > 0 ||
+      turnTasks.length > 0;
 
     return {
       turn,
+      externalTasks: turnTasks,
       artifacts,
       hasReply,
       workflowReviews: turnWorkflowReviews,
@@ -142,6 +149,9 @@ export function conversationView({
 
   return {
     turns: replies,
+    unattachedTasks: externalTasks.filter(
+      (task) => !attachedCalls.has(task.workflowCallId),
+    ),
     unattachedSurfaces,
     unattachedReviews: turns.length === 0 ? reviews : [],
     unattachedWorkflowReviews: turns.length === 0 ? workflowReviews : [],
@@ -149,6 +159,7 @@ export function conversationView({
       turns.length > 0 ||
       surfaces.length > 0 ||
       reviews.length > 0 ||
-      workflowReviews.length > 0,
+      workflowReviews.length > 0 ||
+      externalTasks.length > 0,
   };
 }

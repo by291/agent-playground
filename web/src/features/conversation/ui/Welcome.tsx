@@ -2,6 +2,7 @@ import {
   ChatCircleIcon,
   DatabaseIcon,
   ListChecksIcon,
+  ChartBarIcon,
 } from "@phosphor-icons/react";
 import type { ReactNode } from "react";
 
@@ -31,6 +32,12 @@ export function Welcome({ onSelect }: { onSelect: (prompt: string) => void }) {
           icon={<DatabaseIcon size={17} aria-hidden="true" />}
           title="Review SQL"
           prompt="Start a SQL review workflow to list id and amount from paid orders."
+          onSelect={onSelect}
+        />
+        <Suggestion
+          icon={<ChartBarIcon size={17} aria-hidden="true" />}
+          title="Generate report"
+          prompt="Generate a report using the asynchronous report workflow and show its progress."
           onSelect={onSelect}
         />
         <Suggestion

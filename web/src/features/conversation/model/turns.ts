@@ -15,7 +15,8 @@ export interface ChatTurn {
 export interface ToolStep {
   call: ToolCall;
   result: ToolMessage | undefined;
-  status: "running" | "completed" | "failed" | "paused" | "unavailable";
+  status:
+    "running" | "completed" | "failed" | "paused" | "waiting" | "unavailable";
 }
 
 export function chatTurns(
@@ -76,7 +77,10 @@ export function chatTurns(
   return turns;
 }
 
-export function toolProcess(turn: ChatTurn): {
+export function toolProcess(
+  turn: ChatTurn,
+  externalWaitCallIds: readonly string[] = [],
+): {
   message: AssistantMessage;
   calls: ToolStep[];
 }[] {
@@ -101,7 +105,9 @@ export function toolProcess(turn: ChatTurn): {
           if (result) {
             status = result.error ? "failed" : "completed";
           } else if (turn.status === "interrupted") {
-            status = "paused";
+            status = externalWaitCallIds.includes(call.id)
+              ? "waiting"
+              : "paused";
           } else if (turn.status === "failed") {
             status = "failed";
           } else if (

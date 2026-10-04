@@ -140,12 +140,12 @@ def test_usage_includes_fixed_context_tools_and_provider_input_tokens():
 def test_a_single_oversized_request_fails_without_silently_dropping_it(
     monkeypatch: pytest.MonkeyPatch,
 ):
-    monkeypatch.setenv("CONTEXT_WINDOW_TOKENS", "1000")
+    monkeypatch.setenv("CONTEXT_WINDOW_TOKENS", "10000")
     model = RecordingModel(responses=[AIMessage(content="Should not be called.")])
     graph = make_graph(model=model)
 
     with pytest.raises(ValueError, match="context window"):
-        graph.invoke({"messages": [HumanMessage(content="oversized " * 1000)]})
+        graph.invoke({"messages": [HumanMessage(content="oversized " * 10000)]})
 
     assert not model._inputs
 

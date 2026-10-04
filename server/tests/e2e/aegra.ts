@@ -34,6 +34,11 @@ interface Thread {
   review: {
     id: string;
     value:
+      | {
+          kind: "workflow_external_wait";
+          taskId: string;
+          workflowCallId: string;
+        }
       | Omit<WorkflowReview, "interruptId">
       | {
           kind: string;
@@ -187,6 +192,57 @@ export function controlledAegra(database: typeof db) {
     return run
       ? context.json(run)
       : context.json({ error: "Run not found" }, 404);
+  });
+  api.post("/threads/:id/runs", async (context) => {
+    const input = requestSchema.parse(await context.req.json());
+    const threadId = context.req.param("id");
+    const thread = threadFor(threadId);
+    const wait = thread.review;
+
+    if (wait?.value.kind !== "workflow_external_wait") {
+      return context.json({ error: "No external wait" }, 409);
+    }
+
+    const command = z.record(z.unknown()).parse(input.command?.resume);
+    const result = z
+      .object({ taskId: z.string(), status: z.enum(["succeeded", "failed"]) })
+      .parse(command[wait.id]);
+    const run = {
+      run_id: randomUUID(),
+      thread_id: threadId,
+      status: "success",
+      config: { metadata: input.metadata },
+    };
+
+    thread.runs.push(run);
+    thread.messages.push({
+      id: randomUUID(),
+      type: "tool",
+      role: "tool",
+      tool_call_id: wait.value.workflowCallId,
+      name: "run_report_workflow",
+      content: "External task finished",
+    });
+    thread.messages.push({
+      id: randomUUID(),
+      type: "ai",
+      role: "assistant",
+      content:
+        result.status === "succeeded"
+          ? "The report is ready."
+          : "Report generation failed.",
+    });
+    await publishCard(
+      threadId,
+      input.metadata.agui_run_id,
+      wait.value.workflowCallId,
+      "reviewed",
+      "Generated report",
+      ["The external service produced the report."],
+    );
+    thread.review = null;
+
+    return context.json(run);
   });
   api.post("/threads/:id/runs/stream", async (context) => {
     const input = requestSchema.parse(await context.req.json());
@@ -404,9 +460,12 @@ export function controlledAegra(database: typeof db) {
           const sqlWorkflow =
             message.content.includes("run_sql_workflow") ||
             message.content.includes("SQL review workflow");
+          const reportWorkflow = message.content.includes("report workflow");
           let name = "get_current_time";
 
-          if (workflow) {
+          if (reportWorkflow) {
+            name = "run_report_workflow";
+          } else if (workflow) {
             name = "run_experiment_workflow";
           } else if (sqlWorkflow) {
             name = "run_sql_workflow";
@@ -428,7 +487,28 @@ export function controlledAegra(database: typeof db) {
             tool_calls: [{ id: callId, name, args: {} }],
           });
 
-          if (sqlWorkflow) {
+          if (reportWorkflow) {
+            const { registerExternalTask } =
+              await import("../../conversation/external-tasks");
+            const taskId = randomUUID();
+
+            await registerExternalTask({
+              taskId,
+              threadId,
+              runId: input.metadata.agui_run_id,
+              workflowCallId: callId,
+              stepId: "report",
+              label: "Generate report",
+            });
+            thread.review = {
+              id: randomUUID(),
+              value: {
+                kind: "workflow_external_wait",
+                taskId,
+                workflowCallId: callId,
+              },
+            };
+          } else if (sqlWorkflow) {
             thread.sql = new ControlledSqlWorkflow(database, threadId, callId);
             const card = await thread.sql.publish(input.metadata.agui_run_id);
 

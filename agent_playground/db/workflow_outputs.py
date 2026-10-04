@@ -4,7 +4,7 @@ import asyncio
 from dataclasses import dataclass
 from uuid import uuid4
 
-from sqlalchemy import select, update
+from sqlalchemy import select, text, update
 
 from agent_playground.db.connection import app_engine
 from agent_playground.db.schema import (
@@ -104,6 +104,11 @@ def _store(
             update(conversations)
             .where(conversations.c.thread_id == thread_id)
             .values(next_output_seq=next_output_seq + 1)
+        )
+
+        connection.execute(
+            text("SELECT pg_notify('conversation_changed', :thread_id)"),
+            {"thread_id": thread_id},
         )
 
         return WorkflowOutput(output_id, agui_run_id, next_output_seq, payload)

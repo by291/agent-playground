@@ -1467,3 +1467,143 @@ test("SQL feedback resumes the current workflow and stale or failed acceptance d
     disconnect();
   }
 });
+
+test("older task snapshots cannot replace newer progress or completed continuation", () => {
+  const stream = streamingAgent("task-recovery");
+  const session = createConversationSession(
+    { threadId: "task-recovery" },
+    stream.agent,
+  );
+  const saved = snapshot("run", "completed");
+  const task = {
+    taskId: "task",
+    workflowCallId: "call",
+    label: "Build artifact",
+    revision: 3,
+    status: "succeeded" as const,
+    stage: "done",
+    message: "Ready",
+    progress: 100,
+    history: [],
+    continuationStatus: "completed" as const,
+  };
+  const disconnect = connectSession(session, () => Promise.resolve(saved));
+
+  try {
+    session.receiveSnapshot({ ...saved, externalTasks: [task] });
+    session.receiveSnapshot({
+      ...saved,
+      externalTasks: [
+        { ...task, revision: 2, status: "running", message: "Building" },
+      ],
+    });
+    session.receiveSnapshot({
+      ...saved,
+      externalTasks: [{ ...task, continuationStatus: null }],
+    });
+    assert.equal(session.store.getState().externalTasks[0]?.message, "Ready");
+    assert.equal(
+      session.store.getState().externalTasks[0]?.continuationStatus,
+      "completed",
+    );
+  } finally {
+    disconnect();
+  }
+});
+
+test("external waits are identified separately from user review", async () => {
+  const { parseExternalWait } = await import("@shared/external-task");
+  const { parseWorkflowReview } = await import("@shared/workflow-review");
+  const { composerState } = await import("../model/selectors");
+  const session = createConversationSession({ threadId: "external" });
+  const interrupt = InterruptSchema.parse({
+    id: "external-wait",
+    reason: "Waiting",
+    metadata: {
+      langgraph: {
+        raw: {
+          kind: "workflow_external_wait",
+          taskId: "task",
+          workflowCallId: "call",
+        },
+      },
+    },
+  });
+
+  assert.equal(parseExternalWait(interrupt)?.taskId, "task");
+  assert.equal(parseWorkflowReview(interrupt), null);
+  session.store.setState({ pendingInterrupts: [interrupt] });
+  assert.equal(
+    composerState(session.store.getState()).waitingForExternalTask,
+    true,
+  );
+});
+
+test("an experiment review submits while an external task is still waiting", async () => {
+  const stream = streamingAgent("mixed-external");
+  const session = createConversationSession(
+    { threadId: "mixed-external" },
+    stream.agent,
+  );
+  const paused = snapshot("paused", "interrupted");
+
+  paused.interrupts = [
+    InterruptSchema.parse({
+      id: "plan-review",
+      reason: "Review plan",
+      metadata: {
+        langgraph: {
+          raw: {
+            kind: "experiment_plan_review",
+            workflowCallId: "plan",
+            title: "Plan",
+            steps: ["Step"],
+          },
+        },
+      },
+    }),
+    InterruptSchema.parse({
+      id: "external-wait",
+      reason: "External task",
+      metadata: {
+        langgraph: {
+          raw: {
+            kind: "workflow_external_wait",
+            workflowCallId: "report",
+            taskId: "task",
+          },
+        },
+      },
+    }),
+  ];
+  const disconnect = connectSession(session, () => Promise.resolve(paused));
+
+  try {
+    session.receiveSnapshot(paused);
+    const submission = session.store.getState().reviewPlan([
+      {
+        interruptId: "plan-review",
+        decision: "approve",
+        title: "Plan",
+        steps: ["Step"],
+      },
+    ]);
+
+    await waitFor(() => stream.requests === 1);
+    const input = await stream.requested;
+
+    assert.deepEqual(
+      input.resume?.map((entry) => entry.interruptId),
+      ["plan-review"],
+    );
+    stream.emit({
+      type: "RUN_STARTED",
+      threadId: input.threadId,
+      runId: input.runId,
+    });
+    stream.finish(input);
+    await submission;
+  } finally {
+    disconnect();
+  }
+});

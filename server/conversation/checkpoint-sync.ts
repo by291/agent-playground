@@ -1,3 +1,4 @@
+import type { Client } from "@langchain/langgraph-sdk";
 import { langGraphInterruptsToAGUI } from "@ag-ui/langgraph";
 import { and, asc, desc, eq, inArray } from "drizzle-orm";
 import { aegra } from "../agent/client";
@@ -17,9 +18,9 @@ import { conversationExists } from "./management";
 import { workflowOutputs } from "../db/workflow-schema";
 import { workflowReplyMessages } from "../../shared/workflow-output";
 
-async function readCompletedCheckpoint(run: RunRow) {
+async function readCompletedCheckpoint(run: RunRow, client: Client) {
   for (let attempt = 0; attempt < 5; attempt += 1) {
-    const state = await aegra.threads.getState(run.threadId);
+    const state = await client.threads.getState(run.threadId);
     const interrupts = langGraphInterruptsToAGUI(
       state.tasks.flatMap((task) => task.interrupts),
     );
@@ -150,7 +151,10 @@ async function saveCheckpoint(
   });
 }
 
-export async function synchronizeConversation(threadId: string): Promise<void> {
+export async function synchronizeConversation(
+  threadId: string,
+  client: Client = aegra,
+): Promise<void> {
   if (!(await conversationExists(threadId))) {
     return;
   }
@@ -161,11 +165,11 @@ export async function synchronizeConversation(threadId: string): Promise<void> {
     return;
   }
 
-  const run = await reconcileRun(latest);
+  const run = await reconcileRun(latest, client);
 
   if (!isRunFinished(run.status) || run.checkpointSynced) {
     return;
   }
 
-  await saveCheckpoint(run, await readCompletedCheckpoint(run));
+  await saveCheckpoint(run, await readCompletedCheckpoint(run, client));
 }

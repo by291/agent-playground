@@ -26,6 +26,7 @@ export default defineConfig({
       provider: "v8",
       include: [
         "agent/**/*.ts",
+        "http/**/*.ts",
         "conversation/**/*.ts",
         "db/**/*.ts",
         "observability/**/*.ts",

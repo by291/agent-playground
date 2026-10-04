@@ -18,7 +18,7 @@ flowchart TD
     J --> K
 ```
 
-workflow 的顺序、分支和业务状态由 Python/LangGraph 定义。通用机制处理审核、恢复和展示；SQL 是其中一个业务示例。
+workflow 的顺序、分支和业务状态由 Python/LangGraph 定义。通用机制处理审核、恢复和展示；SQL 和异步报告是业务示例。
 
 ## 代码职责
 
@@ -68,3 +68,44 @@ LangGraph checkpoint 保存业务状态、版本和等待中的 interrupt。应�
 复用已有 A2UI 组件时无需改服务端或前端会话层。需要专门展示时只新增业务组件及 catalog 注册。实验计划的可编辑表单是另一种业务交互，不强制改成对话审核。
 
 当前机制不负责通用 workflow DSL、任意业务动作解释、自动挑选多个审核的目标，也不代替业务检查。这些能力需要明确需求后再演进。
+
+
+## 外部异步任务
+
+```mermaid
+sequenceDiagram
+    participant G as Python workflow
+    participant S as Conversation server
+    participant A as External API
+    participant W as Background worker
+    participant U as Open conversation
+    G->>S: Register stable task identity
+    S-->>G: taskId + callbackToken
+    G->>A: Submit idempotent job
+    A-->>G: 202 accepted
+    G->>G: workflow_external_wait checkpoint
+    loop Intermediate stages
+        A->>S: Callback with increasing revision
+        S->>S: Persist task and history
+        S-->>U: SSE invalidation
+        U->>S: Read complete snapshot
+    end
+    A->>S: succeeded / failed
+    W->>S: Admit one continuation
+    W->>G: Native Aegra resume
+    G->>S: Publish business result
+    W->>S: Archive final checkpoint and reply
+    S-->>U: SSE invalidation when connected
+```
+
+通用层保存任务最新状态、revision、业务 stage/message/progress 与历史。中间状态只更新展示，不唤醒 agent。终态由后台 worker 匹配当前 `workflow_external_wait`，通过现有 run 准入和恢复机制创建原生 Aegra continuation；用户页面是否打开不影响运行。提前到达的回调先持久化，等 checkpoint 就绪后处理。
+
+外部 API 每次回传完整状态快照。重复和旧 revision 被忽略；同 revision 内容冲突、终态回退被拒绝。callbackToken 仅用于该任务，公开快照不带它；注册使用 Python 与服务端各自环境中的同一内部 token。任务结果通过可信后台 resume 传递，普通用户审核接口不能伪造外部终态。
+
+`workflows/external.py` 提供注册与独立等待节点；`shared/external-task.ts` 提供跨层状态和 interrupt 契约；`server/conversation/external-tasks.ts` 持久化更新与查询；`external-task-worker.ts` 负责后台续跑；`changes.ts` 负责数据库通知，`server/http/conversation-events.ts` 通过 PostgreSQL LISTEN 和 SSE 通知前端刷新。Query 仍然负责取数，session 负责协调较新快照，`ExternalTaskPanel` 展示通用进度与历史。`server/http/` 组织路由和 HTTP 校验，`app.ts` 只装配应用；业务持久化和续跑仍由 conversation 层负责。
+
+通知在事务提交后可见；任务、run、消息和持久输出的更新会使快照失效。SSE 重连先发 ready，前端重新读取完整状态；通知丢失不影响持久结果。切换或关闭会话释放订阅连接。后台 worker 持有独立 Aegra client，单次请求限时 10 秒，停止时 abort 在途请求；这些是传输生命周期限制，不改变外部业务任务的耗时。后台 worker 由服务进程创建和释放，模拟报告回调 worker 由 Python lifespan 管理。
+
+报告示例是独立业务：`workflows/report/` 提交、等待、发布，`report_demo/` 产生五阶段回调，`db/report_jobs.py` 保存 job 身份和已投递 revision。模拟 job 使用稳定身份重复提交不重复创建；重启按已提交偏移继续。替换为其他 API 时，修改业务提交和结果解释即可复用任务状态、续跑及实时展示。
+
+当前等待期间不接收同一会话的新用户 turn，没有主动取消或自动超时。外部 API 的 job 创建幂等仍由该 API 提供。Aegra run 创建结果未知时只做映射恢复；无法确认时保持 submission_unknown，不宣称跨系统 exactly-once。删除会话阻止后续 callback 和新 continuation，不撤销外部 API 已接受的 job。

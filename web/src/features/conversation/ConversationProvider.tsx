@@ -8,6 +8,7 @@ import {
   type ReactNode,
 } from "react";
 import { useStore } from "zustand";
+import { subscribeConversationChanges } from "./api/events";
 import { conversationQueryOptions } from "./api/queries";
 import { createConversationSession } from "./runtime/session";
 import type { ConversationState } from "./model/state";
@@ -53,6 +54,18 @@ export function ConversationProvider({
   }, [refetch]);
 
   useEffect(() => session.connect(refresh), [session, refresh]);
+  useEffect(() => {
+    if (!snapshotEnabled || typeof EventSource === "undefined") {
+      return;
+    }
+
+    return subscribeConversationChanges(conversation.threadId, () => {
+      void client.invalidateQueries({
+        queryKey: ["conversation", conversation.threadId],
+      });
+    });
+  }, [client, conversation.threadId, snapshotEnabled]);
+
   useEffect(
     () =>
       session.store.subscribe((state, previous) => {

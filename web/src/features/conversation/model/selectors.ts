@@ -1,4 +1,5 @@
 import type { ConversationState } from "./state";
+import { parseExternalWait } from "@shared/external-task";
 import { parseWorkflowReview } from "@shared/workflow-review";
 
 export function isRunning(state: ConversationState) {
@@ -28,10 +29,18 @@ export function composerState(state: ConversationState) {
       ? parseWorkflowReview(state.pendingInterrupts[0]!)
       : null;
 
+  const waitingForExternalTask = state.pendingInterrupts.some(
+    (interrupt) => parseExternalWait(interrupt) !== null,
+  );
+
   return {
+    waitingForExternalTask,
     running: isRunning(state),
     recovering: isRestoring(state),
-    waitingForReview: state.pendingInterrupts.length > 0 && !workflowReview,
+    waitingForReview:
+      state.pendingInterrupts.some(
+        (interrupt) => !parseExternalWait(interrupt),
+      ) && !workflowReview,
     discussionPlaceholder: workflowReview?.messagePlaceholder ?? null,
     onSend: state.send,
   };

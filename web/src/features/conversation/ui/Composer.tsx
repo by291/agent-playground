@@ -26,18 +26,24 @@ export function Composer({
     running,
     recovering,
     waitingForReview,
+    waitingForExternalTask,
     discussionPlaceholder,
     onSend,
   } = useConversation(useShallow(composerState));
   const presenting = useReplyPresentationBusy();
   const responding = running || presenting;
-  const disabled = responding || recovering || waitingForReview;
+  const disabled =
+    responding || recovering || waitingForReview || waitingForExternalTask;
 
   let placeholder = "Describe a task or ask a question…";
   let sendLabel = responding ? "Agent is responding" : "Send message";
 
   if (recovering) {
     sendLabel = "Restoring conversation";
+  } else if (waitingForExternalTask && !running) {
+    placeholder =
+      "The external task is running. You can leave and return later.";
+    sendLabel = "Waiting for external task";
   } else if (waitingForReview && !running) {
     placeholder = "Review the plan above to continue";
     sendLabel = "Review the plan to continue";

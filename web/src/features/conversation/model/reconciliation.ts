@@ -19,7 +19,17 @@ export function reconcileSnapshot(
   const locallyRunning = local.submitting || local.streaming;
 
   // An older fetch must not replace a new stream or unlock its composer.
-  if (local.submittedRunId && latest?.runId !== local.submittedRunId) {
+  const submitted = snapshot?.runs.find(
+    (run) => run.runId === local.submittedRunId,
+  );
+  const newerContinuation =
+    submitted && isRunFinished(submitted.status) && !locallyRunning;
+
+  if (
+    local.submittedRunId &&
+    latest?.runId !== local.submittedRunId &&
+    !newerContinuation
+  ) {
     return { kind: "stale" as const, running: locallyRunning || serverRunning };
   }
 

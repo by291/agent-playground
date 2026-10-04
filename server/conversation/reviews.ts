@@ -3,6 +3,12 @@ import { and, eq, inArray } from "drizzle-orm";
 import type { db } from "../db/database";
 import { workflowOutputs } from "../db/workflow-schema";
 import type { RunRow } from "../db/schema";
+import {
+  parseExternalWait,
+  isExternalTaskTerminal,
+} from "../../shared/external-task";
+import { externalTasks } from "../db/external-task-schema";
+import { isDeepStrictEqual } from "node:util";
 import { SubmissionError } from "./errors";
 import {
   parseWorkflowReview,
@@ -69,7 +75,12 @@ export async function validateReview(
   const currentIds = new Set(interrupts.map((interrupt) => interrupt.id));
   const submittedIds = new Set(submitted.map((entry) => entry.interruptId));
   const allowsPartial = interrupts.some(
-    (interrupt) => parseWorkflowReview(interrupt) !== null,
+    (interrupt) =>
+      parseWorkflowReview(interrupt) !== null ||
+      parseExternalWait(interrupt) !== null,
+  );
+  const userInterrupts = interrupts.filter(
+    (interrupt) => !parseExternalWait(interrupt),
   );
 
   if (
@@ -78,8 +89,14 @@ export async function validateReview(
     !submitted.length ||
     submittedIds.size !== submitted.length ||
     (!allowsPartial && interrupts.length !== submitted.length) ||
-    [...submittedIds].some((id) => !currentIds.has(id)) ||
-    !(await reviewOutputsPersisted(input.threadId, interrupts, database))
+    [...submittedIds].some(
+      (id) =>
+        !currentIds.has(id) ||
+        interrupts.some(
+          (interrupt) => interrupt.id === id && parseExternalWait(interrupt),
+        ),
+    ) ||
+    !(await reviewOutputsPersisted(input.threadId, userInterrupts, database))
   ) {
     throw new SubmissionError("Review is no longer current", 409);
   }
@@ -142,4 +159,40 @@ export function workflowFeedbackMessage(input: RunAgentInput) {
   }
 
   return messages[0] ?? null;
+}
+
+export async function validateExternalContinuation(
+  input: RunAgentInput,
+  run: RunRow | null,
+  database: Pick<typeof db, "select">,
+  taskId: string,
+) {
+  const entry = input.resume?.[0];
+  const wait = run?.interrupts
+    .map(parseExternalWait)
+    .find((value) => value?.interruptId === entry?.interruptId);
+  const [task] = await database
+    .select()
+    .from(externalTasks)
+    .where(eq(externalTasks.taskId, taskId));
+  const expected = task
+    ? { kind: "external_task_result", taskId, ...task.update }
+    : null;
+
+  if (
+    run?.status !== "interrupted" ||
+    input.resume?.length !== 1 ||
+    !task ||
+    task.continuationRunId ||
+    task.threadId !== input.threadId ||
+    wait?.taskId !== taskId ||
+    wait.workflowCallId !== task.workflowCallId ||
+    !isExternalTaskTerminal(task.status) ||
+    !isDeepStrictEqual(entry?.payload, expected)
+  ) {
+    throw new SubmissionError(
+      "External task continuation is no longer current",
+      409,
+    );
+  }
 }

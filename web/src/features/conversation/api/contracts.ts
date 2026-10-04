@@ -4,6 +4,7 @@ import {
   RunAgentInputSchema,
 } from "@ag-ui/client";
 import { z } from "zod";
+import { externalTaskSnapshotSchema } from "@shared/external-task";
 import { runStatuses } from "@shared/run-status";
 import { contextUsageSchema } from "@shared/context-usage";
 import { parseA2UIOutput } from "@/features/a2ui";
@@ -19,6 +20,7 @@ export const pendingSubmissionSchema = z.object({
 export type PendingSubmission = z.infer<typeof pendingSubmissionSchema>;
 
 export const conversationSnapshotSchema = z.object({
+  externalTasks: externalTaskSnapshotSchema.array().optional(),
   title: z.string().optional(),
   contextUsage: contextUsageSchema.nullable().optional(),
   messages: MessageSchema.array(),

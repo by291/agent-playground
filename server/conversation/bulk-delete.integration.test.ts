@@ -39,7 +39,8 @@ beforeAll(async () => {
 
 beforeEach(async () => {
   await database.db.execute(sql`
-    TRUNCATE conversation_messages, conversation_runs, conversations,
+    TRUNCATE external_task_events, external_tasks,
+      conversation_messages, conversation_runs, conversations,
       workflow_outputs, checkpoints
   `);
 });

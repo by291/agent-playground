@@ -5,7 +5,7 @@ import {
   type StartedPostgreSqlContainer,
 } from "@testcontainers/postgresql";
 import { Hono } from "hono";
-import { sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { controlledAegra } from "./aegra";
 
 let postgres: StartedPostgreSqlContainer | undefined;
@@ -14,6 +14,7 @@ let upstream: Server | undefined;
 let backend: Server | undefined;
 let agent: ReturnType<typeof controlledAegra> | undefined;
 let stopping: Promise<void> | undefined;
+let stopWorker: (() => Promise<void>) | undefined;
 
 async function closeServer(server: Server | undefined) {
   if (!server?.listening) {
@@ -35,6 +36,7 @@ async function closeServer(server: Server | undefined) {
 function stop() {
   stopping ??= (async () => {
     agent?.releaseAll();
+    await stopWorker?.();
 
     try {
       await closeServer(backend);
@@ -84,6 +86,13 @@ async function start() {
 
   process.env.AEGRA_URL = `http://127.0.0.1:${address.port}`;
   const { app } = await import("../../app");
+  const { startExternalTaskWorker } =
+    await import("../../conversation/external-task-worker");
+  const { externalTasks } = await import("../../db/external-task-schema");
+  const { conversationSnapshot } =
+    await import("../../conversation/conversation-snapshot");
+
+  stopWorker = startExternalTaskWorker();
   const harness = new Hono();
 
   harness.post("/__e2e/release/:threadId", (context) => {
@@ -91,6 +100,19 @@ async function start() {
 
     return context.json({ released }, released ? 200 : 404);
   });
+  harness.get("/__e2e/external-task/:threadId", async (context) => {
+    const [task] = await database!.db
+      .select()
+      .from(externalTasks)
+      .where(eq(externalTasks.threadId, context.req.param("threadId")));
+
+    return context.json(
+      task ? { taskId: task.taskId, callbackToken: task.callbackToken } : null,
+    );
+  });
+  harness.get("/__e2e/stored-conversation/:threadId", async (context) =>
+    context.json(await conversationSnapshot(context.req.param("threadId"))),
+  );
   harness.route("/", app);
   backend = serve({
     fetch: harness.fetch,

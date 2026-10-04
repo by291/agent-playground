@@ -103,3 +103,34 @@ test("completed replies release streaming controls for the latest streamed messa
   assert.ok(completedCopy);
   assert.doesNotMatch(completedCopy, /disabled=""/);
 });
+
+test("external waits are described as background work instead of user review", () => {
+  const turn = chatTurns(
+    [
+      { id: "question", role: "user", content: "Build a report" },
+      {
+        id: "call",
+        role: "assistant",
+        content: "",
+        toolCalls: [
+          {
+            id: "report-call",
+            type: "function",
+            function: { name: "run_report_workflow", arguments: "{}" },
+          },
+        ],
+      },
+    ],
+    [{ runId: "run", messageId: "question", status: "interrupted" }],
+  )[0]!;
+  const markup = renderToStaticMarkup(
+    createElement(AssistantReply, {
+      turn,
+      animatedMessageId: null,
+      externalWaitCallIds: ["report-call"],
+    }),
+  );
+
+  assert.match(markup, /Waiting for external task/);
+  assert.doesNotMatch(markup, /Waiting for your review/);
+});

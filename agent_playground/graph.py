@@ -20,6 +20,7 @@ from agent_playground.context import ContextMiddleware
 from agent_playground.db.connection import prepare_app_store
 from agent_playground.observability import execution_trace
 from agent_playground.workflows.experiment.tool import run_experiment_workflow
+from agent_playground.workflows.report.tool import run_report_workflow
 from agent_playground.workflows.sql.tool import sql_workflow_tool
 
 
@@ -60,6 +61,7 @@ def make_graph(
         get_current_time,
         *(mcp_tools or []),
         run_experiment_workflow,
+        run_report_workflow,
         sql_workflow_tool(model),
     ]
     system_prompt = (
@@ -67,6 +69,10 @@ def make_graph(
         "for the current date or time. Use calculate_sum for arithmetic "
         "that asks you to add two numbers. Use run_experiment_workflow when "
         "the user asks for an experiment plan or a visual card. "
+        "Use run_report_workflow when the user asks to generate a report, "
+        "an asynchronous API job, or external task progress. Its external service "
+        "updates progress and completes even when the user closes the page. "
+        "Only start one report workflow at a time. "
         "Use run_sql_workflow when the user asks for a SQL review workflow, "
         "SQL checking, or the SQL demo. It uses a demo orders table and records "
         "accepted SQL without executing it. Only start one SQL workflow at a time. "

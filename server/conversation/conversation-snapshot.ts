@@ -5,6 +5,7 @@ import {
   conversationRuns,
   conversations,
 } from "../db/schema";
+import { externalTaskSnapshots } from "./external-tasks";
 import { workflowOutputs } from "../db/workflow-schema";
 
 export async function conversationSnapshot(threadId: string) {
@@ -26,7 +27,7 @@ export async function conversationSnapshot(threadId: string) {
     return null;
   }
 
-  const [runs, messages, outputs] = await Promise.all([
+  const [runs, messages, outputs, externalTasks] = await Promise.all([
     db
       .select({
         runId: conversationRuns.aguiRunId,
@@ -52,10 +53,12 @@ export async function conversationSnapshot(threadId: string) {
       .from(workflowOutputs)
       .where(eq(workflowOutputs.threadId, threadId))
       .orderBy(asc(workflowOutputs.outputSeq)),
+    externalTaskSnapshots(threadId),
   ]);
 
   return {
     threadId,
+    externalTasks,
     title: conversation.title,
     contextUsage: conversation.contextUsage,
     messages: messages.map((row) => row.message),

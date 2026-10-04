@@ -195,3 +195,72 @@ test("a fresh page makes no snapshot request until its stream settles and restor
     "Restoring a completed conversation must not resubmit it",
   );
 });
+
+test("server notifications refresh an open conversation and switching away releases the subscription", async () => {
+  const listeners = new Map<string, () => void>();
+  const close = vi.fn();
+  const create = vi.fn();
+
+  vi.stubGlobal(
+    "EventSource",
+    class {
+      constructor(url: string) {
+        create(url);
+      }
+
+      addEventListener(name: string, listener: () => void) {
+        listeners.set(name, listener);
+      }
+
+      close() {
+        close();
+      }
+    },
+  );
+  let text = "Preparing data";
+  let reads = 0;
+
+  vi.stubGlobal("fetch", () => {
+    reads++;
+
+    return Promise.resolve(
+      Response.json({
+        messages: [{ id: "reply", role: "assistant", content: text }],
+        outputs: [],
+        interrupts: [],
+        runs: [{ runId: "run", status: "completed" }],
+      }),
+    );
+  });
+  const client = new QueryClient();
+
+  onTestFinished(() => client.clear());
+  const screen = render(
+    createElement(
+      QueryClientProvider,
+      { client },
+      createElement(ConversationProvider, {
+        conversation: { threadId: "external-thread" },
+        children: createElement(Messages),
+      }),
+    ),
+  );
+
+  await waitFor(() =>
+    assert.equal(screen.getByRole("status").textContent, "Preparing data"),
+  );
+  assert.equal(
+    create.mock.calls[0]?.[0],
+    "/conversations/external-thread/events",
+  );
+  text = "Report ready";
+  act(() => {
+    listeners.get("changed")!();
+  });
+  await waitFor(() =>
+    assert.equal(screen.getByRole("status").textContent, "Report ready"),
+  );
+  assert.ok(reads >= 2);
+  screen.unmount();
+  assert.equal(close.mock.calls.length, 1);
+});

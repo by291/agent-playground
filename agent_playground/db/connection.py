@@ -6,6 +6,7 @@ from functools import lru_cache
 from sqlalchemy import create_engine
 from sqlalchemy.engine import Engine
 
+from agent_playground.db.report_jobs import report_jobs
 from agent_playground.db.schema import sql_demo_submissions, workflow_outputs
 
 
@@ -20,6 +21,7 @@ def app_engine() -> Engine:
         database_url.replace("postgresql://", "postgresql+psycopg://", 1)
     )
 
+    report_jobs.create(engine, checkfirst=True)
     workflow_outputs.create(engine, checkfirst=True)
     sql_demo_submissions.create(engine, checkfirst=True)
 

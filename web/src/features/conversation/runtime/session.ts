@@ -1,3 +1,4 @@
+import { parseExternalWait } from "@shared/external-task";
 import { workflowReplyMessages } from "@shared/workflow-output";
 import {
   configureConversationAgent,
@@ -59,6 +60,7 @@ export function createConversationSession(
 
   const store = createStore<ConversationState>()(() => ({
     contextUsage: null,
+    externalTasks: [],
     runs: [],
     messages: [],
     surfaces: [],
@@ -184,6 +186,30 @@ export function createConversationSession(
     if (!connected) {
       return;
     }
+
+    const tasks = new Map(
+      store.getState().externalTasks.map((task) => [task.taskId, task]),
+    );
+
+    for (const incoming of snapshot?.externalTasks ?? []) {
+      const current = tasks.get(incoming.taskId);
+
+      const staleContinuation =
+        incoming.revision === current?.revision &&
+        current.continuationStatus !== null &&
+        (incoming.continuationStatus === null ||
+          (isRunFinished(current.continuationStatus) &&
+            !isRunFinished(incoming.continuationStatus)));
+
+      if (
+        !staleContinuation &&
+        (!current || incoming.revision >= current.revision)
+      ) {
+        tasks.set(incoming.taskId, incoming);
+      }
+    }
+
+    store.setState({ externalTasks: [...tasks.values()] });
 
     const initialPending = isRestoring(store.getState()) ? pending : undefined;
 
@@ -393,7 +419,9 @@ export function createConversationSession(
 
     const interrupts = store.getState().pendingInterrupts;
     const mixed = interrupts.some(
-      (interrupt) => parseWorkflowReview(interrupt) !== null,
+      (interrupt) =>
+        parseWorkflowReview(interrupt) !== null ||
+        parseExternalWait(interrupt) !== null,
     );
     const resume = reviewEntries(
       responses,

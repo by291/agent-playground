@@ -14,7 +14,8 @@ import {
   isRunFinished,
   type RunStatus,
 } from "../../shared/run-status";
-import { validateReview } from "./reviews";
+import { validateReview, validateExternalContinuation } from "./reviews";
+import { externalTasks } from "../db/external-task-schema";
 
 interface RunSubmission {
   threadId: string;
@@ -23,6 +24,7 @@ interface RunSubmission {
   request: RunAgentInput;
   userMessage: Message | null;
   isResume: boolean;
+  externalTaskId?: string;
 }
 
 export async function admitRun({
@@ -32,6 +34,7 @@ export async function admitRun({
   request,
   userMessage,
   isResume,
+  externalTaskId,
 }: RunSubmission): Promise<{ row: RunRow }> {
   return db.transaction(async (tx) => {
     await tx.insert(conversations).values({ threadId }).onConflictDoNothing();
@@ -108,7 +111,16 @@ export async function admitRun({
     // Existing prepared submissions returned above. Only a new review is validated,
     // under the same conversation lock that protects its admission.
     if (isResume) {
-      await validateReview(request, current ?? null, tx);
+      if (externalTaskId) {
+        await validateExternalContinuation(
+          request,
+          current ?? null,
+          tx,
+          externalTaskId,
+        );
+      } else {
+        await validateReview(request, current ?? null, tx);
+      }
     }
 
     const [row] = await tx
@@ -125,6 +137,13 @@ export async function admitRun({
 
     if (!row) {
       throw new Error("Conversation run insertion failed");
+    }
+
+    if (externalTaskId) {
+      await tx
+        .update(externalTasks)
+        .set({ continuationRunId: runId })
+        .where(eq(externalTasks.taskId, externalTaskId));
     }
 
     if (userMessage) {

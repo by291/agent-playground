@@ -1,4 +1,5 @@
 import type { BaseEvent, Interrupt, Message } from "@ag-ui/client";
+import type { ExternalTaskSnapshot } from "@shared/external-task";
 import type { ContextUsage } from "@shared/context-usage";
 import type { A2UISurfaceView } from "@/features/a2ui";
 import type { ConversationSnapshot } from "../api/contracts";
@@ -16,6 +17,7 @@ export interface Activity {
 export interface ConversationState {
   title?: string | undefined;
   contextUsage: ContextUsage | null;
+  externalTasks: ExternalTaskSnapshot[];
   runs: ConversationSnapshot["runs"];
   messages: Message[];
   surfaces: A2UISurfaceView[];
