@@ -1,4 +1,4 @@
-import type { Interrupt, Message } from "@ag-ui/client";
+import type { BaseEvent, Interrupt, Message } from "@ag-ui/client";
 import type { ContextUsage } from "@shared/context-usage";
 import type { A2UISurfaceView } from "@/features/a2ui";
 import type { ConversationSnapshot } from "../api/contracts";
@@ -7,8 +7,9 @@ import type { PlanReviewResponse } from "./planReview";
 
 export interface Activity {
   id: string;
-  type: string;
-  detail?: string;
+  receivedAt: number;
+  runId: string;
+  event: BaseEvent;
 }
 
 export interface ConversationState {
@@ -18,6 +19,7 @@ export interface ConversationState {
   messages: Message[];
   surfaces: A2UISurfaceView[];
   activity: Activity[];
+  activityReceived: number;
   pendingInterrupts: Interrupt[];
   lifecycle: ConversationLifecycle;
   animatedMessageId: string | null;
@@ -27,5 +29,6 @@ export interface ConversationState {
     output: string | null;
   };
   send: (content: string) => Promise<void>;
+  clearActivity: () => void;
   reviewPlan: (responses: PlanReviewResponse[]) => Promise<void>;
 }

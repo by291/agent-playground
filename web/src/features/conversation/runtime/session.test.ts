@@ -334,6 +334,98 @@ async function waitFor(predicate: () => boolean) {
   assert.ok(predicate(), "Expected conversation state was not reached");
 }
 
+test("activity captures received payloads, timestamps and run ownership including state snapshots", async () => {
+  const stream = streamingAgent("diagnostics");
+  const session = createConversationSession(
+    { threadId: "diagnostics", fresh: true, empty: true },
+    stream.agent,
+  );
+  const disconnect = connectSession(session, () => Promise.resolve(null));
+  const startedAt = Date.now();
+  const run = session.store.getState().send("Inspect this run");
+  const input = await stream.requested;
+
+  stream.emit({
+    type: "RUN_STARTED",
+    threadId: input.threadId,
+    runId: input.runId,
+  });
+  stream.emit({ type: "STEP_STARTED", stepName: "model" });
+  stream.emit({
+    type: "STATE_SNAPSHOT",
+    snapshot: { diagnostic: "saved state" },
+  });
+  stream.emit({ type: "STEP_FINISHED", stepName: "model" });
+  stream.finish(input);
+  await run;
+  const state = session.store.getState();
+
+  assert.equal(state.activityReceived, 5);
+  assert.equal(state.activity.length, 5);
+  assert.deepEqual(
+    state.activity.map((entry) => entry.event.type),
+    [
+      "RUN_FINISHED",
+      "STEP_FINISHED",
+      "STATE_SNAPSHOT",
+      "STEP_STARTED",
+      "RUN_STARTED",
+    ],
+  );
+  assert.deepEqual(state.activity[2]?.event, {
+    type: "STATE_SNAPSHOT",
+    snapshot: { diagnostic: "saved state" },
+  });
+
+  for (const entry of state.activity) {
+    assert.equal(entry.runId, input.runId);
+    assert.ok(entry.receivedAt >= startedAt && entry.receivedAt <= Date.now());
+  }
+
+  disconnect();
+});
+
+test("activity bounds retained events without capping the received count and can clear without resetting the run", async () => {
+  const stream = streamingAgent("diagnostic-limit");
+  const session = createConversationSession(
+    { threadId: "diagnostic-limit", fresh: true, empty: true },
+    stream.agent,
+  );
+  const disconnect = connectSession(session, () => Promise.resolve(null));
+  const run = session.store.getState().send("Inspect many events");
+  const input = await stream.requested;
+
+  stream.emit({
+    type: "RUN_STARTED",
+    threadId: input.threadId,
+    runId: input.runId,
+  });
+
+  for (let index = 0; index < 505; index += 1) {
+    stream.emit({ type: "CUSTOM", name: "diagnostic", value: { index } });
+  }
+
+  await waitFor(() => session.store.getState().activityReceived === 506);
+  const state = session.store.getState();
+
+  assert.equal(state.activity.length, 500);
+  assert.deepEqual(state.activity[0]?.event, {
+    type: "CUSTOM",
+    name: "diagnostic",
+    value: { index: 504 },
+  });
+  assert.deepEqual(state.activity.at(-1)?.event.value, { index: 5 });
+  state.clearActivity();
+  assert.equal(session.store.getState().activityReceived, 0);
+  assert.deepEqual(session.store.getState().activity, []);
+  assert.equal(isRunning(session.store.getState()), true);
+  stream.finish(input);
+  await run;
+  assert.equal(session.store.getState().activityReceived, 1);
+  assert.equal(session.store.getState().activity[0]?.runId, input.runId);
+  disconnect();
+});
+
 test("a fresh conversation can submit before its first snapshot and syncs after the run", async () => {
   const conversation = newConversation();
   const stream = streamingAgent(conversation.threadId);

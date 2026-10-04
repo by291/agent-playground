@@ -19,6 +19,10 @@
   --color-accent-soft: #edf2ff;
   --color-accent-line: #ced9f5;
   --color-selected: #e9ecf1;
+  --color-activity-message: #147582;
+  --color-activity-tool: #7650af;
+  --color-activity-state: #986319;
+  --color-activity-reasoning: #9a487a;
 }
 
 :root {
@@ -54,6 +58,10 @@
   --color-accent-soft: #273754;
   --color-accent-line: #405782;
   --color-selected: #2c333e;
+  --color-activity-message: #72cbd3;
+  --color-activity-tool: #c2a5f5;
+  --color-activity-state: #e4bc79;
+  --color-activity-reasoning: #e7a3ca;
   --primary: #e5e9f0;
   --primary-foreground: #1c2028;
   --destructive: #ff9b94;

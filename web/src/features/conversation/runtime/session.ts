@@ -25,6 +25,7 @@ import { isRunning, isRestoring } from "../model/selectors";
 import { createSubmissionRunner } from "./submission";
 import { isRunFinished } from "@shared/run-status";
 import { parseContextUsage } from "@shared/context-usage";
+import { activityLimit } from "../model/activity";
 
 // Query ownership stays outside the session; a refresh requests a new result.
 type RefreshSnapshot = () => Promise<void>;
@@ -52,11 +53,13 @@ export function createConversationSession(
     messages: [],
     surfaces: [],
     activity: [],
+    activityReceived: 0,
     pendingInterrupts: [],
     lifecycle: initialLifecycle(saved),
     animatedMessageId: null,
     issues: { run: null, snapshot: null, output: null },
     send,
+    clearActivity: () => store.setState({ activity: [], activityReceived: 0 }),
     reviewPlan,
   }));
   const submission = createSubmissionRunner(saved.threadId, agent, {
@@ -371,7 +374,7 @@ export function createConversationSession(
     });
 
     const subscription = subscribeConversationAgent(agent, {
-      onEvent({ event }) {
+      onEvent({ event, input }) {
         if (!connected) {
           return;
         }
@@ -409,24 +412,21 @@ export function createConversationSession(
           updateRunStatus("failed");
         }
 
-        if (
-          event.type === EventType.RAW ||
-          event.type === EventType.STATE_SNAPSHOT
-        ) {
+        if (event.type === EventType.RAW) {
           return;
         }
 
-        const detail = "name" in event ? String(event.name) : undefined;
-
         store.setState((state) => ({
+          activityReceived: state.activityReceived + 1,
           activity: [
             {
               id: crypto.randomUUID(),
-              type: event.type,
-              ...(detail ? { detail } : {}),
+              receivedAt: Date.now(),
+              runId: input.runId,
+              event: structuredClone(event),
             },
             ...state.activity,
-          ].slice(0, 30),
+          ].slice(0, activityLimit),
         }));
       },
 

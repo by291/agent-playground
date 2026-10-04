@@ -1,0 +1,7 @@
+.activity-json span {
+  color: var(--json-light, var(--color-ink));
+}
+
+.dark .activity-json span {
+  color: var(--json-dark, var(--color-ink));
+}

@@ -205,7 +205,7 @@ export function ConversationWorkspace({
 
         <div className="flex min-h-0 flex-1">
           <main
-            className={`${showActivity ? "hidden lg:flex" : "flex"} min-w-0 flex-1 flex-col`}
+            className={`${showActivity ? "hidden 2xl:flex" : "flex"} min-w-0 flex-1 flex-col`}
           >
             <ReplyPresentationProvider>
               <ChatPane onSelectPrompt={setPrompt} />
@@ -225,7 +225,7 @@ export function ConversationWorkspace({
 }
 
 function ActivityCount() {
-  const count = useConversation((state) => state.activity.length);
+  const count = useConversation((state) => state.activityReceived);
 
   if (!count) {
     return null;
@@ -234,6 +234,7 @@ function ActivityCount() {
   return (
     <Badge
       variant="secondary"
+      title={`${count} events received since the last log clear`}
       className="h-auto rounded-md bg-accent-soft px-1.5 py-0.5 text-[11px] font-semibold tabular-nums text-accent"
     >
       {count}
