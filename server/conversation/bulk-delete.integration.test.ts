@@ -332,19 +332,22 @@ test("clear locks in thread order, blocks admission and excludes conversations c
     "SELECT * FROM conversations WHERE thread_id = 'z-last' FOR UPDATE",
   );
   let deletion: Promise<Response> | undefined;
-  let admission: Promise<unknown> | undefined;
+  let admissionRejected: Promise<void> | undefined;
 
   try {
     deletion = clearConversations();
     await waitForBlockedQuery('from "conversations"');
-    admission = admit(inputFor("a-first", 2));
+    admissionRejected = assert.rejects(
+      admit(inputFor("a-first", 2)),
+      /Conversation not found/,
+    );
     await waitForBlockedQuery('"thread_id" = $1 for update');
     await database.db
       .insert(schema.conversations)
       .values({ threadId: "new-after-selection" });
     await blocker.query("COMMIT");
     assert.equal((await deletion).status, 204);
-    await assert.rejects(admission, /Conversation not found/);
+    await admissionRejected;
     const [newConversation] = await database.db
       .select()
       .from(schema.conversations)
@@ -353,7 +356,7 @@ test("clear locks in thread order, blocks admission and excludes conversations c
     assert.equal(newConversation?.deletedAt, null);
   } finally {
     await blocker.query("ROLLBACK");
-    await Promise.allSettled([admission, deletion]);
+    await Promise.allSettled([admissionRejected, deletion]);
     blocker.release();
   }
 });

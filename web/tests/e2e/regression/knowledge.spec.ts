@@ -1,12 +1,12 @@
 import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
-import { expect, test } from "../fixtures";
+import { capture, expect, test } from "../fixtures";
 import { createCompletedConversation } from "../conversations";
 
 test("shared documents index through Python, retry failures and restore retrieved sources", async ({
   page,
   request,
-}) => {
+}, testInfo) => {
   const filename = `policy-${randomUUID()}.md`;
   const content =
     "# Returns\nReturns are allowed within 30 days. Keep the original receipt.";
@@ -33,7 +33,7 @@ test("shared documents index through Python, retry failures and restore retrieve
     });
     await row.getByRole("button", { name: "Retry indexing" }).click();
     await expect(row).toContainText("ready");
-    await page.screenshot({ path: "/private/tmp/rag-knowledge.png" });
+    await capture(page, testInfo, "knowledge-ready.png");
     const documentUrl = await row
       .getByRole("link", { name: "Download", exact: true })
       .getAttribute("href");
@@ -66,7 +66,7 @@ test("shared documents index through Python, retry failures and restore retrieve
       expect(await readFile(await file.path(), "utf8")).toBe(content);
     }
 
-    await page.screenshot({ path: "/private/tmp/rag-sources.png" });
+    await capture(page, testInfo, "knowledge-sources.png");
     await page.goto("/knowledge");
     await row.getByRole("button", { name: `Delete ${filename}` }).click();
     await expect(row).toHaveCount(0);
