@@ -44,7 +44,7 @@ export function reconcileSnapshot(
 
   let issue: string | null = null;
 
-  if (latest?.status === "submission_unknown") {
+  if (latest?.status === "submission_unknown" && !locallyRunning) {
     issue =
       "Submission status is unknown. Review the server state before retrying.";
   } else if (latest?.status === "failed") {

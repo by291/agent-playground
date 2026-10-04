@@ -1018,6 +1018,49 @@ test("context usage streams and recovers without replaying archived messages", a
   }
 });
 
+test.each([false, true])(
+  "an uncertain snapshot cannot override an active local request (stream started: %s)",
+  async (started) => {
+    const stream = streamingAgent("live-uncertainty");
+    const session = createConversationSession(
+      { threadId: "live-uncertainty" },
+      stream.agent,
+    );
+    const disconnect = connectSession(session, () => Promise.resolve(null));
+
+    session.receiveSnapshot(null);
+    const completion = session.store.getState().send("What time is it?");
+    const input = await stream.requested;
+
+    try {
+      if (started) {
+        stream.emit({
+          type: "RUN_STARTED",
+          threadId: input.threadId,
+          runId: input.runId,
+        });
+        await delay(0);
+      }
+
+      session.receiveSnapshot(snapshot(input.runId, "submission_unknown"));
+      const state = session.store.getState();
+
+      assert.equal(state.issues.run, null);
+      assert.equal(state.runs.at(-1)?.status, "running");
+      assert.equal(isRunning(state), true);
+      await state.send("Must not submit another request");
+      assert.equal(stream.requests, 1);
+
+      session.receiveSnapshot(snapshot(input.runId, "running"));
+      assert.equal(session.store.getState().issues.run, null);
+    } finally {
+      stream.finish(input);
+      await completion;
+      disconnect();
+    }
+  },
+);
+
 test("an unknown server submission is recovered without resending it", () => {
   const stream = streamingAgent("unknown-thread");
   const session = createConversationSession(

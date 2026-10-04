@@ -212,6 +212,7 @@ export function createConversationSession(
     store.setState({ externalTasks: [...tasks.values()] });
 
     const initialPending = isRestoring(store.getState()) ? pending : undefined;
+    const locallyActive = submission.active || agent.isRunning;
 
     const result = reconcileSnapshot(snapshot, {
       submittedRunId,
@@ -226,10 +227,15 @@ export function createConversationSession(
         .getState()
         .runs.find((run) => run.runId === submittedRunId);
       const runs = (snapshot?.runs ?? []).map((run) => {
+        // A snapshot can observe dispatch before the creation callback saves its
+        // mapping. The local request is still in flight during that uncertainty.
+        const uncertainDuringLocalRequest =
+          locallyActive && run.status === "submission_unknown";
+
         if (
           run.runId === localRun?.runId &&
-          isRunFinished(localRun.status) &&
-          !isRunFinished(run.status)
+          ((isRunFinished(localRun.status) && !isRunFinished(run.status)) ||
+            uncertainDuringLocalRequest)
         ) {
           return { ...run, status: localRun.status };
         }
@@ -258,7 +264,6 @@ export function createConversationSession(
       result.running ||
       snapshot?.runs.at(-1)?.status === "submission_unknown" ||
       (result.kind === "stale" && awaitingCheckpoint);
-    const locallyActive = submission.active || agent.isRunning;
 
     const pendingConfirmed =
       pending && pendingRecovery(snapshot, pending) === "confirmed";
