@@ -3,10 +3,15 @@ import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { streamAgent } from "./agent/agent-stream";
 import { fetchAgentInfo } from "./agent/info";
+import { conversationSnapshot } from "./conversation/conversation-snapshot";
 import {
-  conversationSnapshot,
+  conversationExists,
+  deleteConversation,
   listConversations,
-} from "./conversation/conversation-snapshot";
+  parseConversationCursor,
+  renameConversation,
+} from "./conversation/management";
+import { renameConversationSchema } from "../shared/conversation";
 import { synchronizeConversation } from "./conversation/checkpoint-sync";
 import {
   executeConversationRun,
@@ -31,13 +36,78 @@ app.get("/agent-info", async (context) => {
 });
 
 app.get("/conversations", async (context) => {
-  return context.json({ conversations: await listConversations() });
+  try {
+    const cursor = parseConversationCursor(context.req.query("cursor"));
+
+    return context.json(await listConversations(cursor));
+  } catch (error) {
+    if (error instanceof SubmissionError) {
+      return context.json({ error: error.message }, error.status);
+    }
+
+    logger.error({ err: error }, "Conversation listing failed");
+
+    return context.json({ error: "Conversation listing is unavailable" }, 503);
+  }
+});
+
+app.patch(
+  "/conversations/:threadId",
+  bodyLimit({ maxSize: 4096 }),
+  async (context) => {
+    const body: unknown = await context.req.json().catch(() => null);
+    const parsed = renameConversationSchema.safeParse(body);
+
+    if (!parsed.success) {
+      return context.json(
+        { error: "Title must contain 1 to 100 characters" },
+        400,
+      );
+    }
+
+    try {
+      return context.json(
+        await renameConversation(
+          context.req.param("threadId"),
+          parsed.data.title,
+        ),
+      );
+    } catch (error) {
+      if (error instanceof SubmissionError) {
+        return context.json({ error: error.message }, error.status);
+      }
+
+      logger.error({ err: error }, "Conversation rename failed");
+
+      return context.json({ error: "Conversation rename is unavailable" }, 503);
+    }
+  },
+);
+
+app.delete("/conversations/:threadId", async (context) => {
+  try {
+    await deleteConversation(context.req.param("threadId"));
+
+    return context.body(null, 204);
+  } catch (error) {
+    if (error instanceof SubmissionError) {
+      return context.json({ error: error.message }, error.status);
+    }
+
+    logger.error({ err: error }, "Conversation deletion failed");
+
+    return context.json({ error: "Conversation deletion is unavailable" }, 503);
+  }
 });
 
 app.get("/conversations/:threadId", async (context) => {
   const threadId = context.req.param("threadId");
 
   try {
+    if (!(await conversationExists(threadId))) {
+      return context.json({ error: "Conversation not found" }, 404);
+    }
+
     await synchronizeConversation(threadId);
     const snapshot = await conversationSnapshot(threadId);
 

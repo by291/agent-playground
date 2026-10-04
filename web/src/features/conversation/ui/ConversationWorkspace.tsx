@@ -13,8 +13,9 @@ import { useConversation } from "@/features/conversation/ConversationProvider";
 import { ActivityPanel } from "@/features/conversation/ui/ActivityPanel";
 import { Sidebar } from "@/features/conversation/ui/Sidebar";
 import { ResizableSidebar } from "./ResizableSidebar";
-import { isEmpty } from "../model/selectors";
+import { isEmpty, isRunning, isRestoring } from "../model/selectors";
 import { ReplyPresentationProvider } from "./ReplyPresentation";
+import type { ConversationHistory } from "../model/useConversationHistory";
 
 const collapsedStorageKey = "agent-playground-sidebar-collapsed";
 
@@ -30,10 +31,12 @@ export function ConversationWorkspace({
   conversation,
   onNewConversation,
   development,
+  history,
 }: {
   conversation: { threadId: string };
   onNewConversation: () => void;
   development: boolean;
+  history?: ConversationHistory;
 }) {
   const [activityOpen, setActivityOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] =
@@ -42,6 +45,18 @@ export function ConversationWorkspace({
   const [navigationOpen, setNavigationOpen] = useState(false);
   const navigation = useRef<HTMLDialogElement>(null);
   const empty = useConversation(isEmpty);
+  const savedTitle = useConversation((state) => state.title);
+  const status = useConversation((state) => state.runs.at(-1)?.status ?? null);
+  const busy = useConversation(
+    (state) => isRunning(state) || isRestoring(state),
+  );
+  const title =
+    history?.conversations.find(
+      (entry) => entry.threadId === conversation.threadId,
+    )?.title ??
+    savedTitle ??
+    (empty ? "New conversation" : "Current conversation");
+  const current = { threadId: conversation.threadId, title, status, busy };
   const showActivity = development && activityOpen;
 
   useEffect(() => {
@@ -88,6 +103,8 @@ export function ConversationWorkspace({
         collapsed={sidebarCollapsed}
         empty={empty}
         onNewConversation={onNewConversation}
+        history={history}
+        current={current}
       />
       <dialog
         ref={navigation}
@@ -106,6 +123,8 @@ export function ConversationWorkspace({
           empty={empty}
           onNewConversation={startFromNavigation}
           onClose={closeNavigation}
+          history={history}
+          current={current}
         />
       </dialog>
 
@@ -138,9 +157,7 @@ export function ConversationWorkspace({
             >
               <SidebarSimpleIcon size={20} aria-hidden="true" />
             </Button>
-            <h1 className="truncate text-sm font-medium">
-              {empty ? "New conversation" : "Current conversation"}
-            </h1>
+            <h1 className="truncate text-sm font-medium">{title}</h1>
           </div>
 
           <div className="flex shrink-0 items-center gap-1.5 sm:gap-3">

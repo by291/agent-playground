@@ -1,0 +1,146 @@
+import { and, desc, eq, isNull, lt, or, sql } from "drizzle-orm";
+import { z } from "zod";
+import { db } from "../db/database";
+import { conversationRuns, conversations } from "../db/schema";
+import { isRunActive, type RunStatus } from "../../shared/run-status";
+import { SubmissionError } from "./errors";
+
+const cursorSchema = z.object({
+  updatedAt: z.string().datetime(),
+  threadId: z.string().min(1).max(256),
+});
+const pageSize = 30;
+
+export function parseConversationCursor(value: string | undefined) {
+  if (value === undefined) {
+    return null;
+  }
+
+  try {
+    if (value.length > 1024) {
+      throw new Error("Cursor too long");
+    }
+
+    return cursorSchema.parse(JSON.parse(value));
+  } catch {
+    throw new SubmissionError("Invalid conversation cursor", 400);
+  }
+}
+
+export async function listConversations(
+  cursor: ReturnType<typeof parseConversationCursor>,
+) {
+  const boundary = cursor
+    ? or(
+        lt(conversations.updatedAt, new Date(cursor.updatedAt)),
+        and(
+          eq(conversations.updatedAt, new Date(cursor.updatedAt)),
+          lt(conversations.threadId, cursor.threadId),
+        ),
+      )
+    : undefined;
+  const latestStatus = db
+    .select({ status: conversationRuns.status })
+    .from(conversationRuns)
+    .where(eq(conversationRuns.threadId, conversations.threadId))
+    .orderBy(desc(conversationRuns.submitSeq))
+    .limit(1);
+  const rows = await db
+    .select({
+      threadId: conversations.threadId,
+      title: conversations.title,
+      createdAt: conversations.createdAt,
+      updatedAt: conversations.updatedAt,
+      status: sql<RunStatus | null>`(${latestStatus})`,
+    })
+    .from(conversations)
+    .where(and(isNull(conversations.deletedAt), boundary))
+    .orderBy(desc(conversations.updatedAt), desc(conversations.threadId))
+    .limit(pageSize + 1);
+  const page = rows.slice(0, pageSize);
+  const last = page.at(-1);
+
+  return {
+    conversations: page,
+    nextCursor:
+      rows.length > pageSize && last
+        ? JSON.stringify({
+            updatedAt: last.updatedAt.toISOString(),
+            threadId: last.threadId,
+          })
+        : null,
+  };
+}
+
+export async function conversationExists(threadId: string) {
+  const [row] = await db
+    .select({ threadId: conversations.threadId })
+    .from(conversations)
+    .where(
+      and(
+        eq(conversations.threadId, threadId),
+        isNull(conversations.deletedAt),
+      ),
+    );
+
+  return !!row;
+}
+
+export async function renameConversation(threadId: string, title: string) {
+  const [row] = await db
+    .update(conversations)
+    .set({ title })
+    .where(
+      and(
+        eq(conversations.threadId, threadId),
+        isNull(conversations.deletedAt),
+      ),
+    )
+    .returning({
+      threadId: conversations.threadId,
+      title: conversations.title,
+    });
+
+  if (!row) {
+    throw new SubmissionError("Conversation not found", 404);
+  }
+
+  return row;
+}
+
+export async function deleteConversation(threadId: string) {
+  await db.transaction(async (tx) => {
+    // Use admission's lock so deletion and a new run cannot both succeed.
+    const [conversation] = await tx
+      .select()
+      .from(conversations)
+      .where(eq(conversations.threadId, threadId))
+      .for("update");
+
+    if (!conversation || conversation.deletedAt) {
+      throw new SubmissionError("Conversation not found", 404);
+    }
+
+    const [run] = await tx
+      .select({ status: conversationRuns.status })
+      .from(conversationRuns)
+      .where(eq(conversationRuns.threadId, threadId))
+      .orderBy(desc(conversationRuns.submitSeq))
+      .limit(1);
+
+    if (
+      run &&
+      (isRunActive(run.status) || run.status === "submission_unknown")
+    ) {
+      throw new SubmissionError(
+        "Wait for the conversation run to finish before deleting it",
+        409,
+      );
+    }
+
+    await tx
+      .update(conversations)
+      .set({ deletedAt: new Date() })
+      .where(eq(conversations.threadId, threadId));
+  });
+}

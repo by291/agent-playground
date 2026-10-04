@@ -188,6 +188,7 @@ export function createConversationSession(
       receiveContextUsage(snapshot?.contextUsage);
       agent.setMessages(result.messages);
       store.setState({
+        title: snapshot?.title,
         messages: [...agent.messages],
         pendingInterrupts: result.interrupts,
         runs,

@@ -12,6 +12,7 @@ export interface Activity {
 }
 
 export interface ConversationState {
+  title?: string | undefined;
   contextUsage: ContextUsage | null;
   runs: ConversationSnapshot["runs"];
   messages: Message[];

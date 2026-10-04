@@ -2,6 +2,7 @@ import {
   bigint,
   boolean,
   integer,
+  index,
   jsonb,
   pgTable,
   primaryKey,
@@ -9,23 +10,37 @@ import {
   timestamp,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import type { Interrupt, Message, RunAgentInput } from "@ag-ui/client";
 import { runStatuses } from "../../shared/run-status";
 import type { ContextUsage } from "../../shared/context-usage";
 
-export const conversations = pgTable("conversations", {
-  threadId: text("thread_id").primaryKey(),
-  contextUsage: jsonb("context_usage").$type<ContextUsage>(),
-  nextSubmitSeq: bigint("next_submit_seq", { mode: "number" })
-    .notNull()
-    .default(1),
-  nextOutputSeq: bigint("next_output_seq", { mode: "number" })
-    .notNull()
-    .default(1),
-  createdAt: timestamp("created_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
-});
+export const conversations = pgTable(
+  "conversations",
+  {
+    threadId: text("thread_id").primaryKey(),
+    title: text("title").notNull().default("Untitled conversation"),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .default(sql`date_trunc('milliseconds', now())`),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+    contextUsage: jsonb("context_usage").$type<ContextUsage>(),
+    nextSubmitSeq: bigint("next_submit_seq", { mode: "number" })
+      .notNull()
+      .default(1),
+    nextOutputSeq: bigint("next_output_seq", { mode: "number" })
+      .notNull()
+      .default(1),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index("conversations_recent_index")
+      .on(table.updatedAt, table.threadId)
+      .where(sql`${table.deletedAt} IS NULL`),
+  ],
+);
 
 export const conversationRuns = pgTable(
   "conversation_runs",

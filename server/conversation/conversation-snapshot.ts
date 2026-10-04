@@ -1,4 +1,4 @@
-import { asc, desc, eq } from "drizzle-orm";
+import { and, asc, eq, isNull } from "drizzle-orm";
 import { db } from "../db/database";
 import {
   conversationMessages,
@@ -7,22 +7,20 @@ import {
 } from "../db/schema";
 import { workflowOutputs } from "../db/workflow-schema";
 
-export async function listConversations() {
-  return db
-    .select({ threadId: conversations.threadId })
-    .from(conversations)
-    .orderBy(desc(conversations.createdAt))
-    .limit(50);
-}
-
 export async function conversationSnapshot(threadId: string) {
   const [conversation] = await db
     .select({
       threadId: conversations.threadId,
+      title: conversations.title,
       contextUsage: conversations.contextUsage,
     })
     .from(conversations)
-    .where(eq(conversations.threadId, threadId));
+    .where(
+      and(
+        eq(conversations.threadId, threadId),
+        isNull(conversations.deletedAt),
+      ),
+    );
 
   if (!conversation) {
     return null;
@@ -58,6 +56,7 @@ export async function conversationSnapshot(threadId: string) {
 
   return {
     threadId,
+    title: conversation.title,
     contextUsage: conversation.contextUsage,
     messages: messages.map((row) => row.message),
     outputs: outputs.map((row) => ({

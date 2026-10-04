@@ -6,6 +6,16 @@ import {
 } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
 import { ConnectionStatus } from "@/components/ConnectionStatus";
+import { ConversationList } from "./ConversationList";
+import type { ConversationHistory } from "../model/useConversationHistory";
+import type { RunStatus } from "@shared/run-status";
+
+export interface SidebarConversation {
+  threadId: string;
+  title: string;
+  status: RunStatus | null;
+  busy: boolean;
+}
 
 export function Sidebar({
   collapsed = false,
@@ -13,12 +23,16 @@ export function Sidebar({
   empty,
   onNewConversation,
   onClose,
+  history,
+  current,
 }: {
   collapsed?: boolean;
   mobile?: boolean;
   empty: boolean;
   onNewConversation: () => void;
   onClose?: () => void;
+  history?: ConversationHistory | undefined;
+  current?: SidebarConversation | undefined;
 }) {
   const title = empty ? "New conversation" : "Current conversation";
 
@@ -70,28 +84,46 @@ export function Sidebar({
         </span>
       </Button>
 
-      <div className="workspace-sidebar-section" aria-hidden={collapsed}>
-        <p className="min-h-0 overflow-hidden px-2 text-[11px]/4 font-medium tracking-widest text-muted uppercase">
-          Conversations
-        </p>
-      </div>
-      <div
-        aria-label={title}
-        title={collapsed ? title : undefined}
-        className="workspace-sidebar-current flex h-10 w-full items-center gap-2 rounded-md bg-selected px-3 text-[13px]"
-      >
-        <ChatCircleIcon
-          size={18}
-          className="size-4 shrink-0 text-accent"
-          aria-hidden="true"
+      {history && current ? (
+        <ConversationList
+          history={history}
+          threadId={current.threadId}
+          title={current.title}
+          status={current.status}
+          currentBusy={current.busy}
+          empty={empty}
+          collapsed={collapsed}
+          onSelect={(threadId) => {
+            history.select(threadId);
+            onClose?.();
+          }}
         />
-        <span
-          className="workspace-sidebar-label truncate"
-          aria-hidden={collapsed}
-        >
-          {title}
-        </span>
-      </div>
+      ) : (
+        <>
+          <div className="workspace-sidebar-section" aria-hidden={collapsed}>
+            <p className="min-h-0 overflow-hidden px-2 text-[11px]/4 font-medium tracking-widest text-muted uppercase">
+              Conversations
+            </p>
+          </div>
+          <div
+            aria-label={title}
+            title={collapsed ? title : undefined}
+            className="workspace-sidebar-current flex h-10 w-full items-center gap-2 rounded-md bg-selected px-3 text-[13px]"
+          >
+            <ChatCircleIcon
+              size={18}
+              className="size-4 shrink-0 text-accent"
+              aria-hidden="true"
+            />
+            <span
+              className="workspace-sidebar-label truncate"
+              aria-hidden={collapsed}
+            >
+              {title}
+            </span>
+          </div>
+        </>
+      )}
       <div
         className={`mt-auto w-full border-t border-line pt-4 ${collapsed ? "text-center" : "px-2"}`}
       >

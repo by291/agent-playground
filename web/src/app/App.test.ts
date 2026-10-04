@@ -41,8 +41,8 @@ test("refreshing a conversation renders its page layout while history recovers",
   );
   assert.match(markup, /placeholder="Describe a task or ask a question…"/);
   assert.match(markup, /aria-label="Messages"/);
-  assert.match(markup, /aria-busy="true"/);
-  assert.doesNotMatch(markup, /Loading conversation/);
+  assert.match(markup, /<main\b[\s\S]*aria-busy="true"/);
+  assert.doesNotMatch(markup, /Loading conversation\b/);
   assert.doesNotMatch(markup, /What would you like/);
 });
 
@@ -52,9 +52,9 @@ test("a new or saved empty conversation renders the welcome screen immediately",
 
     assert.match(markup, /What would you like/);
     assert.match(markup, /Draft a plan/);
-    assert.doesNotMatch(markup, /aria-busy="true"/);
+    assert.doesNotMatch(markup, /<main\b[\s\S]*aria-busy="true"/);
     assert.doesNotMatch(markup, /animate-pulse/);
-    assert.doesNotMatch(markup, /Loading conversation/);
+    assert.doesNotMatch(markup, /Loading conversation\b/);
   }
 });
 
@@ -70,7 +70,7 @@ test("a pending submission requires recovery even when its old empty marker rema
     },
   });
 
-  assert.match(markup, /aria-busy="true"/);
+  assert.match(markup, /<main\b[\s\S]*aria-busy="true"/);
   assert.doesNotMatch(markup, /What would you like/);
 });
 

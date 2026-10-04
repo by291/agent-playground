@@ -5,7 +5,8 @@ import {
   type KeyboardEvent,
   type PointerEvent,
 } from "react";
-import { Sidebar } from "./Sidebar";
+import { Sidebar, type SidebarConversation } from "./Sidebar";
+import type { ConversationHistory } from "../model/useConversationHistory";
 
 const storageKey = "agent-playground-sidebar-width";
 const minimumWidth = 240;
@@ -43,10 +44,14 @@ export function ResizableSidebar({
   collapsed,
   empty,
   onNewConversation,
+  history,
+  current,
 }: {
   collapsed: boolean;
   empty: boolean;
   onNewConversation: () => void;
+  history?: ConversationHistory | undefined;
+  current?: SidebarConversation | undefined;
 }) {
   const [width, setWidth] = useState(loadWidth);
   const [resizing, setResizing] = useState(false);
@@ -145,6 +150,8 @@ export function ResizableSidebar({
         collapsed={collapsed}
         empty={empty}
         onNewConversation={onNewConversation}
+        history={history}
+        current={current}
       />
       {!collapsed && (
         <div

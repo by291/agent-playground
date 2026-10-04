@@ -58,6 +58,12 @@
   white-space: nowrap;
 }
 
+.conversation-history-scroll {
+  margin-inline-end: -0.5rem;
+  padding-inline-end: 0.5rem;
+  scrollbar-width: thin;
+}
+
 .workspace-sidebar-new {
   overflow: hidden;
   margin-top: 2rem;
@@ -110,6 +116,7 @@
   max-height: 100dvh;
   margin: 0;
   padding: 0;
+  overflow: visible;
   border: 0;
   color: var(--color-ink);
   background: var(--color-sidebar);

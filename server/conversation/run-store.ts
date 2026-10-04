@@ -47,6 +47,10 @@ export async function admitRun({
       throw new Error("Conversation admission failed");
     }
 
+    if (conversation.deletedAt) {
+      throw new SubmissionError("Conversation not found", 404);
+    }
+
     const existing = await tx
       .select()
       .from(conversationRuns)
@@ -134,11 +138,30 @@ export async function admitRun({
 
     await tx
       .update(conversations)
-      .set({ nextSubmitSeq: conversation.nextSubmitSeq + 1 })
+      .set({
+        nextSubmitSeq: conversation.nextSubmitSeq + 1,
+        updatedAt: new Date(),
+        ...(conversation.nextSubmitSeq === 1 &&
+        userMessage &&
+        conversation.title === "Untitled conversation"
+          ? { title: defaultConversationTitle(userMessage) }
+          : {}),
+      })
       .where(eq(conversations.threadId, threadId));
 
     return { row };
   });
+}
+
+function defaultConversationTitle(message: Message) {
+  if (typeof message.content !== "string") {
+    return "Untitled conversation";
+  }
+
+  const title = message.content.replace(/\s+/g, " ").trim();
+  const shortened = Array.from(title).slice(0, 100).join("");
+
+  return shortened || "Untitled conversation";
 }
 
 export async function claimPrepared(runId: string): Promise<boolean> {

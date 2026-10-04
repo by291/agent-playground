@@ -19,14 +19,20 @@ export function newConversation(): ConversationReference {
   return { threadId: crypto.randomUUID(), empty: true, fresh: true };
 }
 
-export function loadConversation(): ConversationReference {
+export function loadConversation(threadId?: string): ConversationReference {
   try {
+    const current = localStorage.getItem(storageKey);
     const saved: unknown = JSON.parse(
-      localStorage.getItem(storageKey) ?? "null",
+      (threadId
+        ? (localStorage.getItem(`${storageKey}:${threadId}`) ?? current)
+        : current) ?? "null",
     );
 
     if (typeof saved === "object" && saved !== null && "threadId" in saved) {
-      if (typeof saved.threadId === "string") {
+      if (
+        typeof saved.threadId === "string" &&
+        (!threadId || saved.threadId === threadId)
+      ) {
         const pending = pendingSubmissionSchema.safeParse(
           "pending" in saved ? saved.pending : undefined,
         );
@@ -44,15 +50,31 @@ export function loadConversation(): ConversationReference {
     // A damaged local pointer should not prevent a new conversation.
   }
 
-  return newConversation();
+  return threadId ? { threadId } : newConversation();
 }
 
 export function saveConversation(conversation: SavedConversation): void {
   // The fresh marker applies only to this page; reloads must check server history.
   const { threadId, pending, empty } = conversation;
+  const value = JSON.stringify({ threadId, pending, empty });
+  const previous = loadConversation();
 
-  localStorage.setItem(
-    storageKey,
-    JSON.stringify({ threadId, pending, empty }),
-  );
+  if (previous.threadId !== threadId && !previous.fresh) {
+    // Preserve the pre-upgrade pointer before switching for the first time.
+    localStorage.setItem(
+      `${storageKey}:${previous.threadId}`,
+      JSON.stringify(previous),
+    );
+  }
+
+  localStorage.setItem(`${storageKey}:${threadId}`, value);
+  localStorage.setItem(storageKey, value);
+}
+
+export function forgetConversation(threadId: string): void {
+  localStorage.removeItem(`${storageKey}:${threadId}`);
+
+  if (loadConversation().threadId === threadId) {
+    localStorage.removeItem(storageKey);
+  }
 }

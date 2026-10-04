@@ -19,6 +19,7 @@ export const pendingSubmissionSchema = z.object({
 export type PendingSubmission = z.infer<typeof pendingSubmissionSchema>;
 
 export const conversationSnapshotSchema = z.object({
+  title: z.string().optional(),
   contextUsage: contextUsageSchema.nullable().optional(),
   messages: MessageSchema.array(),
   interrupts: InterruptSchema.array(),

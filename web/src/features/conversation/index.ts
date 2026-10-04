@@ -6,3 +6,4 @@ export {
   saveConversation,
 } from "./model/storage";
 export type { SavedConversation } from "./model/storage";
+export { useConversationHistory } from "./model/useConversationHistory";

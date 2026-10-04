@@ -13,6 +13,7 @@ import { parseContextUsage } from "../../shared/context-usage";
 import { latestRun } from "./run-store";
 import { reconcileRun } from "./recovery";
 import { completedMessages } from "../agent/messages";
+import { conversationExists } from "./management";
 
 async function readCompletedCheckpoint(run: RunRow) {
   for (let attempt = 0; attempt < 5; attempt += 1) {
@@ -113,6 +114,10 @@ async function saveCheckpoint(
 }
 
 export async function synchronizeConversation(threadId: string): Promise<void> {
+  if (!(await conversationExists(threadId))) {
+    return;
+  }
+
   const latest = await latestRun(threadId);
 
   if (!latest || latest.status === "prepared") {

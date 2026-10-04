@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   createContext,
   useCallback,
@@ -13,6 +13,7 @@ import { createConversationSession } from "./runtime/session";
 import type { ConversationState } from "./model/state";
 import { snapshotPolicy } from "./model/lifecycle";
 import type { ConversationReference } from "./model/storage";
+import { conversationHistoryKey } from "./api/history";
 
 const ConversationContext = createContext<ReturnType<
   typeof createConversationSession
@@ -26,6 +27,7 @@ export function ConversationProvider({
   children: ReactNode;
 }) {
   const [session] = useState(() => createConversationSession(conversation));
+  const client = useQueryClient();
   const snapshotEnabled = useStore(
     session.store,
     (state) => snapshotPolicy(state.lifecycle).enabled,
@@ -51,6 +53,21 @@ export function ConversationProvider({
   }, [refetch]);
 
   useEffect(() => session.connect(refresh), [session, refresh]);
+  useEffect(
+    () =>
+      session.store.subscribe((state, previous) => {
+        const accepted =
+          state.lifecycle.execution === "streaming" &&
+          previous.lifecycle.execution !== "streaming";
+        const recovered =
+          state.runs !== previous.runs && state.lifecycle.hydration === "ready";
+
+        if (accepted || recovered) {
+          void client.invalidateQueries({ queryKey: conversationHistoryKey });
+        }
+      }),
+    [session, client],
+  );
   useEffect(() => {
     // Each completed fetch is delivered once, even when Query preserves the same data object.
     // Cached data predating mount cannot decide whether to retry a saved submission.
