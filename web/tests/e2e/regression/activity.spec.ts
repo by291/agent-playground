@@ -61,6 +61,70 @@ test("activity width supports dragging and keyboard bounds and persists without 
   ).toBe("720");
 });
 
+test("activity separates consecutive runs in merged and individual delta views", async ({
+  page,
+}, testInfo) => {
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  await page.goto("/");
+  const composer = page.getByRole("textbox", { name: "Message" });
+  const runIds: string[] = [];
+
+  await page.getByRole("button", { name: "Show run activity" }).click();
+  const panel = page.getByRole("complementary", { name: "Run activity" });
+  const headings = panel.getByRole("heading", { level: 3 });
+
+  for (let run = 0; run < 2; run += 1) {
+    const submitted = page.waitForRequest(
+      (request) =>
+        request.method() === "POST" &&
+        new URL(request.url()).pathname === "/agent",
+    );
+
+    await composer.fill(timePrompt);
+    await composer.press("Enter");
+    const input = (await submitted).postDataJSON() as { runId: string };
+
+    runIds.push(input.runId);
+    await expect(composer).toBeEnabled();
+    await expect(
+      page.getByLabel("Assistant reply", { exact: true }),
+    ).toHaveCount(run + 1);
+
+    if (run === 0) {
+      await expect(headings).toHaveCount(0);
+    }
+  }
+
+  const expected = [...runIds]
+    .reverse()
+    .slice(1)
+    .map((runId) => `Run ${runId.slice(0, 8)}`);
+
+  await expect(headings).toHaveText(expected);
+
+  for (const runId of runIds.slice(0, -1)) {
+    await expect(
+      panel.getByRole("heading", { name: `Run ${runId}`, exact: true }),
+    ).toHaveAttribute("title", runId);
+  }
+
+  await headings.last().evaluate((element) =>
+    element.scrollIntoView({ block: "center" }),
+  );
+  await page.screenshot({
+    path: testInfo.outputPath("activity-run-groups.png"),
+  });
+  await panel.getByRole("checkbox", { name: "Merge stream content" }).uncheck();
+  await expect(headings).toHaveText(expected);
+  await panel.getByRole("checkbox", { name: "Merge stream content" }).check();
+  await expect(headings).toHaveText(expected);
+  await panel.getByRole("button", { name: "Clear log", exact: true }).click();
+  await expect(headings).toHaveCount(0);
+  await expect(
+    panel.getByText("No activity yet", { exact: true }),
+  ).toBeVisible();
+});
+
 test("activity shows every event with categories and highlighted payloads and copies the retained log", async ({
   page,
   context,

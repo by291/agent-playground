@@ -1,4 +1,4 @@
-import { useMemo, useState, type CSSProperties } from "react";
+import { Fragment, useMemo, useState, type CSSProperties } from "react";
 import { CopyIcon, PulseIcon, XIcon } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
 import { useConversation } from "../ConversationProvider";
@@ -165,9 +165,6 @@ export function ActivityPanel({
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:px-5">
-        <p className="mb-3 text-xs text-muted">
-          {rows.length} rows · received time · newest first
-        </p>
         {activity.length === 0 && (
           <div className="rounded-lg border border-dashed border-line bg-surface px-4 py-6 text-center">
             <p className="text-sm font-medium text-ink">No activity yet</p>
@@ -179,13 +176,36 @@ export function ActivityPanel({
         )}
         {activity.length > 0 && (
           <ol className="space-y-2">
-            {rows.map((row) => (
-              <ActivityItem
-                key={`${mergeContent ? "merged" : "raw"}-${row.id}`}
-                entry={row.entry}
-                stream={row.stream}
-              />
-            ))}
+            {rows.map((row, index) => {
+              const runId = row.entry.runId;
+              const separatesRuns =
+                index > 0 && rows[index - 1]?.entry.runId !== runId;
+
+              return (
+                <Fragment key={`${mergeContent ? "merged" : "raw"}-${row.id}`}>
+                  {separatesRuns && (
+                    <li className="flex items-center gap-3 pt-5 pb-2">
+                      <span
+                        aria-hidden="true"
+                        className="h-px flex-1 bg-line"
+                      />
+                      <h3
+                        aria-label={`Run ${runId}`}
+                        title={runId}
+                        className="shrink-0 font-mono text-xs font-medium text-muted"
+                      >
+                        Run {runId.slice(0, 8)}
+                      </h3>
+                      <span
+                        aria-hidden="true"
+                        className="h-px flex-1 bg-line"
+                      />
+                    </li>
+                  )}
+                  <ActivityItem entry={row.entry} stream={row.stream} />
+                </Fragment>
+              );
+            })}
           </ol>
         )}
       </div>
