@@ -1,3 +1,4 @@
+import { startKnowledgeCleanup } from "./knowledge/cleanup.js";
 import type { Server } from "node:http";
 import { serve } from "@hono/node-server";
 import { app } from "./app.js";
@@ -6,7 +7,7 @@ import { startExternalTaskWorker } from "./conversation/external-task-worker.js"
 import { logger } from "./observability/logger";
 
 import { startSkillFileCleanup } from "./conversation/skill-file-cleanup.js";
-import { closeSkillObjectStore } from "./conversation/skill-object-store.js";
+import { closeObjectStore } from "./storage/object-store.js";
 
 const port = Number(process.env.SERVER_PORT ?? 3000);
 
@@ -14,6 +15,7 @@ await migrateServer();
 
 const stopWorker = startExternalTaskWorker();
 const stopFileCleanup = startSkillFileCleanup();
+const stopKnowledgeCleanup = startKnowledgeCleanup();
 const server = serve({ fetch: app.fetch, hostname: "0.0.0.0", port }, () => {
   logger.info({ port }, "AG-UI server listening");
 }) as Server;
@@ -37,8 +39,13 @@ async function shutdown() {
   });
 
   server.closeAllConnections();
-  await Promise.all([workerStopped, serverClosed, stopFileCleanup()]);
-  closeSkillObjectStore();
+  await Promise.all([
+    workerStopped,
+    serverClosed,
+    stopFileCleanup(),
+    stopKnowledgeCleanup(),
+  ]);
+  closeObjectStore();
   await db.$client.end();
 }
 

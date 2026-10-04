@@ -3,6 +3,7 @@ import path from "node:path";
 const sourceRoot = path.resolve(import.meta.dirname, "src");
 const ranks = { app: 3, pages: 2, features: 1 };
 const publicEntries = {
+  knowledge: new Set(["index", ""]),
   conversation: new Set(["index", ""]),
   a2ui: new Set(["index", "", "A2UISurface"]),
 };

@@ -28,10 +28,10 @@ export async function createSkillTestStorage() {
     .withWaitStrategy(Wait.forHttp("/", 8333).forStatusCode(403))
     .start();
 
-  process.env.SKILL_S3_ENDPOINT = `http://${container.getHost()}:${container.getMappedPort(8333)}`;
-  process.env.SKILL_S3_BUCKET = "skill-tests";
-  process.env.SKILL_S3_REGION = "us-east-1";
-  process.env.SKILL_S3_FORCE_PATH_STYLE = "true";
+  process.env.S3_ENDPOINT = `http://${container.getHost()}:${container.getMappedPort(8333)}`;
+  process.env.S3_BUCKET = "skill-tests";
+  process.env.S3_REGION = "us-east-1";
+  process.env.S3_FORCE_PATH_STYLE = "true";
   process.env.AWS_ACCESS_KEY_ID = "test-key";
   process.env.AWS_SECRET_ACCESS_KEY = "test-secret";
 

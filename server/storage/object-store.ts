@@ -1,32 +1,31 @@
 import {
   DeleteObjectCommand,
   GetObjectCommand,
+  ListObjectsV2Command,
   PutObjectCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
-import { maxSkillFileBytes } from "../../shared/skill-files";
+import { maxFileBytes } from "../../shared/files";
 
 let client: S3Client | undefined;
 
 function storage() {
-  const bucket = process.env.SKILL_S3_BUCKET;
+  const bucket = process.env.S3_BUCKET;
 
   if (!bucket) {
-    throw new Error("SKILL_S3_BUCKET is required for file storage");
+    throw new Error("S3_BUCKET is required for file storage");
   }
 
   client ??= new S3Client({
-    region: process.env.SKILL_S3_REGION ?? "us-east-1",
-    ...(process.env.SKILL_S3_ENDPOINT
-      ? { endpoint: process.env.SKILL_S3_ENDPOINT }
-      : {}),
-    forcePathStyle: process.env.SKILL_S3_FORCE_PATH_STYLE === "true",
+    region: process.env.S3_REGION ?? "us-east-1",
+    ...(process.env.S3_ENDPOINT ? { endpoint: process.env.S3_ENDPOINT } : {}),
+    forcePathStyle: process.env.S3_FORCE_PATH_STYLE === "true",
   });
 
   return { client, bucket };
 }
 
-export async function putSkillObject(key: string, data: Buffer) {
+export async function putObject(key: string, data: Buffer) {
   const { client, bucket } = storage();
 
   await client.send(
@@ -40,16 +39,13 @@ export async function putSkillObject(key: string, data: Buffer) {
   );
 }
 
-export async function getSkillObject(
-  key: string,
-  size: number,
-): Promise<Buffer> {
+export async function getObject(key: string, size: number): Promise<Buffer> {
   const { client, bucket } = storage();
   const response = await client.send(
     new GetObjectCommand({
       Bucket: bucket,
       Key: key,
-      ...(size > 0 ? { Range: `bytes=0-${maxSkillFileBytes}` } : {}),
+      ...(size > 0 ? { Range: `bytes=0-${maxFileBytes}` } : {}),
     }),
     { abortSignal: AbortSignal.timeout(30_000) },
   );
@@ -74,7 +70,7 @@ export async function getSkillObject(
 
       length += chunk.value.length;
 
-      if (length > maxSkillFileBytes) {
+      if (length > maxFileBytes) {
         throw new Error("Stored file exceeds 10 MiB");
       }
 
@@ -90,7 +86,7 @@ export async function getSkillObject(
   return Buffer.concat(chunks);
 }
 
-export async function deleteSkillObject(key: string, signal?: AbortSignal) {
+export async function deleteObject(key: string, signal?: AbortSignal) {
   const { client, bucket } = storage();
 
   await client.send(new DeleteObjectCommand({ Bucket: bucket, Key: key }), {
@@ -100,7 +96,36 @@ export async function deleteSkillObject(key: string, signal?: AbortSignal) {
   });
 }
 
-export function closeSkillObjectStore() {
+export function closeObjectStore() {
   client?.destroy();
   client = undefined;
+}
+
+export async function listObjects(
+  prefix: string,
+  continuationToken?: string,
+  signal?: AbortSignal,
+) {
+  const { client, bucket } = storage();
+  const response = await client.send(
+    new ListObjectsV2Command({
+      Bucket: bucket,
+      Prefix: prefix,
+      ContinuationToken: continuationToken,
+      MaxKeys: 1000,
+    }),
+    {
+      abortSignal: signal
+        ? AbortSignal.any([signal, AbortSignal.timeout(30_000)])
+        : AbortSignal.timeout(30_000),
+    },
+  );
+
+  return {
+    keys:
+      response.Contents?.flatMap((object) =>
+        object.Key ? [object.Key] : [],
+      ) ?? [],
+    continuationToken: response.NextContinuationToken,
+  };
 }

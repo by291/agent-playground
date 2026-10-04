@@ -6,6 +6,7 @@ from contextlib import asynccontextmanager, suppress
 from fastapi import FastAPI
 
 from agent_playground.config import configured_model_name
+from agent_playground.knowledge.worker import run_knowledge_worker
 from agent_playground.services.report.routes import router as report_router
 from agent_playground.services.report.worker import run_report_worker
 from agent_playground.services.sql.routes import router as sql_router
@@ -13,15 +14,20 @@ from agent_playground.services.sql.routes import router as sql_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    worker = asyncio.create_task(run_report_worker())
+    workers = [
+        asyncio.create_task(run_report_worker()),
+        asyncio.create_task(run_knowledge_worker()),
+    ]
 
     try:
         yield
     finally:
-        worker.cancel()
+        for worker in workers:
+            worker.cancel()
 
-        with suppress(asyncio.CancelledError):
-            await worker
+        for worker in workers:
+            with suppress(asyncio.CancelledError):
+                await worker
 
 
 app = FastAPI(title="Agent Playground", lifespan=lifespan)

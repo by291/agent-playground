@@ -19,7 +19,7 @@ web/ (AG-UI client) → server/ (AG-UI adapter) → Aegra run queue → agent_pl
 | `web/src/`                      | `app/` owns routes, environment configuration and global providers; `pages/` contains thin page entries and the development component workspace; `features/conversation/` owns conversation API, state, runtime and UI; `features/a2ui/` owns the shared catalog and ordered surface runtime; `components/ui/` holds shadcn/ui primitives; `styles/` owns theme and global styles.                                                          |
 | `shared/`                       | The application run-status contract used by the TypeScript server and web app; reusable workflow review/output metadata contracts and the SQL business card schema and generic external-task status/update contract; protocol schemas remain owned by their official libraries.                                                                                                                                                             |
 
-Service implementations depend on application configuration and database repositories. Workflows consume their HTTP APIs; the SQL client and workflow state reuse `services/sql/models.py` for API response contracts. Workflow revision output and checkpointed state remain in `workflows/sql/models.py`. The HTTP application owns service registration and the report worker lifecycle.
+Service implementations depend on application configuration and database repositories. Workflows consume their HTTP APIs; the SQL client and workflow state reuse `services/sql/models.py` for API response contracts. Workflow revision output and checkpointed state remain in `workflows/sql/models.py`. The HTTP application owns service registration and the report and knowledge indexing worker lifecycles.
 
 The [frontend architecture guide](docs/frontend-architecture.md) describes module boundaries, state ownership and frontend validation. The [conversation recovery design](docs/superpowers/specs/2026-09-27-conversation-recovery-design.md) describes the data and protocol boundaries. The [validation record](docs/conversation-recovery-validation.md) lists the local end-to-end checks and their limits.
 
@@ -146,6 +146,34 @@ The model control beside the send button opens estimated token usage and a break
 
 The browser sends only the newest user message for a normal turn. Aegra's checkpoint owns model history; archived chat is not reintroduced after compaction. The complete public transcript is kept separately in the application database. Internal summaries and compressed message snapshots do not replace that transcript. Current-run replies are kept in checkpoint state until synchronization so compaction during a tool loop cannot erase recoverable replies. Context usage is synchronized with the latest finished or interrupted checkpoint and recovered after reload without extra upstream reads on every poll.
 
+## Shared knowledge
+
+Open **Knowledge** in the chat sidebar to upload TXT, Markdown or text PDFs. Documents are shared across conversations. Uploads are limited to 10 MiB; PDF extraction supports up to 200 unencrypted pages and two million extracted characters. Scanned PDFs need OCR before upload.
+
+Configure embeddings independently of DeepSeek in the root `.env`:
+
+```dotenv
+RAG_EMBEDDING_BASE_URL=https://your-provider.example/v1
+RAG_EMBEDDING_MODEL=your-embedding-model
+RAG_EMBEDDING_API_KEY=your-key
+RAG_EMBEDDING_BATCH_SIZE=10
+# Optional, only if your provider supports dimensions:
+RAG_EMBEDDING_DIMENSIONS=
+RAG_MAX_DISTANCE=0.55
+```
+
+`RAG_MAX_DISTANCE` is the maximum cosine distance accepted as evidence, from 0 to 2. A lower value requires a closer match. The adapter sends text inputs to the OpenAI-compatible `/embeddings` endpoint. `RAG_EMBEDDING_BATCH_SIZE` controls the number of texts per request and defaults to 10; it does not change text chunking or the embedding profile. Qwen `qwen3.7-text-embedding-flash` accepts up to 20 texts per request, while `text-embedding-v3/v4` accept up to 10 ([provider API limits](https://help.aliyun.com/zh/model-studio/text-embedding-synchronous-api/)). Set the batch size to your configured model's limit; the Qwen example configuration uses 20. Missing configuration produces an indexing error with a retry action; no substitute embeddings are used. Restart the agent after changing these settings, then use **Reindex** for existing documents. Endpoint, model and dimension changes use a separate index profile.
+
+The TypeScript server stores original bytes in the configured S3 bucket and applies document/chunk migrations in `public`. Shared file storage now uses `S3_ENDPOINT`, `S3_BUCKET`, `S3_REGION`, `S3_FORCE_PATH_STYLE` and the AWS SDK credential chain in `server/.env`; existing `SKILL_S3_*` settings must be renamed to `S3_*`. Skills and Knowledge share this client and bucket, with separate object keys. Compose uses PostgreSQL 18 with pgvector; the existing PostgreSQL 18 volume is retained.
+
+The Python HTTP application runs the durable indexing worker. It downloads originals through the authenticated internal application route, extracts text with pypdf in an owned subprocess, splits with LangChain, calls embeddings and stages pgvector chunks. Each attempt has a two-minute deadline and a three-minute lease. Expired jobs are reclaimed after restart; only the current generation can publish a ready index. Failed jobs can be retried from the page. Incomplete uploads can resume with the same original file. Reindexing immediately hides the previous chunks.
+
+Ask the agent a question about the uploaded documents or shared knowledge base. `search_knowledge` returns up to five matching excerpts from ready documents under the current embedding profile. Answers are instructed to cite file names and PDF pages. **Retrieved sources** shows the actual retrieved excerpts and original downloads, including after reloading a conversation. This list records retrieval; it does not assert that every excerpt supports every statement in the answer. Searches with no evidence are shown explicitly.
+
+Deleting a document immediately hides its index and download. The server independently retries S3 cleanup and removes chunks. It also scans one `knowledge/` object-list page per cleanup pass to remove uploads that finish remotely after a client timeout; S3 credentials need list, get, put and delete permissions for these objects. A small metadata tombstone prevents delayed upload retries from recreating deleted document IDs. Conversation deletion does not delete shared documents; previously saved conversation excerpts remain part of that conversation's history.
+
+The document API is `/api/knowledge/documents` (list/upload), `/:id/reindex`, `/:id` (delete) and `/:id/file` (download). The initial implementation uses exact cosine search without an ANN index. It has no OCR, tenant permissions or document version catalog. Controlled-provider tests verify the HTTP, S3, Python worker, pgvector and restored-source chain; real-provider/model validation requires your configured credentials.
+
 ## Tool process in chat
 
 Each user turn has one assistant reply area. Tool calls appear in a collapsed process above the final answer. Expanding the process shows the assistant's accompanying text and each tool's execution status; expanding a tool shows its parameters and raw result. This text is ordinary assistant content, not private reasoning. A user-opened process stays open when the run finishes. Tool failures remain visible while collapsed, and workflow cards and review forms remain directly accessible outside the process.
@@ -169,7 +197,7 @@ GitHub Actions runs the Python, server, web, and browser E2E checks in parallel 
 
 Pyrefly uses its strict preset. Ruff keeps its default checks and adds import sorting, common bug checks, and Python syntax upgrades; its formatter uses the default 88-character line length. Both TypeScript projects enable strict checking, unchecked index access, exact optional properties, and verbatim module syntax. ESLint uses the JavaScript and type-aware TypeScript recommended rules, with React Hooks rules for the web app. Prettier uses its defaults, while `.editorconfig` defines indentation and line endings for editors.
 
-The Python and server PostgreSQL tests use Testcontainers to start temporary `postgres:18-alpine` containers. Ordinary Python database tests share one session container with a fresh database per test; server integration tests share one project container with a fresh database per file. Tests close their connections before dropping these databases, so leaked connections fail teardown. The Python worker tracing test owns separate PostgreSQL and Redis containers for its worker-specific setup. `make test` and `make check` need a running Docker daemon, but do not need the Compose database or a `TEST_DATABASE_URL` variable.
+The Python and server PostgreSQL tests use Testcontainers to start temporary `pgvector/pgvector:0.8.7-pg18` containers. Ordinary Python database tests share one session container with a fresh database per test; server integration tests share one project container with a fresh database per file. Tests close their connections before dropping these databases, so leaked connections fail teardown. The Python worker tracing test owns separate PostgreSQL and Redis containers for its worker-specific setup. `make test` and `make check` need a running Docker daemon, but do not need the Compose database or a `TEST_DATABASE_URL` variable.
 
 TypeScript unit, integration, and DOM interaction tests use Vitest. `pnpm test` runs these server and web tests, including the PostgreSQL integration suite. Server tests use the Node environment. Web tests use the threads pool and reuse each worker's module graph and environment in the `shared` project; App route tests run in the `isolated` project because they change development mode before importing configuration. DOM tests opt into jsdom and use React Testing Library with jest-dom assertions. The web test setup releases mounted components, resets browser storage and appearance, and restores mocks and timers after each test. Tests must release listeners and other owned resources and use restorable mocks for global overrides. Type checking remains a separate `pnpm check` step.
 
@@ -217,7 +245,7 @@ make dev
 make skills-smoke
 ```
 
-`make dev` / `make infra-up` 默认启动 PostgreSQL、Redis、OpenSandbox 控制服务和 SeaweedFS 单节点 S3，并构建包含 Python、Bash、Node、httpx、pandas、openpyxl 和 pypdf 的执行镜像。SeaweedFS 的本地开发凭据见 `infra/skills/s3.json`，只映射 localhost 的 8333 端口，内容持久化在 Compose volume。这套配置用于本地试用。已有 S3 兼容服务可配置 `server/.env` 中的 `SKILL_S3_ENDPOINT`、`SKILL_S3_BUCKET`、`SKILL_S3_REGION` 和 `SKILL_S3_FORCE_PATH_STYLE`；bucket 需要事先创建。凭据使用 AWS SDK 标准 credential chain，例如服务器环境中的 `AWS_ACCESS_KEY_ID`、`AWS_SECRET_ACCESS_KEY`、可选 `AWS_SESSION_TOKEN`，或部署环境提供的 role。S3 凭据不传给浏览器或脚本。
+`make dev` / `make infra-up` 默认启动 PostgreSQL、Redis、OpenSandbox 控制服务和 SeaweedFS 单节点 S3，并构建包含 Python、Bash、Node、httpx、pandas、openpyxl 和 pypdf 的执行镜像。SeaweedFS 的本地开发凭据见 `infra/skills/s3.json`，只映射 localhost 的 8333 端口，内容持久化在 Compose volume。这套配置用于本地试用。已有 S3 兼容服务可配置 `server/.env` 中的 `S3_ENDPOINT`、`S3_BUCKET`、`S3_REGION` 和 `S3_FORCE_PATH_STYLE`；bucket 需要事先创建。凭据使用 AWS SDK 标准 credential chain，例如服务器环境中的 `AWS_ACCESS_KEY_ID`、`AWS_SECRET_ACCESS_KEY`、可选 `AWS_SESSION_TOKEN`，或部署环境提供的 role。S3 凭据不传给浏览器或脚本。
 
 输入框的 **Attach files** 可选择最多四个文件，每个不超过 10 MiB。文件内容通过后端写入 S3；PG 仅保存对象 key、摘要、大小、发布状态和会话归属，每个会话最多 100 MiB。上传失败保留草稿和文件选择，相同 ID/内容可重试，冲突内容返回 409。未完成的上传保留元数据但不可下载，直到重试成功或删除会话。内部文件接口沿用 `WORKFLOW_API_TOKEN`，脚本输入按当前会话校验，输出还需对应已有 run。输出声明相对 `/workspace` 的路径，工具结果中的文件会在聊天里显示下载链接，刷新后仍可下载。删除会话立即撤销下载访问，后端每 30 秒清理已删除会话的 S3 对象；失败时保留元数据，下次或重启后继续。应用保留当前共享工作区访问模型。
 

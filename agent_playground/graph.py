@@ -18,6 +18,7 @@ from langgraph_sdk.runtime import ServerRuntime
 from agent_playground.config import configured_model_name
 from agent_playground.context import ContextMiddleware
 from agent_playground.db.connection import prepare_app_store
+from agent_playground.knowledge.tools import search_knowledge
 from agent_playground.observability import execution_trace
 from agent_playground.prompts import SYSTEM_PROMPT
 from agent_playground.skills.catalog import SkillCatalog
@@ -66,6 +67,7 @@ def make_graph(
     prompt = SYSTEM_PROMPT + catalog.prompt()
     tools = [
         get_current_time,
+        search_knowledge,
         *(mcp_tools or []),
         run_experiment_workflow,
         run_report_workflow,

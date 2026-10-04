@@ -1,3 +1,6 @@
+import { z } from "zod";
+import { spawn, type ChildProcess } from "node:child_process";
+import { knowledgeSearchSchema } from "../../../shared/knowledge";
 import { createSkillTestStorage } from "../skill-storage";
 import type { StartedTestContainer } from "testcontainers";
 import { skillFileSchema } from "../../../shared/skill-files";
@@ -17,6 +20,8 @@ import { randomUUID } from "node:crypto";
 import { conversations, conversationMessages } from "../../db/schema";
 import { scrollHistory } from "./scroll-history";
 
+let knowledgeProcess: ChildProcess | undefined;
+let stopKnowledgeCleanup: (() => Promise<void>) | undefined;
 let storage: StartedTestContainer | undefined;
 let postgres: StartedPostgreSqlContainer | undefined;
 let database: typeof import("../../db/database") | undefined;
@@ -46,7 +51,25 @@ async function closeServer(server: Server | undefined) {
 function stop() {
   stopping ??= (async () => {
     agent?.releaseAll();
+
+    if (
+      knowledgeProcess?.pid &&
+      knowledgeProcess.exitCode === null &&
+      knowledgeProcess.signalCode === null
+    ) {
+      const process = knowledgeProcess;
+      const exited = new Promise<void>((resolve) =>
+        process.once("exit", () => resolve()),
+      );
+      const timeout = setTimeout(() => process.kill("SIGKILL"), 5000);
+
+      process.kill("SIGTERM");
+      await exited;
+      clearTimeout(timeout);
+    }
+
     await stopWorker?.();
+    await stopKnowledgeCleanup?.();
 
     try {
       await closeServer(backend);
@@ -58,9 +81,7 @@ function stop() {
           await database?.db.$client.end();
         } finally {
           await postgres?.stop();
-          (
-            await import("../../conversation/skill-object-store")
-          ).closeSkillObjectStore();
+          (await import("../../storage/object-store")).closeObjectStore();
           await storage?.stop();
         }
       }
@@ -72,7 +93,9 @@ function stop() {
 
 async function start() {
   storage = await createSkillTestStorage();
-  postgres = await new PostgreSqlContainer("postgres:18-alpine").start();
+  postgres = await new PostgreSqlContainer(
+    "pgvector/pgvector:0.8.7-pg18",
+  ).start();
   process.env.APP_DATABASE_URL = postgres.getConnectionUri();
   database = await import("../../db/database");
   await database.migrateServer();
@@ -109,6 +132,107 @@ async function start() {
 
   stopWorker = startExternalTaskWorker();
   const harness = new Hono();
+  let ready = false;
+  let embeddingFailure = false;
+
+  process.env.WORKFLOW_API_TOKEN = "knowledge-e2e-token";
+  harness.get("/health", (context) =>
+    context.text(ready ? "ok" : "starting", ready ? 200 : 503),
+  );
+  harness.post("/__e2e/embedding-failure", async (context) => {
+    embeddingFailure = z
+      .object({ enabled: z.boolean() })
+      .parse(await context.req.json()).enabled;
+
+    return context.json({ enabled: embeddingFailure });
+  });
+  harness.post("/__e2e/embeddings", async (context) => {
+    if (embeddingFailure) {
+      return context.json(
+        { error: { message: "Controlled embedding failure" } },
+        503,
+      );
+    }
+
+    const input = z
+      .object({
+        input: z.union([z.string(), z.array(z.string())]),
+        model: z.string(),
+      })
+      .parse(await context.req.json());
+    const texts = Array.isArray(input.input) ? input.input : [input.input];
+
+    return context.json({
+      object: "list",
+      model: input.model,
+      usage: { prompt_tokens: 1, total_tokens: 1 },
+      data: texts.map((text, index) => ({
+        object: "embedding",
+        index,
+        embedding: /return/i.test(text) ? [1, 0.1] : [0.1, 1],
+      })),
+    });
+  });
+  harness.post("/__e2e/knowledge-result/:threadId", async (context) => {
+    const threadId = context.req.param("threadId");
+    const query = "What is the return policy?";
+    const search = await fetch("http://127.0.0.1:4301/search", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ query }),
+      signal: AbortSignal.timeout(10_000),
+    });
+    const result = knowledgeSearchSchema.parse(await search.json());
+    const messages: LangGraphPlatformMessage[] = [
+      { id: randomUUID(), type: "human", role: "user", content: query },
+      {
+        id: randomUUID(),
+        type: "ai",
+        role: "assistant",
+        content: "",
+        tool_calls: [
+          { id: "knowledge-search", name: "search_knowledge", args: { query } },
+        ],
+      },
+      {
+        id: randomUUID(),
+        type: "tool",
+        role: "tool",
+        name: "search_knowledge",
+        tool_call_id: "knowledge-search",
+        content: JSON.stringify(result),
+      },
+      {
+        id: randomUUID(),
+        type: "ai",
+        role: "assistant",
+        content: "The retrieved policy is available in the sources below.",
+      },
+    ];
+
+    await database!.db.transaction(async (tx) => {
+      await tx
+        .delete(conversationMessages)
+        .where(eq(conversationMessages.threadId, threadId));
+      const publicMessages: Message[] = [
+        { id: messages[0]!.id!, role: "user", content: query },
+        ...completedMessages({ messages }),
+      ];
+
+      await tx.insert(conversationMessages).values(
+        publicMessages.map((message, messageOrder) => ({
+          threadId,
+          messageId: message.id,
+          submitSeq: 1,
+          messageOrder,
+          message,
+        })),
+      );
+    });
+    agent!.seedConversation(threadId, messages);
+
+    return context.json(result);
+  });
 
   harness.post("/__e2e/skill-result/:threadId", async (context) => {
     const threadId = context.req.param("threadId");
@@ -239,6 +363,69 @@ async function start() {
     hostname: "127.0.0.1",
     port: 4300,
   }) as Server;
+  const root = new URL("../../..", import.meta.url).pathname;
+
+  knowledgeProcess = spawn(
+    `${root}/.venv/bin/python`,
+    [
+      "-m",
+      "uvicorn",
+      "knowledge_server:app",
+      "--app-dir",
+      `${root}/tests`,
+      "--host",
+      "127.0.0.1",
+      "--port",
+      "4301",
+      "--log-level",
+      "warning",
+    ],
+    {
+      cwd: root,
+      stdio: ["ignore", "ignore", "inherit"],
+      env: {
+        ...process.env,
+        PYTHONPATH: root,
+        APP_API_URL: "http://127.0.0.1:4300",
+        RAG_EMBEDDING_BASE_URL: "http://127.0.0.1:4300/__e2e",
+        RAG_EMBEDDING_MODEL: "controlled-model",
+        RAG_EMBEDDING_API_KEY: "controlled-key",
+        RAG_EMBEDDING_DIMENSIONS: "",
+      },
+    },
+  );
+  let processError: Error | undefined;
+
+  knowledgeProcess.on("error", (error) => {
+    processError = error;
+  });
+
+  for (let attempt = 0; attempt < 100; attempt++) {
+    if (processError || knowledgeProcess.exitCode !== null) {
+      throw (
+        processError ?? new Error("Knowledge test worker exited during startup")
+      );
+    }
+
+    const response = await fetch("http://127.0.0.1:4301/health").catch(
+      () => undefined,
+    );
+
+    if (response?.ok) {
+      ready = true;
+      break;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+
+  if (!ready) {
+    throw new Error("Knowledge test worker did not start");
+  }
+
+  stopKnowledgeCleanup = (
+    await import("../../knowledge/cleanup")
+  ).startKnowledgeCleanup();
 }
 
 const starting = start();

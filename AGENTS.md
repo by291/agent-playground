@@ -8,9 +8,9 @@
 
 ## 仓库导航
 
-- `agent_playground/`：Python agent、tools 和 MCP，`skills/` 管理已发布 Skill 的发现、脚本沙箱和文件传递，由 Aegra 提供 Agent Protocol 服务；`workflows/` 按业务组织图、工具入口与卡片，SQL 的状态模型、模型调用和 API client 分开；通用对话审核放在 `workflows/review.py`，通用外部任务注册与等待放在 `workflows/external.py`；输出发布与回复/展示元数据放在 `workflows/output.py`。会话层通过通用审核和输出契约处理反馈、归档与展示归属；业务卡片不承载消息归档逻辑。`services/` 按业务组织 API 服务，`sql/` 管理 SQL 模拟 API、接口模型和校验，`report/` 管理异步报告模拟 API 和后台回调投递；服务实现不依赖 workflow，SQL workflow 复用服务的接口模型；共用应用配置放在 `config.py`；`db/` 管理数据库契约、连接、workflow 输出与模拟服务数据的持久化，不依赖 HTTP 请求和异常。
-- `server/`：TypeScript 后端；`http/` 组织路由、请求校验和会话变更 SSE 传输，`app.ts` 只装配 HTTP 应用，`server.ts` 管理服务进程及资源生命周期；`agent/` 适配 Aegra 与 AG-UI，`conversation/` 管理运行、恢复、持久外部任务及后台续跑、会话变更通知和会话文件的 S3 存储生命周期，`db/` 管理应用数据，根目录保留应用与进程入口、配置。
-- `web/`：TypeScript 前端；`src/app/` 管理入口、路由、配置和全局 provider，`src/pages/` 组合页面并拥有开发预览，`src/features/` 按 conversation 与 A2UI 能力组织 API、模型、运行和 UI；`src/components/ui/` 存放 shadcn/ui 基础控件，`src/styles/` 管理主题与全局样式。
+- `agent_playground/`：Python agent、tools 和 MCP，`skills/` 管理已发布 Skill 的发现、脚本沙箱和文件传递，由 Aegra 提供 Agent Protocol 服务；`workflows/` 按业务组织图、工具入口与卡片，SQL 的状态模型、模型调用和 API client 分开；通用对话审核放在 `workflows/review.py`，通用外部任务注册与等待放在 `workflows/external.py`；输出发布与回复/展示元数据放在 `workflows/output.py`。会话层通过通用审核和输出契约处理反馈、归档与展示归属；业务卡片不承载消息归档逻辑。`knowledge/` 管理共享知识文档的抽取、embedding、后台索引和检索工具，文件与文档生命周期由 TypeScript 服务拥有；`services/` 按业务组织 API 服务，`sql/` 管理 SQL 模拟 API、接口模型和校验，`report/` 管理异步报告模拟 API 和后台回调投递；服务实现不依赖 workflow，SQL workflow 复用服务的接口模型；共用应用配置放在 `config.py`；`db/` 管理数据库契约、连接、workflow 输出与模拟服务数据的持久化，不依赖 HTTP 请求和异常。
+- `server/`：TypeScript 后端；`http/` 组织路由、请求校验和会话变更 SSE 传输，`app.ts` 只装配 HTTP 应用，`server.ts` 管理服务进程及资源生命周期；`agent/` 适配 Aegra 与 AG-UI，`conversation/` 管理运行、恢复、持久外部任务及后台续跑、会话变更通知和会话文件的 S3 存储生命周期，`knowledge/` 管理共享知识文档的 HTTP 业务与删除清理，`storage/` 管理 Skill 与知识库共用的对象存储；`db/` 管理应用数据，根目录保留应用与进程入口、配置。
+- `web/`：TypeScript 前端；`src/app/` 管理入口、路由、配置和全局 provider，`src/pages/` 组合页面并拥有开发预览，`src/features/` 按 conversation、A2UI 与 knowledge 能力组织 API、模型、运行和 UI；`src/components/ui/` 存放 shadcn/ui 基础控件，`src/styles/` 管理主题与全局样式。
 - `shared/`：TypeScript 应用共用的运行状态契约；AG-UI 和 A2UI 类型继续使用官方库。
 - `compose.yaml`：本地 PostgreSQL、Redis 等基础设施；`tests/`：Python 侧测试。
 - 完整启动步骤、当前能力、协议传递方式和已知限制见 `README.md`；不要把容易变化的项目现状重复写进本文件。

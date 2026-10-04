@@ -3,6 +3,7 @@ import type { ReasoningMessage } from "@ag-ui/client";
 import { AssistantFrame, AssistantText, ThinkingStatus } from "./MessageRow";
 import { hasMessageText } from "../../model/presentation";
 import { toolProcess, type ChatTurn } from "../../model/turns";
+import { KnowledgeSources } from "./KnowledgeSources";
 import { SkillFiles } from "./SkillFiles";
 import { ToolProcess } from "./ToolProcess";
 import { ReasoningProcess } from "./ReasoningProcess";
@@ -90,6 +91,7 @@ export function AssistantReply({
           onTextVisible={reportVisibleAnswer}
         />
       ))}
+      <KnowledgeSources process={process} />
       {active && !reasoning.length && !toolsRunning && !final.length && (
         <ThinkingStatus
           label={process.length ? "Preparing reply" : "Thinking"}

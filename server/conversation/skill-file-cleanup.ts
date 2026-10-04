@@ -3,7 +3,7 @@ import { db } from "../db/database";
 import { conversations } from "../db/schema";
 import { skillFiles } from "../db/skill-file-schema";
 import { logger } from "../observability/logger";
-import { deleteSkillObject } from "./skill-object-store";
+import { deleteObject } from "../storage/object-store";
 
 export async function cleanupDeletedSkillFiles(signal?: AbortSignal) {
   const candidates = await db
@@ -48,7 +48,7 @@ export async function cleanupDeletedSkillFiles(signal?: AbortSignal) {
           return;
         }
 
-        await deleteSkillObject(row.file.objectKey, signal);
+        await deleteObject(row.file.objectKey, signal);
         await tx.delete(skillFiles).where(eq(skillFiles.id, row.file.id));
       });
     } catch (error) {

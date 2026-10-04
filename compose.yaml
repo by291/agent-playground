@@ -3,7 +3,7 @@ include:
 
 services:
   postgres:
-    image: postgres:18-alpine
+    image: pgvector/pgvector:0.8.7-pg18
     environment:
       POSTGRES_USER: agent
       POSTGRES_PASSWORD: agent

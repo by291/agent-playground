@@ -6,6 +6,7 @@ export default defineConfig({
     "./db/schema.ts",
     "./db/external-task-schema.ts",
     "./db/skill-file-schema.ts",
+    "./db/knowledge-schema.ts",
   ],
   out: "./drizzle",
   dbCredentials: {

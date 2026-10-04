@@ -24,7 +24,7 @@ let app: (typeof import("../app"))["app"];
 beforeAll(async () => {
   storage = await createSkillTestStorage();
   s3 = new S3Client({
-    endpoint: process.env.SKILL_S3_ENDPOINT!,
+    endpoint: process.env.S3_ENDPOINT!,
     region: "us-east-1",
     forcePathStyle: true,
   });
@@ -42,7 +42,7 @@ afterAll(async () => {
     await database?.db.$client.end();
   } finally {
     await testDatabase?.dispose();
-    (await import("./skill-object-store")).closeSkillObjectStore();
+    (await import("../storage/object-store")).closeObjectStore();
     s3?.destroy();
     await storage?.stop();
   }
@@ -254,10 +254,10 @@ test("one denied S3 deletion does not block other objects", async () => {
 
   await deleteConversation(denied!.threadId);
   await deleteConversation(allowed!.threadId);
-  const store = await import("./skill-object-store");
-  const originalDelete = store.deleteSkillObject;
+  const store = await import("../storage/object-store");
+  const originalDelete = store.deleteObject;
   const interceptor = vi
-    .spyOn(store, "deleteSkillObject")
+    .spyOn(store, "deleteObject")
     .mockImplementation(async (key, signal) => {
       if (key === denied!.objectKey) {
         throw new Error("Access denied for one object");

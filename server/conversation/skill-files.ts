@@ -4,7 +4,7 @@ import { db } from "../db/database";
 import { conversations, conversationRuns } from "../db/schema";
 import { skillFiles } from "../db/skill-file-schema";
 import { SubmissionError } from "./errors";
-import { getSkillObject, putSkillObject } from "./skill-object-store";
+import { getObject, putObject } from "../storage/object-store";
 import { maxSkillFileBytes, type SkillFile } from "../../shared/skill-files";
 
 interface FileInput {
@@ -126,7 +126,7 @@ export async function storeSkillFile(input: FileInput): Promise<SkillFile> {
     }
 
     if (!file.ready) {
-      await putSkillObject(file.objectKey, input.data);
+      await putObject(file.objectKey, input.data);
       await tx
         .update(skillFiles)
         .set({ ready: true })
@@ -165,7 +165,7 @@ export async function readSkillFile(threadId: string, id: string) {
     throw new SubmissionError("File not found", 404);
   }
 
-  const data = await getSkillObject(row.file.objectKey, row.file.size);
+  const data = await getObject(row.file.objectKey, row.file.size);
   const sha256 = createHash("sha256").update(data).digest("hex");
 
   if (data.length !== row.file.size || sha256 !== row.file.sha256) {

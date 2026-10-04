@@ -12,7 +12,7 @@ from testcontainers.community.postgres import PostgresContainer
 
 @pytest.fixture(scope="session")
 def postgres_container() -> Iterator[PostgresContainer]:
-    with PostgresContainer("postgres:18-alpine") as postgres:
+    with PostgresContainer("pgvector/pgvector:0.8.7-pg18") as postgres:
         yield postgres
 
 

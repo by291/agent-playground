@@ -1,0 +1,1 @@
+ALTER TABLE "knowledge_documents" ADD COLUMN "object_deleted_at" timestamp with time zone;

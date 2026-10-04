@@ -1,3 +1,4 @@
+import { BookOpenIcon } from "@phosphor-icons/react/dist/csr/BookOpen";
 import { ChatCircleIcon } from "@phosphor-icons/react/dist/csr/ChatCircle";
 import { PlusIcon } from "@phosphor-icons/react/dist/csr/Plus";
 import { StackIcon } from "@phosphor-icons/react/dist/csr/Stack";
@@ -82,6 +83,18 @@ export function Sidebar({
           New conversation
         </span>
       </Button>
+
+      <a
+        href="/knowledge"
+        aria-label="Knowledge"
+        title={collapsed ? "Knowledge" : undefined}
+        className="mt-2 flex h-10 shrink-0 items-center gap-2 rounded-md px-3 text-[13px] text-muted hover:bg-selected hover:text-ink focus-visible:ring-2 focus-visible:ring-accent"
+      >
+        <BookOpenIcon size={18} aria-hidden="true" />
+        <span className="workspace-sidebar-label" aria-hidden={collapsed}>
+          Knowledge
+        </span>
+      </a>
 
       {history && current ? (
         <ConversationList

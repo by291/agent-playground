@@ -2,6 +2,7 @@ import { lazy, Suspense } from "react";
 import { NotFoundPage } from "@/pages/NotFoundPage";
 import { ChatPage } from "@/pages/chat/ChatPage";
 import { conversationIdFromPath } from "@/pages/chat/conversation-route";
+import { KnowledgePage } from "@/pages/knowledge/KnowledgePage";
 import { appConfig } from "./config";
 import { PageBoundary } from "./PageBoundary";
 
@@ -32,6 +33,15 @@ function CurrentPage() {
       <>
         <title>Agent Chat · Agent Playground</title>
         <ChatPage development={appConfig.development} />
+      </>
+    );
+  }
+
+  if (path === "/knowledge") {
+    return (
+      <>
+        <title>Knowledge · Agent Playground</title>
+        <KnowledgePage />
       </>
     );
   }

@@ -64,6 +64,20 @@
       "when": 1791135448811,
       "tag": "0008_skill_cleanup",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1791138522116,
+      "tag": "0009_knowledge",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1791139171547,
+      "tag": "0010_knowledge_cleanup",
+      "breakpoints": true
     }
   ]
 }
