@@ -10,11 +10,19 @@ test("sidebar dragging and keyboard resizing survive collapse and reload without
   await composer.fill("Keep this unfinished task");
   await separator.press("ArrowRight");
   await expect(separator).toHaveAttribute("aria-valuenow", "336");
+  const sidebar = page.getByRole("complementary", {
+    name: "Conversation navigation",
+  });
+
+  await expect.poll(async () => (await sidebar.boundingBox())!.width).toBe(336);
   const handle = await separator.boundingBox();
 
   expect(handle).not.toBeNull();
   await page.mouse.move(handle!.x + handle!.width / 2, handle!.y + 100);
   await page.mouse.down();
+  await expect
+    .poll(() => page.evaluate(() => document.body.style.cursor))
+    .toBe("col-resize");
   await page.mouse.move(handle!.x + handle!.width / 2 + 48, handle!.y + 100, {
     steps: 6,
   });

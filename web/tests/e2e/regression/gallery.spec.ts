@@ -19,5 +19,18 @@ test("the development gallery selects a valid WorkflowText preview", async ({
   await expect(
     page.getByRole("heading", { name: "A clear heading", exact: true }),
   ).toBeVisible();
+  await editor.press("ControlOrMeta+A");
+  await page.keyboard.insertText("{");
+  await expect(
+    page.getByRole("alert").filter({ hasText: "Enter valid JSON" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "A clear heading", exact: true }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Reset", exact: true }).click();
+  await expect(
+    page.getByRole("status").filter({ hasText: "Valid A2UI JSON" }),
+  ).toBeVisible();
+  await expect(editor).toBeVisible();
   expect(errors).toEqual([]);
 });

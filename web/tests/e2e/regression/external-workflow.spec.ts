@@ -66,18 +66,21 @@ test("external progress updates live, and a closed conversation completes in the
   await update(3, "succeeded", "Report ready");
   await update(3, "succeeded", "Report ready");
   await expect
-    .poll(async () => {
-      const response = await request.get(
-        `http://127.0.0.1:4300/__e2e/stored-conversation/${threadId}`,
-      );
-      const snapshot = (await response.json()) as {
-        messages: { content: string }[];
-      };
+    .poll(
+      async () => {
+        const response = await request.get(
+          `http://127.0.0.1:4300/__e2e/stored-conversation/${threadId}`,
+        );
+        const snapshot = (await response.json()) as {
+          messages: { content: string }[];
+        };
 
-      return snapshot.messages.some(
-        (message) => message.content === "The report is ready.",
-      );
-    })
+        return snapshot.messages.some(
+          (message) => message.content === "The report is ready.",
+        );
+      },
+      { intervals: [100] },
+    )
     .toBe(true);
   const restored = await context.newPage();
 

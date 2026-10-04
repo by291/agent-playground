@@ -1,94 +1,99 @@
 import { expect, test, capture } from "../fixtures";
 
-test.use({ replyAnimation: true });
+test.describe("reply animation preference", () => {
+  test.use({ replyAnimation: true });
 
-test("settings change appearance, send shortcut and reply animation and survive reload", async ({
-  page,
-}, testInfo) => {
-  await page.goto("/");
-  const composer = page.getByRole("textbox", { name: "Message" });
-  const openSettings = page.getByRole("button", { name: "Open settings" });
-  const settings = page.getByRole("dialog", { name: "Settings", exact: true });
+  test("settings change appearance, send shortcut and reply animation and survive reload", async ({
+    page,
+  }, testInfo) => {
+    await page.goto("/");
+    const composer = page.getByRole("textbox", { name: "Message" });
+    const openSettings = page.getByRole("button", { name: "Open settings" });
+    const settings = page.getByRole("dialog", {
+      name: "Settings",
+      exact: true,
+    });
 
-  await composer.fill("A multiline task.");
-  await openSettings.click();
-  await expect(settings).toBeVisible();
-  await settings
-    .getByRole("combobox", { name: "Appearance", exact: true })
-    .click();
-  await settings.getByRole("option", { name: "Dark", exact: true }).click();
-  await expect(page.locator("html")).toHaveClass(/dark/);
-  await settings
-    .getByRole("combobox", { name: "Send shortcut", exact: true })
-    .click();
-  await settings.getByRole("option", { name: "Ctrl / Cmd + Enter" }).click();
-  await settings
-    .getByRole("combobox", { name: "Reply animation", exact: true })
-    .click();
-  await settings.getByRole("option", { name: "Off", exact: true }).click();
-  await capture(page, testInfo, "settings-dark.png");
-  await settings.getByRole("button", { name: "Done", exact: true }).click();
-  await expect(openSettings).toBeFocused();
-  await expect(composer).toHaveValue("A multiline task.");
-  let submissions = 0;
+    await composer.fill("A multiline task.");
+    await openSettings.click();
+    await expect(settings).toBeVisible();
+    await settings
+      .getByRole("combobox", { name: "Appearance", exact: true })
+      .click();
+    await settings.getByRole("option", { name: "Dark", exact: true }).click();
+    await expect(page.locator("html")).toHaveClass(/dark/);
+    await settings
+      .getByRole("combobox", { name: "Send shortcut", exact: true })
+      .click();
+    await settings.getByRole("option", { name: "Ctrl / Cmd + Enter" }).click();
+    await settings
+      .getByRole("combobox", { name: "Reply animation", exact: true })
+      .click();
+    await settings.getByRole("option", { name: "Off", exact: true }).click();
+    await capture(page, testInfo, "settings-dark.png");
+    await settings.getByRole("button", { name: "Done", exact: true }).click();
+    await expect(openSettings).toBeFocused();
+    await expect(composer).toHaveValue("A multiline task.");
+    let submissions = 0;
 
-  page.on("request", (request) => {
-    if (
-      request.method() === "POST" &&
-      new URL(request.url()).pathname === "/agent"
-    ) {
-      submissions += 1;
-    }
+    page.on("request", (request) => {
+      if (
+        request.method() === "POST" &&
+        new URL(request.url()).pathname === "/agent"
+      ) {
+        submissions += 1;
+      }
+    });
+    await composer.press("Enter");
+    await expect(composer).toHaveValue("A multiline task.\n");
+    expect(submissions).toBe(0);
+    await composer.fill("A multiline task.\nSecond line.");
+    const submitted = page.waitForRequest(
+      (request) =>
+        request.method() === "POST" &&
+        new URL(request.url()).pathname === "/agent",
+    );
+
+    await composer.press("Control+Enter");
+    const input = (await submitted).postDataJSON() as {
+      messages: { content: string }[];
+    };
+
+    expect(input.messages.at(-1)?.content).toBe(
+      "A multiline task.\nSecond line.",
+    );
+    expect(submissions).toBe(1);
+    await expect(composer).toBeEnabled();
+    await page.reload();
+    await expect(page.locator("html")).toHaveClass(/dark/);
+    await openSettings.click();
+    await expect(
+      settings.getByRole("combobox", { name: "Appearance", exact: true }),
+    ).toHaveText("Dark");
+    await expect(
+      settings.getByRole("combobox", { name: "Send shortcut", exact: true }),
+    ).toHaveText("Ctrl / Cmd + Enter");
+    await expect(
+      settings.getByRole("combobox", { name: "Reply animation", exact: true }),
+    ).toHaveText("Off");
+    await settings.getByRole("button", { name: "Reset preferences" }).click();
+    await expect(page.locator("html")).not.toHaveClass(/dark/);
+    await expect(
+      settings.getByRole("combobox", { name: "Send shortcut", exact: true }),
+    ).toHaveText("Enter");
+    await expect(
+      settings.getByRole("combobox", { name: "Reply animation", exact: true }),
+    ).toHaveText("On");
+    await settings.getByRole("button", { name: "Done", exact: true }).click();
+    await expect(page.getByRole("region", { name: "Messages" })).toContainText(
+      "A multiline task.",
+    );
+    await page.getByRole("button", { name: "Collapse sidebar" }).click();
+    await openSettings.click();
+    await expect(settings).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(openSettings).toBeFocused();
   });
-  await composer.press("Enter");
-  await expect(composer).toHaveValue("A multiline task.\n");
-  expect(submissions).toBe(0);
-  await composer.fill("A multiline task.\nSecond line.");
-  const submitted = page.waitForRequest(
-    (request) =>
-      request.method() === "POST" &&
-      new URL(request.url()).pathname === "/agent",
-  );
-
-  await composer.press("Control+Enter");
-  const input = (await submitted).postDataJSON() as {
-    messages: { content: string }[];
-  };
-
-  expect(input.messages.at(-1)?.content).toBe(
-    "A multiline task.\nSecond line.",
-  );
-  expect(submissions).toBe(1);
-  await expect(composer).toBeEnabled();
-  await page.reload();
-  await expect(page.locator("html")).toHaveClass(/dark/);
-  await openSettings.click();
-  await expect(
-    settings.getByRole("combobox", { name: "Appearance", exact: true }),
-  ).toHaveText("Dark");
-  await expect(
-    settings.getByRole("combobox", { name: "Send shortcut", exact: true }),
-  ).toHaveText("Ctrl / Cmd + Enter");
-  await expect(
-    settings.getByRole("combobox", { name: "Reply animation", exact: true }),
-  ).toHaveText("Off");
-  await settings.getByRole("button", { name: "Reset preferences" }).click();
-  await expect(page.locator("html")).not.toHaveClass(/dark/);
-  await expect(
-    settings.getByRole("combobox", { name: "Send shortcut", exact: true }),
-  ).toHaveText("Enter");
-  await expect(
-    settings.getByRole("combobox", { name: "Reply animation", exact: true }),
-  ).toHaveText("On");
-  await settings.getByRole("button", { name: "Done", exact: true }).click();
-  await expect(page.getByRole("region", { name: "Messages" })).toContainText(
-    "A multiline task.",
-  );
-  await page.getByRole("button", { name: "Collapse sidebar" }).click();
-  await openSettings.click();
-  await expect(settings).toBeVisible();
-  await page.keyboard.press("Escape");
-  await expect(openSettings).toBeFocused();
 });
 
 test("settings work inside mobile navigation and closing them preserves the drawer and draft", async ({

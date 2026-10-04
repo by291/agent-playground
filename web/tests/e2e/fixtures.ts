@@ -4,6 +4,7 @@ export { expect } from "@playwright/test";
 
 export const test = base.extend<{ replyAnimation: boolean }>({
   replyAnimation: [false, { option: true }],
+  reducedMotion: "reduce",
   storageState: async ({ baseURL, replyAnimation }, provide) => {
     if (!baseURL) {
       throw new Error("Browser tests require a base URL.");

@@ -1,30 +1,23 @@
 import { expect, test } from "../fixtures";
-import type { Page } from "@playwright/test";
 import { randomUUID } from "node:crypto";
-
-async function saveDiscussion(page: Page, title: string) {
-  const message = page.getByRole("textbox", { name: "Message" });
-
-  await message.fill(title);
-  await message.press("Enter");
-  await expect(
-    page.getByLabel("Assistant reply", { exact: true }),
-  ).toContainText("The current time is");
-  await expect(message).toBeEnabled();
-
-  return page.url();
-}
+import { createCompletedConversation } from "../conversations";
 
 test("a copied conversation URL opens its discussion in a browser without local history", async ({
   page,
   browser,
+  request,
 }) => {
-  await page.goto("/");
   const title = `Linked discussion ${randomUUID()}`;
-  const link = await saveDiscussion(page, title);
+  const threadId = await createCompletedConversation(request, title);
+
+  await page.goto(`/c/${threadId}`);
+  await expect(page.getByRole("region", { name: "Messages" })).toContainText(
+    title,
+  );
+  const link = page.url();
 
   expect(new URL(link).pathname).toMatch(/^\/c\/[^/]+$/);
-  const recipient = await browser.newContext();
+  const recipient = await browser.newContext({ reducedMotion: "reduce" });
 
   try {
     const opened = await recipient.newPage();
@@ -63,13 +56,25 @@ test("a copied conversation URL opens its discussion in a browser without local 
 
 test("conversation URLs override the local pointer and browser history switches discussions", async ({
   page,
+  request,
 }) => {
-  await page.goto("/?source=links#chat");
   const firstTitle = `First linked discussion ${randomUUID()}`;
-  const first = await saveDiscussion(page, firstTitle);
+  const secondTitle = `Second linked discussion ${randomUUID()}`;
+
+  await createCompletedConversation(request, firstTitle);
+  await createCompletedConversation(request, secondTitle);
+  await page.goto("/?source=links#chat");
   const navigation = page.getByRole("complementary", {
     name: "Conversation navigation",
   });
+
+  await navigation
+    .getByRole("button", { name: firstTitle, exact: true })
+    .click();
+  await expect(page.getByRole("region", { name: "Messages" })).toContainText(
+    firstTitle,
+  );
+  const first = page.url();
 
   await navigation
     .getByRole("button", { name: "New conversation", exact: true })
@@ -81,8 +86,13 @@ test("conversation URLs override the local pointer and browser history switches 
   await expect(
     page.getByRole("heading", { name: "What would you like to work on?" }),
   ).toBeVisible();
-  const secondTitle = `Second linked discussion ${randomUUID()}`;
-  const second = await saveDiscussion(page, secondTitle);
+  await navigation
+    .getByRole("button", { name: secondTitle, exact: true })
+    .click();
+  await expect(page.getByRole("region", { name: "Messages" })).toContainText(
+    secondTitle,
+  );
+  const second = page.url();
 
   expect(second).not.toBe(first);
   await navigation

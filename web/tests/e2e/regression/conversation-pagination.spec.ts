@@ -21,6 +21,7 @@ function navigation(page: Page) {
 test("compact history loads only at the bottom with an animated indicator and preserves scroll and focus", async ({
   page,
 }, testInfo) => {
+  await page.emulateMedia({ reducedMotion: "no-preference" });
   let olderRequests = 0;
   let release: () => void = () => undefined;
   const gate = new Promise<void>((resolve) => {
@@ -79,7 +80,13 @@ test("compact history loads only at the bottom with an animated indicator and pr
     await scroller.evaluate((element) => {
       element.scrollTop = element.scrollHeight - element.clientHeight - 80;
     });
-    await page.waitForTimeout(200);
+    // Let IntersectionObserver process the new position before the negative assertion.
+    await page.evaluate(
+      () =>
+        new Promise<void>((resolve) =>
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+        ),
+    );
     expect(olderRequests).toBe(0);
     const scrollTop = await scroller.evaluate((element) => {
       element.scrollTop = element.scrollHeight;

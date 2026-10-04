@@ -93,7 +93,7 @@ test("scrolling through restored long replies and code keeps the conversation he
 });
 
 test.describe("animated scrolling", () => {
-  test.use({ replyAnimation: true });
+  test.use({ replyAnimation: true, reducedMotion: "no-preference" });
 
   test("returning to the bottom resumes following the next reply even after another downward wheel", async ({
     page,

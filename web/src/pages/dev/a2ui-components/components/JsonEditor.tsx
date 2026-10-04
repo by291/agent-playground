@@ -1,6 +1,8 @@
 import Editor, { loader } from "@monaco-editor/react";
-// Register contribution services before the first editor creates its service container.
-import * as monaco from "monaco-editor";
+import * as monaco from "monaco-editor/editor";
+// Keep editor services and features while loading only the JSON language support.
+import "monaco-editor/features/register.all";
+import "monaco-editor/languages/features/json/register";
 import editorWorker from "monaco-editor/editor/editor.worker.js?worker";
 import jsonWorker from "monaco-editor/language/json/json.worker.js?worker";
 

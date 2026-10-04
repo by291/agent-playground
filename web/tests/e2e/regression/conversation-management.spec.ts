@@ -1,15 +1,17 @@
 import { expect, test, capture } from "../fixtures";
 import { randomUUID } from "node:crypto";
+import { createCompletedConversation } from "../conversations";
 
 test("history opens, renames and deletes a saved conversation after reload", async ({
   page,
+  request,
 }, testInfo) => {
-  await page.goto("/");
-  const message = page.getByRole("textbox", { name: "Message" });
   const title = `History check ${randomUUID()}`;
+  const threadId = await createCompletedConversation(request, title);
 
-  await message.fill(title);
-  await message.press("Enter");
+  await page.goto(`/c/${threadId}`);
+  const message = page.getByRole("textbox", { name: "Message" });
+
   await expect(message).toBeEnabled();
   const navigation = page.getByRole("complementary", {
     name: "Conversation navigation",
@@ -130,15 +132,14 @@ test("switching away from a live run preserves its recovery and does not resubmi
 
 test("mobile navigation supports rename and delete without leaving the drawer", async ({
   page,
+  request,
 }, testInfo) => {
-  await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto("/");
   const title = `Mobile history ${randomUUID()}`;
-  const message = page.getByRole("textbox", { name: "Message" });
+  const threadId = await createCompletedConversation(request, title);
 
-  await message.fill(title);
-  await message.press("Enter");
-  await expect(message).toBeEnabled();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`/c/${threadId}`);
+  await expect(page.getByRole("textbox", { name: "Message" })).toBeEnabled();
   await page.getByRole("button", { name: "Open navigation" }).click();
   await page.getByRole("button", { name: `Actions for ${title}` }).click();
   await page.getByRole("button", { name: "Rename", exact: true }).click();

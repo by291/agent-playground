@@ -53,7 +53,9 @@ test("activity width supports dragging and keyboard bounds and persists without 
   await expect(composer).toBeHidden();
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(separator).toBeHidden();
-  expect((await panel.boundingBox())!.width).toBeCloseTo(390, 3);
+  await expect
+    .poll(async () => (await panel.boundingBox())!.width)
+    .toBeCloseTo(390, 3);
   expect(
     await page.evaluate(() =>
       localStorage.getItem("agent-playground-activity-width"),
@@ -251,6 +253,7 @@ test("activity shows every event with categories and highlighted payloads and co
   ).toBeVisible();
   await capture(page, testInfo, "activity-desktop.png");
   await page.setViewportSize({ width: 390, height: 844 });
+  await expect.poll(async () => (await panel.boundingBox())!.width).toBe(390);
   const bounds = await panel.boundingBox();
 
   expect(bounds!.x).toBeGreaterThanOrEqual(0);
@@ -263,13 +266,15 @@ test("activity shows every event with categories and highlighted payloads and co
     .evaluate((element) => getComputedStyle(element).color);
 
   await page.evaluate(() => document.documentElement.classList.add("dark"));
-  const darkColor = await finished
-    .getByLabel("Event payload")
-    .locator("span[style]")
-    .first()
-    .evaluate((element) => getComputedStyle(element).color);
-
-  expect(darkColor).not.toBe(lightColor);
+  await expect
+    .poll(() =>
+      finished
+        .getByLabel("Event payload")
+        .locator("span[style]")
+        .first()
+        .evaluate((element) => getComputedStyle(element).color),
+    )
+    .not.toBe(lightColor);
   await capture(page, testInfo, "activity-dark-mobile.png");
   await panel.getByRole("button", { name: "Clear log", exact: true }).click();
   await expect(
@@ -390,6 +395,9 @@ test("merged activity updates an open stream and can switch back to each origina
   });
   await page.setViewportSize({ width: 1024, height: 768 });
   await expect(composer).toBeHidden();
+  await expect
+    .poll(async () => (await panel.boundingBox())!.width)
+    .toBeGreaterThan(600);
   const tabletBounds = await panel.boundingBox();
 
   expect(tabletBounds!.width).toBeGreaterThan(600);

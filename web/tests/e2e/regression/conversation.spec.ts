@@ -15,7 +15,27 @@ test.beforeEach(async ({ page }) => {
 test("fresh and restored empty conversations show the welcome page", async ({
   page,
 }) => {
+  const externalAssets: string[] = [];
+
+  page.on("request", (request) => {
+    const isFontAsset = ["font", "stylesheet"].includes(request.resourceType());
+
+    if (
+      isFontAsset &&
+      new URL(request.url()).origin !== new URL(page.url()).origin
+    ) {
+      externalAssets.push(request.url());
+    }
+  });
   await verifyFreshWelcome(page);
+  expect(externalAssets).toEqual([]);
+  const interLoaded = await page.evaluate(async () => {
+    const fonts = await document.fonts.load("400 16px Inter");
+
+    return fonts.some((font) => font.status === "loaded");
+  });
+
+  expect(interLoaded).toBe(true);
 });
 
 test("tool replies expose details and restore without duplicating the answer", async ({
@@ -61,7 +81,7 @@ async function startHeldReply(page: Page) {
 }
 
 test.describe("animated streaming", () => {
-  test.use({ replyAnimation: true });
+  test.use({ replyAnimation: true, reducedMotion: "no-preference" });
 
   test("partial text streams before completion and the highlighted code copies its source", async ({
     page,
