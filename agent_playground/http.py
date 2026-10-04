@@ -6,9 +6,9 @@ from contextlib import asynccontextmanager, suppress
 from fastapi import FastAPI
 
 from agent_playground.config import configured_model_name
-from agent_playground.report_demo.routes import router as report_demo_router
-from agent_playground.report_demo.worker import run_report_worker
-from agent_playground.sql_demo.routes import router as sql_demo_router
+from agent_playground.services.report.routes import router as report_router
+from agent_playground.services.report.worker import run_report_worker
+from agent_playground.services.sql.routes import router as sql_router
 
 
 @asynccontextmanager
@@ -25,8 +25,8 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Agent Playground", lifespan=lifespan)
-app.include_router(sql_demo_router)
-app.include_router(report_demo_router)
+app.include_router(sql_router)
+app.include_router(report_router)
 
 
 @app.get("/agent-info")

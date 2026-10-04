@@ -5,7 +5,7 @@ import asyncio
 from fastapi import APIRouter, HTTPException
 
 from agent_playground.db.report_jobs import create_report_job
-from agent_playground.report_demo.models import ReportRequest
+from agent_playground.services.report.models import ReportRequest
 
 router = APIRouter(prefix="/report-demo", tags=["Report demonstration"])
 

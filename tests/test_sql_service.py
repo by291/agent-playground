@@ -7,7 +7,7 @@ import pytest
 
 from agent_playground.db.connection import app_engine
 from agent_playground.http import app
-from agent_playground.sql_demo.validation import check_sql
+from agent_playground.services.sql.validation import check_sql
 
 
 def test_sql_checks_reject_wildcards_unknown_columns_and_mutations():

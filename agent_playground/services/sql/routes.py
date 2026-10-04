@@ -1,29 +1,23 @@
 """HTTP endpoints for generating, checking and recording demonstration SQL."""
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, Field
 
 from agent_playground.db.sql_submissions import (
     SubmissionConflictError,
     read_sql_submission,
     store_sql_submission,
 )
-from agent_playground.sql_demo.validation import check_sql
-from agent_playground.workflows.sql.models import SqlCheck, SqlSource, SqlSubmission
+from agent_playground.services.sql.models import (
+    CheckRequest,
+    GenerateRequest,
+    SqlCheck,
+    SqlSource,
+    SqlSubmission,
+    SubmitRequest,
+)
+from agent_playground.services.sql.validation import check_sql
 
 router = APIRouter(prefix="/sql-demo", tags=["SQL demonstration"])
-
-
-class GenerateRequest(BaseModel):
-    task: str = Field(min_length=1, max_length=10000)
-
-
-class CheckRequest(BaseModel):
-    sql: str = Field(min_length=1, max_length=100000)
-
-
-class SubmitRequest(CheckRequest):
-    id: str = Field(pattern=r"^[a-zA-Z0-9_-]{1,200}$")
 
 
 @router.post("/generate")

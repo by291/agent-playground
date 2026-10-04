@@ -3,7 +3,7 @@
 from datetime import UTC, datetime
 
 from agent_playground.db.report_jobs import ReportJob, pending_report_jobs
-from agent_playground.report_demo.models import ReportEvent
+from agent_playground.services.report.models import ReportEvent
 
 FINAL_REVISION = 5
 

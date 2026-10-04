@@ -12,6 +12,7 @@ from a2ui.core.schema import (
 from a2ui.core.schema.common_types import ComponentId
 from pydantic import BaseModel
 
+from agent_playground.services.sql.models import SqlCheck
 from agent_playground.workflows.output import (
     WORKFLOW_CATALOG_ID,
     WorkflowOutputMetadata,
@@ -19,7 +20,7 @@ from agent_playground.workflows.output import (
     WorkflowReply,
     publish_workflow_output,
 )
-from agent_playground.workflows.sql.models import SqlCheck, SqlState
+from agent_playground.workflows.sql.models import SqlState
 
 
 class WorkflowSql(BaseModel):

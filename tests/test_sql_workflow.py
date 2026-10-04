@@ -14,14 +14,12 @@ from langgraph.types import Command
 
 from agent_playground.db.workflow_outputs import WorkflowOutput
 from agent_playground.graph import make_graph
+from agent_playground.services.sql.models import SqlCheck, SqlSource, SqlSubmission
 from agent_playground.workflows.sql.agent import sql_revision_model
 from agent_playground.workflows.sql.graph import make_sql_workflow
 from agent_playground.workflows.sql.models import (
-    SqlCheck,
     SqlRevision,
-    SqlSource,
     SqlState,
-    SqlSubmission,
 )
 
 

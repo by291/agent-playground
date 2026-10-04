@@ -5,12 +5,12 @@ import logging
 
 import httpx
 
+from agent_playground.config import workflow_api_url
 from agent_playground.db.report_jobs import (
     mark_report_event_delivered,
     stop_report_job,
 )
-from agent_playground.report_demo.jobs import FINAL_REVISION, pending_report_events
-from agent_playground.workflows.external import workflow_api_url
+from agent_playground.services.report.jobs import FINAL_REVISION, pending_report_events
 
 logger = logging.getLogger(__name__)
 

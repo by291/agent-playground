@@ -5,7 +5,7 @@ from sqlglot import exp
 from sqlglot.errors import OptimizeError, ParseError
 from sqlglot.optimizer.qualify import qualify
 
-from agent_playground.workflows.sql.models import SqlCheck
+from agent_playground.services.sql.models import SqlCheck
 
 ORDERS_SCHEMA: dict[str, object] = {
     "orders": {

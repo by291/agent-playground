@@ -13,9 +13,9 @@ from agent_playground.db.report_jobs import (
 from agent_playground.db.report_jobs import (
     mark_report_event_delivered,
 )
-from agent_playground.report_demo.jobs import pending_report_events
-from agent_playground.report_demo.models import ReportRequest
-from agent_playground.report_demo.worker import deliver_report_events
+from agent_playground.services.report.jobs import pending_report_events
+from agent_playground.services.report.models import ReportRequest
+from agent_playground.services.report.worker import deliver_report_events
 
 
 def create_report_job(request: ReportRequest):

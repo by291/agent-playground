@@ -5,7 +5,7 @@ from typing import Protocol
 
 import httpx
 
-from agent_playground.workflows.sql.models import SqlCheck, SqlSource, SqlSubmission
+from agent_playground.services.sql.models import SqlCheck, SqlSource, SqlSubmission
 
 
 class SqlApi(Protocol):

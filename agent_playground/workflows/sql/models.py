@@ -1,26 +1,11 @@
-"""SQL service contracts and checkpointed workflow state."""
+"""SQL revision agent output and checkpointed workflow state."""
 
 from collections.abc import Awaitable, Callable
 from typing import Literal
 
 from pydantic import BaseModel, Field
 
-
-class SqlSource(BaseModel):
-    sql: str
-    dialect: str
-    schema_text: str
-
-
-class SqlCheck(BaseModel):
-    passed: bool
-    issues: list[str]
-
-
-class SqlSubmission(BaseModel):
-    id: str
-    sql: str
-    status: str
+from agent_playground.services.sql.models import SqlCheck, SqlSubmission
 
 
 class SqlRevision(BaseModel):

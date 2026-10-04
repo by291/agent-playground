@@ -9,6 +9,8 @@ from langgraph.config import get_config
 from langgraph.types import interrupt
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from agent_playground.config import workflow_api_url
+
 
 class ExternalTaskRegistration(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
@@ -35,10 +37,6 @@ class ExternalTaskResult(BaseModel):
             raise ValueError("A failed external task requires an error")
 
         return self
-
-
-def workflow_api_url() -> str:
-    return os.getenv("WORKFLOW_API_URL", "http://127.0.0.1:3000").rstrip("/")
 
 
 async def register_external_task(

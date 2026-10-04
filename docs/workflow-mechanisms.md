@@ -29,7 +29,8 @@ workflow 的顺序、分支和业务状态由 Python/LangGraph 定义。通用�
 | `agent_playground/workflows/output.py`   | 先持久化、后发事件；发布官方 A2UI 消息与独立的回复/展示元数据。                     |
 | `agent_playground/workflows/sql/`        | SQL 获取、检查、修改、提交、回执、模型适配和 SQL 内容展示。                         |
 | `agent_playground/workflows/experiment/` | 实验计划步骤和原有表单审核，继续保持其业务交互。                                    |
-| `agent_playground/sql_demo/`             | 本地 SQL 模拟服务，保存提交而不执行 SQL。                                           |
+| `agent_playground/services/sql/`         | SQL 服务接口模型、路由与校验，保存提交而不执行 SQL。                                |
+| `agent_playground/services/report/`      | 报告服务请求、任务阶段和持久回调投递。                                           |
 | `agent_playground/db/`                   | 数据库契约和幂等持久化；不处理 HTTP 或审核文案。                                    |
 | `shared/workflow-review.ts`              | 跨层的对话审核契约与响应构造，不含 SQL、schema 或 SQL 检查字段。                    |
 | `shared/workflow-output.ts`              | 稳定回复 ID 与展示归属契约，不解析业务卡片。                                        |
@@ -37,6 +38,8 @@ workflow 的顺序、分支和业务状态由 Python/LangGraph 定义。通用�
 | `server/agent/`                          | 官方 AG-UI/LangGraph adapter，resume 按 interrupt ID 定向传递。                     |
 | `web/.../conversation/`                  | 按通用审核路由反馈；通用决策面板；按展示元数据组织当前卡片和历史。                  |
 | `web/.../a2ui/`                          | 官方 A2UI processor 和业务组件；不决定业务能否提交。                                |
+
+`services/` 按业务组织 API 服务实现，依赖 `config.py` 和 `db/`，不依赖 workflow 编排。SQL 接口模型由 `services/sql/models.py` 定义，workflow 的 HTTP client 和状态复用这些契约；审核状态与修改 agent 的输出仍在 `workflows/sql/models.py`。`http.py` 装配路由并管理报告 worker 生命周期。
 
 ## 三份数据各有一个事实来源
 
@@ -106,6 +109,6 @@ sequenceDiagram
 
 通知在事务提交后可见；任务、run、消息和持久输出的更新会使快照失效。SSE 重连先发 ready，前端重新读取完整状态；通知丢失不影响持久结果。切换或关闭会话释放订阅连接。后台 worker 持有独立 Aegra client，单次请求限时 10 秒，停止时 abort 在途请求；这些是传输生命周期限制，不改变外部业务任务的耗时。后台 worker 由服务进程创建和释放，模拟报告回调 worker 由 Python lifespan 管理。
 
-报告示例是独立业务：`workflows/report/` 提交、等待、发布，`report_demo/` 产生五阶段回调，`db/report_jobs.py` 保存 job 身份和已投递 revision。模拟 job 使用稳定身份重复提交不重复创建；重启按已提交偏移继续。替换为其他 API 时，修改业务提交和结果解释即可复用任务状态、续跑及实时展示。
+报告示例是独立业务：`workflows/report/` 提交、等待、发布，`services/report/` 产生五阶段回调，`db/report_jobs.py` 保存 job 身份和已投递 revision。模拟 job 使用稳定身份重复提交不重复创建；重启按已提交偏移继续。替换为其他 API 时，修改业务提交和结果解释即可复用任务状态、续跑及实时展示。
 
 当前等待期间不接收同一会话的新用户 turn，没有主动取消或自动超时。外部 API 的 job 创建幂等仍由该 API 提供。Aegra run 创建结果未知时只做映射恢复；无法确认时保持 submission_unknown，不宣称跨系统 exactly-once。删除会话阻止后续 callback 和新 continuation，不撤销外部 API 已接受的 job。
