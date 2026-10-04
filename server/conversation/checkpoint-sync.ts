@@ -1,5 +1,5 @@
 import { langGraphInterruptsToAGUI } from "@ag-ui/langgraph";
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, inArray } from "drizzle-orm";
 import { aegra } from "../agent/client";
 import { db } from "../db/database";
 import {
@@ -14,6 +14,8 @@ import { latestRun } from "./run-store";
 import { reconcileRun } from "./recovery";
 import { completedMessages, reasoningMessageSuffix } from "../agent/messages";
 import { conversationExists } from "./management";
+import { workflowOutputs } from "../db/workflow-schema";
+import { sqlReplyMessages } from "../../shared/sql-review";
 
 async function readCompletedCheckpoint(run: RunRow) {
   for (let attempt = 0; attempt < 5; attempt += 1) {
@@ -38,6 +40,22 @@ async function saveCheckpoint(
   checkpoint: Awaited<ReturnType<typeof readCompletedCheckpoint>>,
 ) {
   const messages = completedMessages(checkpoint.state.values);
+  const sqlOutputs = await db
+    .select({ payload: workflowOutputs.payload })
+    .from(workflowOutputs)
+    .where(
+      and(
+        eq(workflowOutputs.threadId, run.threadId),
+        eq(workflowOutputs.aguiRunId, run.aguiRunId),
+      ),
+    )
+    .orderBy(asc(workflowOutputs.outputSeq));
+
+  // Nested SQL-agent replies live in their checkpointed workflow outputs, not
+  // the paused parent agent's message state. Archive them before its final reply.
+  messages.unshift(
+    ...sqlOutputs.flatMap((output) => sqlReplyMessages(output.payload)),
+  );
   const values: unknown = checkpoint.state.values;
   const usage =
     values && typeof values === "object" && "context_usage" in values

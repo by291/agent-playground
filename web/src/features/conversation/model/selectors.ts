@@ -1,4 +1,5 @@
 import type { ConversationState } from "./state";
+import { parseSqlReview } from "@shared/sql-review";
 
 export function isRunning(state: ConversationState) {
   return state.lifecycle.execution !== "idle";
@@ -22,10 +23,16 @@ export function conversationIssue(state: ConversationState) {
 }
 
 export function composerState(state: ConversationState) {
+  const sqlReview =
+    state.pendingInterrupts.length === 1
+      ? parseSqlReview(state.pendingInterrupts[0]!)
+      : null;
+
   return {
     running: isRunning(state),
     recovering: isRestoring(state),
-    waitingForReview: state.pendingInterrupts.length > 0,
+    waitingForReview: state.pendingInterrupts.length > 0 && !sqlReview,
+    discussingSql: sqlReview !== null,
     onSend: state.send,
   };
 }

@@ -1,6 +1,6 @@
 """Check the custom A2UI catalog used by workflow output."""
 
-from agent_playground.workflow_cards import experiment_card
+from agent_playground.workflows.experiment.cards import experiment_card
 
 
 def test_workflow_output_uses_the_official_message_wrapper():

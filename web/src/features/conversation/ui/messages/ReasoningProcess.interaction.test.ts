@@ -151,7 +151,9 @@ test("an empty code fence does not fold reasoning before its code body appears",
   );
   await waitFor(() => expect(toggle).toHaveAttribute("aria-expanded", "false"));
   expect(page.queryByText("Choose a small example.")).toBeNull();
-  expect(page.container.querySelector("code")?.textContent).toContain("print(1)");
+  expect(page.container.querySelector("code")?.textContent).toContain(
+    "print(1)",
+  );
 });
 
 test("a live reasoning-only failure leaves the visible reasoning open", () => {

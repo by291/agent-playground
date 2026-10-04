@@ -8,6 +8,7 @@ dependencies = [
   "aegra-cli",
   "async-lru>=2.3.0",
   "fastapi>=0.141.1",
+  "httpx>=0.28.1",
   "langchain",
   "langchain-core>=1.6.4",
   "langchain-deepseek>=1.1.1",
@@ -19,6 +20,7 @@ dependencies = [
   "psycopg[binary,pool]>=3.3.6",
   "pydantic>=2.13.5",
   "sqlalchemy>=2.1.1",
+  "sqlglot>=30.21.0",
   "structlog>=26.1.0",
 ]
 

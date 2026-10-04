@@ -4,7 +4,7 @@ import pytest
 from sqlalchemy import select
 from testcontainers.community.postgres import PostgresContainer
 
-from agent_playground.db.connection import output_engine
+from agent_playground.db.connection import app_engine
 from agent_playground.db.schema import (
     conversation_runs,
     conversations,
@@ -24,8 +24,8 @@ def test_old_outputs_are_rejected_and_current_outputs_are_idempotent(
 
     with PostgresContainer("postgres:18-alpine") as postgres:
         monkeypatch.setenv("APP_DATABASE_URL", postgres.get_connection_url(driver=None))
-        output_engine.cache_clear()
-        engine = output_engine()
+        app_engine.cache_clear()
+        engine = app_engine()
 
         try:
             metadata.create_all(engine)
@@ -110,5 +110,5 @@ def test_old_outputs_are_rejected_and_current_outputs_are_idempotent(
 
             assert versions == [1, 3]
         finally:
-            output_engine.cache_clear()
+            app_engine.cache_clear()
             engine.dispose()

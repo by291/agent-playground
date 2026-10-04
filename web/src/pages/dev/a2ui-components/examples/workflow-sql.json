@@ -1,0 +1,32 @@
+{
+  "component": "WorkflowSql",
+  "description": "Checked SQL with revision, original source and simulated submission state.",
+  "messages": [
+    {
+      "version": "v0.9",
+      "createSurface": {
+        "surfaceId": "sql-preview",
+        "catalogId": "urn:agent-playground:workflow:v1"
+      }
+    },
+    {
+      "version": "v0.9",
+      "updateComponents": {
+        "surfaceId": "sql-preview",
+        "components": [
+          {
+            "id": "root",
+            "component": "WorkflowSql",
+            "workflowCallId": "preview",
+            "sql": "SELECT id, amount FROM orders;",
+            "originalSql": "SELECT * FROM orders;",
+            "revision": 2,
+            "round": 1,
+            "status": "review",
+            "check": { "passed": true, "issues": [] }
+          }
+        ]
+      }
+    }
+  ]
+}

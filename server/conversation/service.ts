@@ -3,6 +3,7 @@ import { runAgent, type AgentExecution } from "../agent/run";
 import { admitRun, claimPrepared, recordAegraRun } from "./run-store";
 import { synchronizeConversation } from "./checkpoint-sync";
 import { SubmissionError } from "./errors";
+import { sqlFeedbackMessage } from "./reviews";
 
 export async function prepareConversationRun(input: RunAgentInput) {
   // Only the server selects Aegra metadata, graph and disconnect behavior.
@@ -11,11 +12,12 @@ export async function prepareConversationRun(input: RunAgentInput) {
   delete trustedInput.forwardedProps;
   const isResume = !!trustedInput.resume?.length;
   const userMessage = isResume
-    ? null
+    ? sqlFeedbackMessage(trustedInput)
     : ([...trustedInput.messages]
         .reverse()
         .find((message) => message.role === "user") ?? null);
-  const messageId = isResume ? trustedInput.runId : userMessage?.id;
+  const messageId =
+    userMessage?.id ?? (isResume ? trustedInput.runId : undefined);
 
   if (!messageId || (!isResume && !userMessage)) {
     throw new SubmissionError("Submission needs a user message", 400);

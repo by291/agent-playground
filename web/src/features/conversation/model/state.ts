@@ -4,6 +4,7 @@ import type { A2UISurfaceView } from "@/features/a2ui";
 import type { ConversationSnapshot } from "../api/contracts";
 import type { ConversationLifecycle } from "./lifecycle";
 import type { PlanReviewResponse } from "./planReview";
+import type { SqlReview } from "@shared/sql-review";
 
 export interface Activity {
   id: string;
@@ -31,4 +32,5 @@ export interface ConversationState {
   send: (content: string) => Promise<void>;
   clearActivity: () => void;
   reviewPlan: (responses: PlanReviewResponse[]) => Promise<void>;
+  reviewSql: (review: SqlReview, action: "accept" | "abandon") => Promise<void>;
 }

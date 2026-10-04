@@ -6,6 +6,8 @@ from langgraph.config import get_config
 
 from agent_playground.db.workflow_outputs import store_workflow_output
 
+WORKFLOW_CATALOG_ID = "urn:agent-playground:workflow:v1"
+
 
 async def publish_workflow_output(
     *,

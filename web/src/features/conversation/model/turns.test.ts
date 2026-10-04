@@ -91,3 +91,38 @@ test("failed results and unfinished interrupted calls retain distinct statuses",
     ["paused", "failed"],
   );
 });
+
+test.each(["Submitted", "Abandoned"])(
+  "a SQL workflow %s after feedback completes its original tool process",
+  (content) => {
+    const input: Message[] = [
+      { id: "start", role: "user", content: "Review SQL" },
+      {
+        id: "caller",
+        role: "assistant",
+        content: "",
+        toolCalls: [
+          {
+            id: "sql-call",
+            type: "function",
+            function: { name: "run_sql_workflow", arguments: "{}" },
+          },
+        ],
+      },
+      { id: "feedback", role: "user", content: "Only amounts" },
+      { id: "revision", role: "assistant", content: "Selected amounts." },
+      { id: "result", role: "tool", toolCallId: "sql-call", content },
+    ];
+    const turns = chatTurns(input, [
+      { runId: "initial", messageId: "start", status: "interrupted" },
+      { runId: "feedback-run", messageId: "feedback", status: "interrupted" },
+      { runId: "accept-run", messageId: "accept-run", status: "completed" },
+    ]);
+
+    assert.equal(toolProcess(turns[0]!)[0]?.calls[0]?.status, "completed");
+    assert.equal(
+      turns[1]?.messages.some((message) => message.id === "result"),
+      false,
+    );
+  },
+);

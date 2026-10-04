@@ -2,13 +2,11 @@
 
 from typing import Literal, TypedDict
 
-from langchain.tools import tool
 from langgraph.graph import END, START, StateGraph
-from langgraph.prebuilt import ToolRuntime
 from langgraph.types import interrupt
 from pydantic import BaseModel, Field
 
-from agent_playground.workflow_cards import publish_experiment_card
+from agent_playground.workflows.experiment.cards import publish_experiment_card
 
 
 class ExperimentState(BaseModel):
@@ -138,27 +136,3 @@ builder.add_edge("plan_steps", "review_plan")
 builder.add_edge("review_plan", "finish_plan")
 builder.add_edge("finish_plan", END)
 experiment_workflow = builder.compile()
-
-
-@tool
-async def run_experiment_workflow(idea: str, runtime: ToolRuntime) -> str:
-    """Run a visible experiment-planning workflow with a human review step."""
-    if not runtime.tool_call_id:
-        raise ValueError("Workflow requires a stable tool call ID")
-
-    result = await experiment_workflow.ainvoke(
-        ExperimentState(
-            idea=idea,
-            card_group_id=runtime.tool_call_id,
-        )
-    )
-    completed = ExperimentState.model_validate(result)
-
-    if completed.review_status == "rejected":
-        return "The reviewer rejected the experiment plan."
-
-    steps = "\n".join(
-        f"{index}. {step}" for index, step in enumerate(completed.steps, 1)
-    )
-
-    return f"Approved experiment plan: {completed.title}\n{steps}"

@@ -5,8 +5,8 @@ import asyncio
 import pytest
 
 from agent_playground.db.workflow_outputs import WorkflowOutput
-from agent_playground.workflow_cards import experiment_card
-from agent_playground.workflow_outputs import publish_workflow_output
+from agent_playground.workflows.experiment.cards import experiment_card
+from agent_playground.workflows.output import publish_workflow_output
 
 
 @pytest.mark.parametrize("store_fails", [False, True])
@@ -57,17 +57,17 @@ def test_publish_waits_for_storage_and_uses_persisted_identity(
         actions.append("dispatch")
 
     monkeypatch.setattr(
-        "agent_playground.workflow_outputs.get_config",
+        "agent_playground.workflows.output.get_config",
         lambda: {
             "metadata": {"agui_run_id": "resumed-run"},
             "configurable": {"thread_id": "thread"},
         },
     )
     monkeypatch.setattr(
-        "agent_playground.workflow_outputs.store_workflow_output", store
+        "agent_playground.workflows.output.store_workflow_output", store
     )
     monkeypatch.setattr(
-        "agent_playground.workflow_outputs.adispatch_custom_event", dispatch
+        "agent_playground.workflows.output.adispatch_custom_event", dispatch
     )
 
     async def check():

@@ -20,6 +20,7 @@ import type { A2UISurfaceView } from "@/features/a2ui";
 import { MessageRow } from "./messages/MessageRow";
 import { AssistantReply } from "./messages/AssistantReply";
 import { ReviewPanel } from "./review/ReviewPanel";
+import { SqlReviewPanel } from "./review/SqlReviewPanel";
 import { useConversation } from "../ConversationProvider";
 import { Welcome } from "./Welcome";
 
@@ -58,6 +59,7 @@ export function ChatPane({
     recoveryIssue,
     onSend,
     onReview,
+    onSqlReview,
   } = useConversation(
     useShallow((state) => ({
       messages: state.messages,
@@ -71,13 +73,20 @@ export function ChatPane({
       recoveryIssue: conversationIssue(state),
       onSend: state.send,
       onReview: state.reviewPlan,
+      onSqlReview: state.reviewSql,
     })),
   );
   const view = useMemo(
     () => conversationView({ messages, runs, surfaces, pendingInterrupts }),
     [messages, runs, surfaces, pendingInterrupts],
   );
-  const { turns, unattachedSurfaces, unattachedReviews, hasContent } = view;
+  const {
+    turns,
+    unattachedSurfaces,
+    unattachedReviews,
+    unattachedSqlReviews,
+    hasContent,
+  } = view;
 
   if (recovering && !empty && !hasContent) {
     return <ConversationPlaceholder issue={recoveryIssue} />;
@@ -99,57 +108,66 @@ export function ChatPane({
           <MessageScroller className="min-h-0 flex-1">
             <MessageScrollerViewport className="px-4 sm:px-8">
               <MessageScrollerContent className="conversation-layout gap-8 pt-8 pb-12 sm:pt-12">
-                {turns.map(({ turn, artifacts, hasReply, reviewKey }) => {
-                  return (
-                    <Fragment key={turn.id}>
-                      {turn.user && (
-                        <MessageScrollerItem className="conversation-column">
-                          <MessageRow message={turn.user} />
-                        </MessageScrollerItem>
-                      )}
-                      {hasReply && (
-                        <MessageScrollerItem className="conversation-column">
-                          <AssistantReply
-                            turn={turn}
-                            animatedMessageId={animatedMessageId}
-                            processDetails={
-                              artifacts.history.length > 0 && (
-                                <div className="space-y-3 pt-2">
-                                  <p className="px-2 text-xs font-medium text-muted">
-                                    Previous workflow steps
-                                  </p>
-                                  {artifacts.history.map((view) => (
-                                    <Surface
-                                      key={view.id}
-                                      view={view}
-                                      inChat={false}
-                                    />
-                                  ))}
-                                </div>
-                              )
-                            }
-                          >
-                            {artifacts.current.map((view) => (
-                              <Surface
-                                key={view.id}
-                                view={view}
-                                inChat={false}
-                              />
-                            ))}
-                            {artifacts.reviews.length > 0 && (
-                              <ReviewPanel
-                                key={reviewKey}
-                                reviews={artifacts.reviews}
-                                running={running}
-                                onReview={onReview}
-                              />
-                            )}
-                          </AssistantReply>
-                        </MessageScrollerItem>
-                      )}
-                    </Fragment>
-                  );
-                })}
+                {turns.map(
+                  ({ turn, artifacts, hasReply, reviewKey, sqlReviews }) => {
+                    return (
+                      <Fragment key={turn.id}>
+                        {turn.user && (
+                          <MessageScrollerItem className="conversation-column">
+                            <MessageRow message={turn.user} />
+                          </MessageScrollerItem>
+                        )}
+                        {hasReply && (
+                          <MessageScrollerItem className="conversation-column">
+                            <AssistantReply
+                              turn={turn}
+                              animatedMessageId={animatedMessageId}
+                              processDetails={
+                                artifacts.history.length > 0 && (
+                                  <div className="space-y-3 pt-2">
+                                    <p className="px-2 text-xs font-medium text-muted">
+                                      Previous workflow steps
+                                    </p>
+                                    {artifacts.history.map((view) => (
+                                      <Surface
+                                        key={view.id}
+                                        view={view}
+                                        inChat={false}
+                                      />
+                                    ))}
+                                  </div>
+                                )
+                              }
+                            >
+                              {artifacts.current.map((view) => (
+                                <Surface
+                                  key={view.id}
+                                  view={view}
+                                  inChat={false}
+                                />
+                              ))}
+                              {artifacts.reviews.length > 0 && (
+                                <ReviewPanel
+                                  key={reviewKey}
+                                  reviews={artifacts.reviews}
+                                  running={running}
+                                  onReview={onReview}
+                                />
+                              )}
+                              {sqlReviews.length > 0 && (
+                                <SqlReviewPanel
+                                  reviews={sqlReviews}
+                                  running={running}
+                                  onReview={onSqlReview}
+                                />
+                              )}
+                            </AssistantReply>
+                          </MessageScrollerItem>
+                        )}
+                      </Fragment>
+                    );
+                  },
+                )}
                 {unattachedSurfaces.map((view) => (
                   <MessageScrollerItem
                     key={view.id}
@@ -169,6 +187,15 @@ export function ChatPane({
                       reviews={unattachedReviews}
                       running={running}
                       onReview={onReview}
+                    />
+                  </MessageScrollerItem>
+                )}
+                {unattachedSqlReviews.length > 0 && (
+                  <MessageScrollerItem className="conversation-column">
+                    <SqlReviewPanel
+                      reviews={unattachedSqlReviews}
+                      running={running}
+                      onReview={onSqlReview}
                     />
                   </MessageScrollerItem>
                 )}

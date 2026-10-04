@@ -16,7 +16,7 @@ from langchain_core.outputs import ChatGeneration, ChatGenerationChunk, ChatResu
 from langchain_core.runnables import RunnableConfig
 from langgraph_sdk.runtime import ServerRuntime
 
-from agent_playground.db.connection import prepare_output_store
+from agent_playground.db.connection import prepare_app_store
 from agent_playground.graph import make_graph
 from agent_playground.observability import execution_trace
 
@@ -104,7 +104,7 @@ class TraceModel(BaseChatModel):
 
 @asynccontextmanager
 async def graph(config: RunnableConfig, runtime: ServerRuntime[dict[str, object]]):
-    prepare_output_store()
+    prepare_app_store()
 
     if runtime.execution_runtime is None:
         yield make_graph(model=TraceModel())

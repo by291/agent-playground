@@ -1,4 +1,4 @@
-"""Connect to the application database and create Python-owned output storage."""
+"""Connect to the application database and create Python-owned storage."""
 
 import os
 from functools import lru_cache
@@ -6,24 +6,25 @@ from functools import lru_cache
 from sqlalchemy import create_engine
 from sqlalchemy.engine import Engine
 
-from agent_playground.db.schema import workflow_outputs
+from agent_playground.db.schema import sql_demo_submissions, workflow_outputs
 
 
 @lru_cache(maxsize=1)
-def output_engine() -> Engine:
+def app_engine() -> Engine:
     database_url = os.environ.get("APP_DATABASE_URL")
 
     if not database_url:
-        raise RuntimeError("APP_DATABASE_URL is required for workflow output")
+        raise RuntimeError("APP_DATABASE_URL is required for application storage")
 
     engine = create_engine(
         database_url.replace("postgresql://", "postgresql+psycopg://", 1)
     )
 
     workflow_outputs.create(engine, checkfirst=True)
+    sql_demo_submissions.create(engine, checkfirst=True)
 
     return engine
 
 
-def prepare_output_store() -> None:
-    output_engine()
+def prepare_app_store() -> None:
+    app_engine()

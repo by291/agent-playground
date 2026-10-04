@@ -12,7 +12,10 @@ from a2ui.core.schema import (
 from a2ui.core.schema.common_types import ComponentId
 from pydantic import BaseModel
 
-from agent_playground.workflow_outputs import publish_workflow_output
+from agent_playground.workflows.output import (
+    WORKFLOW_CATALOG_ID,
+    publish_workflow_output,
+)
 
 ExperimentStage = Literal["idea", "draft", "review", "reviewed"]
 EXPERIMENT_STEP_SEQUENCE: dict[ExperimentStage, int] = {
@@ -21,8 +24,6 @@ EXPERIMENT_STEP_SEQUENCE: dict[ExperimentStage, int] = {
     "review": 3,
     "reviewed": 4,
 }
-
-WORKFLOW_CATALOG_ID = "urn:agent-playground:workflow:v1"
 
 
 class WorkflowPanel(BaseModel):

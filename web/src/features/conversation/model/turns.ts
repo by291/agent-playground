@@ -23,6 +23,7 @@ export function chatTurns(
   runs: ConversationSnapshot["runs"],
 ): ChatTurn[] {
   const turns: ChatTurn[] = [];
+  const callOwners = new Map<string, ChatTurn>();
   let current: ChatTurn | undefined;
 
   for (const message of messages) {
@@ -39,7 +40,20 @@ export function chatTurns(
         turns.push(current);
       }
 
-      current.messages.push(message);
+      // A workflow can span feedback turns while its original tool call stays
+      // open. Attach its terminal result to the caller, not the latest feedback.
+      const owner =
+        message.role === "tool"
+          ? callOwners.get(message.toolCallId)
+          : undefined;
+
+      (owner ?? current).messages.push(message);
+
+      if (message.role === "assistant") {
+        for (const call of message.toolCalls ?? []) {
+          callOwners.set(call.id, current);
+        }
+      }
     }
   }
 

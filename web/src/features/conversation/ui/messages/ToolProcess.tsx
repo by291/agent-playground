@@ -20,6 +20,7 @@ const toolLabels: Record<string, string> = {
   get_current_time: "Check the time",
   calculate_sum: "Calculate a sum",
   run_experiment_workflow: "Build an experiment plan",
+  run_sql_workflow: "Review SQL",
 };
 
 function summary(steps: ToolStep[]) {

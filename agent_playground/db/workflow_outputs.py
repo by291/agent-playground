@@ -6,7 +6,7 @@ from uuid import uuid4
 
 from sqlalchemy import select, update
 
-from agent_playground.db.connection import output_engine
+from agent_playground.db.connection import app_engine
 from agent_playground.db.schema import (
     conversation_runs,
     conversations,
@@ -33,7 +33,7 @@ def _store(
     step_seq: int,
     payload: dict[str, object],
 ) -> WorkflowOutput:
-    with output_engine().begin() as connection:
+    with app_engine().begin() as connection:
         # Lock before checking the idempotency key so concurrent writers see the winner.
         next_output_seq = connection.execute(
             select(conversations.c.next_output_seq)

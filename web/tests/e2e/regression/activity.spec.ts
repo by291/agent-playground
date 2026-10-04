@@ -108,9 +108,9 @@ test("activity separates consecutive runs in merged and individual delta views",
     ).toHaveAttribute("title", runId);
   }
 
-  await headings.last().evaluate((element) =>
-    element.scrollIntoView({ block: "center" }),
-  );
+  await headings
+    .last()
+    .evaluate((element) => element.scrollIntoView({ block: "center" }));
   await page.screenshot({
     path: testInfo.outputPath("activity-run-groups.png"),
   });

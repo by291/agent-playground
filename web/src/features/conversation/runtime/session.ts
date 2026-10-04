@@ -11,7 +11,11 @@ import {
 import { createStore } from "zustand/vanilla";
 import { parseA2UIEvent, type A2UIOutput } from "@/features/a2ui";
 import { createA2UIRuntime } from "@/features/a2ui";
-import { reviewEntries, type PlanReviewResponse } from "../model/planReview";
+import {
+  parsePlanReview,
+  reviewEntries,
+  type PlanReviewResponse,
+} from "../model/planReview";
 import { reconcileSnapshot, pendingRecovery } from "../model/reconciliation";
 import { saveConversation, type ConversationReference } from "../model/storage";
 import type { ConversationSnapshot, PendingSubmission } from "../api/contracts";
@@ -26,6 +30,12 @@ import { createSubmissionRunner } from "./submission";
 import { isRunFinished } from "@shared/run-status";
 import { parseContextUsage } from "@shared/context-usage";
 import { activityLimit } from "../model/activity";
+import {
+  parseSqlReview,
+  sqlReplyMessages,
+  sqlResponse,
+  type SqlReview,
+} from "@shared/sql-review";
 
 // Query ownership stays outside the session; a refresh requests a new result.
 type RefreshSnapshot = () => Promise<void>;
@@ -61,6 +71,7 @@ export function createConversationSession(
     send,
     clearActivity: () => store.setState({ activity: [], activityReceived: 0 }),
     reviewPlan,
+    reviewSql,
   }));
   const submission = createSubmissionRunner(saved.threadId, agent, {
     started() {
@@ -123,6 +134,18 @@ export function createConversationSession(
 
     if (!result) {
       return false;
+    }
+
+    if (result.kind === "ready") {
+      const savedIds = new Set(agent.messages.map((message) => message.id));
+      const replies = outputs
+        .flatMap(sqlReplyMessages)
+        .filter((message) => !savedIds.has(message.id));
+
+      if (replies.length) {
+        agent.setMessages([...agent.messages, ...replies]);
+        store.setState({ messages: [...agent.messages] });
+      }
     }
 
     let issue: string | null = null;
@@ -323,7 +346,7 @@ export function createConversationSession(
   function send(content: string): Promise<void> {
     const text = content.trim();
 
-    if (!text || busy() || store.getState().pendingInterrupts.length) {
+    if (!text || busy()) {
       return Promise.resolve();
     }
 
@@ -332,6 +355,28 @@ export function createConversationSession(
       role: "user",
       content: text,
     };
+
+    const interrupts = store.getState().pendingInterrupts;
+
+    if (interrupts.length) {
+      const review =
+        interrupts.length === 1 ? parseSqlReview(interrupts[0]!) : null;
+      const entry = review
+        ? sqlResponse(review, "message", { id: message.id, content: text })
+        : null;
+
+      if (!entry) {
+        return Promise.resolve();
+      }
+
+      return submit({
+        runId: crypto.randomUUID(),
+        messageId: message.id,
+        messages: [...agent.messages, message],
+        state: structuredClone(agent.state as Record<string, unknown>),
+        resume: [entry],
+      });
+    }
 
     return submit({
       runId: crypto.randomUUID(),
@@ -346,7 +391,16 @@ export function createConversationSession(
       return Promise.resolve();
     }
 
-    const resume = reviewEntries(responses, store.getState().pendingInterrupts);
+    const interrupts = store.getState().pendingInterrupts;
+    const mixed = interrupts.some(
+      (interrupt) => parseSqlReview(interrupt) !== null,
+    );
+    const resume = reviewEntries(
+      responses,
+      mixed
+        ? interrupts.filter((interrupt) => parsePlanReview(interrupt) !== null)
+        : interrupts,
+    );
 
     if (!resume) {
       return Promise.resolve();
@@ -360,6 +414,40 @@ export function createConversationSession(
       messages: [...agent.messages],
       state: structuredClone(agent.state as Record<string, unknown>),
       resume,
+    });
+  }
+
+  function reviewSql(
+    review: SqlReview,
+    action: "accept" | "abandon",
+  ): Promise<void> {
+    const interrupts = store.getState().pendingInterrupts;
+    const interrupt = interrupts.find((item) => item.id === review.interruptId);
+    const current = interrupt ? parseSqlReview(interrupt) : null;
+
+    if (
+      busy() ||
+      current?.interruptId !== review.interruptId ||
+      current.round !== review.round ||
+      current.revision !== review.revision
+    ) {
+      return Promise.resolve();
+    }
+
+    const entry = sqlResponse(current, action);
+
+    if (!entry) {
+      return Promise.resolve();
+    }
+
+    const runId = crypto.randomUUID();
+
+    return submit({
+      runId,
+      messageId: runId,
+      messages: [...agent.messages],
+      state: structuredClone(agent.state as Record<string, unknown>),
+      resume: [entry],
     });
   }
 

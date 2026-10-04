@@ -1,6 +1,6 @@
 """Workflow output DDL and the shared conversation table contracts.
 
-Only workflow_outputs is owned and created by Python. The TypeScript server
+Python owns workflow_outputs and sql_demo_submissions. The TypeScript server
 owns conversations and conversation_runs; their columns here support queries.
 """
 
@@ -12,6 +12,7 @@ from sqlalchemy import (
     MetaData,
     String,
     Table,
+    Text,
     UniqueConstraint,
 )
 from sqlalchemy.dialects.postgresql import JSONB
@@ -50,4 +51,14 @@ workflow_outputs = Table(
     ),
     UniqueConstraint("thread_id", "workflow_call_id", "step_id", "version"),
     UniqueConstraint("thread_id", "output_seq"),
+)
+
+sql_demo_submissions = Table(
+    "sql_demo_submissions",
+    metadata,
+    Column("id", String, primary_key=True),
+    Column("sql", Text, nullable=False),
+    Column(
+        "created_at", DateTime(timezone=True), nullable=False, server_default=func.now()
+    ),
 )

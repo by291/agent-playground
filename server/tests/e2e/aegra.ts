@@ -8,6 +8,11 @@ import {
   type LangGraphPlatformMessage,
 } from "@ag-ui/langgraph";
 import type { db } from "../../db/database";
+import { ControlledSqlWorkflow } from "./sql-workflow";
+import {
+  sqlReviewResponseSchema,
+  type SqlReview,
+} from "../../../shared/sql-review";
 
 const resumeSchema = z.object({
   decision: z.literal("approve"),
@@ -20,7 +25,7 @@ const requestSchema = z.object({
       messages: z.array(z.object({ id: z.string(), content: z.string() })),
     })
     .optional(),
-  command: z.object({ resume: resumeSchema }).optional(),
+  command: z.object({ resume: z.unknown() }).optional(),
   metadata: z.object({ agui_run_id: z.string() }),
 });
 
@@ -28,12 +33,14 @@ interface Thread {
   messages: LangGraphPlatformMessage[];
   review: {
     id: string;
-    value: {
-      kind: string;
-      workflowCallId: string;
-      title: string;
-      steps: string[];
-    };
+    value:
+      | Omit<SqlReview, "interruptId">
+      | {
+          kind: string;
+          workflowCallId: string;
+          title: string;
+          steps: string[];
+        };
   } | null;
   runs: {
     run_id: string;
@@ -42,6 +49,7 @@ interface Thread {
     config: { metadata: { agui_run_id: string } };
   }[];
   release?: () => void;
+  sql?: ControlledSqlWorkflow;
 }
 
 // Only the Aegra HTTP boundary is controlled. The browser, adapter, server and
@@ -265,8 +273,44 @@ export function controlledAegra(database: typeof db) {
 
       await event("metadata", { run_id: run.run_id, thread_id: threadId });
 
-      if (input.command) {
-        const { title, steps } = input.command.resume;
+      if (input.command && thread.sql) {
+        const currentReview = thread.sql.review;
+        const wrapped = z.record(z.unknown()).parse(input.command.resume);
+        const response = sqlReviewResponseSchema.parse(
+          wrapped[currentReview.id] ?? wrapped,
+        );
+        const card = await thread.sql.publish(
+          input.metadata.agui_run_id,
+          response,
+        );
+
+        thread.review =
+          thread.sql.submitted || thread.sql.abandoned
+            ? null
+            : thread.sql.review;
+        await event("events", {
+          event: LangGraphEventTypes.OnCustomEvent,
+          name: "a2ui",
+          metadata: { langgraph_node: "tools" },
+          data: card,
+        });
+
+        if (!thread.review) {
+          const result = {
+            id: randomUUID(),
+            type: "tool" as const,
+            role: "tool",
+            content: thread.sql.submitted ? "SQL submitted" : "SQL abandoned",
+            tool_call_id: thread.sql.callId,
+            name: "run_sql_workflow",
+          };
+
+          thread.messages.push(result);
+          await toolResult(result);
+          delete thread.sql;
+        }
+      } else if (input.command) {
+        const { title, steps } = resumeSchema.parse(input.command.resume);
         const callId = thread.review?.value.workflowCallId;
 
         if (!callId) {
@@ -357,9 +401,15 @@ export function controlledAegra(database: typeof db) {
           await reply([...paragraphs, "End of the long reply."].join("\n\n"));
         } else {
           const workflow = message.content.includes("run_experiment_workflow");
-          const name = workflow
-            ? "run_experiment_workflow"
-            : "get_current_time";
+          const sqlWorkflow = message.content.includes("run_sql_workflow");
+          let name = "get_current_time";
+
+          if (workflow) {
+            name = "run_experiment_workflow";
+          } else if (sqlWorkflow) {
+            name = "run_sql_workflow";
+          }
+
           const callId = randomUUID();
           const messageId = randomUUID();
 
@@ -376,7 +426,18 @@ export function controlledAegra(database: typeof db) {
             tool_calls: [{ id: callId, name, args: {} }],
           });
 
-          if (workflow) {
+          if (sqlWorkflow) {
+            thread.sql = new ControlledSqlWorkflow(database, threadId, callId);
+            const card = await thread.sql.publish(input.metadata.agui_run_id);
+
+            thread.review = thread.sql.review;
+            await event("events", {
+              event: LangGraphEventTypes.OnCustomEvent,
+              name: "a2ui",
+              metadata: { langgraph_node: "tools" },
+              data: card,
+            });
+          } else if (workflow) {
             const value = {
               kind: "experiment_plan_review",
               workflowCallId: callId,

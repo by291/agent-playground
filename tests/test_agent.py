@@ -22,7 +22,10 @@ os.environ.setdefault("DEEPSEEK_API_KEY", "test")
 
 from agent_playground.db.workflow_outputs import WorkflowOutput
 from agent_playground.graph import make_graph, mcp_client
-from agent_playground.workflow import ExperimentState, experiment_workflow
+from agent_playground.workflows.experiment.graph import (
+    ExperimentState,
+    experiment_workflow,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -43,7 +46,7 @@ def isolate_workflow_output_store(monkeypatch: pytest.MonkeyPatch):
         )
 
     monkeypatch.setattr(
-        "agent_playground.workflow_outputs.store_workflow_output", save_card
+        "agent_playground.workflows.output.store_workflow_output", save_card
     )
 
 

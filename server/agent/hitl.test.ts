@@ -72,3 +72,23 @@ test("preserves the adapter's single-review resume value", () => {
     { decision: "approve" },
   );
 });
+
+test("a SQL decision targets its interrupt even when it is the only submitted review", () => {
+  const agent = new TestAgent({
+    graphId: "agent",
+    deploymentUrl: "http://127.0.0.1:2026",
+  });
+  const payload = {
+    action: "abandon",
+    workflowCallId: "call",
+    revision: 1,
+    round: 1,
+  };
+
+  assert.deepEqual(
+    agent.resumeValue([
+      { interruptId: "sql-review", status: "resolved", payload },
+    ]),
+    { "sql-review": payload },
+  );
+});
