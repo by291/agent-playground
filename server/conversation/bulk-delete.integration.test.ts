@@ -1,23 +1,23 @@
 import assert from "node:assert/strict";
 import { setTimeout } from "node:timers/promises";
 import type { RunAgentInput } from "@ag-ui/client";
-import {
-  PostgreSqlContainer,
-  type StartedPostgreSqlContainer,
-} from "@testcontainers/postgresql";
 import { eq, sql } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, test } from "vitest";
 import type { RunStatus } from "../../shared/run-status";
+import {
+  createIntegrationDatabase,
+  type IntegrationDatabase,
+} from "../tests/database";
 
-let postgres: StartedPostgreSqlContainer;
+let testDatabase: IntegrationDatabase;
 let database: typeof import("../db/database");
 let schema: typeof import("../db/schema");
 let runStore: typeof import("./run-store");
 let app: (typeof import("../app"))["app"];
 
 beforeAll(async () => {
-  postgres = await new PostgreSqlContainer("postgres:18-alpine").start();
-  process.env.APP_DATABASE_URL = postgres.getConnectionUri();
+  testDatabase = await createIntegrationDatabase();
+  process.env.APP_DATABASE_URL = testDatabase.url;
   database = await import("../db/database");
   schema = await import("../db/schema");
   runStore = await import("./run-store");
@@ -49,7 +49,7 @@ afterAll(async () => {
   try {
     await database?.db.$client.end();
   } finally {
-    await postgres?.stop();
+    await testDatabase?.dispose();
   }
 });
 
@@ -116,10 +116,38 @@ async function waitForBlockedQuery(fragment: string) {
 
 test("clear tombstones every page and preserves messages, runs, outputs and checkpoints", async () => {
   const statuses = ["completed", "failed", "interrupted"] as const;
+  const history = Array.from({ length: 35 }, (_, index) =>
+    inputFor(`conversation-${index}`),
+  );
 
-  for (let index = 0; index < 35; index++) {
-    await seedRun(`conversation-${index}`, statuses[index % 3]!);
-  }
+  await database.db.transaction(async (tx) => {
+    await tx.insert(schema.conversations).values(
+      history.map((input) => ({
+        threadId: input.threadId,
+        title: "Question",
+        nextSubmitSeq: 2,
+      })),
+    );
+    await tx.insert(schema.conversationRuns).values(
+      history.map((input, index) => ({
+        aguiRunId: input.runId,
+        threadId: input.threadId,
+        messageId: input.messages[0]!.id,
+        submitSeq: 1,
+        request: input,
+        status: statuses[index % statuses.length]!,
+        checkpointSynced: true,
+      })),
+    );
+    await tx.insert(schema.conversationMessages).values(
+      history.map((input) => ({
+        threadId: input.threadId,
+        messageId: input.messages[0]!.id,
+        submitSeq: 1,
+        message: input.messages[0]!,
+      })),
+    );
+  });
 
   await database.db.insert(schema.conversations).values({ threadId: "empty" });
   await database.db.execute(sql`

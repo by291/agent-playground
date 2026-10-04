@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, test } from "vitest";
+import { afterAll, beforeAll, beforeEach, test } from "vitest";
 import assert from "node:assert/strict";
 import {
   createServer,
@@ -8,14 +8,14 @@ import {
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
-import {
-  PostgreSqlContainer,
-  type StartedPostgreSqlContainer,
-} from "@testcontainers/postgresql";
 import { InterruptSchema } from "@ag-ui/client";
 import { eq, sql } from "drizzle-orm";
+import {
+  createIntegrationDatabase,
+  type IntegrationDatabase,
+} from "../tests/database";
 
-let postgres: StartedPostgreSqlContainer;
+let testDatabase: IntegrationDatabase;
 let database: typeof import("../db/database");
 let schema: typeof import("../db/schema");
 let app: (typeof import("../app"))["app"];
@@ -123,8 +123,8 @@ beforeAll(async () => {
   assert.ok(address && typeof address !== "string");
   process.env.WORKFLOW_API_TOKEN = "integration-workflow-token";
   process.env.AEGRA_URL = `http://127.0.0.1:${address.port}`;
-  postgres = await new PostgreSqlContainer("postgres:18-alpine").start();
-  process.env.APP_DATABASE_URL = postgres.getConnectionUri();
+  testDatabase = await createIntegrationDatabase();
+  process.env.APP_DATABASE_URL = testDatabase.url;
   database = await import("../db/database");
   schema = await import("../db/schema");
   await database.migrateServer();
@@ -137,11 +137,36 @@ beforeAll(async () => {
   app = (await import("../app")).app;
 });
 
+beforeEach(async () => {
+  for (const response of stalledResponses.values()) {
+    response.destroy();
+  }
+
+  stalledResponses.clear();
+  creationModes.clear();
+  creations.clear();
+  runs.clear();
+  completed.clear();
+  await database.db.execute(sql`
+    TRUNCATE external_task_events, external_tasks,
+      conversation_messages, conversation_runs, conversations, workflow_outputs
+  `);
+});
+
 afterAll(async () => {
-  upstream.closeAllConnections();
-  await new Promise<void>((resolve) => upstream.close(() => resolve()));
-  await database?.db.$client.end();
-  await postgres?.stop();
+  try {
+    upstream.closeAllConnections();
+
+    if (upstream.listening) {
+      await new Promise<void>((resolve) => upstream.close(() => resolve()));
+    }
+  } finally {
+    try {
+      await database?.db.$client.end();
+    } finally {
+      await testDatabase?.dispose();
+    }
+  }
 });
 
 async function register() {

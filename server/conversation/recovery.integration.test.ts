@@ -1,14 +1,29 @@
-import { test, beforeAll, afterAll } from "vitest";
+import { test, beforeAll, afterAll, vi } from "vitest";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
-import {
-  PostgreSqlContainer,
-  type StartedPostgreSqlContainer,
-} from "@testcontainers/postgresql";
 import { eq, sql } from "drizzle-orm";
 import type { RunAgentInput } from "@ag-ui/client";
+import {
+  createIntegrationDatabase,
+  type IntegrationDatabase,
+} from "../tests/database";
 
-let postgres: StartedPostgreSqlContainer;
+vi.mock("../agent/client", async (importOriginal) => {
+  const original = await importOriginal<typeof import("../agent/client")>();
+  const { Client } = await import("@langchain/langgraph-sdk");
+
+  return {
+    ...original,
+    // These cases verify recovery responses, rather than SDK retry backoff.
+    aegra: new Client({
+      apiUrl: original.aegraUrl,
+      onRequest: original.prepareAegraRequest,
+      callerOptions: { maxRetries: 0 },
+    }),
+  };
+});
+
+let testDatabase: IntegrationDatabase;
 let runStore: typeof import("./run-store");
 let recovery: typeof import("./recovery");
 let database: typeof import("../db/database");
@@ -151,8 +166,8 @@ const upstream = createServer((request, response) => {
 });
 
 beforeAll(async () => {
-  postgres = await new PostgreSqlContainer("postgres:18-alpine").start();
-  process.env.APP_DATABASE_URL = postgres.getConnectionUri();
+  testDatabase = await createIntegrationDatabase();
+  process.env.APP_DATABASE_URL = testDatabase.url;
   await new Promise<void>((resolve) =>
     upstream.listen(0, "127.0.0.1", resolve),
   );
@@ -188,7 +203,7 @@ afterAll(async () => {
     try {
       await database?.db.$client.end();
     } finally {
-      await postgres?.stop();
+      await testDatabase?.dispose();
     }
   }
 });

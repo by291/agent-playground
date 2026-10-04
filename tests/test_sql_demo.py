@@ -4,7 +4,6 @@ import asyncio
 
 import httpx
 import pytest
-from testcontainers.community.postgres import PostgresContainer
 
 from agent_playground.db.connection import app_engine
 from agent_playground.http import app
@@ -23,6 +22,7 @@ def test_sql_checks_reject_wildcards_unknown_columns_and_mutations():
 
 def test_http_generation_validation_and_idempotent_receipts(
     monkeypatch: pytest.MonkeyPatch,
+    postgres_database_url: str,
 ):
     async def run():
         async with httpx.AsyncClient(
@@ -56,13 +56,12 @@ def test_http_generation_validation_and_idempotent_receipts(
             )
             assert conflict.status_code == 409
 
-    with PostgresContainer("postgres:18-alpine") as postgres:
-        monkeypatch.setenv("APP_DATABASE_URL", postgres.get_connection_url(driver=None))
-        app_engine.cache_clear()
+    monkeypatch.setenv("APP_DATABASE_URL", postgres_database_url)
+    app_engine.cache_clear()
 
-        try:
-            asyncio.run(run())
-        finally:
-            engine = app_engine()
-            app_engine.cache_clear()
-            engine.dispose()
+    try:
+        asyncio.run(run())
+    finally:
+        engine = app_engine()
+        app_engine.cache_clear()
+        engine.dispose()

@@ -2,12 +2,13 @@
 import { test, onTestFinished, vi } from "vitest";
 import assert from "node:assert/strict";
 import { createElement } from "react";
-import { act, fireEvent, render, waitFor } from "@testing-library/react";
+import { act, fireEvent, render } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { RunAgentInputSchema } from "@ag-ui/client";
 import { ConversationProvider, useConversation } from "../ConversationProvider";
 import type { ConversationSnapshot } from "../api/contracts";
 import { ConversationWorkspace } from "./ConversationWorkspace";
+import { animationClock } from "../../../../tests/animationClock";
 
 function ExecutionStatus() {
   const execution = useConversation((state) => state.lifecycle.execution);
@@ -16,11 +17,16 @@ function ExecutionStatus() {
 }
 
 test("the composer waits for the display buffer and final fade after the run completes", async () => {
+  const clock = animationClock();
   const client = new QueryClient();
   const text = "清晨的城市逐渐醒来，人们走向各自的生活。".repeat(80);
   let snapshot: ConversationSnapshot | null = null;
   let finish: (() => void) | undefined;
   let emitText: (() => void) | undefined;
+  let resolveStreamReady: () => void;
+  const streamReady = new Promise<void>((resolve) => {
+    resolveStreamReady = resolve;
+  });
 
   onTestFinished(() => client.clear());
   vi.stubGlobal("fetch", (url: string, init?: RequestInit) => {
@@ -90,6 +96,7 @@ test("the composer waits for the display buffer and final fade after the run com
               });
               controller.close();
             };
+            resolveStreamReady();
           },
         }),
         { headers: { "Content-Type": "text/event-stream" } },
@@ -125,23 +132,25 @@ test("the composer waits for the display buffer and final fade after the run com
   }) as HTMLTextAreaElement;
 
   fireEvent.change(input, { target: { value: "Write an article" } });
-  fireEvent.keyDown(input, { key: "Enter" });
-  await waitFor(() => assert.ok(emitText));
+  await act(async () => {
+    fireEvent.keyDown(input, { key: "Enter" });
+    await streamReady;
+  });
   await act(() => Promise.resolve(emitText!()));
-  await waitFor(() =>
-    assert.ok(
-      page.getByLabelText("Assistant reply").textContent?.startsWith("清"),
-    ),
+  clock.advance(68);
+  assert.ok(
+    page.getByLabelText("Assistant reply").textContent?.startsWith("清"),
   );
   const focusTarget = page.getAllByRole("button", {
     name: /^New conversation$/,
   })[0]!;
 
   focusTarget.focus();
-  await act(() => Promise.resolve(finish!()));
-  await waitFor(() =>
-    assert.equal(page.getByTestId("execution").textContent, "idle"),
-  );
+  await act(async () => {
+    finish!();
+    await vi.advanceTimersByTimeAsync(0);
+  });
+  assert.equal(page.getByTestId("execution").textContent, "idle");
 
   assert.ok(
     (page.getByLabelText("Assistant reply").textContent?.length ?? 0) <
@@ -152,11 +161,16 @@ test("the composer waits for the display buffer and final fade after the run com
     true,
     "The completed run still has buffered text to show",
   );
-  await waitFor(
-    () =>
-      assert.equal(page.getByLabelText("Assistant reply").textContent, text),
-    { timeout: 4000 },
-  );
+
+  for (let frame = 0; frame < 90; frame++) {
+    if (page.getByLabelText("Assistant reply").textContent === text) {
+      break;
+    }
+
+    clock.advance(34);
+  }
+
+  assert.equal(page.getByLabelText("Assistant reply").textContent, text);
 
   assert.equal(
     input.disabled,
@@ -164,7 +178,11 @@ test("the composer waits for the display buffer and final fade after the run com
     "The last visible text still needs to finish fading",
   );
   assert.ok(page.container.querySelector("[data-sd-animate]"));
-  await waitFor(() => assert.equal(input.disabled, false), { timeout: 1500 });
+  clock.advance(499);
+  assert.equal(input.disabled, true);
+  assert.ok(page.container.querySelector("[data-sd-animate]"));
+  clock.advance(1);
+  assert.equal(input.disabled, false);
 
   assert.equal(page.container.querySelectorAll("[data-sd-animate]").length, 0);
   assert.ok(

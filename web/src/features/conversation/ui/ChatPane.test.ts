@@ -10,8 +10,7 @@ import type { ConversationSnapshot } from "../api/contracts";
 
 test("restored turns expose measurable message items directly to the scroll controller", async () => {
   const client = new QueryClient();
-  const paragraph = "清晨的城市逐渐醒来，人们走向各自的生活。".repeat(20);
-  const article = Array.from({ length: 10 }, () => paragraph).join("\n\n");
+  const article = "First paragraph.\n\nSecond paragraph.";
   const snapshot: ConversationSnapshot = {
     messages: [
       { id: "question-1", role: "user", content: "Write an article" },

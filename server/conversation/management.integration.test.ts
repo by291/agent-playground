@@ -1,9 +1,5 @@
 import { afterAll, beforeAll, test } from "vitest";
 import assert from "node:assert/strict";
-import {
-  PostgreSqlContainer,
-  type StartedPostgreSqlContainer,
-} from "@testcontainers/postgresql";
 import { eq, sql } from "drizzle-orm";
 import type { RunAgentInput } from "@ag-ui/client";
 import { conversationPageSchema } from "../../shared/conversation";
@@ -11,16 +7,20 @@ import { cp, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
+import {
+  createIntegrationDatabase,
+  type IntegrationDatabase,
+} from "../tests/database";
 
-let postgres: StartedPostgreSqlContainer;
+let testDatabase: IntegrationDatabase;
 let database: typeof import("../db/database");
 let schema: typeof import("../db/schema");
 let runStore: typeof import("./run-store");
 let app: (typeof import("../app"))["app"];
 
 beforeAll(async () => {
-  postgres = await new PostgreSqlContainer("postgres:18-alpine").start();
-  process.env.APP_DATABASE_URL = postgres.getConnectionUri();
+  testDatabase = await createIntegrationDatabase();
+  process.env.APP_DATABASE_URL = testDatabase.url;
   database = await import("../db/database");
   schema = await import("../db/schema");
   runStore = await import("./run-store");
@@ -75,7 +75,7 @@ afterAll(async () => {
   try {
     await database?.db.$client.end();
   } finally {
-    await postgres?.stop();
+    await testDatabase?.dispose();
   }
 });
 

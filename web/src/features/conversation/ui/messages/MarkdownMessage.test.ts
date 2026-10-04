@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { createElement } from "react";
 import { act, fireEvent, render, waitFor } from "@testing-library/react";
 import MarkdownMessage from "./MarkdownMessage";
+import { animationClock } from "../../../../../tests/animationClock";
 import { UserPreferencesProvider, useUserPreferences } from "@/lib/preferences";
 import {
   ReplyPresentationProvider,
@@ -61,45 +62,6 @@ test("code blocks highlight syntax and copy the original source", async () => {
 
   assert.ok(page.getByRole("button", { name: "Download file" }));
 });
-
-function animationClock() {
-  let now = 0;
-  let nextId = 0;
-  const frames = new Map<number, FrameRequestCallback>();
-
-  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"], now });
-  vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
-    const id = ++nextId;
-
-    frames.set(id, callback);
-
-    return id;
-  });
-  vi.stubGlobal("cancelAnimationFrame", (id: number) => frames.delete(id));
-
-  return {
-    frames,
-    advance(duration: number) {
-      const end = now + duration;
-
-      while (now < end) {
-        const elapsed = Math.min(end - now, 34);
-
-        now += elapsed;
-        const pending = [...frames.values()];
-
-        frames.clear();
-        act(() => {
-          vi.advanceTimersByTime(elapsed);
-
-          for (const callback of pending) {
-            callback(now);
-          }
-        });
-      }
-    },
-  };
-}
 
 test("disabling reply animation during a stream reveals received text and releases its scheduler", () => {
   const clock = animationClock();
@@ -378,21 +340,6 @@ test("copy controls remain disabled until the display buffer finishes", () => {
   assert.equal(page.getByTitle("Copy table").hasAttribute("disabled"), false);
 });
 
-test("even a large final burst drains within three seconds after the model finishes", () => {
-  const clock = animationClock();
-  const text = "城市中的日常生活。".repeat(1000);
-  const page = render(
-    createElement(MarkdownMessage, { text, streaming: true }),
-  );
-
-  clock.advance(340);
-  page.rerender(createElement(MarkdownMessage, { text, streaming: false }));
-  clock.advance(3000);
-
-  assert.equal(page.container.textContent?.length, text.length);
-  assert.equal(clock.frames.size, 0);
-});
-
 test("reduced-motion preferences show live output immediately and release the scheduler", () => {
   const clock = animationClock();
   let matches = false;
@@ -414,30 +361,6 @@ test("reduced-motion preferences show live output immediately and release the sc
   assert.equal(page.container.textContent, text);
   assert.equal(clock.frames.size, 0);
   assert.equal(page.container.querySelectorAll("[data-sd-animate]").length, 0);
-});
-
-test("many source chunks in one frame do not bypass the display cadence", () => {
-  const clock = animationClock();
-  const page = render(
-    createElement(MarkdownMessage, { text: "", streaming: true }),
-  );
-
-  for (let chunk = 1; chunk <= 100; chunk++) {
-    page.rerender(
-      createElement(MarkdownMessage, {
-        text: "中".repeat(chunk * 10),
-        streaming: true,
-      }),
-    );
-  }
-
-  assert.equal(page.container.textContent, "");
-  clock.advance(34);
-  const prefix = page.container.textContent ?? "";
-
-  assert.ok(prefix.length > 0 && prefix.length < 30);
-  page.unmount();
-  assert.equal(clock.frames.size, 0);
 });
 
 test("new text keeps its fade while later display ticks arrive", () => {

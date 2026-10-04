@@ -16,7 +16,6 @@ from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import Command
 from pydantic import BaseModel
-from testcontainers.community.postgres import PostgresContainer
 
 os.environ.setdefault("DEEPSEEK_API_KEY", "test")
 
@@ -334,7 +333,7 @@ def test_agent_resumes_parallel_workflow_reviews():
     asyncio.run(check())
 
 
-def test_postgres_checkpoint_survives_graph_recreation():
+def test_postgres_checkpoint_survives_graph_recreation(postgres_database_url: str):
     async def check(database_url: str):
         thread_id = str(uuid4())
 
@@ -368,5 +367,4 @@ def test_postgres_checkpoint_survives_graph_recreation():
 
         assert user_turns == ["First turn", "Second turn"]
 
-    with PostgresContainer("postgres:18-alpine") as postgres:
-        asyncio.run(check(postgres.get_connection_url(driver=None)))
+    asyncio.run(check(postgres_database_url))

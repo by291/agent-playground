@@ -62,7 +62,11 @@ def worker(tmp_path: Path) -> Iterator[tuple[str, list[Span]]]:
 
     receiver = ThreadingHTTPServer(("127.0.0.1", 0), Receiver)
 
-    Thread(target=receiver.serve_forever, daemon=True).start()
+    Thread(
+        target=receiver.serve_forever,
+        kwargs={"poll_interval": 0.05},
+        daemon=True,
+    ).start()
     config = tmp_path / "aegra.json"
 
     config.write_text(
@@ -126,19 +130,20 @@ def worker(tmp_path: Path) -> Iterator[tuple[str, list[Span]]]:
             try:
                 deadline = time.monotonic() + 45
 
-                while time.monotonic() < deadline:
-                    if process.poll() is not None:
+                with httpx.Client(timeout=1) as client:
+                    while time.monotonic() < deadline:
+                        if process.poll() is not None:
+                            pytest.fail(log_path.read_text()[-6000:])
+
+                        try:
+                            if client.get(f"{url}/health").is_success:
+                                break
+                        except httpx.HTTPError:
+                            pass
+
+                        time.sleep(0.1)
+                    else:
                         pytest.fail(log_path.read_text()[-6000:])
-
-                    try:
-                        if httpx.get(f"{url}/health", timeout=1).is_success:
-                            break
-                    except httpx.HTTPError:
-                        pass
-
-                    time.sleep(0.1)
-                else:
-                    pytest.fail(log_path.read_text()[-6000:])
 
                 yield url, spans
             finally:

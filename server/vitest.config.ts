@@ -17,6 +17,7 @@ export default defineConfig({
         test: {
           name: "integration",
           include: ["**/*.integration.test.ts"],
+          globalSetup: ["./tests/postgres.ts"],
           testTimeout: 60_000,
           hookTimeout: 120_000,
         },
