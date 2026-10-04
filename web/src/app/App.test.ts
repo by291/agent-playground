@@ -81,6 +81,18 @@ test("rendering without development mode omits debug tool controls", () => {
   assert.doesNotMatch(markup, /Show run activity/);
 });
 
+test("a direct conversation path overrides the browser's saved empty conversation", () => {
+  const markup = renderInitialPage(
+    { threadId: "another-conversation", empty: true },
+    "/c/linked-conversation",
+  );
+
+  assert.match(markup, /aria-label="Messages"/);
+  assert.match(markup, /<main\b[\s\S]*aria-busy="true"/);
+  assert.doesNotMatch(markup, /What would you like/);
+  assert.doesNotMatch(markup, /Page not found/);
+});
+
 test("developer and retired routes are unavailable without development mode", () => {
   for (const path of ["/dev/a2ui-components", "/a2ui"]) {
     const markup = renderInitialPage(null, path);

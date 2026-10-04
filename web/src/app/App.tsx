@@ -1,6 +1,7 @@
 import { lazy, Suspense } from "react";
 import { NotFoundPage } from "@/pages/NotFoundPage";
 import { ChatPage } from "@/pages/chat/ChatPage";
+import { conversationIdFromPath } from "@/pages/chat/conversation-route";
 import { appConfig } from "./config";
 import { PageBoundary } from "./PageBoundary";
 
@@ -26,7 +27,7 @@ export function App() {
 function CurrentPage() {
   const path = window.location.pathname;
 
-  if (path === "/") {
+  if (path === "/" || conversationIdFromPath(path) !== null) {
     return (
       <>
         <title>Agent Chat · Agent Playground</title>
