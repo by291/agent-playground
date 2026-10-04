@@ -72,7 +72,7 @@ test("recovery rejects legacy A2UI output wrappers", async () => {
     ),
   );
   const client = new QueryClient({
-    defaultOptions: { queries: { retry: false } },
+    defaultOptions: { queries: { retryDelay: 0 } },
   });
 
   try {
@@ -97,7 +97,7 @@ test("an unknown run status cannot unlock the composer as a valid snapshot", asy
     ),
   );
   const client = new QueryClient({
-    defaultOptions: { queries: { retry: false } },
+    defaultOptions: { queries: { retryDelay: 0 } },
   });
 
   try {

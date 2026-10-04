@@ -1,4 +1,4 @@
-import { test } from "vitest";
+import { onTestFinished, test } from "vitest";
 import assert from "node:assert/strict";
 import {
   WebTracerProvider,
@@ -15,6 +15,10 @@ test("browser submission propagates its span and summarizes first text and failu
     spanProcessors: [new SimpleSpanProcessor(exporter)],
   });
 
+  onTestFinished(async () => {
+    propagation.disable();
+    await provider.shutdown();
+  });
   propagation.setGlobalPropagator(new W3CTraceContextPropagator());
   const operation = startSubmissionTrace(
     "thread",
@@ -46,5 +50,4 @@ test("browser submission propagates its span and summarizes first text and failu
     operation.headers.traceparent?.split("-")[1],
     span?.spanContext().traceId,
   );
-  propagation.disable();
 });

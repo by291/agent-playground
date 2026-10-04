@@ -29,13 +29,6 @@ test("restored turns expose measurable message items directly to the scroll cont
 
   onTestFinished(() => client.clear());
   vi.stubGlobal("fetch", () => Promise.resolve(Response.json(snapshot)));
-  Object.defineProperty(HTMLElement.prototype, "scrollTo", {
-    configurable: true,
-    value: () => undefined,
-  });
-  onTestFinished(() => {
-    Reflect.deleteProperty(HTMLElement.prototype, "scrollTo");
-  });
   const page = render(
     createElement(
       QueryClientProvider,

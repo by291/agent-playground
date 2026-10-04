@@ -6,8 +6,27 @@ export default defineConfig((environment) =>
     test: {
       pool: "threads",
       environment: "node",
-      include: ["src/**/*.test.ts", "tests/**/*.test.js"],
       setupFiles: ["./tests/setup.ts"],
+      projects: [
+        {
+          extends: true,
+          test: {
+            name: "shared",
+            isolate: false,
+            include: ["src/**/*.test.ts", "tests/**/*.test.js"],
+            exclude: ["src/app/App.test.ts"],
+          },
+        },
+        {
+          extends: true,
+          test: {
+            name: "isolated",
+            // App tests change DEV before importing the cached route configuration.
+            include: ["src/app/App.test.ts"],
+            isolate: true,
+          },
+        },
+      ],
       environmentOptions: {
         jsdom: { url: "http://localhost/", pretendToBeVisual: true },
       },

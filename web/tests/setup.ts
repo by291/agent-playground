@@ -7,9 +7,18 @@ if (typeof document !== "undefined") {
 
   await import("@testing-library/jest-dom/vitest");
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+  // Browser tests verify scrolling; jsdom needs a stable implementation for hooks.
+  Object.defineProperty(HTMLElement.prototype, "scrollTo", {
+    configurable: true,
+    value: () => undefined,
+  });
   cleanupDom = () => {
     cleanup();
     window.localStorage.clear();
+    window.sessionStorage.clear();
+    document.documentElement.removeAttribute("class");
+    document.documentElement.removeAttribute("style");
+    document.body.removeAttribute("style");
   };
 }
 

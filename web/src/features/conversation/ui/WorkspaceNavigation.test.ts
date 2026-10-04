@@ -28,13 +28,6 @@ function renderWorkspace(snapshot: ConversationSnapshot | null = null) {
 
     return Promise.resolve(Response.json(snapshot));
   });
-  Object.defineProperty(HTMLElement.prototype, "scrollTo", {
-    configurable: true,
-    value: () => undefined,
-  });
-  onTestFinished(() => {
-    Reflect.deleteProperty(HTMLElement.prototype, "scrollTo");
-  });
 
   return render(
     createElement(

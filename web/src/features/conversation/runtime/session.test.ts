@@ -1,4 +1,4 @@
-import { describe, test } from "vitest";
+import { beforeEach, describe, test, vi } from "vitest";
 import assert from "node:assert/strict";
 import { trace, SpanStatusCode } from "@opentelemetry/api";
 import {
@@ -239,14 +239,13 @@ test("a handled tool error is visible before the model finishes its fallback rep
   disconnect();
 });
 
-const savedValues = new Map<string, string>();
+beforeEach(() => {
+  const savedValues = new Map<string, string>();
 
-Object.defineProperty(globalThis, "localStorage", {
-  value: {
+  vi.stubGlobal("localStorage", {
     getItem: (key: string) => savedValues.get(key) ?? null,
     setItem: (key: string, value: string) => savedValues.set(key, value),
-  },
-  configurable: true,
+  });
 });
 
 function connectSession(

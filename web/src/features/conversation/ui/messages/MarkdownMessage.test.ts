@@ -62,11 +62,6 @@ test("code blocks highlight syntax and copy the original source", async () => {
   assert.ok(page.getByRole("button", { name: "Download file" }));
 });
 
-Object.defineProperty(HTMLElement.prototype, "scrollTo", {
-  configurable: true,
-  value: () => undefined,
-});
-
 function animationClock() {
   let now = 0;
   let nextId = 0;
@@ -403,13 +398,7 @@ test("reduced-motion preferences show live output immediately and release the sc
   let matches = false;
   const media = new EventTarget();
 
-  Object.defineProperty(window, "matchMedia", {
-    configurable: true,
-    value: () => Object.assign(media, { matches }),
-  });
-  onTestFinished(() => {
-    Reflect.deleteProperty(window, "matchMedia");
-  });
+  vi.stubGlobal("matchMedia", () => Object.assign(media, { matches }));
   const text = "Read this without delay. ".repeat(30).trim();
   const page = render(
     createElement(MarkdownMessage, { text, streaming: true }),
