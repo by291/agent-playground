@@ -13,6 +13,26 @@ function output(outputSeq: number, messages: A2uiMessage[]) {
   };
 }
 
+test("duplicate output identity cannot conceal conflicting workflow reply metadata", () => {
+  const runtime = createA2UIRuntime();
+  const first = {
+    ...output(1, creation()),
+    workflow: { reply: { id: "copy-reply", content: "First wording" } },
+  };
+
+  try {
+    assert.equal(runtime.ingest([first]).kind, "ready");
+    const conflicting = {
+      ...first,
+      workflow: { reply: { id: "copy-reply", content: "Different wording" } },
+    };
+
+    assert.equal(runtime.ingest([conflicting]).kind, "failed");
+  } finally {
+    runtime.dispose();
+  }
+});
+
 function creation(surfaceId = "main"): A2uiMessage[] {
   return [
     {

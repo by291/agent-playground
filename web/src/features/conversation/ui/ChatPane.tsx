@@ -20,7 +20,7 @@ import type { A2UISurfaceView } from "@/features/a2ui";
 import { MessageRow } from "./messages/MessageRow";
 import { AssistantReply } from "./messages/AssistantReply";
 import { ReviewPanel } from "./review/ReviewPanel";
-import { SqlReviewPanel } from "./review/SqlReviewPanel";
+import { WorkflowReviewPanel } from "./review/WorkflowReviewPanel";
 import { useConversation } from "../ConversationProvider";
 import { Welcome } from "./Welcome";
 
@@ -59,7 +59,7 @@ export function ChatPane({
     recoveryIssue,
     onSend,
     onReview,
-    onSqlReview,
+    onWorkflowReview,
   } = useConversation(
     useShallow((state) => ({
       messages: state.messages,
@@ -73,7 +73,7 @@ export function ChatPane({
       recoveryIssue: conversationIssue(state),
       onSend: state.send,
       onReview: state.reviewPlan,
-      onSqlReview: state.reviewSql,
+      onWorkflowReview: state.reviewWorkflow,
     })),
   );
   const view = useMemo(
@@ -84,7 +84,7 @@ export function ChatPane({
     turns,
     unattachedSurfaces,
     unattachedReviews,
-    unattachedSqlReviews,
+    unattachedWorkflowReviews,
     hasContent,
   } = view;
 
@@ -109,7 +109,13 @@ export function ChatPane({
             <MessageScrollerViewport className="px-4 sm:px-8">
               <MessageScrollerContent className="conversation-layout gap-8 pt-8 pb-12 sm:pt-12">
                 {turns.map(
-                  ({ turn, artifacts, hasReply, reviewKey, sqlReviews }) => {
+                  ({
+                    turn,
+                    artifacts,
+                    hasReply,
+                    reviewKey,
+                    workflowReviews,
+                  }) => {
                     return (
                       <Fragment key={turn.id}>
                         {turn.user && (
@@ -154,11 +160,11 @@ export function ChatPane({
                                   onReview={onReview}
                                 />
                               )}
-                              {sqlReviews.length > 0 && (
-                                <SqlReviewPanel
-                                  reviews={sqlReviews}
+                              {workflowReviews.length > 0 && (
+                                <WorkflowReviewPanel
+                                  reviews={workflowReviews}
                                   running={running}
-                                  onReview={onSqlReview}
+                                  onReview={onWorkflowReview}
                                 />
                               )}
                             </AssistantReply>
@@ -190,12 +196,12 @@ export function ChatPane({
                     />
                   </MessageScrollerItem>
                 )}
-                {unattachedSqlReviews.length > 0 && (
+                {unattachedWorkflowReviews.length > 0 && (
                   <MessageScrollerItem className="conversation-column">
-                    <SqlReviewPanel
-                      reviews={unattachedSqlReviews}
+                    <WorkflowReviewPanel
+                      reviews={unattachedWorkflowReviews}
                       running={running}
-                      onReview={onSqlReview}
+                      onReview={onWorkflowReview}
                     />
                   </MessageScrollerItem>
                 )}

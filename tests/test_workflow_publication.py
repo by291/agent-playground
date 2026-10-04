@@ -6,12 +6,19 @@ import pytest
 
 from agent_playground.db.workflow_outputs import WorkflowOutput
 from agent_playground.workflows.experiment.cards import experiment_card
-from agent_playground.workflows.output import publish_workflow_output
+from agent_playground.workflows.output import (
+    WorkflowOutputMetadata,
+    WorkflowPresentation,
+    WorkflowReply,
+    publish_workflow_output,
+)
 
 
-@pytest.mark.parametrize("store_fails", [False, True])
+@pytest.mark.parametrize(
+    ("store_fails", "with_metadata"), [(False, False), (True, False), (False, True)]
+)
 def test_publish_waits_for_storage_and_uses_persisted_identity(
-    monkeypatch: pytest.MonkeyPatch, store_fails: bool
+    monkeypatch: pytest.MonkeyPatch, store_fails: bool, with_metadata: bool
 ):
     actions: list[str] = []
     card = experiment_card(
@@ -22,6 +29,25 @@ def test_publish_waits_for_storage_and_uses_persisted_identity(
         lines=[],
     )
     payload = card.model_dump(mode="json", by_alias=True, exclude_none=True)
+    metadata = None
+
+    if with_metadata:
+        metadata = WorkflowOutputMetadata(
+            reply=WorkflowReply(id="reply", content="The draft is ready."),
+            presentation=WorkflowPresentation(
+                surface_id="experiment-call-review",
+                group_id="draft",
+                anchor_message_id="reply",
+            ),
+        )
+        payload["workflow"] = {
+            "reply": {"id": "reply", "content": "The draft is ready."},
+            "presentation": {
+                "surfaceId": "experiment-call-review",
+                "groupId": "draft",
+                "anchorMessageId": "reply",
+            },
+        }
 
     async def store(
         *,
@@ -36,6 +62,7 @@ def test_publish_waits_for_storage_and_uses_persisted_identity(
         assert agui_run_id == "resumed-run"
         assert workflow_call_id == "call"
         assert (step_id, step_seq) == ("review", 3)
+        assert ("workflow" in payload) == with_metadata
         actions.append("persist")
 
         if store_fails:
@@ -74,11 +101,19 @@ def test_publish_waits_for_storage_and_uses_persisted_identity(
         if store_fails:
             with pytest.raises(ValueError, match="storage failed"):
                 await publish_workflow_output(
-                    workflow_call_id="call", step_id="review", step_seq=3, card=card
+                    workflow_call_id="call",
+                    step_id="review",
+                    step_seq=3,
+                    card=card,
+                    workflow=metadata,
                 )
         else:
             await publish_workflow_output(
-                workflow_call_id="call", step_id="review", step_seq=3, card=card
+                workflow_call_id="call",
+                step_id="review",
+                step_seq=3,
+                card=card,
+                workflow=metadata,
             )
 
     asyncio.run(check())

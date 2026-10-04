@@ -2,10 +2,10 @@ import { randomUUID } from "node:crypto";
 import { sql } from "drizzle-orm";
 import type { db } from "../../db/database";
 import {
-  sqlReviewSchema,
-  type SqlCard,
-  type SqlReviewResponse,
-} from "../../../shared/sql-review";
+  workflowReviewSchema,
+  type WorkflowReviewResponse,
+} from "../../../shared/workflow-review";
+import type { SqlCard } from "../../../shared/sql-card";
 
 export class ControlledSqlWorkflow {
   revision = 2;
@@ -24,23 +24,27 @@ export class ControlledSqlWorkflow {
   get review() {
     return {
       id: `sql-${this.callId}-review-${this.round}`,
-      value: sqlReviewSchema.parse({
-        kind: "sql_review",
+      value: workflowReviewSchema.parse({
+        kind: "workflow_review",
         workflowCallId: this.callId,
-        sql: this.currentSql,
-        originalSql: "SELECT * FROM orders;",
         revision: this.revision,
         round: this.round,
         outputStepId: `review:${this.round}`,
-        check: {
-          passed: this.passed,
-          issues: this.passed ? [] : ["Use explicit columns."],
-        },
+        canAccept: this.passed,
+        title: "SQL decision",
+        acceptLabel: "Accept and submit",
+        messagePlaceholder: "Ask about this SQL or describe a change…",
+        ...(!this.passed
+          ? {
+              blockedReason:
+                "SQL must pass its current check before submission.",
+            }
+          : {}),
       }),
     };
   }
 
-  async publish(runId: string, response?: SqlReviewResponse) {
+  async publish(runId: string, response?: WorkflowReviewResponse) {
     let reply = "Replaced the wildcard with explicit columns.";
 
     if (response?.action === "message") {
@@ -86,14 +90,21 @@ export class ControlledSqlWorkflow {
         passed: this.passed,
         issues: this.passed ? [] : ["Use explicit columns."],
       },
-      replyId: `sql-${this.callId}-reply-${this.round}`,
-      reply,
       ...(this.submitted
         ? { receiptId: `sql-${this.callId}-${this.revision}` }
         : {}),
     };
     const surfaceId = `sql-${this.callId}-${this.round}`;
+    const replyId = `sql-${this.callId}-reply-${this.round}`;
     const payload = {
+      workflow: {
+        reply: { id: replyId, content: reply },
+        presentation: {
+          surfaceId,
+          groupId: this.callId,
+          anchorMessageId: replyId,
+        },
+      },
       messages: [
         {
           version: "v0.9",

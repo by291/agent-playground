@@ -8,7 +8,7 @@
 
 ## 仓库导航
 
-- `agent_playground/`：Python agent、tools 和 MCP，由 Aegra 提供 Agent Protocol 服务；`workflows/` 按业务组织图、工具入口与卡片，SQL 的状态模型、模型调用和 API client 分开；共享输出发布放在 `workflows/output.py`。`sql_demo/` 管理本地模拟 API 路由与 SQL 校验；`db/` 管理数据库契约、连接、workflow 输出与模拟服务数据的持久化，不依赖 HTTP 请求和异常。
+- `agent_playground/`：Python agent、tools 和 MCP，由 Aegra 提供 Agent Protocol 服务；`workflows/` 按业务组织图、工具入口与卡片，SQL 的状态模型、模型调用和 API client 分开；通用对话审核放在 `workflows/review.py`，输出发布与回复/展示元数据放在 `workflows/output.py`。会话层通过通用审核和输出契约处理反馈、归档与展示归属；业务卡片不承载消息归档逻辑。`sql_demo/` 管理本地模拟 API 路由与 SQL 校验；`db/` 管理数据库契约、连接、workflow 输出与模拟服务数据的持久化，不依赖 HTTP 请求和异常。
 - `server/`：TypeScript 后端；`agent/` 适配 Aegra 与 AG-UI，`conversation/` 管理运行和恢复，`db/` 管理应用数据，根目录保留 HTTP 入口和配置。
 - `web/`：TypeScript 前端；`src/app/` 管理入口、路由、配置和全局 provider，`src/pages/` 组合页面并拥有开发预览，`src/features/` 按 conversation 与 A2UI 能力组织 API、模型、运行和 UI；`src/components/ui/` 存放 shadcn/ui 基础控件，`src/styles/` 管理主题与全局样式。
 - `shared/`：TypeScript 应用共用的运行状态契约；AG-UI 和 A2UI 类型继续使用官方库。

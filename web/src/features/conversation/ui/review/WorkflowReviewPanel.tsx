@@ -1,39 +1,42 @@
 import { Button } from "@/components/ui/button";
-import type { SqlReview } from "@shared/sql-review";
+import type { WorkflowReview } from "@shared/workflow-review";
 
-export function SqlReviewPanel({
+export function WorkflowReviewPanel({
   reviews,
   running,
   onReview,
 }: {
-  reviews: SqlReview[];
+  reviews: WorkflowReview[];
   running: boolean;
-  onReview: (review: SqlReview, action: "accept" | "abandon") => Promise<void>;
+  onReview: (
+    review: WorkflowReview,
+    action: "accept" | "abandon",
+  ) => Promise<void>;
 }) {
   return (
     <div className="space-y-3">
       {reviews.map((review) => (
         <section
           key={review.interruptId}
-          aria-label="SQL decision"
+          aria-label={review.title}
           className="space-y-3 rounded-lg border border-line bg-surface p-4"
         >
           <p className="text-sm/6 text-muted">
             {reviews.length === 1
               ? "Continue the discussion below, accept this version, or abandon it."
-              : "Multiple SQL reviews are pending. Decide on each workflow before continuing the discussion."}
+              : "Multiple workflow reviews are pending. Decide on each workflow before continuing the discussion."}
           </p>
-          {!review.check.passed && (
+          {!review.canAccept && (
             <p className="text-xs/5 text-muted">
-              SQL must pass its check before submission.
+              {review.blockedReason ?? "This version cannot be accepted yet."}
             </p>
           )}
           <div className="flex flex-wrap gap-2">
             <Button
-              disabled={running || !review.check.passed}
+              disabled={running || !review.canAccept}
               onClick={() => void onReview(review, "accept")}
             >
-              Accept and submit
+              {review.acceptLabel}
             </Button>
             <Button
               variant="outline"

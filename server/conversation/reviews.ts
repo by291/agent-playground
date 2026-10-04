@@ -5,9 +5,9 @@ import { workflowOutputs } from "../db/workflow-schema";
 import type { RunRow } from "../db/schema";
 import { SubmissionError } from "./errors";
 import {
-  parseSqlReview,
-  sqlReviewResponseSchema,
-} from "../../shared/sql-review";
+  parseWorkflowReview,
+  workflowReviewResponseSchema,
+} from "../../shared/workflow-review";
 
 function workflowCallId(interrupt: Interrupt): string | null {
   const metadata: unknown = interrupt.metadata?.langgraph;
@@ -50,7 +50,7 @@ async function reviewOutputsPersisted(
     );
 
   return interrupts.every((interrupt, index) => {
-    const review = parseSqlReview(interrupt);
+    const review = parseWorkflowReview(interrupt);
     const stepId = review?.outputStepId ?? "review";
 
     return saved.some(
@@ -69,7 +69,7 @@ export async function validateReview(
   const currentIds = new Set(interrupts.map((interrupt) => interrupt.id));
   const submittedIds = new Set(submitted.map((entry) => entry.interruptId));
   const allowsPartial = interrupts.some(
-    (interrupt) => parseSqlReview(interrupt) !== null,
+    (interrupt) => parseWorkflowReview(interrupt) !== null,
   );
 
   if (
@@ -85,7 +85,7 @@ export async function validateReview(
   }
 
   for (const interrupt of interrupts) {
-    const review = parseSqlReview(interrupt);
+    const review = parseWorkflowReview(interrupt);
 
     if (!review) {
       continue;
@@ -97,10 +97,10 @@ export async function validateReview(
       continue;
     }
 
-    const response = sqlReviewResponseSchema.safeParse(entry?.payload);
+    const response = workflowReviewResponseSchema.safeParse(entry?.payload);
 
     if (!response.success) {
-      throw new SubmissionError("Invalid SQL review response", 400);
+      throw new SubmissionError("Invalid workflow review response", 400);
     }
 
     const value = response.data;
@@ -110,21 +110,21 @@ export async function validateReview(
       value.round === review.round;
 
     if (!current) {
-      throw new SubmissionError("SQL review is no longer current", 409);
+      throw new SubmissionError("Workflow review is no longer current", 409);
     }
 
-    if (value.action === "accept" && !review.check.passed) {
+    if (value.action === "accept" && !review.canAccept) {
       throw new SubmissionError(
-        "SQL must pass its check before submission",
+        review.blockedReason ?? "This version cannot be accepted",
         400,
       );
     }
   }
 }
 
-export function sqlFeedbackMessage(input: RunAgentInput) {
+export function workflowFeedbackMessage(input: RunAgentInput) {
   const messages = (input.resume ?? []).flatMap((entry) => {
-    const parsed = sqlReviewResponseSchema.safeParse(entry.payload);
+    const parsed = workflowReviewResponseSchema.safeParse(entry.payload);
 
     return parsed.success && parsed.data.action === "message"
       ? [
@@ -138,10 +138,7 @@ export function sqlFeedbackMessage(input: RunAgentInput) {
   });
 
   if (messages.length > 1) {
-    throw new SubmissionError(
-      "Send feedback to one SQL workflow at a time",
-      400,
-    );
+    throw new SubmissionError("Send feedback to one workflow at a time", 400);
   }
 
   return messages[0] ?? null;

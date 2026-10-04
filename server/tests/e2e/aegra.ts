@@ -10,9 +10,9 @@ import {
 import type { db } from "../../db/database";
 import { ControlledSqlWorkflow } from "./sql-workflow";
 import {
-  sqlReviewResponseSchema,
-  type SqlReview,
-} from "../../../shared/sql-review";
+  workflowReviewResponseSchema,
+  type WorkflowReview,
+} from "../../../shared/workflow-review";
 
 const resumeSchema = z.object({
   decision: z.literal("approve"),
@@ -34,7 +34,7 @@ interface Thread {
   review: {
     id: string;
     value:
-      | Omit<SqlReview, "interruptId">
+      | Omit<WorkflowReview, "interruptId">
       | {
           kind: string;
           workflowCallId: string;
@@ -276,7 +276,7 @@ export function controlledAegra(database: typeof db) {
       if (input.command && thread.sql) {
         const currentReview = thread.sql.review;
         const wrapped = z.record(z.unknown()).parse(input.command.resume);
-        const response = sqlReviewResponseSchema.parse(
+        const response = workflowReviewResponseSchema.parse(
           wrapped[currentReview.id] ?? wrapped,
         );
         const card = await thread.sql.publish(

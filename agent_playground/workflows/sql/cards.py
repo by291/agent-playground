@@ -14,6 +14,9 @@ from pydantic import BaseModel
 
 from agent_playground.workflows.output import (
     WORKFLOW_CATALOG_ID,
+    WorkflowOutputMetadata,
+    WorkflowPresentation,
+    WorkflowReply,
     publish_workflow_output,
 )
 from agent_playground.workflows.sql.models import SqlCheck, SqlState
@@ -30,8 +33,6 @@ class WorkflowSql(BaseModel):
     status: Literal["review", "submitted", "abandoned"]
     check: SqlCheck
     receiptId: str | None = None
-    replyId: str | None = None
-    reply: str | None = None
 
 
 def sql_card(state: SqlState) -> A2uiMessageListWrapper:
@@ -59,10 +60,6 @@ def sql_card(state: SqlState) -> A2uiMessageListWrapper:
                             status=state.status,
                             check=state.check,
                             receiptId=state.submission.id if state.submission else None,
-                            replyId=f"sql-{state.workflow_call_id}-reply-{state.round}"
-                            if state.reply
-                            else None,
-                            reply=state.reply or None,
                         )
                     ],
                 )
@@ -77,4 +74,19 @@ async def publish_sql_card(*, state: SqlState) -> None:
         step_id=f"{state.status}:{state.round}",
         step_seq=state.round,
         card=sql_card(state),
+        workflow=WorkflowOutputMetadata(
+            reply=WorkflowReply(
+                id=f"sql-{state.workflow_call_id}-reply-{state.round}",
+                content=state.reply,
+            )
+            if state.reply
+            else None,
+            presentation=WorkflowPresentation(
+                surface_id=f"sql-{state.workflow_call_id}-{state.round}",
+                group_id=state.workflow_call_id,
+                anchor_message_id=f"sql-{state.workflow_call_id}-reply-{state.round}"
+                if state.reply
+                else None,
+            ),
+        ),
     )

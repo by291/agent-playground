@@ -15,7 +15,7 @@ import { reconcileRun } from "./recovery";
 import { completedMessages, reasoningMessageSuffix } from "../agent/messages";
 import { conversationExists } from "./management";
 import { workflowOutputs } from "../db/workflow-schema";
-import { sqlReplyMessages } from "../../shared/sql-review";
+import { workflowReplyMessages } from "../../shared/workflow-output";
 
 async function readCompletedCheckpoint(run: RunRow) {
   for (let attempt = 0; attempt < 5; attempt += 1) {
@@ -40,7 +40,7 @@ async function saveCheckpoint(
   checkpoint: Awaited<ReturnType<typeof readCompletedCheckpoint>>,
 ) {
   const messages = completedMessages(checkpoint.state.values);
-  const sqlOutputs = await db
+  const outputs = await db
     .select({ payload: workflowOutputs.payload })
     .from(workflowOutputs)
     .where(
@@ -51,10 +51,10 @@ async function saveCheckpoint(
     )
     .orderBy(asc(workflowOutputs.outputSeq));
 
-  // Nested SQL-agent replies live in their checkpointed workflow outputs, not
+  // Nested workflow replies live in their checkpointed workflow outputs, not
   // the paused parent agent's message state. Archive them before its final reply.
   messages.unshift(
-    ...sqlOutputs.flatMap((output) => sqlReplyMessages(output.payload)),
+    ...outputs.flatMap((output) => workflowReplyMessages(output.payload)),
   );
   const values: unknown = checkpoint.state.values;
   const usage =

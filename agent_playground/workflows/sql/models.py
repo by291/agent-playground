@@ -3,7 +3,7 @@
 from collections.abc import Awaitable, Callable
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, Field
 
 
 class SqlSource(BaseModel):
@@ -26,16 +26,6 @@ class SqlSubmission(BaseModel):
 class SqlRevision(BaseModel):
     reply: str = Field(min_length=1)
     sql: str | None = None
-
-
-class SqlReviewResponse(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
-
-    action: Literal["message", "accept", "abandon"]
-    workflow_call_id: str = Field(alias="workflowCallId")
-    revision: int
-    round: int
-    message: str | None = None
 
 
 class SqlState(BaseModel):

@@ -1,3 +1,4 @@
+import { workflowReplyMessages } from "@shared/workflow-output";
 import {
   configureConversationAgent,
   subscribeConversationAgent,
@@ -31,11 +32,10 @@ import { isRunFinished } from "@shared/run-status";
 import { parseContextUsage } from "@shared/context-usage";
 import { activityLimit } from "../model/activity";
 import {
-  parseSqlReview,
-  sqlReplyMessages,
-  sqlResponse,
-  type SqlReview,
-} from "@shared/sql-review";
+  parseWorkflowReview,
+  reviewResponse,
+  type WorkflowReview,
+} from "@shared/workflow-review";
 
 // Query ownership stays outside the session; a refresh requests a new result.
 type RefreshSnapshot = () => Promise<void>;
@@ -71,7 +71,7 @@ export function createConversationSession(
     send,
     clearActivity: () => store.setState({ activity: [], activityReceived: 0 }),
     reviewPlan,
-    reviewSql,
+    reviewWorkflow,
   }));
   const submission = createSubmissionRunner(saved.threadId, agent, {
     started() {
@@ -139,7 +139,7 @@ export function createConversationSession(
     if (result.kind === "ready") {
       const savedIds = new Set(agent.messages.map((message) => message.id));
       const replies = outputs
-        .flatMap(sqlReplyMessages)
+        .flatMap(workflowReplyMessages)
         .filter((message) => !savedIds.has(message.id));
 
       if (replies.length) {
@@ -360,9 +360,9 @@ export function createConversationSession(
 
     if (interrupts.length) {
       const review =
-        interrupts.length === 1 ? parseSqlReview(interrupts[0]!) : null;
+        interrupts.length === 1 ? parseWorkflowReview(interrupts[0]!) : null;
       const entry = review
-        ? sqlResponse(review, "message", { id: message.id, content: text })
+        ? reviewResponse(review, "message", { id: message.id, content: text })
         : null;
 
       if (!entry) {
@@ -393,7 +393,7 @@ export function createConversationSession(
 
     const interrupts = store.getState().pendingInterrupts;
     const mixed = interrupts.some(
-      (interrupt) => parseSqlReview(interrupt) !== null,
+      (interrupt) => parseWorkflowReview(interrupt) !== null,
     );
     const resume = reviewEntries(
       responses,
@@ -417,13 +417,13 @@ export function createConversationSession(
     });
   }
 
-  function reviewSql(
-    review: SqlReview,
+  function reviewWorkflow(
+    review: WorkflowReview,
     action: "accept" | "abandon",
   ): Promise<void> {
     const interrupts = store.getState().pendingInterrupts;
     const interrupt = interrupts.find((item) => item.id === review.interruptId);
-    const current = interrupt ? parseSqlReview(interrupt) : null;
+    const current = interrupt ? parseWorkflowReview(interrupt) : null;
 
     if (
       busy() ||
@@ -434,7 +434,7 @@ export function createConversationSession(
       return Promise.resolve();
     }
 
-    const entry = sqlResponse(current, action);
+    const entry = reviewResponse(current, action);
 
     if (!entry) {
       return Promise.resolve();

@@ -2,6 +2,10 @@ import { EventType, type BaseEvent } from "@ag-ui/client";
 import type { A2uiMessage } from "@a2ui/web_core/v0_9";
 import { z } from "zod";
 import { parseA2UIMessages } from "./messages";
+import {
+  workflowOutputMetadataSchema,
+  type WorkflowOutputMetadata,
+} from "@shared/workflow-output";
 
 const outputSchema = z
   .object({
@@ -11,6 +15,7 @@ const outputSchema = z
     workflowCallId: z.string().optional(),
     toolCallId: z.string().optional(),
     messages: z.unknown(),
+    workflow: workflowOutputMetadataSchema.optional(),
   })
   .strict();
 
@@ -19,6 +24,7 @@ export interface A2UIOutput {
   outputSeq: number;
   toolCallId?: string;
   messages: A2uiMessage[];
+  workflow?: WorkflowOutputMetadata;
 }
 
 export function parseA2UIOutput(value: unknown): A2UIOutput {
@@ -30,6 +36,7 @@ export function parseA2UIOutput(value: unknown): A2UIOutput {
       outputSeq: output.outputSeq,
       ...(output.toolCallId ? { toolCallId: output.toolCallId } : {}),
       messages: parseA2UIMessages(output.messages),
+      ...(output.workflow ? { workflow: output.workflow } : {}),
     };
   } catch (error) {
     const detail = error instanceof Error ? error.message : "Invalid payload";

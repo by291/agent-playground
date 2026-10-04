@@ -1,5 +1,5 @@
 import { createComponentImplementation } from "@a2ui/react/v0_9";
-import { sqlCardSchema, type SqlCard } from "@shared/sql-review";
+import { sqlCardSchema, type SqlCard } from "@shared/sql-card";
 
 export function SqlCardContent({ card }: { card: SqlCard }) {
   let status = card.check.passed ? "Check passed" : "Changes required";

@@ -22,8 +22,13 @@ export function Composer({
   onPromptChange: (prompt: string) => void;
 }) {
   const { preferences } = useUserPreferences();
-  const { running, recovering, waitingForReview, discussingSql, onSend } =
-    useConversation(useShallow(composerState));
+  const {
+    running,
+    recovering,
+    waitingForReview,
+    discussionPlaceholder,
+    onSend,
+  } = useConversation(useShallow(composerState));
   const presenting = useReplyPresentationBusy();
   const responding = running || presenting;
   const disabled = responding || recovering || waitingForReview;
@@ -36,8 +41,8 @@ export function Composer({
   } else if (waitingForReview && !running) {
     placeholder = "Review the plan above to continue";
     sendLabel = "Review the plan to continue";
-  } else if (discussingSql) {
-    placeholder = "Ask about this SQL or describe a change…";
+  } else if (discussionPlaceholder) {
+    placeholder = discussionPlaceholder;
   }
 
   function submit(event?: SubmitEvent<HTMLFormElement>) {

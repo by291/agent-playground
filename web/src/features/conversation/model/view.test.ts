@@ -4,6 +4,88 @@ import { InterruptSchema, type Message } from "@ag-ui/client";
 import { createA2UIRuntime, workflowCatalog } from "@/features/a2ui";
 import { conversationView } from "./view";
 
+test("generic review cards follow their feedback replies and keep history with the original tool", () => {
+  const runtime = createA2UIRuntime();
+  const messages: Message[] = [
+    { id: "start", role: "user", content: "Review copy" },
+    {
+      id: "call",
+      role: "assistant",
+      content: "",
+      toolCalls: [
+        {
+          id: "copy",
+          type: "function",
+          function: { name: "review_copy", arguments: "{}" },
+        },
+      ],
+    },
+    { id: "reply-one", role: "assistant", content: "First draft" },
+    { id: "feedback", role: "user", content: "Make it shorter" },
+    { id: "reply-two", role: "assistant", content: "Shorter draft" },
+    { id: "later", role: "user", content: "Another task" },
+    { id: "later-reply", role: "assistant", content: "Another answer" },
+  ];
+  const outputs = ["one", "two"].map((round, index) => ({
+    id: `copy-${round}`,
+    outputSeq: index + 1,
+    toolCallId: "copy",
+    workflow: {
+      presentation: {
+        surfaceId: `copy-${round}`,
+        groupId: "copy",
+        anchorMessageId: `reply-${round}`,
+      },
+    },
+    messages: [
+      {
+        version: "v0.9" as const,
+        createSurface: {
+          surfaceId: `copy-${round}`,
+          catalogId: workflowCatalog.id,
+        },
+      },
+      {
+        version: "v0.9" as const,
+        updateComponents: {
+          surfaceId: `copy-${round}`,
+          components: [
+            {
+              id: "root",
+              component: "WorkflowText",
+              role: "body",
+              text: `Draft ${round}`,
+            },
+          ],
+        },
+      },
+    ],
+  }));
+
+  try {
+    const result = runtime.ingest(outputs);
+    const view = conversationView({
+      messages,
+      surfaces: result.surfaces,
+      runs: [],
+      pendingInterrupts: [],
+    });
+
+    assert.equal(view.turns[0]?.artifacts.current.length, 0);
+    assert.deepEqual(
+      view.turns[0]?.artifacts.history.map((surface) => surface.surface.id),
+      ["copy-one"],
+    );
+    assert.deepEqual(
+      view.turns[1]?.artifacts.current.map((surface) => surface.surface.id),
+      ["copy-two"],
+    );
+    assert.equal(view.turns[2]?.artifacts.current.length, 0);
+  } finally {
+    runtime.dispose();
+  }
+});
+
 test("tool surfaces attach once to their owning turn and orphan surfaces remain visible", () => {
   const runtime = createA2UIRuntime();
   const messages: Message[] = [

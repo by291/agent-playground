@@ -1,5 +1,5 @@
 import type { ConversationState } from "./state";
-import { parseSqlReview } from "@shared/sql-review";
+import { parseWorkflowReview } from "@shared/workflow-review";
 
 export function isRunning(state: ConversationState) {
   return state.lifecycle.execution !== "idle";
@@ -23,16 +23,16 @@ export function conversationIssue(state: ConversationState) {
 }
 
 export function composerState(state: ConversationState) {
-  const sqlReview =
+  const workflowReview =
     state.pendingInterrupts.length === 1
-      ? parseSqlReview(state.pendingInterrupts[0]!)
+      ? parseWorkflowReview(state.pendingInterrupts[0]!)
       : null;
 
   return {
     running: isRunning(state),
     recovering: isRestoring(state),
-    waitingForReview: state.pendingInterrupts.length > 0 && !sqlReview,
-    discussingSql: sqlReview !== null,
+    waitingForReview: state.pendingInterrupts.length > 0 && !workflowReview,
+    discussionPlaceholder: workflowReview?.messagePlaceholder ?? null,
     onSend: state.send,
   };
 }

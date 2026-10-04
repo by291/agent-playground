@@ -5,13 +5,13 @@ from typing import Any
 
 from langgraph.config import get_config
 from langgraph.graph import END, START, StateGraph
-from langgraph.types import Checkpointer, interrupt
+from langgraph.types import Checkpointer
 
+from agent_playground.workflows.review import WorkflowReview, wait_for_review
 from agent_playground.workflows.sql.api import SqlApi
 from agent_playground.workflows.sql.cards import publish_sql_card
 from agent_playground.workflows.sql.models import (
     RevisionAgent,
-    SqlReviewResponse,
     SqlState,
 )
 
@@ -73,39 +73,24 @@ def make_sql_workflow(
         return {"round": published.round, "reply": reply}
 
     def wait_for_user(state: SqlState) -> dict[str, Any]:
-        response = SqlReviewResponse.model_validate(
-            interrupt(
-                {
-                    "kind": "sql_review",
-                    "workflowCallId": state.workflow_call_id,
-                    "revision": state.revision,
-                    "round": state.round,
-                    "outputStepId": f"review:{state.round}",
-                    "sql": state.sql,
-                    "originalSql": state.original_sql,
-                    "check": state.check.model_dump() if state.check else None,
-                },
-                response_schema=SqlReviewResponse,
+        can_accept = (
+            state.check is not None
+            and state.check.passed
+            and state.checked_revision == state.revision
+        )
+        response = wait_for_review(
+            WorkflowReview(
+                workflow_call_id=state.workflow_call_id,
+                revision=state.revision,
+                round=state.round,
+                output_step_id=f"review:{state.round}",
+                can_accept=can_accept,
+                title="SQL decision",
+                accept_label="Accept and submit",
+                message_placeholder="Ask about this SQL or describe a change…",
+                blocked_reason="SQL must pass its current check before submission.",
             )
         )
-        current = (
-            response.workflow_call_id == state.workflow_call_id
-            and response.revision == state.revision
-            and response.round == state.round
-        )
-
-        if not current:
-            raise ValueError("SQL review is no longer current")
-
-        if response.action == "accept" and (
-            state.check is None
-            or not state.check.passed
-            or state.checked_revision != state.revision
-        ):
-            raise ValueError("SQL must pass its current check before acceptance")
-
-        if response.action == "message" and not (response.message or "").strip():
-            raise ValueError("SQL feedback requires a message")
 
         return {
             "action": response.action,

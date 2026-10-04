@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { randomUUID } from "node:crypto";
-import type { SqlReview } from "@shared/sql-review";
+import type { WorkflowReview } from "@shared/workflow-review";
 
 async function send(page: Page, content: string) {
   const composer = page.getByRole("textbox", { name: "Message" });
@@ -41,7 +41,10 @@ test("SQL revisions and explanations survive reload and submit the accepted vers
     `http://127.0.0.1:4300/conversations/${threadId}`,
   );
   const initialSnapshot = (await initial.json()) as {
-    interrupts: { id: string; metadata: { langgraph: { raw: SqlReview } } }[];
+    interrupts: {
+      id: string;
+      metadata: { langgraph: { raw: WorkflowReview } };
+    }[];
   };
   const oldReview = initialSnapshot.interrupts[0]!;
 

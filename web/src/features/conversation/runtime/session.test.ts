@@ -25,7 +25,10 @@ import {
 } from "../model/storage";
 import type { A2UIOutput } from "@/features/a2ui";
 import { chatTurns, toolProcess } from "../model/turns";
-import { parseSqlReview, sqlReviewResponseSchema } from "@shared/sql-review";
+import {
+  parseWorkflowReview,
+  workflowReviewResponseSchema,
+} from "@shared/workflow-review";
 
 test("a resumed tool argument stream replaces saved arguments instead of appending them", async () => {
   const stream = streamingAgent("tool-resume");
@@ -1343,6 +1346,59 @@ test("review submission covers each interrupt once and blocks duplicate sends", 
   }
 });
 
+test("non-SQL review feedback resumes its workflow rather than starting an ordinary turn", async () => {
+  const stream = streamingAgent("copy-feedback");
+  const session = createConversationSession(
+    { threadId: "copy-feedback" },
+    stream.agent,
+  );
+  const paused = snapshot("copy-initial", "interrupted");
+
+  paused.interrupts = [
+    InterruptSchema.parse({
+      id: "copy-review",
+      reason: "Review copy",
+      metadata: {
+        langgraph: {
+          raw: {
+            kind: "workflow_review",
+            workflowCallId: "copy-call",
+            revision: 2,
+            round: 3,
+            outputStepId: "review:3",
+            canAccept: true,
+          },
+        },
+      },
+    }),
+  ];
+  const disconnect = connectSession(session, () => Promise.resolve(paused));
+
+  try {
+    session.receiveSnapshot(paused);
+    const completion = session.store.getState().send("Make the copy shorter");
+
+    const input = await stream.requested;
+
+    assert.equal(stream.requests, 1);
+    assert.deepEqual(input.messages, []);
+    assert.equal(input.resume?.[0]?.interruptId, "copy-review");
+    assert.equal(
+      (input.resume?.[0]?.payload as { message: string }).message,
+      "Make the copy shorter",
+    );
+    stream.emit({
+      type: "RUN_STARTED",
+      runId: input.runId,
+      threadId: input.threadId,
+    });
+    stream.finish(input);
+    await completion;
+  } finally {
+    disconnect();
+  }
+});
+
 test("SQL feedback resumes the current workflow and stale or failed acceptance does not send", async () => {
   const stream = streamingAgent("sql-feedback");
   const session = createConversationSession(
@@ -1356,14 +1412,14 @@ test("SQL feedback resumes the current workflow and stale or failed acceptance d
     metadata: {
       langgraph: {
         raw: {
-          kind: "sql_review",
+          kind: "workflow_review",
           workflowCallId: "sql-call",
           revision: 2,
           round: 3,
           outputStepId: "review:3",
-          sql: "SELECT id FROM orders",
-          originalSql: "SELECT * FROM orders",
-          check: { passed: false, issues: ["Fix the query"] },
+          canAccept: false,
+          title: "SQL decision",
+          blockedReason: "Fix the query",
         },
       },
     },
@@ -1374,19 +1430,21 @@ test("SQL feedback resumes the current workflow and stale or failed acceptance d
 
   try {
     session.receiveSnapshot(paused);
-    const review = parseSqlReview(interrupt)!;
+    const review = parseWorkflowReview(interrupt)!;
 
-    await session.store.getState().reviewSql(review, "accept");
+    await session.store.getState().reviewWorkflow(review, "accept");
     await session.store
       .getState()
-      .reviewSql({ ...review, round: 2 }, "abandon");
+      .reviewWorkflow({ ...review, round: 2 }, "abandon");
     assert.equal(stream.requests, 0);
     const completion = session.store.getState().send("Explain this SQL");
     const input = await stream.requested;
 
     assert.deepEqual(input.messages, []);
     assert.equal(input.resume?.[0]?.interruptId, "sql-review");
-    const payload = sqlReviewResponseSchema.parse(input.resume?.[0]?.payload);
+    const payload = workflowReviewResponseSchema.parse(
+      input.resume?.[0]?.payload,
+    );
 
     assert.equal(payload.action, "message");
     assert.equal(

@@ -73,7 +73,7 @@ test("preserves the adapter's single-review resume value", () => {
   );
 });
 
-test("a SQL decision targets its interrupt even when it is the only submitted review", () => {
+test("a conversational decision targets its interrupt even when it is the only submitted review", () => {
   const agent = new TestAgent({
     graphId: "agent",
     deploymentUrl: "http://127.0.0.1:2026",

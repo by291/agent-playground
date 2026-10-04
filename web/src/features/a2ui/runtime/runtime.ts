@@ -3,11 +3,13 @@ import { MessageProcessor, type SurfaceModel } from "@a2ui/web_core/v0_9";
 import { replaceEqualDeep } from "@tanstack/react-query";
 import { workflowCatalog } from "../catalog/index";
 import type { A2UIOutput } from "./outputs";
+import type { WorkflowOutputMetadata } from "@shared/workflow-output";
 
 export interface A2UISurfaceView {
   id: string;
   toolCallId?: string;
   surface: SurfaceModel<ReactComponentImplementation>;
+  presentation?: WorkflowOutputMetadata["presentation"];
 }
 
 export type A2UIIngestResult =
@@ -27,6 +29,8 @@ export function createA2UIRuntime() {
   let disposed = false;
 
   const created = processor.onSurfaceCreated((surface) => {
+    const presentation = currentOutput?.workflow?.presentation;
+
     surfaces = [
       ...surfaces,
       {
@@ -35,6 +39,7 @@ export function createA2UIRuntime() {
           ? { toolCallId: currentOutput.toolCallId }
           : {}),
         surface,
+        ...(presentation?.surfaceId === surface.id ? { presentation } : {}),
       },
     ];
   });
@@ -52,6 +57,8 @@ export function createA2UIRuntime() {
             existing.id !== output.id ||
             existing.outputSeq !== output.outputSeq ||
             existing.toolCallId !== output.toolCallId ||
+            replaceEqualDeep(existing.workflow, output.workflow) !==
+              existing.workflow ||
             replaceEqualDeep(existing.messages, output.messages) !==
               existing.messages
           ) {

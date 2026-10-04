@@ -1,10 +1,7 @@
 """Verify SQL workflow pause/revision/accept behavior with a controlled agent."""
 
 import asyncio
-import base64
-import json
 from collections.abc import Sequence
-from pathlib import Path
 from typing import Any, override
 
 import pytest
@@ -65,63 +62,6 @@ def test_deepseek_revision_model_disables_thinking_for_forced_structured_tools()
     assert not revision.metadata["emit-messages"]
 
 
-def test_sql_review_checkpoint_from_before_module_move_can_resume(
-    monkeypatch: pytest.MonkeyPatch,
-):
-    async def run():
-        fixture = json.loads(
-            (Path(__file__).parent / "fixtures/sql_review_checkpoint.json").read_text()
-        )
-        saver = InMemorySaver()
-
-        def decode(value: list[str]) -> Any:
-            return saver.serde.loads_typed((value[0], base64.b64decode(value[1])))
-
-        checkpoint = decode(fixture["checkpoint"])
-        config = saver.put(
-            fixture["config"],
-            checkpoint,
-            decode(fixture["metadata"]),
-            checkpoint["channel_versions"],
-        )
-
-        for task_id, channel, value in decode(fixture["pending_writes"]):
-            saver.put_writes(config, [(channel, value)], task_id)
-
-        client = DemoClient()
-
-        async def publish(**kwargs: Any):
-            pass
-
-        async def revise(state: SqlState) -> SqlRevision:
-            return SqlRevision(reply="The query selects the order ID and amount.")
-
-        monkeypatch.setattr(
-            "agent_playground.workflows.sql.graph.publish_sql_card", publish
-        )
-        graph = make_sql_workflow(revise, client, saver)
-        thread = {"configurable": {"thread_id": "legacy-sql"}}
-        review = graph.get_state(thread).tasks[0].interrupts[0].value
-
-        await graph.ainvoke(
-            Command(resume={**review, "action": "message", "message": "Explain"}),
-            thread,
-        )
-        current = graph.get_state(thread).tasks[0].interrupts[0].value
-        completed = await graph.ainvoke(
-            Command(resume={**current, "action": "accept"}), thread
-        )
-
-        assert current["sql"] == "SELECT id, amount FROM orders"
-        assert current["revision"] == review["revision"] == 2
-        assert completed["status"] == "submitted"
-        assert client.fetches == 0
-        assert client.checks == []
-        assert client.submissions == ["SELECT id, amount FROM orders"]
-
-    asyncio.run(run())
-
-
 def test_sql_loop_keeps_explanations_checked_and_submits_the_accepted_revision(
     monkeypatch: pytest.MonkeyPatch,
 ):
@@ -155,7 +95,7 @@ def test_sql_loop_keeps_explanations_checked_and_submits_the_accepted_revision(
         value = paused["__interrupt__"][0].value
 
         assert value["revision"] == 2
-        assert value["check"]["passed"]
+        assert value["canAccept"]
         assert client.fetches == 1
         assert len(client.checks) == 2
 

@@ -257,6 +257,133 @@ async function pauseForReview(threadId: string) {
   return { run, input };
 }
 
+test("generic workflow feedback validates its persisted round and cannot override acceptance", async () => {
+  const { run, input } = await pauseForReview("copy-review");
+  const { validateReview, workflowFeedbackMessage } = await import("./reviews");
+  const [row] = await database.db
+    .select()
+    .from(schema.conversationRuns)
+    .where(eq(schema.conversationRuns.aguiRunId, run.aguiRunId));
+  const current = {
+    ...row!,
+    interrupts: [
+      {
+        id: "copy-review",
+        reason: "Review copy",
+        metadata: {
+          langgraph: {
+            raw: {
+              kind: "workflow_review",
+              workflowCallId: `${run.threadId}-workflow`,
+              revision: 2,
+              round: 4,
+              outputStepId: "review:4",
+              canAccept: false,
+              blockedReason: "Resolve the factual issue first.",
+            },
+          },
+        },
+      },
+    ],
+  };
+
+  await database.db.execute(
+    sql`UPDATE workflow_outputs SET step_id = 'review:4' WHERE thread_id = ${run.threadId}`,
+  );
+  const payload = {
+    workflowCallId: `${run.threadId}-workflow`,
+    revision: 2,
+    round: 4,
+    action: "message",
+    message: "Explain",
+    messageId: "copy-feedback",
+  };
+  const request: RunAgentInput = {
+    ...input,
+    resume: [{ interruptId: "copy-review", status: "resolved", payload }],
+  };
+
+  await validateReview(request, current, database.db);
+  assert.deepEqual(workflowFeedbackMessage(request), {
+    id: "copy-feedback",
+    role: "user",
+    content: "Explain",
+  });
+  await assert.rejects(
+    validateReview(
+      {
+        ...request,
+        resume: [
+          {
+            interruptId: "copy-review",
+            status: "resolved",
+            payload: {
+              workflowCallId: payload.workflowCallId,
+              revision: 2,
+              round: 4,
+              action: "accept",
+            },
+          },
+        ],
+      },
+      current,
+      database.db,
+    ),
+    /Resolve the factual issue first/,
+  );
+  await assert.rejects(
+    validateReview(
+      {
+        ...request,
+        resume: [
+          {
+            interruptId: "copy-review",
+            status: "resolved",
+            payload: { ...payload, round: 3 },
+          },
+        ],
+      },
+      current,
+      database.db,
+    ),
+    /no longer current/,
+  );
+});
+
+test("generic workflow reply metadata is archived once before the parent reply", async () => {
+  const run = await admit("copy-output");
+  const { synchronizeConversation } = await import("./checkpoint-sync");
+  const { conversationSnapshot } = await import("./conversation-snapshot");
+  const payload = {
+    messages: [],
+    workflow: { reply: { id: "copy-reply", content: "Revised copy" } },
+  };
+
+  await runStore.recordAegraRun(run.aguiRunId, "upstream-run");
+  await database.db.execute(sql`
+    INSERT INTO workflow_outputs (id, thread_id, agui_run_id, workflow_call_id, step_id, output_seq, payload)
+    VALUES ('copy-output', ${run.threadId}, ${run.aguiRunId}, 'copy-call', 'review:1', 1, ${JSON.stringify(payload)}::jsonb)
+  `);
+  await database.db
+    .update(schema.conversationRuns)
+    .set({ status: "completed" })
+    .where(eq(schema.conversationRuns.aguiRunId, run.aguiRunId));
+  await synchronizeConversation(run.threadId);
+  await synchronizeConversation(run.threadId);
+  const snapshot = await conversationSnapshot(run.threadId);
+
+  assert.deepEqual(
+    snapshot?.messages.map((message) => message.id),
+    [
+      `${run.threadId}-message`,
+      "copy-reply",
+      "checkpoint-reply",
+      "checkpoint-followup",
+    ],
+  );
+  assert.equal(snapshot?.messages[1]?.content, "Revised copy");
+});
+
 test("a late creation callback preserves an already completed run", async () => {
   const row = await admit("late-callback");
 
