@@ -19,6 +19,7 @@ let stateReads = 0;
 let listedRuns: unknown[] = [];
 let compactedCheckpoint = false;
 let toolCheckpoint = false;
+let reasoningCheckpoint = false;
 const contextUsage = {
   model: "deepseek-flash",
   usedTokens: 1200,
@@ -87,6 +88,29 @@ const upstream = createServer((request, response) => {
                     id: "tool-answer",
                     type: "ai",
                     content: "The clock is unavailable.",
+                  },
+                ],
+              }
+            : {}),
+          ...(reasoningCheckpoint
+            ? {
+                response_messages: [
+                  {
+                    id: "checkpoint-reply",
+                    type: "ai",
+                    content: "Saved reply",
+                    additional_kwargs: { reasoning_content: "Old reasoning" },
+                  },
+                  {
+                    id: "checkpoint-followup",
+                    type: "ai",
+                    content: "Follow-up reply",
+                  },
+                  {
+                    id: "new-answer",
+                    type: "ai",
+                    content: "New answer",
+                    additional_kwargs: { reasoning_content: "New reasoning" },
                   },
                 ],
               }
@@ -348,6 +372,58 @@ test("a completed checkpoint is synchronized once and only adds missing messages
     snapshot?.messages.map((message) => message.id),
     [`${run.threadId}-message`, "checkpoint-reply", "checkpoint-followup"],
   );
+});
+
+test("reasoning from an already archived answer cannot move into a later user turn", async () => {
+  const { synchronizeConversation } = await import("./checkpoint-sync");
+  const { conversationSnapshot } = await import("./conversation-snapshot");
+  const first = await admit("historical-reasoning");
+
+  await database.db
+    .update(schema.conversationRuns)
+    .set({ status: "completed" })
+    .where(eq(schema.conversationRuns.aguiRunId, first.aguiRunId));
+  await synchronizeConversation(first.threadId);
+  const next: RunAgentInput = {
+    ...inputFor(first.threadId),
+    runId: "historical-reasoning-next",
+    messages: [{ id: "next-question", role: "user", content: "Next question" }],
+  };
+
+  await runStore.admitRun({
+    threadId: next.threadId,
+    runId: next.runId,
+    messageId: next.messages[0]!.id,
+    request: next,
+    userMessage: next.messages[0]!,
+    isResume: false,
+  });
+  await database.db
+    .update(schema.conversationRuns)
+    .set({ status: "completed" })
+    .where(eq(schema.conversationRuns.aguiRunId, next.runId));
+  reasoningCheckpoint = true;
+
+  try {
+    await synchronizeConversation(next.threadId);
+    const saved = await conversationSnapshot(next.threadId);
+
+    assert.deepEqual(
+      saved?.messages.map((message) => message.id),
+      [
+        `${first.threadId}-message`,
+        "checkpoint-reply",
+        "checkpoint-followup",
+        "next-question",
+        "new-answer-reasoning",
+        "new-answer",
+      ],
+    );
+    assert.equal(saved?.messages[4]?.role, "reasoning");
+    assert.equal(saved?.messages[4]?.content, "New reasoning");
+  } finally {
+    reasoningCheckpoint = false;
+  }
 });
 
 test("a compacted checkpoint recovers usage and replies removed from model history", async () => {

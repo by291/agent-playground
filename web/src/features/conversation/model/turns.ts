@@ -29,7 +29,11 @@ export function chatTurns(
     if (message.role === "user") {
       current = { id: message.id, user: message, messages: [], status: null };
       turns.push(current);
-    } else if (message.role === "assistant" || message.role === "tool") {
+    } else if (
+      message.role === "assistant" ||
+      message.role === "tool" ||
+      message.role === "reasoning"
+    ) {
       if (!current) {
         current = { id: message.id, user: null, messages: [], status: null };
         turns.push(current);

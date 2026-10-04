@@ -50,8 +50,9 @@ export function conversationView({
     const hasReply =
       turn.messages.some(
         (message) =>
-          message.role === "assistant" &&
-          (hasMessageText(message) || Boolean(message.toolCalls?.length)),
+          ((message.role === "assistant" || message.role === "reasoning") &&
+            hasMessageText(message)) ||
+          (message.role === "assistant" && Boolean(message.toolCalls?.length)),
       ) ||
       (turn.status !== null && isRunActive(turn.status)) ||
       views.length > 0 ||

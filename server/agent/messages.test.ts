@@ -2,6 +2,60 @@ import { test } from "vitest";
 import assert from "node:assert/strict";
 import { completedMessages } from "./messages";
 
+test("checkpoint recovery preserves provider reasoning separately from answer text", () => {
+  const values = {
+    response_messages: [
+      {
+        id: "answer",
+        type: "ai",
+        content: "Use approach A.",
+        additional_kwargs: { reasoning_content: "Compare A and B." },
+      },
+      {
+        id: "blocks",
+        type: "ai",
+        content: [
+          { type: "reasoning", reasoning: "Check the constraints." },
+          { type: "text", text: "Both fit." },
+        ],
+      },
+      {
+        id: "thinking",
+        type: "ai",
+        content: [
+          { type: "thinking", thinking: "One path is shorter." },
+          { type: "redacted_thinking", data: "encrypted" },
+        ],
+      },
+      {
+        id: "summary",
+        type: "ai",
+        content: "Internal summary",
+        additional_kwargs: {
+          lc_source: "summarization",
+          reasoning_content: "Not a reply",
+        },
+      },
+    ],
+  };
+
+  assert.deepEqual(completedMessages(values), [
+    { id: "answer-reasoning", role: "reasoning", content: "Compare A and B." },
+    { id: "answer", role: "assistant", content: "Use approach A." },
+    {
+      id: "blocks-reasoning",
+      role: "reasoning",
+      content: "Check the constraints.",
+    },
+    { id: "blocks", role: "assistant", content: "Both fit." },
+    {
+      id: "thinking-reasoning",
+      role: "reasoning",
+      content: "One path is shorter.",
+    },
+  ]);
+});
+
 test("checkpoint replies preserve tool calls, empty assistant messages and failed results", () => {
   const messages = completedMessages({
     messages: [],

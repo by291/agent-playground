@@ -12,7 +12,7 @@ import { isRunFinished } from "../../shared/run-status";
 import { parseContextUsage } from "../../shared/context-usage";
 import { latestRun } from "./run-store";
 import { reconcileRun } from "./recovery";
-import { completedMessages } from "../agent/messages";
+import { completedMessages, reasoningMessageSuffix } from "../agent/messages";
 import { conversationExists } from "./management";
 
 async function readCompletedCheckpoint(run: RunRow) {
@@ -83,7 +83,26 @@ async function saveCheckpoint(
       const savedIds = new Set(saved.map((message) => message.id));
       const additions = messages
         .map((message, index) => ({ message, order: index + 1 }))
-        .filter(({ message }) => !savedIds.has(message.id));
+        .filter(({ message }) => {
+          if (savedIds.has(message.id)) {
+            return false;
+          }
+
+          if (message.role === "reasoning") {
+            const sourceId = message.id.slice(
+              0,
+              -reasoningMessageSuffix.length,
+            );
+
+            // Older archives lack reasoning. Do not assign an already saved
+            // answer's newly extracted reasoning to the current user turn.
+            if (savedIds.has(sourceId)) {
+              return false;
+            }
+          }
+
+          return true;
+        });
 
       if (additions.length) {
         await tx

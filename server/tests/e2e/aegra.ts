@@ -202,6 +202,7 @@ export function controlledAegra(database: typeof db) {
         messageId: string,
         content: string,
         toolCallChunks?: object[],
+        additionalKwargs?: Record<string, unknown>,
       ) {
         await event("events", {
           event: LangGraphEventTypes.OnChatModelStream,
@@ -211,6 +212,7 @@ export function controlledAegra(database: typeof db) {
               id: messageId,
               content,
               response_metadata: {},
+              additional_kwargs: additionalKwargs ?? {},
               tool_call_chunks: toolCallChunks ?? [],
             },
           },
@@ -308,7 +310,39 @@ export function controlledAegra(database: typeof db) {
 
         thread.messages.push({ ...message, type: "human", role: "user" });
 
-        if (message.content === "Stream a code sample.") {
+        if (message.content === "Compare approaches with reasoning.") {
+          const messageId = randomUUID();
+          const reasoning =
+            "First, compare the constraints. Then check the tradeoffs.";
+          const thoughtReleased = new Promise<void>((resolve) => {
+            thread.release = resolve;
+          });
+
+          await modelChunk(messageId, "", undefined, {
+            reasoning_content: "First, compare the constraints. ",
+          });
+          await modelChunk(messageId, "", undefined, {
+            reasoning_content: "Then check the tradeoffs.",
+          });
+          await thoughtReleased;
+          delete thread.release;
+          const answerReleased = new Promise<void>((resolve) => {
+            thread.release = resolve;
+          });
+
+          await modelChunk(messageId, "Approach A is simpler.");
+          await answerReleased;
+          delete thread.release;
+          await modelChunk(messageId, " Approach B is more flexible.");
+          await endModel();
+          thread.messages.push({
+            id: messageId,
+            type: "ai",
+            role: "assistant",
+            content: "Approach A is simpler. Approach B is more flexible.",
+            additional_kwargs: { reasoning_content: reasoning },
+          });
+        } else if (message.content === "Stream a code sample.") {
           await reply(
             "Here is a C example.\n\n```c\nint main(void) {\n  return 0;\n}\n```",
             true,

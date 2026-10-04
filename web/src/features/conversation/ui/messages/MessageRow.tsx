@@ -1,5 +1,5 @@
 import type { Message } from "@ag-ui/client";
-import type { ReactNode } from "react";
+import { useLayoutEffect, useRef, type ReactNode } from "react";
 import { StackIcon } from "@phosphor-icons/react";
 import { Bubble, BubbleContent } from "@/components/ui/bubble";
 import {
@@ -59,16 +59,68 @@ export function AssistantFrame({ children }: { children: ReactNode }) {
   );
 }
 
+function hasRenderedAnswerText(element: HTMLElement): boolean {
+  const textNodes = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+
+  while (textNodes.nextNode()) {
+    const node = textNodes.currentNode;
+    const chrome = node.parentElement?.closest(
+      'button, [hidden], [aria-hidden="true"], [data-streamdown="code-block-header"], [data-streamdown="code-block-actions"]',
+    );
+
+    if (node.textContent?.trim() && !chrome) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 export function AssistantText({
   message,
   streaming = false,
+  onTextVisible,
 }: {
   message: Message;
   streaming?: boolean;
+  onTextVisible?: (messageId: string) => void;
 }) {
+  const content = useRef<HTMLDivElement>(null);
+
+  useLayoutEffect(() => {
+    const element = content.current;
+
+    if (!element || !onTextVisible) {
+      return;
+    }
+
+    // Markdown rendering can commit after its paced buffer changes. Observe
+    // actual rendered text so an empty presentation does not hide reasoning.
+    const observer = new MutationObserver(reportVisibleText);
+
+    function reportVisibleText() {
+      if (hasRenderedAnswerText(element!)) {
+        onTextVisible!(message.id);
+        observer.disconnect();
+      }
+    }
+
+    observer.observe(element, {
+      childList: true,
+      subtree: true,
+      characterData: true,
+    });
+    reportVisibleText();
+
+    return () => observer.disconnect();
+  }, [message.id, onTextVisible]);
+
   return (
     <Bubble variant="ghost" className="w-full">
-      <BubbleContent className="chat-markdown w-full overflow-visible text-ink">
+      <BubbleContent
+        ref={content}
+        className="chat-markdown w-full overflow-visible text-ink"
+      >
         <MarkdownMessage
           key={message.id}
           text={messageText(message)}

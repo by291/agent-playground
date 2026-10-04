@@ -1,5 +1,7 @@
 import { MessageSchema, ToolCallSchema, type Message } from "@ag-ui/client";
 
+export const reasoningMessageSuffix = "-reasoning";
+
 function record(value: unknown): Record<string, unknown> | null {
   return value !== null && typeof value === "object"
     ? (value as Record<string, unknown>)
@@ -80,6 +82,53 @@ function publicMessage(value: unknown): Message | null {
   return parsed.success ? parsed.data : null;
 }
 
+function publicReasoning(value: unknown): Message | null {
+  const raw = record(value);
+  const extra = record(raw?.additional_kwargs);
+
+  if (
+    raw?.type !== "ai" ||
+    typeof raw.id !== "string" ||
+    extra?.lc_source === "summarization"
+  ) {
+    return null;
+  }
+
+  let content = "";
+
+  if (typeof extra?.reasoning_content === "string") {
+    content = extra.reasoning_content;
+  } else if (Array.isArray(raw.content)) {
+    content = raw.content
+      .flatMap((part: unknown) => {
+        const item = record(part);
+
+        if (item?.type === "reasoning" && typeof item.reasoning === "string") {
+          return [item.reasoning];
+        }
+
+        if (item?.type === "thinking" && typeof item.thinking === "string") {
+          return [item.thinking];
+        }
+
+        return [];
+      })
+      .join("\n\n");
+  }
+
+  if (!content.trim()) {
+    return null;
+  }
+
+  const parsed = MessageSchema.safeParse({
+    id: `${raw.id}${reasoningMessageSuffix}`,
+    role: "reasoning",
+    content,
+  });
+
+  return parsed.success ? parsed.data : null;
+}
+
 export function publicToolErrors(values: unknown): Message[] {
   const state = record(values);
   const errors = new Map<string, Message>();
@@ -121,9 +170,10 @@ export function completedMessages(values: unknown): Message[] {
     ? state.response_messages
     : history;
   const messages = responses.flatMap((raw) => {
+    const reasoning = publicReasoning(raw);
     const message = publicMessage(raw);
 
-    return message ? [message] : [];
+    return [...(reasoning ? [reasoning] : []), ...(message ? [message] : [])];
   });
   const savedIds = new Set(messages.map((message) => message.id));
 
