@@ -50,6 +50,20 @@
       "when": 1791107203865,
       "tag": "0006_external_tasks",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1791134025600,
+      "tag": "0007_skill_files",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1791135448811,
+      "tag": "0008_skill_cleanup",
+      "breakpoints": true
     }
   ]
 }

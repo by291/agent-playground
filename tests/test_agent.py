@@ -368,3 +368,97 @@ def test_postgres_checkpoint_survives_graph_recreation(postgres_database_url: st
         assert user_turns == ["First turn", "Second turn"]
 
     asyncio.run(check(postgres_database_url))
+
+
+@pytest.mark.parametrize("exit_code", [0, 7])
+def test_skill_tools_run_in_existing_agent_and_preserve_official_results(
+    exit_code: int, monkeypatch: pytest.MonkeyPatch
+):
+    import json
+    from pathlib import Path
+
+    from langchain_core.messages import ToolMessage
+
+    from agent_playground.skills.catalog import SkillCatalog
+    from agent_playground.skills.sandbox import ScriptResult, skill_execution
+
+    calls: list[tuple[str, str]] = []
+
+    async def execute(
+        self: object,
+        skill_name: str,
+        script_path: str,
+        arguments: list[str],
+        inputs: dict[str, bytes],
+        outputs: list[str],
+    ):
+        calls.append((skill_name, script_path))
+        return ScriptResult(exit_code, "verified result", "", None, {})
+
+    monkeypatch.setattr("agent_playground.skills.sandbox.SkillSession.run", execute)
+    catalog = SkillCatalog(Path("skills"))
+    model = FakeToolModel(
+        responses=[
+            AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "id": "load-csv",
+                        "name": "load_skill",
+                        "args": {"skill_name": "csv-summary"},
+                    }
+                ],
+            ),
+            AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "id": "run-csv",
+                        "name": "run_skill_script",
+                        "args": {
+                            "skill_name": "csv-summary",
+                            "script_path": "scripts/summarize.py",
+                        },
+                    }
+                ],
+            ),
+            AIMessage(content="The script result was checked."),
+        ]
+    )
+
+    async def check():
+        graph = make_graph(model=model, skills=catalog, checkpointer=InMemorySaver())
+        config = {
+            "configurable": {"thread_id": str(uuid4())},
+            "metadata": {"agui_run_id": "skill-graph-test"},
+        }
+
+        async with skill_execution(catalog):
+            result = await graph.ainvoke(
+                {
+                    "messages": [
+                        HumanMessage(content="$csv-summary summarize the sample.")
+                    ]
+                },
+                config,
+            )
+
+        tool_result = next(
+            message
+            for message in result["messages"]
+            if isinstance(message, ToolMessage) and message.tool_call_id == "run-csv"
+        )
+        payload = json.loads(str(tool_result.content))
+
+        assert calls == [("csv-summary", "scripts/summarize.py")]
+        assert payload["exitCode"] == exit_code
+        assert payload["stdout"] == "verified result"
+        assert tool_result.status == ("success" if exit_code == 0 else "error")
+        transcript = graph.get_state(config).values["response_messages"]
+        assert any(
+            isinstance(message, ToolMessage) and message.tool_call_id == "run-csv"
+            for message in transcript
+        )
+        assert result["messages"][-1].content == "The script result was checked."
+
+    asyncio.run(check())

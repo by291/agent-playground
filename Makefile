@@ -1,10 +1,11 @@
 .DEFAULT_GOAL := help
 
-.PHONY: help setup infra-up infra-down agent server web dev dev-stop observability-up dev-observability agent-observability server-observability web-observability typecheck lint format format-check test build check
+.PHONY: help setup infra-up infra-down skills-smoke agent server web dev dev-stop observability-up dev-observability agent-observability server-observability web-observability typecheck lint format format-check test build check
 
 help:
 	@echo "Setup:   make setup, make infra-up, make infra-down"
 	@echo "Run:     make dev, make dev-stop, make agent, make server, make web"
+	@echo "Skills:  make skills-smoke"
 	@echo "Observe: make observability-up, make dev-observability"
 	@echo "Quality: make check, make typecheck, make lint, make format, make format-check, make test, make build"
 
@@ -17,10 +18,16 @@ setup:
 	pnpm install
 
 infra-up:
+	docker build -t agent-playground-skill-runtime:local -f infra/skills/runtime.Dockerfile infra/skills
+	docker pull opensandbox/execd:release-1.1.1-rc.1
+	docker pull opensandbox/egress:release-1.1.1-rc.1
 	docker compose up -d --wait
 
 infra-down:
 	docker compose --profile observability down
+
+skills-smoke:
+	uv run python scripts/skill-smoke.py
 
 agent:
 	uv run agent

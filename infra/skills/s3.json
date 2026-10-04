@@ -1,0 +1,9 @@
+{
+  "identities": [
+    {
+      "name": "local-development",
+      "credentials": [{ "accessKey": "agent-playground", "secretKey": "agent-playground-local-s3" }],
+      "actions": ["Admin", "Read", "Write", "List"]
+    }
+  ]
+}

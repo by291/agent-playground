@@ -207,7 +207,11 @@ export function ConversationWorkspace({
           >
             <ReplyPresentationProvider>
               <ChatPane onSelectPrompt={setPrompt} />
-              <Composer prompt={prompt} onPromptChange={setPrompt} />
+              <Composer
+                prompt={prompt}
+                onPromptChange={setPrompt}
+                threadId={conversation.threadId}
+              />
             </ReplyPresentationProvider>
           </main>
           {showActivity && (

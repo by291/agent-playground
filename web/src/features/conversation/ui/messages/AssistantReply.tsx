@@ -3,6 +3,7 @@ import type { ReasoningMessage } from "@ag-ui/client";
 import { AssistantFrame, AssistantText, ThinkingStatus } from "./MessageRow";
 import { hasMessageText } from "../../model/presentation";
 import { toolProcess, type ChatTurn } from "../../model/turns";
+import { SkillFiles } from "./SkillFiles";
 import { ToolProcess } from "./ToolProcess";
 import { ReasoningProcess } from "./ReasoningProcess";
 import { isRunActive } from "@shared/run-status";
@@ -79,6 +80,7 @@ export function AssistantReply({
       {process.length > 0 && (
         <ToolProcess process={process}>{processDetails}</ToolProcess>
       )}
+      <SkillFiles process={process} />
       {children}
       {final.map((message) => (
         <AssistantText

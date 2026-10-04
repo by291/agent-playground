@@ -16,9 +16,11 @@ dependencies = [
   "langgraph>=1.2.12",
   "langgraph-checkpoint-postgres",
   "mcp>=1.30.0,<2",
+  "opensandbox>=0.1.14,<0.2",
   "opentelemetry-api>=1.45.0",
   "psycopg[binary,pool]>=3.3.6",
   "pydantic>=2.13.5",
+  "pyyaml>=6,<7",
   "sqlalchemy>=2.1.1",
   "sqlglot>=30.21.0",
   "structlog>=26.1.0",
@@ -40,6 +42,7 @@ dev = [
     "pytest",
     "ruff",
     "testcontainers[postgres]>=4.15.0",
+    "types-pyyaml>=6,<7",
 ]
 
 [tool.pytest.ini_options]

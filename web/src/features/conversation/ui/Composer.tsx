@@ -1,6 +1,16 @@
 import { composerState } from "../model/selectors";
 import { ArrowUpIcon } from "@phosphor-icons/react/dist/csr/ArrowUp";
-import { type KeyboardEvent, type SubmitEvent } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type SubmitEvent,
+} from "react";
+import { PaperclipIcon } from "@phosphor-icons/react/dist/csr/Paperclip";
+import { XIcon } from "@phosphor-icons/react/dist/csr/X";
+import { maxSkillFileBytes, skillFilenameSchema } from "@shared/skill-files";
+import { uploadFile } from "../api/files";
 import { useShallow } from "zustand/react/shallow";
 import {
   InputGroup,
@@ -17,10 +27,22 @@ import { useUserPreferences } from "@/lib/preferences";
 export function Composer({
   prompt,
   onPromptChange,
+  threadId,
 }: {
+  threadId?: string;
   prompt: string;
   onPromptChange: (prompt: string) => void;
 }) {
+  const [files, setFiles] = useState<{ id: string; file: File }[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const picker = useRef<HTMLInputElement>(null);
+  const upload = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    return () => upload.current?.abort();
+  }, [threadId]);
+
   const { preferences } = useUserPreferences();
   const {
     running,
@@ -33,12 +55,18 @@ export function Composer({
   const presenting = useReplyPresentationBusy();
   const responding = running || presenting;
   const disabled =
-    responding || recovering || waitingForReview || waitingForExternalTask;
+    uploading ||
+    responding ||
+    recovering ||
+    waitingForReview ||
+    waitingForExternalTask;
 
   let placeholder = "Describe a task or ask a question…";
   let sendLabel = responding ? "Agent is responding" : "Send message";
 
-  if (recovering) {
+  if (uploading) {
+    sendLabel = "Uploading files";
+  } else if (recovering) {
     sendLabel = "Restoring conversation";
   } else if (waitingForExternalTask && !running) {
     placeholder =
@@ -60,8 +88,66 @@ export function Composer({
 
     const message = prompt;
 
-    onPromptChange("");
-    void onSend(message);
+    if (!files.length) {
+      onPromptChange("");
+      void onSend(message);
+
+      return;
+    }
+
+    if (!threadId || upload.current) {
+      return;
+    }
+
+    const controller = new AbortController();
+
+    upload.current = controller;
+    setUploading(true);
+    setUploadError(null);
+    void Promise.allSettled(
+      files.map(({ id, file }) =>
+        uploadFile(threadId, id, file, controller.signal),
+      ),
+    )
+      .then((results) => {
+        const uploaded = results.map((result) => {
+          if (result.status === "rejected") {
+            throw result.reason;
+          }
+
+          return result.value;
+        });
+
+        if (controller.signal.aborted) {
+          return;
+        }
+
+        const references = uploaded.map(
+          (file) => `${JSON.stringify(file.name)} — File ID: ${file.id}`,
+        );
+
+        onPromptChange("");
+        setFiles([]);
+        void onSend(`${message}\n\nUploaded files:\n${references.join("\n")}`);
+      })
+      .catch((error: unknown) => {
+        if (!controller.signal.aborted) {
+          setUploadError(
+            error instanceof Error
+              ? error.message
+              : "File upload failed. Please retry.",
+          );
+        }
+      })
+      .finally(() => {
+        if (upload.current === controller) {
+          upload.current = null;
+
+          if (!controller.signal.aborted) {
+            setUploading(false);
+          }
+        }
+      });
   }
 
   function handleKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
@@ -85,7 +171,76 @@ export function Composer({
     <div className="shrink-0 bg-surface px-4 pt-3 pb-4 sm:px-8 sm:pb-5">
       <div className="conversation-layout conversation-column">
         <form onSubmit={submit}>
+          {threadId && (
+            <input
+              ref={picker}
+              type="file"
+              multiple
+              className="hidden"
+              aria-label="Choose files"
+              disabled={disabled}
+              onChange={(event) => {
+                const selected = Array.from(event.target.files ?? []);
+
+                event.target.value = "";
+
+                if (
+                  files.length + selected.length > 4 ||
+                  selected.some(
+                    (file) =>
+                      file.size > maxSkillFileBytes ||
+                      !skillFilenameSchema.safeParse(file.name).success,
+                  )
+                ) {
+                  setUploadError(
+                    "Choose at most four files, up to 10 MiB each, with valid filenames.",
+                  );
+
+                  return;
+                }
+
+                setUploadError(null);
+                setFiles((previous) => [
+                  ...previous,
+                  ...selected.map((file) => ({
+                    id: crypto.randomUUID(),
+                    file,
+                  })),
+                ]);
+              }}
+            />
+          )}
           <InputGroup className="h-auto flex-col items-stretch gap-1 rounded-xl border-line bg-surface p-3 shadow-[0_3px_12px_rgba(32,36,44,0.04)] transition-colors duration-150 focus-within:border-accent sm:p-4">
+            {files.length > 0 && (
+              <div className="flex flex-wrap gap-2 px-1">
+                {files.map(({ id, file }) => (
+                  <div
+                    key={id}
+                    className="flex max-w-full items-center gap-2 rounded-lg border border-line px-2 py-1 text-xs"
+                  >
+                    <span className="truncate">{file.name}</span>
+                    <button
+                      type="button"
+                      aria-label={`Remove ${file.name}`}
+                      disabled={disabled}
+                      className="rounded p-1 hover:bg-sidebar focus-visible:ring-2 focus-visible:ring-accent"
+                      onClick={() =>
+                        setFiles((previous) =>
+                          previous.filter((item) => item.id !== id),
+                        )
+                      }
+                    >
+                      <XIcon size={14} aria-hidden="true" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            {uploadError && (
+              <p role="alert" className="px-1 text-sm text-red-700">
+                {uploadError}
+              </p>
+            )}
             <InputGroupTextarea
               rows={1}
               value={prompt}
@@ -100,6 +255,17 @@ export function Composer({
               align="block-end"
               className="justify-between gap-3 px-1 pb-0"
             >
+              {threadId && (
+                <InputGroupButton
+                  type="button"
+                  size="icon-sm"
+                  aria-label="Attach files"
+                  disabled={disabled}
+                  onClick={() => picker.current?.click()}
+                >
+                  <PaperclipIcon size={18} aria-hidden="true" />
+                </InputGroupButton>
+              )}
               <InputGroupText className="hidden min-w-0 truncate text-[11px] text-soft sm:block">
                 {preferences.sendShortcut === "enter"
                   ? "Enter to send · Shift + Enter for a new line"

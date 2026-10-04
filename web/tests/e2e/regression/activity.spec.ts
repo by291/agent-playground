@@ -344,6 +344,9 @@ test("merged activity updates an open stream and can switch back to each origina
   await page.setViewportSize({ width: 1920, height: 1080 });
   await expect(composer).toBeVisible();
   await expect(composer).toBeEnabled();
+  await expect
+    .poll(async () => (await panel.boundingBox())?.width ?? Infinity)
+    .toBeLessThanOrEqual(640);
   const desktopBounds = await panel.boundingBox();
 
   expect(desktopBounds!.width).toBeGreaterThanOrEqual(500);

@@ -5,11 +5,15 @@ import { db, migrateServer } from "./db/database.js";
 import { startExternalTaskWorker } from "./conversation/external-task-worker.js";
 import { logger } from "./observability/logger";
 
+import { startSkillFileCleanup } from "./conversation/skill-file-cleanup.js";
+import { closeSkillObjectStore } from "./conversation/skill-object-store.js";
+
 const port = Number(process.env.SERVER_PORT ?? 3000);
 
 await migrateServer();
 
 const stopWorker = startExternalTaskWorker();
+const stopFileCleanup = startSkillFileCleanup();
 const server = serve({ fetch: app.fetch, hostname: "0.0.0.0", port }, () => {
   logger.info({ port }, "AG-UI server listening");
 }) as Server;
@@ -33,7 +37,8 @@ async function shutdown() {
   });
 
   server.closeAllConnections();
-  await Promise.all([workerStopped, serverClosed]);
+  await Promise.all([workerStopped, serverClosed, stopFileCleanup()]);
+  closeSkillObjectStore();
   await db.$client.end();
 }
 

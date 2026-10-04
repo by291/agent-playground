@@ -9,7 +9,7 @@ from langgraph.config import get_config
 from langgraph.types import interrupt
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from agent_playground.config import workflow_api_url
+from agent_playground.config import app_api_url
 
 
 class ExternalTaskRegistration(BaseModel):
@@ -59,7 +59,7 @@ async def register_external_task(
 
     async with httpx.AsyncClient(timeout=30) as client:
         response = await client.post(
-            f"{workflow_api_url()}/internal/external-tasks",
+            f"{app_api_url()}/internal/external-tasks",
             headers={"Authorization": f"Bearer {token}"},
             json={
                 "taskId": task_id,

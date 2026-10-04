@@ -20,6 +20,9 @@ from agent_playground.context import ContextMiddleware
 from agent_playground.db.connection import prepare_app_store
 from agent_playground.observability import execution_trace
 from agent_playground.prompts import SYSTEM_PROMPT
+from agent_playground.skills.catalog import SkillCatalog
+from agent_playground.skills.sandbox import skill_execution
+from agent_playground.skills.tools import default_catalog, skill_tools
 from agent_playground.workflows.experiment.tool import run_experiment_workflow
 from agent_playground.workflows.report.tool import run_report_workflow
 from agent_playground.workflows.sql.tool import sql_workflow_tool
@@ -48,6 +51,7 @@ def make_graph(
     checkpointer: Checkpointer | None = None,
     mcp_tools: list[BaseTool] | None = None,
     summary_model: BaseChatModel | None = None,
+    skills: SkillCatalog | None = None,
 ):
     if model is None:
         model_name = configured_model_name()
@@ -58,22 +62,23 @@ def make_graph(
             extra_body={"thinking": {"type": "disabled"}},
         )
 
+    catalog = skills if skills is not None else default_catalog()
+    prompt = SYSTEM_PROMPT + catalog.prompt()
     tools = [
         get_current_time,
         *(mcp_tools or []),
         run_experiment_workflow,
         run_report_workflow,
         sql_workflow_tool(model),
+        *skill_tools(catalog),
     ]
 
     return create_agent(
         model=model,
         tools=tools,
         checkpointer=checkpointer,
-        system_prompt=SYSTEM_PROMPT,
-        middleware=[
-            ContextMiddleware(model, summary_model or model, SYSTEM_PROMPT, tools)
-        ],
+        system_prompt=prompt,
+        middleware=[ContextMiddleware(model, summary_model or model, prompt, tools)],
     )
 
 
@@ -91,9 +96,10 @@ async def graph(config: RunnableConfig, runtime: ServerRuntime[dict[str, object]
     """Aegra keeps this context open for the complete worker execution."""
     compiled = await base_graph()
 
-    if runtime.execution_runtime is None:
-        yield compiled
-        return
+    async with skill_execution(default_catalog()):
+        if runtime.execution_runtime is None:
+            yield compiled
+            return
 
-    with execution_trace(config):
-        yield compiled
+        with execution_trace(config):
+            yield compiled

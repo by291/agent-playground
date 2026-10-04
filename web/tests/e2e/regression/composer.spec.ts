@@ -14,6 +14,13 @@ test("the configured model sits beside send and opens context details on desktop
 
   for (const width of [1440, 390, 320]) {
     await page.setViewportSize({ width, height: 900 });
+    await expect
+      .poll(() =>
+        page
+          .locator("main")
+          .evaluate((element) => element.getBoundingClientRect().bottom),
+      )
+      .toBe(900);
     await expect(model).toBeVisible();
     await expect(send).toBeVisible();
     await expect(

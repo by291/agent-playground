@@ -15,6 +15,9 @@ import { messageText } from "../../model/presentation";
 import type { toolProcess, ToolStep } from "../../model/turns";
 
 const toolLabels: Record<string, string> = {
+  load_skill: "Load a Skill",
+  read_skill_file: "Read a Skill file",
+  run_skill_script: "Run a Skill script",
   get_current_time: "Check the time",
   calculate_sum: "Calculate a sum",
   run_experiment_workflow: "Build an experiment plan",

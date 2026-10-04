@@ -5,7 +5,7 @@ import logging
 
 import httpx
 
-from agent_playground.config import workflow_api_url
+from agent_playground.config import app_api_url
 from agent_playground.db.report_jobs import (
     mark_report_event_delivered,
     stop_report_job,
@@ -21,7 +21,7 @@ async def deliver_report_events(client: httpx.AsyncClient) -> None:
     for job, event in events:
         try:
             response = await client.post(
-                f"{workflow_api_url()}/external-tasks/{job.id}/events",
+                f"{app_api_url()}/external-tasks/{job.id}/events",
                 headers={"Authorization": f"Bearer {job.callback_token}"},
                 json=event.model_dump(exclude_none=True),
             )
