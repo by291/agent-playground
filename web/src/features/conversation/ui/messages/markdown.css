@@ -63,6 +63,8 @@
 }
 
 .chat-markdown [data-streamdown="code-block"] {
+  /* Override Streamdown's inline placeholder so offscreen code keeps its actual height. */
+  content-visibility: visible !important;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 0;
