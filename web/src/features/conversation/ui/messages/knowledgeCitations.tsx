@@ -1,6 +1,11 @@
 import { createContext, useContext } from "react";
 import type { ExtraProps } from "streamdown";
 import type { KnowledgeSource } from "@shared/knowledge";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 export type KnowledgeCitationSource = Pick<
   KnowledgeSource,
@@ -20,9 +25,18 @@ export function KnowledgeCitation({ chunkId }: { chunkId: string }) {
 
   if (!source || !context) {
     return (
-      <sup className="mx-0.5 text-xs text-muted" title="Source unavailable">
-        [?]
-      </sup>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <sup
+            className="mx-0.5 rounded text-xs text-muted focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none"
+            tabIndex={0}
+            aria-label="Source unavailable"
+          >
+            [?]
+          </sup>
+        </TooltipTrigger>
+        <TooltipContent>Source unavailable</TooltipContent>
+      </Tooltip>
     );
   }
 
@@ -34,16 +48,20 @@ export function KnowledgeCitation({ chunkId }: { chunkId: string }) {
 
   return (
     <sup className="mx-0.5">
-      <button
-        type="button"
-        aria-label={label}
-        aria-haspopup="dialog"
-        title={label}
-        className="inline-flex min-h-6 min-w-6 cursor-pointer items-center justify-center rounded bg-accent-soft px-1 text-xs font-medium text-accent hover:bg-selected focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none"
-        onClick={(event) => context.onSelect(chunkId, event.currentTarget)}
-      >
-        [{source.number}]
-      </button>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            aria-label={label}
+            aria-haspopup="dialog"
+            className="inline-flex min-h-6 min-w-6 cursor-pointer items-center justify-center rounded bg-accent-soft px-1 text-xs font-medium text-accent hover:bg-selected focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none"
+            onClick={(event) => context.onSelect(chunkId, event.currentTarget)}
+          >
+            [{source.number}]
+          </button>
+        </TooltipTrigger>
+        <TooltipContent>{label}</TooltipContent>
+      </Tooltip>
     </sup>
   );
 }

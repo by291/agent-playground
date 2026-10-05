@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { BrainIcon } from "@phosphor-icons/react/dist/csr/Brain";
 import { CaretDownIcon } from "@phosphor-icons/react/dist/csr/CaretDown";
-import { CircleNotchIcon } from "@phosphor-icons/react/dist/csr/CircleNotch";
+import { Spinner } from "@/components/ui/spinner";
 import type { ReasoningMessage } from "@ag-ui/client";
 import {
   Collapsible,
@@ -42,11 +42,7 @@ export function ReasoningProcess({
     >
       <CollapsibleTrigger className="flex min-h-8 max-w-full cursor-pointer items-center gap-2 rounded-lg px-2 py-1 text-left text-sm text-muted hover:bg-sidebar focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none">
         {thinking ? (
-          <CircleNotchIcon
-            size={16}
-            aria-hidden="true"
-            className="motion-safe:animate-spin"
-          />
+          <Spinner aria-hidden="true" />
         ) : (
           <BrainIcon size={16} aria-hidden="true" />
         )}

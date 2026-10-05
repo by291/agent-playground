@@ -8,7 +8,33 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { Alert, AlertDescription } from "./ui/alert";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "./ui/alert-dialog";
 import { Button } from "./ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+} from "./ui/dialog";
+import {
+  Field,
+  FieldContent,
+  FieldDescription,
+  FieldGroup,
+  FieldLabel,
+  FieldTitle,
+} from "./ui/field";
 import {
   Select,
   SelectContent,
@@ -17,6 +43,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "./ui/select";
+import { Spinner } from "./ui/spinner";
+import { Switch } from "./ui/switch";
+import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 import {
   sendShortcutSchema,
   themePreferenceSchema,
@@ -26,7 +55,7 @@ import {
 interface SettingsState {
   dialogId: string;
   open: boolean;
-  openSettings: () => void;
+  openSettings: (trigger?: HTMLButtonElement) => void;
 }
 
 const SettingsContext = createContext<SettingsState | null>(null);
@@ -39,39 +68,38 @@ export function SettingsProvider({
   onClearConversations?: (() => Promise<void>) | undefined;
 }) {
   const id = useId();
-  const [dialog, setDialog] = useState<HTMLDialogElement | null>(null);
   const [open, setOpen] = useState(false);
-  const confirmation = useRef<HTMLDialogElement>(null);
+  const [confirmationOpen, setConfirmationOpen] = useState(false);
+  const openingTrigger = useRef<HTMLButtonElement | null>(null);
   const [clearing, setClearing] = useState(false);
   const [clearError, setClearError] = useState<string | null>(null);
   const { preferences, updatePreferences, resetPreferences, saved } =
     useUserPreferences();
 
-  function openSettings() {
+  function openSettings(trigger?: HTMLButtonElement) {
+    openingTrigger.current = trigger ?? null;
     setClearError(null);
-    dialog?.showModal();
     setOpen(true);
   }
 
-  function closeSettings() {
-    if (clearing || confirmation.current?.open) {
+  function changeSettingsOpen(next: boolean) {
+    if (clearing || confirmationOpen) {
       return;
     }
 
-    dialog?.close();
+    setOpen(next);
   }
 
-  function openConfirmation() {
-    setClearError(null);
-    confirmation.current?.showModal();
-  }
-
-  function closeConfirmation() {
+  function changeConfirmationOpen(next: boolean) {
     if (clearing) {
       return;
     }
 
-    confirmation.current?.close();
+    if (next) {
+      setClearError(null);
+    }
+
+    setConfirmationOpen(next);
   }
 
   async function clearConversations() {
@@ -84,7 +112,7 @@ export function SettingsProvider({
 
     try {
       await onClearConversations();
-      confirmation.current?.close();
+      setConfirmationOpen(false);
     } catch (error) {
       setClearError(
         error instanceof Error
@@ -100,49 +128,63 @@ export function SettingsProvider({
 
   return (
     <SettingsContext.Provider value={settings}>
-      {children ?? <SettingsButton settings={settings} />}
-      <dialog
-        ref={setDialog}
-        id={`${id}-dialog`}
-        aria-labelledby={`${id}-title`}
-        onClose={(event) => {
-          event.stopPropagation();
-          setOpen(false);
-        }}
-        onCancel={(event) => {
-          event.stopPropagation();
-
-          if (clearing || confirmation.current?.open) {
+      <Dialog open={open} onOpenChange={changeSettingsOpen}>
+        {children ?? <SettingsButton settings={settings} />}
+        <DialogContent
+          id={settings.dialogId}
+          showCloseButton={false}
+          className="fixed top-1/2 left-1/2 z-50 max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-lg origin-top-left transform-[translate(-50%,-50%)] overflow-y-auto rounded-xl border border-line bg-surface p-5 text-ink shadow-xl outline-none sm:p-6"
+          onEscapeKeyDown={(event) => {
+            if (clearing || confirmationOpen) {
+              event.preventDefault();
+            }
+          }}
+          onInteractOutside={(event) => {
+            if (clearing || confirmationOpen) {
+              event.preventDefault();
+            }
+          }}
+          onCloseAutoFocus={(event) => {
             event.preventDefault();
-          }
-        }}
-        onClick={(event) => {
-          if (event.target !== event.currentTarget) {
-            return;
-          }
 
-          const bounds = event.currentTarget.getBoundingClientRect();
-          const outside =
-            event.clientX < bounds.left ||
-            event.clientX > bounds.right ||
-            event.clientY < bounds.top ||
-            event.clientY > bounds.bottom;
+            const opener = openingTrigger.current;
+            const canRestoreOpener =
+              opener?.isConnected &&
+              !opener.closest(
+                '[hidden], [inert], [data-slot="sheet-content"][data-state="closed"]',
+              ) &&
+              getComputedStyle(opener).display !== "none" &&
+              getComputedStyle(opener).visibility !== "hidden";
 
-          if (outside) {
-            closeSettings();
-          }
-        }}
-        className="fixed inset-0 m-auto max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-lg overflow-y-auto rounded-xl border border-line bg-surface p-0 text-ink shadow-xl backdrop:bg-black/40"
-      >
-        <div className="p-5 sm:p-6">
+            if (canRestoreOpener) {
+              opener.focus();
+
+              return;
+            }
+
+            const navigationTrigger = [
+              "workspace-sidebar-trigger",
+              "workspace-navigation-trigger",
+            ]
+              .map((id) => document.getElementById(id))
+              .find(
+                (element) =>
+                  element?.isConnected &&
+                  getComputedStyle(element).display !== "none" &&
+                  getComputedStyle(element).visibility !== "hidden",
+              );
+
+            navigationTrigger?.focus();
+          }}
+        >
           <div className="flex items-start justify-between gap-4">
             <div>
-              <h2 id={`${id}-title`} className="text-lg font-semibold">
+              <DialogTitle className="text-lg font-semibold">
                 Settings
-              </h2>
-              <p className="mt-1 text-sm text-muted">
+              </DialogTitle>
+              <DialogDescription className="mt-1 text-sm text-muted">
                 Personalize your workspace.
-              </p>
+              </DialogDescription>
             </div>
             <Button
               type="button"
@@ -151,24 +193,25 @@ export function SettingsProvider({
               aria-label="Close settings"
               className="workspace-toolbar-button size-8"
               disabled={clearing}
-              onClick={closeSettings}
+              onClick={() => changeSettingsOpen(false)}
             >
               <XIcon size={18} aria-hidden="true" />
             </Button>
           </div>
-          <div className="mt-6 divide-y divide-line">
-            <div className="flex flex-col gap-3 pb-5 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
-              <div className="min-w-0 flex-1">
-                <label htmlFor={`${id}-theme`} className="text-sm font-medium">
-                  Appearance
-                </label>
-                <p
+          <FieldGroup className="mt-6 gap-0 divide-y divide-line">
+            <Field
+              orientation="responsive"
+              className="pb-5 sm:flex-row sm:items-center sm:justify-between sm:gap-4"
+            >
+              <FieldContent>
+                <FieldLabel htmlFor={`${id}-theme`}>Appearance</FieldLabel>
+                <FieldDescription
                   id={`${id}-theme-description`}
-                  className="mt-1 text-xs/5 text-muted"
+                  className="text-xs/5"
                 >
                   Choose your workspace colors.
-                </p>
-              </div>
+                </FieldDescription>
+              </FieldContent>
               <Select
                 value={preferences.theme}
                 onValueChange={(value) =>
@@ -184,7 +227,7 @@ export function SettingsProvider({
                 >
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent container={dialog} position="popper" align="end">
+                <SelectContent position="popper" align="end">
                   <SelectGroup className="sm:gap-0.5">
                     <SelectItem value="light" className="sm:min-h-8 sm:py-1">
                       Light
@@ -198,22 +241,22 @@ export function SettingsProvider({
                   </SelectGroup>
                 </SelectContent>
               </Select>
-            </div>
-            <div className="flex flex-col gap-3 py-5 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
-              <div className="min-w-0 flex-1">
-                <label
-                  htmlFor={`${id}-shortcut`}
-                  className="text-sm font-medium"
-                >
+            </Field>
+            <Field
+              orientation="responsive"
+              className="py-5 sm:flex-row sm:items-center sm:justify-between sm:gap-4"
+            >
+              <FieldContent>
+                <FieldLabel htmlFor={`${id}-shortcut`}>
                   Send shortcut
-                </label>
-                <p
+                </FieldLabel>
+                <FieldDescription
                   id={`${id}-shortcut-description`}
-                  className="mt-1 text-xs/5 text-muted"
+                  className="text-xs/5"
                 >
                   Shift + Enter always adds a new line.
-                </p>
-              </div>
+                </FieldDescription>
+              </FieldContent>
               <Select
                 value={preferences.sendShortcut}
                 onValueChange={(value) =>
@@ -229,7 +272,7 @@ export function SettingsProvider({
                 >
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent container={dialog} position="popper" align="end">
+                <SelectContent position="popper" align="end">
                   <SelectGroup className="sm:gap-0.5">
                     <SelectItem value="enter" className="sm:min-h-8 sm:py-1">
                       Enter
@@ -243,50 +286,29 @@ export function SettingsProvider({
                   </SelectGroup>
                 </SelectContent>
               </Select>
-            </div>
-            <div className="flex flex-col gap-3 pt-5 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
-              <div className="min-w-0 flex-1">
-                <label
-                  htmlFor={`${id}-animation`}
-                  className="text-sm font-medium"
-                >
+            </Field>
+            <Field orientation="horizontal" className="items-center pt-5">
+              <FieldContent>
+                <FieldLabel htmlFor={`${id}-animation`}>
                   Reply animation
-                </label>
-                <p
+                </FieldLabel>
+                <FieldDescription
                   id={`${id}-animation-description`}
-                  className="mt-1 text-xs/5 text-muted"
+                  className="text-xs/5"
                 >
                   Reveal replies smoothly. Respects reduced motion.
-                </p>
-              </div>
-              <Select
-                value={preferences.replyAnimation ? "on" : "off"}
-                onValueChange={(value) =>
-                  updatePreferences({
-                    replyAnimation: value === "on",
-                  })
+                </FieldDescription>
+              </FieldContent>
+              <Switch
+                id={`${id}-animation`}
+                aria-describedby={`${id}-animation-description`}
+                checked={preferences.replyAnimation}
+                onCheckedChange={(replyAnimation) =>
+                  updatePreferences({ replyAnimation })
                 }
-              >
-                <SelectTrigger
-                  className="w-full shrink-0 border-line bg-surface sm:w-44 dark:bg-surface dark:hover:bg-sidebar"
-                  id={`${id}-animation`}
-                  aria-describedby={`${id}-animation-description`}
-                >
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent container={dialog} position="popper" align="end">
-                  <SelectGroup className="sm:gap-0.5">
-                    <SelectItem value="on" className="sm:min-h-8 sm:py-1">
-                      On
-                    </SelectItem>
-                    <SelectItem value="off" className="sm:min-h-8 sm:py-1">
-                      Off
-                    </SelectItem>
-                  </SelectGroup>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
+              />
+            </Field>
+          </FieldGroup>
           <p
             className="mt-6 text-xs text-muted"
             role={saved ? undefined : "status"}
@@ -296,34 +318,82 @@ export function SettingsProvider({
               : "Changes apply now but could not be saved in this browser."}
           </p>
           {onClearConversations && (
-            <section
-              aria-labelledby={`${id}-history-title`}
-              className="mt-5 border-t border-line pt-5"
+            <AlertDialog
+              open={confirmationOpen}
+              onOpenChange={changeConfirmationOpen}
             >
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
-                <div className="min-w-0 flex-1">
-                  <h3
-                    id={`${id}-history-title`}
-                    className="text-sm font-medium"
-                  >
-                    Saved conversations
-                  </h3>
-                  <p className="mt-1 text-xs/5 text-muted">
-                    Remove every saved conversation from this shared workspace.
-                  </p>
-                </div>
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="w-full shrink-0 text-destructive sm:w-44"
-                  onClick={openConfirmation}
-                  aria-haspopup="dialog"
-                  aria-controls={`${id}-confirmation`}
+              <section
+                aria-labelledby={`${id}-history-title`}
+                className="mt-5 border-t border-line pt-5"
+              >
+                <Field
+                  orientation="responsive"
+                  className="sm:flex-row sm:items-center sm:justify-between sm:gap-4"
                 >
-                  Clear all conversations
-                </Button>
-              </div>
-            </section>
+                  <FieldContent>
+                    <FieldTitle id={`${id}-history-title`}>
+                      Saved conversations
+                    </FieldTitle>
+                    <FieldDescription className="text-xs/5">
+                      Remove every saved conversation from this shared
+                      workspace.
+                    </FieldDescription>
+                  </FieldContent>
+                  <AlertDialogTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="w-full shrink-0 text-destructive sm:w-44"
+                    >
+                      Clear all conversations
+                    </Button>
+                  </AlertDialogTrigger>
+                </Field>
+              </section>
+              <AlertDialogContent
+                className="max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] overflow-y-auto sm:max-w-md"
+                aria-busy={clearing}
+                onEscapeKeyDown={(event) => {
+                  if (clearing) {
+                    event.preventDefault();
+                  }
+                }}
+              >
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Clear all conversations?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This will remove every saved conversation from this shared
+                    workspace. This cannot be undone in the app. Your
+                    preferences will be kept.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <p className="text-xs/5 text-muted">
+                  Running or unconfirmed conversations must finish first.
+                </p>
+                {clearError && (
+                  <Alert variant="destructive">
+                    <AlertDescription>{clearError}</AlertDescription>
+                  </Alert>
+                )}
+                <AlertDialogFooter>
+                  <AlertDialogCancel disabled={clearing}>
+                    Cancel
+                  </AlertDialogCancel>
+                  <AlertDialogAction
+                    variant="destructive"
+                    disabled={clearing}
+                    onClick={(event) => {
+                      // The request owns closing so errors remain available for retry.
+                      event.preventDefault();
+                      void clearConversations();
+                    }}
+                  >
+                    {clearing && <Spinner aria-hidden="true" />}
+                    {clearing ? "Clearing…" : "Delete all conversations"}
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
           )}
           <div className="mt-5 flex items-center justify-end gap-3 border-t border-line pt-4">
             <Button
@@ -334,83 +404,16 @@ export function SettingsProvider({
             >
               Reset preferences
             </Button>
-            <Button type="button" disabled={clearing} onClick={closeSettings}>
+            <Button
+              type="button"
+              disabled={clearing}
+              onClick={() => changeSettingsOpen(false)}
+            >
               Done
             </Button>
           </div>
-        </div>
-      </dialog>
-      <dialog
-        ref={confirmation}
-        id={`${id}-confirmation`}
-        role="alertdialog"
-        aria-modal="true"
-        aria-labelledby={`${id}-confirmation-title`}
-        aria-describedby={`${id}-confirmation-description`}
-        onClose={(event) => event.stopPropagation()}
-        onCancel={(event) => {
-          event.stopPropagation();
-
-          if (clearing) {
-            event.preventDefault();
-          }
-        }}
-        onClick={(event) => {
-          if (event.target !== event.currentTarget) {
-            return;
-          }
-
-          const bounds = event.currentTarget.getBoundingClientRect();
-          const outside =
-            event.clientX < bounds.left ||
-            event.clientX > bounds.right ||
-            event.clientY < bounds.top ||
-            event.clientY > bounds.bottom;
-
-          if (outside) {
-            closeConfirmation();
-          }
-        }}
-        className="fixed inset-0 m-auto max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-md overflow-y-auto rounded-xl border border-line bg-surface p-5 text-ink shadow-xl backdrop:bg-black/25 sm:p-6"
-      >
-        <h2 id={`${id}-confirmation-title`} className="text-lg font-semibold">
-          Clear all conversations?
-        </h2>
-        <p
-          id={`${id}-confirmation-description`}
-          className="mt-3 text-sm/6 text-muted"
-        >
-          This will remove every saved conversation from this shared workspace.
-          This cannot be undone in the app. Your preferences will be kept.
-        </p>
-        <p className="mt-2 text-xs/5 text-muted">
-          Running or unconfirmed conversations must finish first.
-        </p>
-        {clearError && (
-          <p role="alert" className="mt-3 text-sm/6 text-destructive">
-            {clearError}
-          </p>
-        )}
-        <div className="mt-5 flex flex-wrap justify-end gap-2 border-t border-line pt-4">
-          <Button
-            type="button"
-            variant="outline"
-            autoFocus
-            disabled={clearing}
-            onClick={closeConfirmation}
-          >
-            Cancel
-          </Button>
-          <Button
-            type="button"
-            variant="destructive"
-            disabled={clearing}
-            onClick={() => void clearConversations()}
-          >
-            {clearing ? "Clearing…" : "Delete all conversations"}
-          </Button>
-        </div>
-      </dialog>
+        </DialogContent>
+      </Dialog>
     </SettingsContext.Provider>
   );
 }
@@ -431,19 +434,23 @@ export function SettingsControl({
 
 function SettingsButton({ settings }: { settings: SettingsState }) {
   return (
-    <Button
-      type="button"
-      variant="ghost"
-      size="icon"
-      className="workspace-toolbar-button size-8 shrink-0"
-      aria-label="Open settings"
-      title="Settings"
-      aria-haspopup="dialog"
-      aria-expanded={settings.open}
-      aria-controls={settings.dialogId}
-      onClick={settings.openSettings}
-    >
-      <GearSixIcon size={18} aria-hidden="true" />
-    </Button>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="workspace-toolbar-button size-8 shrink-0"
+          aria-label="Open settings"
+          aria-haspopup="dialog"
+          aria-expanded={settings.open}
+          aria-controls={settings.dialogId}
+          onClick={(event) => settings.openSettings(event.currentTarget)}
+        >
+          <GearSixIcon size={18} aria-hidden="true" />
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent>Settings</TooltipContent>
+    </Tooltip>
   );
 }

@@ -73,6 +73,19 @@ test("collapsing and expanding navigation preserves the unsent composer draft", 
   assert.equal(input.value, "Keep this unfinished task");
 });
 
+test("the sidebar keyboard shortcut toggles navigation without moving composer focus", () => {
+  const page = renderWorkspace();
+  const input = page.getByRole("textbox", { name: "Message" });
+
+  fireEvent.change(input, { target: { value: "Keep my keyboard draft" } });
+  input.focus();
+  fireEvent.keyDown(window, { key: "b", ctrlKey: true });
+
+  expect(page.getByRole("button", { name: "Expand sidebar" })).toBeVisible();
+  expect(input).toHaveValue("Keep my keyboard draft");
+  expect(input).toHaveFocus();
+});
+
 test("the model control opens context details beside send without losing the draft", async () => {
   const page = renderWorkspace();
   const input = page.getByRole("textbox", { name: "Message" });
@@ -218,60 +231,4 @@ test("navigation changes preserve pending review edits and keep new messages blo
   assert.equal(title.value, "My edited plan");
   assert.equal(steps.value, "Keep these edited steps");
   expect(page.getByRole("textbox", { name: "Message" })).toBeDisabled();
-});
-
-test("sidebar width can be adjusted with the keyboard and survives collapse", () => {
-  localStorage.removeItem("agent-playground-sidebar-width");
-  onTestFinished(() =>
-    localStorage.removeItem("agent-playground-sidebar-width"),
-  );
-  const page = renderWorkspace();
-  const separator = page.getByRole("separator", { name: "Sidebar width" });
-  const input = page.getByRole("textbox", {
-    name: "Message",
-  }) as HTMLTextAreaElement;
-
-  fireEvent.change(input, {
-    target: { value: "Keep this draft while resizing" },
-  });
-  fireEvent.keyDown(separator, { key: "ArrowRight" });
-
-  assert.equal(separator.getAttribute("aria-valuenow"), "336");
-  assert.equal(localStorage.getItem("agent-playground-sidebar-width"), "336");
-  fireEvent.click(page.getByRole("button", { name: "Collapse sidebar" }));
-  fireEvent.click(page.getByRole("button", { name: "Expand sidebar" }));
-
-  assert.equal(
-    page
-      .getByRole("separator", { name: "Sidebar width" })
-      .getAttribute("aria-valuenow"),
-    "336",
-  );
-  assert.equal(input.value, "Keep this draft while resizing");
-  fireEvent.keyDown(page.getByRole("separator", { name: "Sidebar width" }), {
-    key: "Home",
-  });
-  fireEvent.keyDown(page.getByRole("separator", { name: "Sidebar width" }), {
-    key: "ArrowLeft",
-  });
-
-  assert.equal(
-    page
-      .getByRole("separator", { name: "Sidebar width" })
-      .getAttribute("aria-valuenow"),
-    "240",
-  );
-  fireEvent.keyDown(page.getByRole("separator", { name: "Sidebar width" }), {
-    key: "End",
-  });
-  fireEvent.keyDown(page.getByRole("separator", { name: "Sidebar width" }), {
-    key: "ArrowRight",
-  });
-
-  assert.equal(
-    page
-      .getByRole("separator", { name: "Sidebar width" })
-      .getAttribute("aria-valuenow"),
-    "420",
-  );
 });

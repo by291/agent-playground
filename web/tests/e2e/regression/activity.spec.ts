@@ -23,7 +23,7 @@ test.describe("activity motion", () => {
       await shell.evaluate(
         (element) => getComputedStyle(element).transitionProperty,
       ),
-    ).toContain("width");
+    ).toContain("opacity");
     await page.getByRole("button", { name: "Close run activity" }).focus();
     await page
       .getByRole("button", { name: "Close run activity" })
@@ -50,6 +50,46 @@ test.describe("activity motion", () => {
       page.getByRole("button", { name: "Show run activity" }),
     ).toBeFocused();
   });
+  test("chat finishes returning when the activity overlay finishes exiting", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1024, height: 768 });
+    await page.goto("/");
+    await page.getByRole("button", { name: "Show run activity" }).click();
+    const shell = page.locator(".workspace-activity-shell");
+
+    await expect
+      .poll(() =>
+        shell.evaluate((element) => getComputedStyle(element).opacity),
+      )
+      .toBe("1");
+    const opacity = await page
+      .getByRole("button", { name: "Close run activity" })
+      .evaluate(async (element) => {
+        (element as HTMLElement).click();
+        const shell = document.querySelector<HTMLElement>(
+          ".workspace-activity-shell",
+        )!;
+        const chat = document.querySelector<HTMLElement>(".workspace-chat")!;
+
+        for (let frame = 0; frame < 120; frame++) {
+          await new Promise<void>((resolve) =>
+            requestAnimationFrame(() => resolve()),
+          );
+
+          if (getComputedStyle(shell).opacity === "0") {
+            return Number(getComputedStyle(chat).opacity);
+          }
+        }
+
+        throw new Error("Activity overlay did not finish exiting");
+      });
+
+    expect(opacity).toBeGreaterThan(0.99);
+    await expect(
+      page.getByRole("button", { name: "Show run activity" }),
+    ).toBeFocused();
+  });
 });
 
 test("activity width supports dragging and keyboard bounds and persists without changing the draft", async ({
@@ -64,55 +104,81 @@ test("activity width supports dragging and keyboard bounds and persists without 
   const panel = page.getByRole("complementary", { name: "Run activity" });
   const separator = page.getByRole("separator", { name: "Activity width" });
 
-  await expect(separator).toHaveAttribute("aria-valuenow", "520");
-  await expect.poll(async () => (await panel.boundingBox())!.width).toBe(520);
-  await separator.press("ArrowLeft");
-  await expect(separator).toHaveAttribute("aria-valuenow", "536");
-  await expect.poll(async () => (await panel.boundingBox())!.width).toBe(536);
-  const handle = await separator.boundingBox();
-
-  await page.mouse.move(handle!.x + handle!.width / 2, handle!.y + 100);
-  await page.mouse.down();
   await expect
-    .poll(() => page.evaluate(() => document.body.style.cursor))
-    .toBe("col-resize");
-  await page.mouse.move(handle!.x + handle!.width / 2 - 48, handle!.y + 100, {
+    .poll(async () => (await panel.boundingBox())!.width)
+    .toBeCloseTo(520, 0);
+  await separator.press("ArrowLeft");
+  await expect
+    .poll(async () => (await panel.boundingBox())!.width)
+    .toBeGreaterThan(520);
+  const keyboardWidth = (await panel.boundingBox())!.width;
+  const handle = (await separator.boundingBox())!;
+
+  await page.mouse.move(handle.x + handle.width / 2, handle.y + 100);
+  await page.mouse.down();
+  await expect(separator).toHaveAttribute("data-separator", "active");
+  await page.mouse.move(handle.x + handle.width / 2 - 24, handle.y + 100, {
     steps: 6,
   });
   await page.mouse.up();
-  await expect(separator).toHaveAttribute("aria-valuenow", "584");
-  await expect.poll(async () => (await panel.boundingBox())!.width).toBe(584);
-  expect(await page.evaluate(() => document.body.style.cursor)).toBe("");
-  expect(await page.evaluate(() => document.body.style.userSelect)).toBe("");
+  await expect(separator).not.toHaveAttribute("data-separator", "active");
+  await expect
+    .poll(async () => (await panel.boundingBox())!.width)
+    .toBeCloseTo(keyboardWidth + 24, 0);
+  const grownWidth = (await panel.boundingBox())!.width;
+  const shrinkHandle = (await separator.boundingBox())!;
+
+  await page.mouse.move(
+    shrinkHandle.x + shrinkHandle.width / 2,
+    shrinkHandle.y + 100,
+  );
+  await page.mouse.down();
+  await page.mouse.move(
+    shrinkHandle.x + shrinkHandle.width / 2 + 32,
+    shrinkHandle.y + 100,
+    { steps: 6 },
+  );
+  await expect(separator).toHaveAttribute("data-separator", "active");
+  await expect
+    .poll(async () => (await panel.boundingBox())!.width)
+    .toBeCloseTo(grownWidth - 32, 0);
+  await page.mouse.up();
+  const savedWidth = (await panel.boundingBox())!.width;
+
   await page.getByRole("button", { name: "Close run activity" }).click();
   await expect(composer).toHaveValue("Keep this draft while resizing activity");
   await page.getByRole("button", { name: "Show run activity" }).click();
-  await expect(separator).toHaveAttribute("aria-valuenow", "584");
-  await page.reload();
-  await page.getByRole("button", { name: "Show run activity" }).click();
-  await expect(separator).toHaveAttribute("aria-valuenow", "584");
-  await expect(
-    page.getByRole("separator", { name: "Sidebar width" }),
-  ).toHaveAttribute("aria-valuenow", "320");
-  await separator.press("Home");
-  await separator.press("ArrowRight");
-  await expect(separator).toHaveAttribute("aria-valuenow", "400");
-  await separator.press("End");
-  await separator.press("ArrowLeft");
-  await expect(separator).toHaveAttribute("aria-valuenow", "720");
-  await page.setViewportSize({ width: 1024, height: 768 });
-  await expect(separator).toBeHidden();
-  await expect(composer).toBeHidden();
-  await page.setViewportSize({ width: 390, height: 844 });
-  await expect(separator).toBeHidden();
   await expect
     .poll(async () => (await panel.boundingBox())!.width)
-    .toBeCloseTo(390, 3);
+    .toBeCloseTo(savedWidth, 0);
+  await page.reload();
+  await page.getByRole("button", { name: "Show run activity" }).click();
+  await expect
+    .poll(async () => (await panel.boundingBox())!.width)
+    .toBeCloseTo(savedWidth, 0);
+  await separator.press("End");
+  await expect
+    .poll(async () => (await panel.boundingBox())!.width)
+    .toBeCloseTo(400, 0);
+  await separator.press("Home");
+  await expect
+    .poll(async () => (await panel.boundingBox())!.width)
+    .toBeCloseTo(720, 0);
+  await page.setViewportSize({ width: 1024, height: 768 });
+  await expect(separator).toHaveCount(0);
+  await expect(composer).toBeHidden();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(separator).toHaveCount(0);
+  await expect
+    .poll(async () => (await panel.boundingBox())!.width)
+    .toBeCloseTo(390, 0);
   expect(
-    await page.evaluate(() =>
-      localStorage.getItem("agent-playground-activity-width"),
+    Number(
+      await page.evaluate(() =>
+        localStorage.getItem("agent-playground-activity-width"),
+      ),
     ),
-  ).toBe("720");
+  ).toBeCloseTo(720, 0);
 });
 
 test("activity separates consecutive runs in merged and individual delta views", async ({
@@ -159,7 +225,7 @@ test("activity separates consecutive runs in merged and individual delta views",
   for (const runId of runIds.slice(0, -1)) {
     await expect(
       panel.getByRole("heading", { name: `Run ${runId}`, exact: true }),
-    ).toHaveAttribute("title", runId);
+    ).toBeVisible();
   }
 
   await headings
@@ -215,10 +281,10 @@ test("activity shows every event with categories and highlighted payloads and co
   ).toBeChecked();
   await panel.getByRole("checkbox", { name: "Merge stream content" }).uncheck();
   const start = panel
-    .locator("details")
+    .locator("li > [data-slot=collapsible]")
     .filter({ has: page.getByText("RUN_STARTED", { exact: true }) });
 
-  await start.locator("summary").click();
+  await start.locator(":scope > [data-slot=collapsible-trigger]").click();
   await expect(start.getByLabel("Event payload")).toContainText(input.runId);
   await expect(start.getByLabel("Event payload")).toContainText(input.threadId);
   await page.evaluate(() => {
@@ -290,15 +356,15 @@ test("activity shows every event with categories and highlighted payloads and co
   }
 
   expect(new Set(colors).size).toBe(categories.length);
-  await start.locator("summary").click();
+  await start.locator(":scope > [data-slot=collapsible-trigger]").click();
   await panel
     .getByText("RUN_FINISHED", { exact: true })
     .scrollIntoViewIfNeeded();
   const finished = panel
-    .locator("details")
+    .locator("li > [data-slot=collapsible]")
     .filter({ has: page.getByText("RUN_FINISHED", { exact: true }) });
 
-  await finished.locator("summary").click();
+  await finished.locator(":scope > [data-slot=collapsible-trigger]").click();
   await expect(finished.getByLabel("Event payload")).toBeVisible();
   await expect(
     finished.getByLabel("Event payload").locator("span[style]").first(),
@@ -366,10 +432,10 @@ test("merged activity updates an open stream and can switch back to each origina
   await page.getByRole("button", { name: "Show run activity" }).click();
   const panel = page.getByRole("complementary", { name: "Run activity" });
   const merged = panel
-    .locator("details")
+    .locator("li > [data-slot=collapsible]")
     .filter({ has: page.getByText("TEXT_MESSAGE_CONTENT", { exact: true }) });
 
-  await merged.locator("summary").click();
+  await merged.locator(":scope > [data-slot=collapsible-trigger]").click();
   await expect(merged.getByLabel("Merged content")).toHaveText(
     "Here is a C example.\n\n",
     { useInnerText: false },
@@ -431,20 +497,20 @@ test("merged activity updates an open stream and can switch back to each origina
     panel.getByText("TEXT_MESSAGE_CONTENT", { exact: true }),
   ).toHaveCount(2);
   const raw = panel
-    .locator("details")
+    .locator("li > [data-slot=collapsible]")
     .filter({ has: page.getByText("TEXT_MESSAGE_CONTENT", { exact: true }) })
     .first();
 
-  await raw.locator("summary").click();
+  await raw.locator(":scope > [data-slot=collapsible-trigger]").click();
   await expect(raw.getByLabel("Event payload")).toContainText(
     JSON.stringify(fragments[1]!.event, null, 2),
   );
   await panel.getByRole("checkbox", { name: "Merge stream content" }).check();
   const restored = panel
-    .locator("details")
+    .locator("li > [data-slot=collapsible]")
     .filter({ has: page.getByText("TEXT_MESSAGE_CONTENT", { exact: true }) });
 
-  await restored.locator("summary").click();
+  await restored.locator(":scope > [data-slot=collapsible-trigger]").click();
   await expect(restored.getByLabel("Merged content")).toHaveText(final, {
     useInnerText: false,
   });

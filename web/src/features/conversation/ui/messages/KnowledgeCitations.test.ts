@@ -97,6 +97,11 @@ test("answer citations open their exact passage and reuse identities across repe
   expect(
     view.getByRole("button", { name: "Source 3: policy.pdf, page 5" }),
   ).toHaveTextContent("[3]");
+  await user.hover(citations[0]!);
+  expect(await view.findByRole("tooltip")).toHaveTextContent(
+    "Source 2: policy.pdf, page 4",
+  );
+  expect(view.queryByRole("dialog")).toBeNull();
   await user.click(citations[0]!);
   const reader = within(view.getByRole("dialog", { name: "Sources" }));
 
@@ -116,9 +121,11 @@ test("unknown references stay unavailable and ordinary links and code remain Mar
       `A claim [source](#knowledge-source-${unknown}). See [the website](https://example.com). Literal syntax: \`[source](#knowledge-source-${first})\`.`,
     ),
   );
+  const user = userEvent.setup();
+  const unavailable = await view.findByText("[?]");
 
-  expect(await view.findByText("[?]")).toHaveAttribute(
-    "title",
+  await user.hover(unavailable);
+  expect(await view.findByRole("tooltip")).toHaveTextContent(
     "Source unavailable",
   );
   expect(view.queryByRole("button", { name: /^Source [0-9]/ })).toBeNull();

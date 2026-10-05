@@ -12,6 +12,17 @@ import { EventType } from "@ag-ui/client";
 import { cn } from "cn";
 import { activityDescription, type ActivityStream } from "../model/activity";
 import type { Activity } from "../model/state";
+import {
+  Collapsible,
+  CollapsibleTrigger,
+  CollapsibleContent,
+} from "@/components/ui/collapsible";
+import {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+} from "@/components/ui/tooltip";
+import { Badge } from "@/components/ui/badge";
 import { JsonPayload } from "./JsonPayload";
 import { MergedActivityContent } from "./MergedActivityContent";
 
@@ -76,7 +87,7 @@ export const ActivityItem = memo(function ActivityItem({
   entry: Activity;
   stream: ActivityStream | undefined;
 }) {
-  const [hasOpened, setHasOpened] = useState(false);
+  const [open, setOpen] = useState(false);
   const { event } = entry;
   const failed = event.type === EventType.RUN_ERROR;
   let category =
@@ -104,18 +115,15 @@ export const ActivityItem = memo(function ActivityItem({
 
   return (
     <li>
-      <details
-        onToggle={(event) => {
-          if (event.currentTarget.open) {
-            setHasOpened(true);
-          }
-        }}
+      <Collapsible
+        open={open}
+        onOpenChange={setOpen}
         className={cn(
-          "motion-details group/event overflow-hidden rounded-lg border border-line bg-surface",
+          "group/event overflow-hidden rounded-lg border border-line bg-surface",
           failed && "border-destructive/30",
         )}
       >
-        <summary className="flex cursor-pointer list-none items-start gap-3 p-3 outline-none hover:bg-sidebar focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-muted [&::-webkit-details-marker]:hidden">
+        <CollapsibleTrigger className="flex w-full text-left cursor-pointer list-none items-start gap-3 p-3 outline-none hover:bg-sidebar focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-muted [&::-webkit-details-marker]:hidden">
           <Icon
             size={18}
             aria-hidden="true"
@@ -131,13 +139,17 @@ export const ActivityItem = memo(function ActivityItem({
               >
                 {event.type}
               </span>
-              <time
-                dateTime={receivedAt.toISOString()}
-                title={receivedAt.toISOString()}
-                className="shrink-0 font-mono text-[11px] tabular-nums text-muted"
-              >
-                {time}.{milliseconds}
-              </time>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <time
+                    dateTime={receivedAt.toISOString()}
+                    className="shrink-0 font-mono text-[11px] tabular-nums text-muted"
+                  >
+                    {time}.{milliseconds}
+                  </time>
+                </TooltipTrigger>
+                <TooltipContent>{receivedAt.toISOString()}</TooltipContent>
+              </Tooltip>
             </div>
             {description && (
               <p
@@ -150,12 +162,20 @@ export const ActivityItem = memo(function ActivityItem({
               </p>
             )}
             <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px]/5">
-              <span className={cn("font-medium", category.color)}>
+              <Badge
+                variant="secondary"
+                className={cn("h-auto py-0 text-[11px]", category.color)}
+              >
                 {category.label}
-              </span>
-              <span className="text-muted" title={entry.runId}>
-                Run {entry.runId.slice(0, 8)}
-              </span>
+              </Badge>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="text-muted">
+                    Run {entry.runId.slice(0, 8)}
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent>{entry.runId}</TooltipContent>
+              </Tooltip>
               {stream && (
                 <span className="text-muted">
                   {stream.status === "open" && "End not received"}
@@ -172,25 +192,23 @@ export const ActivityItem = memo(function ActivityItem({
           <CaretRightIcon
             size={12}
             aria-hidden="true"
-            className="motion-chevron mt-1 shrink-0 text-muted group-open/event:rotate-90"
+            className="motion-chevron mt-1 shrink-0 text-muted group-data-[state=open]/event:rotate-90"
           />
-        </summary>
-        {hasOpened && (
-          <div className="border-t border-line p-3">
-            <p className="text-xs text-muted">Run ID</p>
-            <code className="mt-1 block break-all text-xs/5 text-ink">
-              {entry.runId}
-            </code>
-            {stream && (
-              <MergedActivityContent
-                stream={stream}
-                toolArguments={event.type === EventType.TOOL_CALL_ARGS}
-              />
-            )}
-            {!stream && <JsonPayload source={JSON.stringify(event, null, 2)} />}
-          </div>
-        )}
-      </details>
+        </CollapsibleTrigger>
+        <CollapsibleContent keepMounted className="border-t border-line p-3">
+          <p className="text-xs text-muted">Run ID</p>
+          <code className="mt-1 block break-all text-xs/5 text-ink">
+            {entry.runId}
+          </code>
+          {stream && (
+            <MergedActivityContent
+              stream={stream}
+              toolArguments={event.type === EventType.TOOL_CALL_ARGS}
+            />
+          )}
+          {!stream && <JsonPayload source={JSON.stringify(event, null, 2)} />}
+        </CollapsibleContent>
+      </Collapsible>
     </li>
   );
 });

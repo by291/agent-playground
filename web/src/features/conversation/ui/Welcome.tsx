@@ -3,6 +3,7 @@ import { DatabaseIcon } from "@phosphor-icons/react/dist/csr/Database";
 import { ListChecksIcon } from "@phosphor-icons/react/dist/csr/ListChecks";
 import { ChartBarIcon } from "@phosphor-icons/react/dist/csr/ChartBar";
 import type { ReactNode } from "react";
+import { Button } from "@/components/ui/button";
 
 export function Welcome({ onSelect }: { onSelect: (prompt: string) => void }) {
   return (
@@ -61,13 +62,14 @@ function Suggestion({
   onSelect: (prompt: string) => void;
 }) {
   return (
-    <button
+    <Button
       type="button"
+      variant="outline"
       onClick={() => onSelect(prompt)}
-      className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-line bg-surface px-4 py-2.5 text-[13px]/5 font-medium text-ink transition-colors duration-150 hover:border-muted/40 hover:bg-sidebar focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+      className="h-auto min-h-11 gap-2 border-line bg-surface px-4 py-2.5 text-[13px]/5 text-ink"
     >
       <span className="flex shrink-0 items-center text-muted">{icon}</span>
       {title}
-    </button>
+    </Button>
   );
 }

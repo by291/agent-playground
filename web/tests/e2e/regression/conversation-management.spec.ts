@@ -34,7 +34,7 @@ test("history opens, renames and deletes a saved conversation after reload", asy
   await navigation
     .getByRole("button", { name: `Actions for ${title}` })
     .click();
-  await page.getByRole("button", { name: "Rename", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Rename", exact: true }).click();
   const renamed = `Renamed ${title}`;
 
   await page.getByRole("textbox", { name: "Conversation title" }).fill(renamed);
@@ -50,7 +50,7 @@ test("history opens, renames and deletes a saved conversation after reload", asy
   await navigation
     .getByRole("button", { name: `Actions for ${renamed}` })
     .click();
-  await page.getByRole("button", { name: "Delete", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Delete", exact: true }).click();
   await page
     .getByRole("button", { name: "Delete conversation", exact: true })
     .click();
@@ -100,7 +100,7 @@ test("switching away from a live run preserves its recovery and does not resubmi
     .getByRole("button", { name: `Actions for ${title}`, exact: true })
     .click();
   await expect(
-    page.getByRole("button", { name: "Delete", exact: true }),
+    page.getByRole("menuitem", { name: "Delete", exact: true }),
   ).toBeDisabled();
   await page.keyboard.press("Escape");
   await navigation
@@ -142,7 +142,7 @@ test("mobile navigation supports rename and delete without leaving the drawer", 
   await expect(page.getByRole("textbox", { name: "Message" })).toBeEnabled();
   await page.getByRole("button", { name: "Open navigation" }).click();
   await page.getByRole("button", { name: `Actions for ${title}` }).click();
-  await page.getByRole("button", { name: "Rename", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Rename", exact: true }).click();
   await expect(
     page.getByRole("textbox", { name: "Conversation title" }),
   ).toBeFocused();
@@ -162,11 +162,86 @@ test("mobile navigation supports rename and delete without leaving the drawer", 
     page.getByRole("button", { name: renamed, exact: true }),
   ).toBeVisible();
   await page.getByRole("button", { name: `Actions for ${renamed}` }).click();
-  await page.getByRole("button", { name: "Delete", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Delete", exact: true }).click();
   await page
     .getByRole("button", { name: "Delete conversation", exact: true })
     .click();
   await expect(
     page.getByRole("heading", { name: "What would you like to work on?" }),
   ).toBeVisible();
+});
+
+test("pending rename survives the navigation shortcut and a viewport change, then retries", async ({
+  page,
+  request,
+}) => {
+  const title = `Responsive rename ${randomUUID()}`;
+  const threadId = await createCompletedConversation(request, title);
+  const endpoint = `**/conversations/${threadId}`;
+  let release: () => void = () => undefined;
+  const responseGate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+
+  await page.route(endpoint, async (route) => {
+    if (route.request().method() !== "PATCH") {
+      await route.continue();
+
+      return;
+    }
+
+    await responseGate;
+    await route.fulfill({
+      status: 503,
+      json: { error: "Rename unavailable. Try again." },
+    });
+  });
+
+  try {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto(`/c/${threadId}`);
+    await expect(page.getByRole("textbox", { name: "Message" })).toBeEnabled();
+    await page.getByRole("button", { name: "Open navigation" }).click();
+    await page.getByRole("button", { name: `Actions for ${title}` }).click();
+    await page.getByRole("menuitem", { name: "Rename", exact: true }).click();
+    const dialog = page.getByRole("dialog", { name: "Rename conversation" });
+    const draft = dialog.getByRole("textbox", { name: "Conversation title" });
+    const renamed = `Renamed ${title}`;
+
+    await draft.fill(renamed);
+    const started = page.waitForRequest(
+      (event) =>
+        event.method() === "PATCH" &&
+        event.url().endsWith(`/conversations/${threadId}`),
+    );
+
+    await dialog.getByRole("button", { name: "Save title" }).click();
+    await started;
+    await expect(
+      dialog.getByRole("button", { name: "Saving…" }),
+    ).toBeDisabled();
+    await page.keyboard.press("Control+b");
+    await expect(
+      page.locator('[data-sidebar="sidebar"][data-slot="sheet-content"]'),
+    ).toHaveAttribute("data-state", "open");
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await expect(dialog).toBeVisible();
+    await expect(draft).toHaveValue(renamed);
+    await page.keyboard.press("Escape");
+    await expect(dialog).toBeVisible();
+    release();
+    await expect(dialog.getByRole("alert")).toContainText(
+      "Rename unavailable. Try again.",
+    );
+    await expect(draft).toBeEnabled();
+    await expect(draft).toHaveValue(renamed);
+    await page.unroute(endpoint);
+    await dialog.getByRole("button", { name: "Save title" }).click();
+    await expect(dialog).toHaveCount(0);
+    await expect(
+      page.getByRole("button", { name: `Actions for ${renamed}` }),
+    ).toBeFocused();
+  } finally {
+    release();
+  }
 });

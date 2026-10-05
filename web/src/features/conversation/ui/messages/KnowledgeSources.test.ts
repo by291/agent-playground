@@ -140,6 +140,11 @@ test.each([
 
     expect(reader.getByText(detail)).toBeInTheDocument();
     expect(reader.queryByRole("combobox")).toBeNull();
+
+    if (error) {
+      expect(reader.getByRole("alert")).toHaveTextContent(detail);
+    }
+
     await user.click(reader.getByRole("button", { name: "Close sources" }));
     expect(view.queryByRole("dialog")).toBeNull();
   },

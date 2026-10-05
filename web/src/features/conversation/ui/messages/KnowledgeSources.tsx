@@ -11,13 +11,23 @@ import { ArrowRightIcon } from "@phosphor-icons/react/dist/csr/ArrowRight";
 import { DownloadSimpleIcon } from "@phosphor-icons/react/dist/csr/DownloadSimple";
 import { XIcon } from "@phosphor-icons/react/dist/csr/X";
 import {
-  Dialog,
-  DialogClose,
-  DialogContent,
-  DialogDescription,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
+  Sheet,
+  SheetClose,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyTitle,
+} from "@/components/ui/empty";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -133,25 +143,26 @@ export function KnowledgeSources({
 
   return (
     <KnowledgeCitationProvider value={{ sources, onSelect: openCitation }}>
-      <Dialog open={open} onOpenChange={setOpen}>
+      <Sheet open={open} onOpenChange={setOpen}>
         {children}
         <div className="pt-1">
-          <DialogTrigger asChild>
-            <button
-              type="button"
+          <SheetTrigger asChild>
+            <Button
+              variant="outline"
               onClick={() => {
                 citationOpener.current = null;
               }}
-              className="inline-flex min-h-10 items-center gap-2 rounded-full border border-line px-3 text-xs text-muted transition-colors hover:bg-sidebar hover:text-ink focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none"
+              className="min-h-10 gap-2 rounded-full border-line px-3 text-xs text-muted"
             >
               <BooksIcon size={16} aria-hidden="true" />
               {label}
-            </button>
-          </DialogTrigger>
+            </Button>
+          </SheetTrigger>
         </div>
-        <DialogContent
-          data-motion="sheet"
-          className="fixed inset-y-0 right-0 z-50 flex w-full max-w-md flex-col border-l border-line bg-surface shadow-xl outline-none"
+        <SheetContent
+          side="right"
+          showCloseButton={false}
+          className="min-h-0 gap-0 border-line bg-surface data-[side=right]:w-full data-[side=right]:sm:max-w-md"
           onCloseAutoFocus={(event) => {
             if (citationOpener.current?.isConnected) {
               event.preventDefault();
@@ -161,21 +172,21 @@ export function KnowledgeSources({
             citationOpener.current = null;
           }}
         >
-          <header className="flex shrink-0 items-start justify-between gap-4 border-b border-line p-5">
+          <SheetHeader className="shrink-0 flex-row items-start justify-between gap-4 border-b border-line p-5">
             <div>
-              <DialogTitle className="text-base font-semibold">
+              <SheetTitle className="text-base font-semibold">
                 Sources
-              </DialogTitle>
-              <DialogDescription className="mt-1 text-xs text-muted">
+              </SheetTitle>
+              <SheetDescription className="mt-1 text-xs text-muted">
                 Passages retrieved for this reply.
-              </DialogDescription>
+              </SheetDescription>
             </div>
-            <DialogClose asChild>
+            <SheetClose asChild>
               <Button variant="ghost" size="icon" aria-label="Close sources">
                 <XIcon size={18} aria-hidden="true" />
               </Button>
-            </DialogClose>
-          </header>
+            </SheetClose>
+          </SheetHeader>
           {source && (
             <>
               <div className="space-y-4 border-b border-line p-5">
@@ -206,7 +217,6 @@ export function KnowledgeSources({
                     >
                       <SelectTrigger
                         aria-labelledby={documentControlId}
-                        title={source.name}
                         className="min-h-10 w-full gap-3 border-line bg-surface px-3 *:data-[slot=select-value]:min-w-0 *:data-[slot=select-value]:flex-1 dark:bg-surface dark:hover:bg-sidebar"
                       >
                         <SelectValue>
@@ -224,7 +234,6 @@ export function KnowledgeSources({
                             <SelectItem
                               key={id}
                               value={id}
-                              title={entries[0]!.name}
                               className="*:last:min-w-0 *:last:flex-1"
                             >
                               <span className="line-clamp-2 wrap-anywhere">
@@ -263,53 +272,70 @@ export function KnowledgeSources({
                   </div>
                 </div>
               </div>
-              <div
-                key={source.chunkId}
-                className="motion-content-enter min-h-0 flex-1 overflow-y-auto p-5"
-              >
-                <p className="mb-3 text-xs font-medium text-accent">
-                  Source [{source.number}]
-                </p>
-                {source.page !== null && (
-                  <p className="mb-3 text-xs font-medium text-muted">
-                    Page {source.page}
+              <ScrollArea key={source.chunkId} className="min-h-0 flex-1">
+                <div className="motion-content-enter p-5">
+                  <p className="mb-3 text-xs font-medium text-accent">
+                    Source [{source.number}]
                   </p>
-                )}
-                <p className="text-base/7 whitespace-pre-wrap wrap-anywhere">
-                  {source.excerpt}
-                </p>
-              </div>
-              <footer className="shrink-0 border-t border-line p-5">
-                <a
-                  href={knowledgeFileUrl(source.documentId)}
-                  download={source.name}
-                  className="inline-flex min-h-10 items-center gap-2 rounded-lg px-2 text-sm text-accent hover:bg-sidebar focus-visible:ring-2 focus-visible:ring-accent"
+                  {source.page !== null && (
+                    <p className="mb-3 text-xs font-medium text-muted">
+                      Page {source.page}
+                    </p>
+                  )}
+                  <p className="text-base/7 whitespace-pre-wrap wrap-anywhere">
+                    {source.excerpt}
+                  </p>
+                </div>
+              </ScrollArea>
+              <SheetFooter className="mt-0 shrink-0 border-t border-line p-5">
+                <Button
+                  asChild
+                  variant="ghost"
+                  className="min-h-10 justify-start text-accent"
                 >
-                  <DownloadSimpleIcon size={16} aria-hidden="true" />
-                  Download original
-                </a>
-              </footer>
+                  <a
+                    href={knowledgeFileUrl(source.documentId)}
+                    download={source.name}
+                  >
+                    <DownloadSimpleIcon size={16} aria-hidden="true" />
+                    Download original
+                  </a>
+                </Button>
+              </SheetFooter>
             </>
           )}
           {!source && (
-            <div className="p-5 text-sm text-muted">
-              {errors.size
-                ? [...errors].map((error) => (
-                    <p key={error} className="mb-3 text-destructive">
-                      {error}
-                    </p>
-                  ))
-                : "No matching sources in the current index."}
+            <div className="p-5">
+              {errors.size ? (
+                [...errors].map((error) => (
+                  <Alert key={error} variant="destructive" className="mb-3">
+                    <AlertDescription>{error}</AlertDescription>
+                  </Alert>
+                ))
+              ) : (
+                <Empty>
+                  <EmptyHeader>
+                    <EmptyTitle>No matching sources</EmptyTitle>
+                    <EmptyDescription>
+                      No matching sources in the current index.
+                    </EmptyDescription>
+                  </EmptyHeader>
+                </Empty>
+              )}
             </div>
           )}
           {source && errors.size > 0 && (
-            <p className="border-t border-line p-5 text-xs text-destructive">
-              Some searches failed. These passages came from successful
-              searches.
-            </p>
+            <div className="shrink-0 border-t border-line p-5">
+              <Alert variant="destructive">
+                <AlertDescription>
+                  Some searches failed. These passages came from successful
+                  searches.
+                </AlertDescription>
+              </Alert>
+            </div>
           )}
-        </DialogContent>
-      </Dialog>
+        </SheetContent>
+      </Sheet>
     </KnowledgeCitationProvider>
   );
 }

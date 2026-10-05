@@ -58,7 +58,10 @@ test("a new or saved empty conversation renders the welcome screen immediately",
     assert.match(markup, /What would you like/);
     assert.match(markup, /Draft a plan/);
     assert.doesNotMatch(markup, /<main\b[\s\S]*aria-busy="true"/);
-    assert.doesNotMatch(markup, /animate-pulse/);
+    assert.doesNotMatch(
+      /<main\b[\s\S]*?<\/main>/.exec(markup)?.[0] ?? "",
+      /data-slot="skeleton"/,
+    );
     assert.doesNotMatch(markup, /Loading conversation\b/);
   }
 });

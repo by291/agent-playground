@@ -5,8 +5,21 @@ import {
   type SkillFile,
 } from "@shared/skill-files";
 import type { toolProcess } from "../../model/turns";
-import { AnimatePresence, motion, useIsPresent } from "motion/react";
-import { useMotionTiming } from "@/components/ui/motion";
+import { AnimatePresence } from "motion/react";
+import { AnimatedDiv } from "@/components/ui/motion";
+import {
+  Attachment,
+  AttachmentContent,
+  AttachmentDescription,
+  AttachmentMedia,
+  AttachmentTitle,
+  AttachmentTrigger,
+} from "@/components/ui/attachment";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 export function SkillFiles({
   process,
@@ -50,27 +63,31 @@ export function SkillFiles({
 }
 
 function FileLink({ file }: { file: SkillFile }) {
-  const present = useIsPresent();
-  const timing = useMotionTiming();
-  const exitTiming = useMotionTiming("exit");
+  const size = `${Math.ceil(file.size / 1024)} KB`;
 
   return (
-    <motion.a
-      href={skillFileUrl(file)}
-      download={file.name}
-      inert={!present}
-      aria-hidden={!present}
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0, transition: exitTiming }}
-      transition={timing}
-      className="inline-flex max-w-full items-center gap-2 rounded-lg border border-line px-3 py-2 text-sm hover:bg-sidebar focus-visible:ring-2 focus-visible:ring-accent"
-    >
-      <DownloadSimpleIcon size={17} aria-hidden="true" />
-      <span className="truncate">{file.name}</span>
-      <span className="text-xs text-muted">
-        {Math.ceil(file.size / 1024)} KB
-      </span>
-    </motion.a>
+    <AnimatedDiv className="max-w-full min-w-0">
+      <Attachment size="sm" className="flex-nowrap border-line">
+        <AttachmentMedia>
+          <DownloadSimpleIcon size={17} aria-hidden="true" />
+        </AttachmentMedia>
+        <AttachmentContent className="max-w-64">
+          <AttachmentTitle>{file.name}</AttachmentTitle>
+          <AttachmentDescription>{size}</AttachmentDescription>
+        </AttachmentContent>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <AttachmentTrigger asChild>
+              <a
+                href={skillFileUrl(file)}
+                download={file.name}
+                aria-label={`Download ${file.name}, ${size}`}
+              />
+            </AttachmentTrigger>
+          </TooltipTrigger>
+          <TooltipContent>{file.name}</TooltipContent>
+        </Tooltip>
+      </Attachment>
+    </AnimatedDiv>
   );
 }

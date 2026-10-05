@@ -9,8 +9,14 @@ test("shared documents index through Python, retry failures and restore retrieve
   request,
 }, testInfo) => {
   const filename = `policy-${randomUUID()}.md`;
-  const content =
-    "# Returns\nReturns are allowed within 30 days. Keep the original receipt.";
+  const content = [
+    "# Returns",
+    "Returns are allowed within 30 days. Keep the original receipt.",
+    ...Array.from(
+      { length: 24 },
+      (_, index) => `Return note ${index + 1}: Keep the receipt.`,
+    ),
+  ].join("\n");
 
   await request.post("http://127.0.0.1:4300/__e2e/embedding-failure", {
     data: { enabled: true },
@@ -97,6 +103,23 @@ test("shared documents index through Python, retry failures and restore retrieve
         expect(box!.width).toBe(390);
         await expect(
           sources.getByRole("button", { name: "Close sources" }),
+        ).toBeVisible();
+        const passage = sources.locator("[data-slot=scroll-area-viewport]");
+
+        await expect
+          .poll(() =>
+            passage.evaluate(
+              (element) => element.scrollHeight > element.clientHeight,
+            ),
+          )
+          .toBe(true);
+        await passage.hover();
+        await page.mouse.wheel(0, 240);
+        await expect
+          .poll(() => passage.evaluate((element) => element.scrollTop))
+          .toBeGreaterThan(0);
+        await expect(
+          sources.getByRole("link", { name: "Download original" }),
         ).toBeVisible();
         await capture(
           page,
@@ -211,17 +234,30 @@ test("shared documents index through Python, retry failures and restore retrieve
     await capture(page, testInfo, "knowledge-inline-citation.png");
     await reader.getByRole("button", { name: "Close sources" }).click();
     await page.goto("/knowledge");
-    await row.getByRole("button", { name: `Delete ${filename}` }).click();
+    const deleteTrigger = row.getByRole("button", {
+      name: `Delete ${filename}`,
+    });
+
+    await deleteTrigger.click();
     await page
-      .getByRole("dialog", { name: "Delete document?" })
+      .getByRole("alertdialog", { name: "Delete document?" })
+      .getByRole("button", { name: "Cancel", exact: true })
+      .click();
+    await expect(deleteTrigger).toBeFocused();
+    await deleteTrigger.click();
+    await page
+      .getByRole("alertdialog", { name: "Delete document?" })
       .getByRole("button", { name: "Delete document", exact: true })
       .click();
     await expect(row).toHaveCount(0);
+    await expect(
+      page.getByRole("button", { name: "Upload document", exact: true }),
+    ).toBeFocused();
     await courierRow
       .getByRole("button", { name: `Delete ${courierFilename}` })
       .click();
     await page
-      .getByRole("dialog", { name: "Delete document?" })
+      .getByRole("alertdialog", { name: "Delete document?" })
       .getByRole("button", { name: "Delete document", exact: true })
       .click();
     await expect(courierRow).toHaveCount(0);

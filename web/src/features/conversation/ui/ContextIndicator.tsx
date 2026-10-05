@@ -1,4 +1,15 @@
-import * as Popover from "@radix-ui/react-popover";
+import {
+  Popover,
+  PopoverTrigger,
+  PopoverContent,
+  PopoverClose,
+} from "@/components/ui/popover";
+import { Progress } from "@/components/ui/progress";
+import {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+} from "@/components/ui/tooltip";
 import { XIcon } from "@phosphor-icons/react/dist/csr/X";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -35,89 +46,94 @@ export function ContextIndicator() {
   const nearLimit = !!usage && usage.usedTokens >= usage.triggerTokens;
 
   return (
-    <Popover.Root>
-      <Popover.Trigger asChild>
-        <Button
-          variant="ghost"
-          type="button"
-          className="workspace-toolbar-button h-10 min-w-0 shrink gap-2 px-2.5"
-          title={usage ? `${model} · Context ${label}` : model}
-          aria-label={
-            usage
-              ? `${model}. Estimated context usage ${label}. Show details`
-              : `${model}. Show details`
-          }
-        >
-          <svg
-            viewBox="0 0 24 24"
-            className={`size-4 shrink-0 ${nearLimit ? "text-amber-600" : "text-muted"}`}
-            fill="none"
-            aria-hidden="true"
-          >
-            <circle
-              cx="12"
-              cy="12"
-              r="9"
-              stroke="currentColor"
-              strokeWidth="2.5"
-              className="opacity-20"
-            />
-            <circle
-              cx="12"
-              cy="12"
-              r="9"
-              stroke="currentColor"
-              strokeWidth="2.5"
-              strokeLinecap="round"
-              strokeDasharray={2 * Math.PI * 9}
-              strokeDashoffset={2 * Math.PI * 9 * (1 - Math.min(ratio, 1))}
-              className="motion-context-ring"
-              transform="rotate(-90 12 12)"
-            />
-          </svg>
-          <span className="max-w-44 truncate text-xs font-medium">{model}</span>
-        </Button>
-      </Popover.Trigger>
-
-      <Popover.Portal>
-        <Popover.Content
-          align="end"
-          side="top"
-          sideOffset={8}
-          collisionPadding={16}
-          className="motion-popover z-50 w-80 max-w-[calc(100vw-2rem)] rounded-lg border border-line bg-surface p-5 text-ink shadow-lg outline-none"
-          aria-label="Context usage details"
-        >
-          <div className="mb-4 flex items-center justify-between gap-3">
-            <h2 className="text-sm font-semibold">Context window</h2>
-            <Popover.Close asChild>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="size-8 rounded-lg"
-                aria-label="Close context details"
+    <Popover>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <PopoverTrigger asChild>
+            <Button
+              variant="ghost"
+              type="button"
+              className="workspace-toolbar-button h-10 min-w-0 shrink gap-2 px-2.5"
+              aria-label={
+                usage
+                  ? `${model}. Estimated context usage ${label}. Show details`
+                  : `${model}. Show details`
+              }
+            >
+              <svg
+                viewBox="0 0 24 24"
+                className={`size-4 shrink-0 ${nearLimit ? "text-amber-600" : "text-muted"}`}
+                fill="none"
+                aria-hidden="true"
               >
-                <XIcon size={16} aria-hidden="true" />
-              </Button>
-            </Popover.Close>
-          </div>
-          {usage ? (
-            <ContextDetails usage={usage} />
-          ) : (
-            <p className="text-sm/relaxed text-muted">
-              Context usage appears after the first model call.
-            </p>
-          )}
-        </Popover.Content>
-      </Popover.Portal>
-    </Popover.Root>
+                <circle
+                  cx="12"
+                  cy="12"
+                  r="9"
+                  stroke="currentColor"
+                  strokeWidth="2.5"
+                  className="opacity-20"
+                />
+                <circle
+                  cx="12"
+                  cy="12"
+                  r="9"
+                  stroke="currentColor"
+                  strokeWidth="2.5"
+                  strokeLinecap="round"
+                  strokeDasharray={2 * Math.PI * 9}
+                  strokeDashoffset={2 * Math.PI * 9 * (1 - Math.min(ratio, 1))}
+                  className="motion-context-ring"
+                  transform="rotate(-90 12 12)"
+                />
+              </svg>
+              <span className="max-w-44 truncate text-xs font-medium">
+                {model}
+              </span>
+            </Button>
+          </PopoverTrigger>
+        </TooltipTrigger>
+        <TooltipContent>
+          {usage ? `${model} · Context ${label}` : model}
+        </TooltipContent>
+      </Tooltip>
+
+      <PopoverContent
+        align="end"
+        side="top"
+        sideOffset={8}
+        collisionPadding={16}
+        className="motion-popover z-50 w-80 max-w-[calc(100vw-2rem)] rounded-lg border border-line bg-surface p-5 text-ink shadow-lg outline-none"
+        aria-label="Context usage details"
+      >
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <h2 className="text-sm font-semibold">Context window</h2>
+          <PopoverClose asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="size-8 rounded-lg"
+              aria-label="Close context details"
+            >
+              <XIcon size={16} aria-hidden="true" />
+            </Button>
+          </PopoverClose>
+        </div>
+        {usage ? (
+          <ContextDetails usage={usage} />
+        ) : (
+          <p className="text-sm/relaxed text-muted">
+            Context usage appears after the first model call.
+          </p>
+        )}
+      </PopoverContent>
+    </Popover>
   );
 }
 
 function ContextDetails({ usage }: { usage: ContextUsage }) {
-  const ratio = usage.usedTokens / usage.contextWindow;
-  const percentage = Math.round(ratio * 100);
+  const percentage = Math.round((usage.usedTokens / usage.contextWindow) * 100);
 
   return (
     <div className="space-y-4">
@@ -129,20 +145,13 @@ function ContextDetails({ usage }: { usage: ContextUsage }) {
             / {compactNumber.format(usage.contextWindow)} tokens
           </span>
         </p>
-        <div
-          className="mt-3 h-2 overflow-hidden rounded-full bg-sidebar"
-          role="progressbar"
+        <Progress
+          className="mt-3 h-2 bg-sidebar"
+          value={Math.min(usage.usedTokens, usage.contextWindow)}
+          max={usage.contextWindow}
           aria-label="Estimated context usage"
-          aria-valuemin={0}
-          aria-valuemax={usage.contextWindow}
-          aria-valuenow={Math.min(usage.usedTokens, usage.contextWindow)}
           aria-valuetext={`Approximately ${percentage}% used`}
-        >
-          <div
-            className="motion-progress h-full origin-left rounded-full bg-accent"
-            style={{ transform: `scaleX(${Math.min(ratio, 1)})` }}
-          />
-        </div>
+        />
         <p className="mt-2 text-xs text-soft">
           Auto-compacts at{" "}
           {Math.round((usage.triggerTokens / usage.contextWindow) * 100)}%.

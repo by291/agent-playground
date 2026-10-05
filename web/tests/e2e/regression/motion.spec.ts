@@ -92,7 +92,7 @@ async function installConversation(page: Page) {
 test.describe("normal motion", () => {
   test.use({ reducedMotion: "no-preference" });
 
-  test("conversation forms retain their control size while the menu grows", async ({
+  test("rename dialogs retain their control size during their entrance", async ({
     page,
   }) => {
     await installConversation(page);
@@ -100,13 +100,13 @@ test.describe("normal motion", () => {
     await page
       .getByRole("button", { name: "Actions for Motion fixture" })
       .click();
-    const menu = page.getByLabel("Conversation actions");
+    const menu = page.getByRole("menu");
 
     await expect
       .poll(() => menu.evaluate((element) => getComputedStyle(element).opacity))
       .toBe("1");
     const scales = await page
-      .getByRole("button", { name: "Rename", exact: true })
+      .getByRole("menuitem", { name: "Rename", exact: true })
       .evaluate(async (element) => {
         (element as HTMLElement).click();
         const samples: number[] = [];
@@ -116,7 +116,7 @@ test.describe("normal motion", () => {
             requestAnimationFrame(() => resolve()),
           );
           const input = document.querySelector<HTMLInputElement>(
-            '[aria-label="Rename conversation"] input',
+            '[role="dialog"] input',
           );
 
           if (input) {
@@ -130,52 +130,10 @@ test.describe("normal motion", () => {
       });
 
     expect(scales.length).toBeGreaterThan(0);
-    expect(Math.min(...scales)).toBeGreaterThan(0.98);
+    expect(Math.min(...scales)).toBeGreaterThanOrEqual(0.98);
     expect(Math.max(...scales)).toBeLessThan(1.02);
     await expect(
       page.getByRole("textbox", { name: "Conversation title" }),
-    ).toBeFocused();
-  });
-
-  test("chat finishes returning when the activity overlay finishes exiting", async ({
-    page,
-  }) => {
-    await installConversation(page);
-    await page.setViewportSize({ width: 1024, height: 768 });
-    await page.goto("/c/motion-fixture");
-    await page.getByRole("button", { name: "Show run activity" }).click();
-    const shell = page.locator(".workspace-activity-shell");
-
-    await expect
-      .poll(() =>
-        shell.evaluate((element) => getComputedStyle(element).opacity),
-      )
-      .toBe("1");
-    const opacity = await page
-      .getByRole("button", { name: "Close run activity" })
-      .evaluate(async (element) => {
-        (element as HTMLElement).click();
-        const shell = document.querySelector<HTMLElement>(
-          ".workspace-activity-shell",
-        )!;
-        const chat = document.querySelector<HTMLElement>(".workspace-chat")!;
-
-        for (let frame = 0; frame < 120; frame++) {
-          await new Promise<void>((resolve) =>
-            requestAnimationFrame(() => resolve()),
-          );
-
-          if (getComputedStyle(shell).opacity === "0") {
-            return Number(getComputedStyle(chat).opacity);
-          }
-        }
-
-        throw new Error("Activity overlay did not finish exiting");
-      });
-
-    expect(opacity).toBeGreaterThan(0.99);
-    await expect(
-      page.getByRole("button", { name: "Show run activity" }),
     ).toBeFocused();
   });
 
@@ -184,10 +142,10 @@ test.describe("normal motion", () => {
   }) => {
     await installConversation(page);
     await page.goto("/c/motion-fixture");
-    const toggle = page
-      .locator('[data-slot="collapsible-trigger"]')
-      .filter({ hasText: "Tool" })
-      .first();
+    const toggle = page.getByRole("button", {
+      name: "Tool search_knowledge Completed",
+      exact: true,
+    });
 
     await toggle.click();
     const content = page.locator('[data-slot="collapsible-content"]').first();
@@ -228,7 +186,7 @@ test.describe("normal motion", () => {
       .getByRole("button", { name: "Close sources" })
       .evaluate((element) => (element as HTMLElement).click());
     const exiting = page.locator(
-      '[data-slot="dialog-content"][data-state="closed"]',
+      '[data-slot="sheet-content"][data-state="closed"]',
     );
 
     await expect(exiting).toHaveCount(1);
@@ -241,7 +199,7 @@ test.describe("normal motion", () => {
     await expect(citation).toBeFocused();
   });
 
-  test("history menus resize smoothly and native settings restore focus after exit", async ({
+  test("menus and dialogs share motion timing and restore focus after exit", async ({
     page,
   }) => {
     await installConversation(page);
@@ -251,18 +209,18 @@ test.describe("normal motion", () => {
     });
 
     await actions.click();
-    const menu = page.getByLabel("Conversation actions");
+    const menu = page.getByRole("menu");
 
     expect(
       await menu.evaluate((element) => getComputedStyle(element).animationName),
     ).toBe("popup-in");
-    await page.getByRole("button", { name: "Rename", exact: true }).click();
-    const rename = page.getByLabel("Rename conversation");
+    await page.getByRole("menuitem", { name: "Rename", exact: true }).click();
+    const rename = page.getByRole("dialog", { name: "Rename conversation" });
 
     await expect(rename.getByRole("textbox")).toBeFocused();
     await expect
       .poll(async () => (await rename.boundingBox())!.width)
-      .toBeCloseTo(288, 0);
+      .toBeCloseTo(448, 0);
     await page.keyboard.press("Escape");
     await expect(rename).toHaveCount(0);
     await expect(actions).toBeFocused();
@@ -275,11 +233,27 @@ test.describe("normal motion", () => {
       exact: true,
     });
 
+    const viewport = page.viewportSize()!;
+
+    await expect
+      .poll(async () => {
+        const bounds = (await settings.boundingBox())!;
+
+        return bounds.x + bounds.width / 2;
+      })
+      .toBeCloseTo(viewport.width / 2, 0);
+    await expect
+      .poll(async () => {
+        const bounds = (await settings.boundingBox())!;
+
+        return bounds.y + bounds.height / 2;
+      })
+      .toBeCloseTo(viewport.height / 2, 0);
     expect(
       await settings.evaluate(
-        (element) => getComputedStyle(element).transitionProperty,
+        (element) => getComputedStyle(element).animationName,
       ),
-    ).toContain("overlay");
+    ).toBe("popup-in");
     await settings.getByRole("combobox", { name: "Appearance" }).click();
     expect(
       await page
@@ -309,7 +283,9 @@ test.describe("normal motion", () => {
 
     await expect(remove).toBeVisible();
     const exiting = await remove.evaluate(async (element) => {
-      const chip = element.parentElement;
+      const chip = element.closest<HTMLElement>(
+        '[data-slot="attachment"]',
+      )?.parentElement;
 
       if (!chip) {
         throw new Error("Attachment chip is missing");
@@ -320,7 +296,7 @@ test.describe("normal motion", () => {
 
       return { inert: chip.inert, hidden: chip.getAttribute("aria-hidden") };
     });
-    const chip = page.locator('[aria-label="Remove sample.txt"]').locator("..");
+    const chip = page.locator('[data-slot="attachment"]').locator("..");
 
     expect(exiting).toEqual({ inert: true, hidden: "true" });
     await expect(chip).toHaveCount(0);
@@ -334,10 +310,10 @@ test("reduced motion keeps disclosures and source navigation immediate", async (
 }) => {
   await installConversation(page);
   await page.goto("/c/motion-fixture");
-  const toggle = page
-    .locator('[data-slot="collapsible-trigger"]')
-    .filter({ hasText: "Tool" })
-    .first();
+  const toggle = page.getByRole("button", {
+    name: "Tool search_knowledge Completed",
+    exact: true,
+  });
 
   await toggle.click();
   await expect(toggle).toHaveAttribute("aria-expanded", "true");

@@ -1,7 +1,16 @@
 import { useEffect, useRef } from "react";
 import { ArrowClockwiseIcon } from "@phosphor-icons/react/dist/csr/ArrowClockwise";
 import { ChatCircleIcon } from "@phosphor-icons/react/dist/csr/ChatCircle";
-import { CircleNotchIcon } from "@phosphor-icons/react/dist/csr/CircleNotch";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Spinner } from "@/components/ui/spinner";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Empty, EmptyHeader, EmptyDescription } from "@/components/ui/empty";
+import {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+} from "@/components/ui/tooltip";
 import { Button } from "@/components/ui/button";
 import type { ConversationHistory } from "../model/useConversationHistory";
 import { isRunActive, type RunStatus } from "@shared/run-status";
@@ -100,12 +109,15 @@ export function ConversationList({
           </Button>
         </div>
       </div>
-      <div
-        ref={scrollerRef}
-        className="conversation-history-scroll min-h-0 flex-1 overflow-y-auto"
+      <ScrollArea
+        viewportRef={scrollerRef}
+        className="min-h-0 flex-1"
+        viewportClassName="conversation-history-scroll"
+        viewportProps={{
+          "aria-label": "Conversation history",
+          "aria-busy": history.loading || loadingMore,
+        }}
         data-collapsed={collapsed}
-        aria-label="Conversation history"
-        aria-busy={history.loading || loadingMore}
       >
         <AnimatePresence initial={false}>
           {rows.map((entry) => {
@@ -123,27 +135,31 @@ export function ConversationList({
                 exit={{ opacity: 0, height: 0, marginBottom: 0 }}
                 className={`mb-0.5 flex items-center rounded-md transition-colors duration-(--motion-feedback) ${selected ? "bg-selected" : "hover:bg-selected/60"}`}
               >
-                <Button
-                  type="button"
-                  variant="ghost"
-                  className="workspace-sidebar-item h-9 min-w-0 flex-1 rounded-md text-[13px] font-normal hover:bg-transparent max-md:h-10"
-                  aria-label={entryTitle}
-                  aria-current={selected ? "page" : undefined}
-                  title={entryTitle}
-                  onClick={() => onSelect(entry.threadId)}
-                >
-                  <ChatCircleIcon
-                    size={18}
-                    className={`size-4 shrink-0 ${selected ? "text-accent" : "text-muted"}`}
-                    aria-hidden="true"
-                  />
-                  <span
-                    className="workspace-sidebar-label truncate"
-                    aria-hidden={collapsed}
-                  >
-                    {entryTitle}
-                  </span>
-                </Button>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      className="workspace-sidebar-item h-9 min-w-0 flex-1 rounded-md text-[13px] font-normal hover:bg-transparent max-md:h-10"
+                      aria-label={entryTitle}
+                      aria-current={selected ? "page" : undefined}
+                      onClick={() => onSelect(entry.threadId)}
+                    >
+                      <ChatCircleIcon
+                        size={18}
+                        className={`size-4 shrink-0 ${selected ? "text-accent" : "text-muted"}`}
+                        aria-hidden="true"
+                      />
+                      <span
+                        className="workspace-sidebar-label truncate"
+                        aria-hidden={collapsed}
+                      >
+                        {entryTitle}
+                      </span>
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="right">{entryTitle}</TooltipContent>
+                </Tooltip>
                 {!collapsed && (currentListed || !selected || !empty) && (
                   <ConversationActions
                     threadId={entry.threadId}
@@ -157,24 +173,35 @@ export function ConversationList({
           })}
         </AnimatePresence>
         {!collapsed && history.loading && (
-          <p role="status" className="px-2 py-3 text-xs text-muted">
-            Loading conversations…
-          </p>
+          <div
+            role="status"
+            aria-label="Loading conversations"
+            className="space-y-2 px-2 py-3"
+          >
+            <Skeleton className="h-8" />
+            <Skeleton className="h-8" />
+          </div>
         )}
         {!collapsed &&
           !history.loading &&
           history.conversations.length === 0 &&
           empty &&
           !history.error && (
-            <p className="px-2 py-3 text-xs text-muted">
-              Your conversations will appear here after you send a message.
-            </p>
+            <Empty className="p-2 py-3">
+              <EmptyHeader>
+                <EmptyDescription className="text-xs">
+                  Your conversations will appear here after you send a message.
+                </EmptyDescription>
+              </EmptyHeader>
+            </Empty>
           )}
         {!collapsed && history.error && (
           <div className="space-y-2 px-2 py-3">
-            <p role="alert" className="text-xs text-destructive">
-              {history.error}
-            </p>
+            <Alert variant="destructive" className="p-2">
+              <AlertDescription className="text-xs">
+                {history.error}
+              </AlertDescription>
+            </Alert>
             <Button type="button" variant="outline" onClick={history.retry}>
               Retry
             </Button>
@@ -190,16 +217,13 @@ export function ConversationList({
           >
             {loadingMore && (
               <>
-                <CircleNotchIcon
-                  className="size-4 motion-safe:animate-spin"
-                  aria-hidden="true"
-                />
+                <Spinner aria-hidden="true" />
                 {!collapsed && <span>Loading…</span>}
               </>
             )}
           </div>
         )}
-      </div>
+      </ScrollArea>
     </div>
   );
 }

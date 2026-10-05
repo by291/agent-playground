@@ -6,24 +6,6 @@ import { expect, onTestFinished, test, vi } from "vitest";
 import { ConversationProvider } from "../ConversationProvider";
 import { ActivityPanel } from "./ActivityPanel";
 import { Composer } from "./Composer";
-import { usePanelWidth } from "./usePanelWidth";
-
-function TestActivityPanel() {
-  const panelWidth = usePanelWidth({
-    storageKey: "test-activity-width",
-    minimumWidth: 400,
-    maximumWidth: 720,
-    defaultWidth: 520,
-    side: "right",
-  });
-
-  return createElement(ActivityPanel, {
-    threadId: "failed",
-    onClose: () => undefined,
-    panelWidth,
-  });
-}
-
 test("a transport failure before any events appears in activity and its exported log", async () => {
   const client = new QueryClient();
   const writeText = vi
@@ -72,7 +54,10 @@ test("a transport failure before any events appears in activity and its exported
             prompt: "Inspect a connection failure",
             onPromptChange: () => undefined,
           }),
-          createElement(TestActivityPanel),
+          createElement(ActivityPanel, {
+            threadId: "failed",
+            onClose: () => undefined,
+          }),
         ),
       }),
     ),

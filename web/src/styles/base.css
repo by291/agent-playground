@@ -10,3 +10,8 @@ button:not(:disabled) {
 ::selection {
   background: var(--color-accent-line);
 }
+
+[data-slot="scroll-area-viewport"] > div {
+  min-width: 0;
+  width: 100%;
+}

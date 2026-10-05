@@ -1,4 +1,5 @@
 import Editor, { loader } from "@monaco-editor/react";
+import { Spinner } from "@/components/ui/spinner";
 import * as monaco from "monaco-editor/editor";
 // Keep editor services and features while loading only the JSON language support.
 import "monaco-editor/features/register.all";
@@ -31,7 +32,15 @@ export function JsonEditor({
       theme="vs"
       value={value}
       onChange={(next) => onChange(next ?? "")}
-      loading={<p className="p-4 text-sm text-muted">Loading editor…</p>}
+      loading={
+        <p
+          role="status"
+          className="flex items-center gap-2 p-4 text-sm text-muted"
+        >
+          <Spinner aria-hidden="true" />
+          Loading editor…
+        </p>
+      }
       options={{
         ariaLabel: `${component} JSON editor`,
         automaticLayout: true,

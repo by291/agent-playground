@@ -1,5 +1,12 @@
 import { Component, type ReactNode } from "react";
 import { reportClientError } from "@/observability/tracing";
+import { Button } from "@/components/ui/button";
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyTitle,
+} from "@/components/ui/empty";
 
 export class PageBoundary extends Component<
   { children: ReactNode },
@@ -19,14 +26,19 @@ export class PageBoundary extends Component<
     if (this.state.failed) {
       return (
         <main className="flex min-h-dvh flex-col items-center justify-center gap-4 bg-canvas px-6 text-center text-ink">
-          <h1 className="text-xl font-semibold">Could not load this page</h1>
-          <p className="text-sm text-muted">Reload the page to try again.</p>
-          <a
-            href={window.location.pathname}
-            className="rounded-xl bg-accent px-4 py-3 text-sm font-medium text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
-          >
-            Reload page
-          </a>
+          <Empty className="flex-none">
+            <EmptyHeader>
+              <EmptyTitle>
+                <h1 className="text-xl font-semibold">
+                  Could not load this page
+                </h1>
+              </EmptyTitle>
+              <EmptyDescription>Reload the page to try again.</EmptyDescription>
+            </EmptyHeader>
+            <Button asChild className="h-11 px-4">
+              <a href={window.location.pathname}>Reload page</a>
+            </Button>
+          </Empty>
         </main>
       );
     }

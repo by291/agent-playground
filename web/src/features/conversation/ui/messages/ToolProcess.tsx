@@ -1,7 +1,14 @@
 import { useState, type ReactNode } from "react";
 import { CaretDownIcon } from "@phosphor-icons/react/dist/csr/CaretDown";
 import { CheckIcon } from "@phosphor-icons/react/dist/csr/Check";
-import { CircleNotchIcon } from "@phosphor-icons/react/dist/csr/CircleNotch";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { Spinner } from "@/components/ui/spinner";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { ClockIcon } from "@phosphor-icons/react/dist/csr/Clock";
 import { WarningCircleIcon } from "@phosphor-icons/react/dist/csr/WarningCircle";
 import { WrenchIcon } from "@phosphor-icons/react/dist/csr/Wrench";
@@ -54,13 +61,7 @@ function summary(steps: ToolStep[]) {
 
 function StatusIcon({ status }: { status: ToolStep["status"] }) {
   if (status === "running") {
-    return (
-      <CircleNotchIcon
-        className="motion-safe:animate-spin"
-        aria-hidden="true"
-        size={16}
-      />
-    );
+    return <Spinner aria-hidden="true" />;
   }
 
   if (status === "completed") {
@@ -173,42 +174,48 @@ export function ToolProcess({
 
   return (
     <Collapsible open={open} onOpenChange={setOpen} className="w-full min-w-0">
-      <CollapsibleTrigger
-        aria-label={`${skillName ? "Skill" : "Tool"} ${name} ${summary(steps)}`}
-        className={`flex min-h-8 max-w-full cursor-pointer items-center gap-2 rounded-lg px-2 py-1 text-left text-sm hover:bg-sidebar focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none ${failed ? "text-red-700" : "text-muted"}`}
-      >
-        {running ? (
-          <CircleNotchIcon
-            aria-hidden="true"
-            size={16}
-            className="shrink-0 motion-safe:animate-spin"
-          />
-        ) : (
-          <Icon aria-hidden="true" size={16} className="shrink-0" />
-        )}
-        <span className="shrink-0 rounded border border-line px-1.5 py-0.5 text-[11px] font-medium">
-          {skillName ? "Skill" : "Tool"}
-        </span>
-        <span className="min-w-0 truncate font-medium text-ink" title={name}>
-          {name}
-        </span>
-        <span
-          key={summary(steps)}
-          className="motion-content-enter text-xs"
-          role="status"
-        >
-          {summary(steps)}
-        </span>
-        <CaretDownIcon
-          aria-hidden="true"
-          size={14}
-          className={`motion-chevron shrink-0 ${open ? "rotate-180" : ""}`}
-        />
-      </CollapsibleTrigger>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <CollapsibleTrigger
+            aria-label={`${skillName ? "Skill" : "Tool"} ${name} ${summary(steps)}`}
+            className={`flex min-h-8 max-w-full cursor-pointer items-center gap-2 rounded-lg px-2 py-1 text-left text-sm hover:bg-sidebar focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none ${failed ? "text-red-700" : "text-muted"}`}
+          >
+            {running ? (
+              <Spinner aria-hidden="true" className="shrink-0" />
+            ) : (
+              <Icon aria-hidden="true" size={16} className="shrink-0" />
+            )}
+            <Badge
+              variant="outline"
+              className="shrink-0 rounded px-1.5 py-0.5 text-[11px]"
+            >
+              {skillName ? "Skill" : "Tool"}
+            </Badge>
+            <span className="min-w-0 truncate font-medium text-ink">
+              {name}
+            </span>
+            <span
+              key={summary(steps)}
+              className="motion-content-enter text-xs"
+              role="status"
+            >
+              {summary(steps)}
+            </span>
+            <CaretDownIcon
+              aria-hidden="true"
+              size={14}
+              className={`motion-chevron shrink-0 ${open ? "rotate-180" : ""}`}
+            />
+          </CollapsibleTrigger>
+        </TooltipTrigger>
+        <TooltipContent>{name}</TooltipContent>
+      </Tooltip>
       {error && (
-        <p className="mt-1 line-clamp-2 px-2 text-xs wrap-anywhere text-red-700">
-          {error}
-        </p>
+        <Alert variant="destructive" className="mt-1 p-2">
+          <AlertDescription className="text-xs wrap-anywhere">
+            {error}
+          </AlertDescription>
+        </Alert>
       )}
       <CollapsibleContent className="mt-2 space-y-3 border-l border-line pl-3">
         {process.map((entry, index) => (

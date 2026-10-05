@@ -20,16 +20,15 @@ test.describe("reply animation preference", () => {
     await settings
       .getByRole("combobox", { name: "Appearance", exact: true })
       .click();
-    await settings.getByRole("option", { name: "Dark", exact: true }).click();
+    await page.getByRole("option", { name: "Dark", exact: true }).click();
     await expect(page.locator("html")).toHaveClass(/dark/);
     await settings
       .getByRole("combobox", { name: "Send shortcut", exact: true })
       .click();
-    await settings.getByRole("option", { name: "Ctrl / Cmd + Enter" }).click();
+    await page.getByRole("option", { name: "Ctrl / Cmd + Enter" }).click();
     await settings
-      .getByRole("combobox", { name: "Reply animation", exact: true })
+      .getByRole("switch", { name: "Reply animation", exact: true })
       .click();
-    await settings.getByRole("option", { name: "Off", exact: true }).click();
     await capture(page, testInfo, "settings-dark.png");
     await settings.getByRole("button", { name: "Done", exact: true }).click();
     await expect(openSettings).toBeFocused();
@@ -74,16 +73,16 @@ test.describe("reply animation preference", () => {
       settings.getByRole("combobox", { name: "Send shortcut", exact: true }),
     ).toHaveText("Ctrl / Cmd + Enter");
     await expect(
-      settings.getByRole("combobox", { name: "Reply animation", exact: true }),
-    ).toHaveText("Off");
+      settings.getByRole("switch", { name: "Reply animation", exact: true }),
+    ).not.toBeChecked();
     await settings.getByRole("button", { name: "Reset preferences" }).click();
     await expect(page.locator("html")).not.toHaveClass(/dark/);
     await expect(
       settings.getByRole("combobox", { name: "Send shortcut", exact: true }),
     ).toHaveText("Enter");
     await expect(
-      settings.getByRole("combobox", { name: "Reply animation", exact: true }),
-    ).toHaveText("On");
+      settings.getByRole("switch", { name: "Reply animation", exact: true }),
+    ).toBeChecked();
     await settings.getByRole("button", { name: "Done", exact: true }).click();
     await expect(page.getByRole("region", { name: "Messages" })).toContainText(
       "A multiline task.",
@@ -120,11 +119,10 @@ test("settings work inside mobile navigation and closing them preserves the draw
   await settings
     .getByRole("combobox", { name: "Appearance", exact: true })
     .click();
-  await settings.getByRole("option", { name: "Dark", exact: true }).click();
+  await page.getByRole("option", { name: "Dark", exact: true }).click();
   await settings
-    .getByRole("combobox", { name: "Reply animation", exact: true })
+    .getByRole("switch", { name: "Reply animation", exact: true })
     .click();
-  await settings.getByRole("option", { name: "Off", exact: true }).click();
   await capture(page, testInfo, "settings-mobile.png");
   await page.keyboard.press("Escape");
   await expect(settings).not.toBeVisible();
@@ -147,13 +145,13 @@ test("settings dropdowns support keyboard selection and Escape closes only the m
 
   await appearance.focus();
   await page.keyboard.press("Enter");
-  await expect(settings.getByRole("listbox")).toBeVisible();
+  await expect(page.getByRole("listbox")).toBeVisible();
   await expect(
-    settings.getByRole("option", { name: "Light", exact: true }),
+    page.getByRole("option", { name: "Light", exact: true }),
   ).toBeFocused();
   await page.keyboard.press("ArrowDown");
   await expect(
-    settings.getByRole("option", { name: "Dark", exact: true }),
+    page.getByRole("option", { name: "Dark", exact: true }),
   ).toBeFocused();
   await page.keyboard.press("Enter");
   await expect(appearance).toHaveText("Dark");
@@ -161,9 +159,37 @@ test("settings dropdowns support keyboard selection and Escape closes only the m
   await expect(page.locator("html")).toHaveClass(/dark/);
   await appearance.click();
   await page.keyboard.press("Escape");
-  await expect(settings.getByRole("listbox")).toHaveCount(0);
+  await expect(page.getByRole("listbox")).toHaveCount(0);
   await expect(settings).toBeVisible();
   await expect(appearance).toBeFocused();
   await page.keyboard.press("Escape");
   await expect(settings).not.toBeVisible();
+});
+
+test("settings survive viewport changes and restore focus to the visible navigation control", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+  const composer = page.getByRole("textbox", { name: "Message" });
+  const settings = page.getByRole("dialog", { name: "Settings", exact: true });
+
+  await composer.fill("Keep the draft through settings resize.");
+  await page.getByRole("button", { name: "Open navigation" }).click();
+  await page.getByRole("button", { name: "Open settings" }).click();
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await expect(settings).toBeVisible();
+  await settings.getByRole("button", { name: "Done", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: "Collapse sidebar" }),
+  ).toBeFocused();
+  await expect(composer).toHaveValue("Keep the draft through settings resize.");
+  await page.getByRole("button", { name: "Open settings" }).click();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(settings).toBeVisible();
+  await settings.getByRole("button", { name: "Done", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: "Open navigation" }),
+  ).toBeFocused();
+  await expect(composer).toHaveValue("Keep the draft through settings resize.");
 });

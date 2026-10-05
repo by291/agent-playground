@@ -1,4 +1,9 @@
 import "./gallery.css";
+import {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+} from "@/components/ui/tooltip";
 import { AppBrand } from "@/components/AppBrand";
 import { ArrowCounterClockwiseIcon } from "@phosphor-icons/react/dist/csr/ArrowCounterClockwise";
 import { BracketsCurlyIcon } from "@phosphor-icons/react/dist/csr/BracketsCurly";
@@ -8,6 +13,8 @@ import { lazy, Suspense, useState } from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Spinner } from "@/components/ui/spinner";
 import {
   Select,
   SelectContent,
@@ -50,12 +57,14 @@ export function ComponentsPage() {
       <main className="flex min-h-0 flex-1 flex-col gap-5 p-4 sm:p-6 lg:px-9">
         <div className="flex shrink-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0">
-            <p
-              title={workflowCatalog.id}
-              className="text-sm font-semibold text-ink"
-            >
-              Component workspace
-            </p>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <p className="text-sm font-semibold text-ink">
+                  Component workspace
+                </p>
+              </TooltipTrigger>
+              <TooltipContent>{workflowCatalog.id}</TooltipContent>
+            </Tooltip>
             <p className="mt-1 text-xs/5 text-muted">
               Edit a component’s JSON example to see its rendered result.
             </p>
@@ -119,7 +128,15 @@ export function ComponentsPage() {
             <div className="h-[52vh] min-h-88 lg:h-auto lg:min-h-0 lg:flex-1">
               <Suspense
                 fallback={
-                  <p className="p-4 text-sm text-muted">Loading editor…</p>
+                  <div className="space-y-4 p-4" role="status">
+                    <p className="flex items-center gap-2 text-sm text-muted">
+                      <Spinner aria-hidden="true" />
+                      Loading editor…
+                    </p>
+                    <Skeleton className="h-4 w-3/4" />
+                    <Skeleton className="h-4 w-1/2" />
+                    <Skeleton className="h-4 w-2/3" />
+                  </div>
                 }
               >
                 <JsonEditor

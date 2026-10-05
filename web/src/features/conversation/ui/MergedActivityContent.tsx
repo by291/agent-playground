@@ -1,4 +1,9 @@
-import { useState } from "react";
+import {
+  Collapsible,
+  CollapsibleTrigger,
+  CollapsibleContent,
+} from "@/components/ui/collapsible";
+import { Button } from "@/components/ui/button";
 import type { ActivityStream } from "../model/activity";
 import { JsonPayload } from "./JsonPayload";
 
@@ -9,8 +14,6 @@ export function MergedActivityContent({
   stream: ActivityStream;
   toolArguments: boolean;
 }) {
-  const [hasOpenedRaw, setHasOpenedRaw] = useState(false);
-
   return (
     <div className="mt-3">
       <p className="text-xs text-muted">
@@ -37,18 +40,13 @@ export function MergedActivityContent({
           {stream.content}
         </pre>
       )}
-      <details
-        className="motion-details mt-3"
-        onToggle={(event) => {
-          if (event.currentTarget.open) {
-            setHasOpenedRaw(true);
-          }
-        }}
-      >
-        <summary className="cursor-pointer rounded-sm py-2 text-xs/6 text-muted focus-visible:outline-2 focus-visible:outline-muted">
-          Original events ({stream.events.length})
-        </summary>
-        {hasOpenedRaw && (
+      <Collapsible className="mt-3">
+        <CollapsibleTrigger asChild>
+          <Button variant="ghost" size="sm">
+            Original events ({stream.events.length})
+          </Button>
+        </CollapsibleTrigger>
+        <CollapsibleContent keepMounted>
           <JsonPayload
             source={JSON.stringify(
               stream.events.map(({ event }) => event),
@@ -56,8 +54,8 @@ export function MergedActivityContent({
               2,
             )}
           />
-        )}
-      </details>
+        </CollapsibleContent>
+      </Collapsible>
     </div>
   );
 }

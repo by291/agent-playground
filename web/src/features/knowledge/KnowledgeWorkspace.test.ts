@@ -2,7 +2,9 @@
 import { createElement } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
+import { MotionGlobalConfig } from "motion/react";
 import { KnowledgeWorkspace } from "./KnowledgeWorkspace";
 
 const documentFixture = {
@@ -31,31 +33,12 @@ function renderWorkspace() {
   return { client, view };
 }
 
-function mockDialog() {
-  Object.defineProperties(HTMLDialogElement.prototype, {
-    showModal: {
-      configurable: true,
-      value(this: HTMLDialogElement) {
-        this.setAttribute("open", "");
-      },
-    },
-    close: {
-      configurable: true,
-      value(this: HTMLDialogElement) {
-        this.removeAttribute("open");
-        this.dispatchEvent(new Event("close"));
-      },
-    },
-  });
-}
-
 afterEach(() => {
-  Reflect.deleteProperty(HTMLDialogElement.prototype, "showModal");
-  Reflect.deleteProperty(HTMLDialogElement.prototype, "close");
+  MotionGlobalConfig.skipAnimations = true;
 });
 
 test("document deletion requires confirmation, blocks pending dismissal and preserves a failed request for retry", async () => {
-  mockDialog();
+  MotionGlobalConfig.skipAnimations = false;
   let completeDelete: ((response: Response) => void) | undefined;
   let removed = false;
   let deleteRequests = 0;
@@ -81,43 +64,46 @@ test("document deletion requires confirmation, blocks pending dismissal and pres
     }),
   );
   const { client, view } = renderWorkspace();
+  const user = userEvent.setup();
   const deleteTrigger = await view.findByRole("button", {
     name: "Delete policy.md",
   });
 
-  fireEvent.click(deleteTrigger);
-  const dialog = view.getByRole("dialog", { name: "Delete document?" });
+  await user.click(deleteTrigger);
+  let dialog = view.getByRole("alertdialog", { name: "Delete document?" });
 
   expect(dialog).toHaveTextContent("shared knowledge base");
-  fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+  expect(within(dialog).getByRole("button", { name: "Cancel" })).toHaveFocus();
+  await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
   expect(deleteRequests).toBe(0);
-  expect(dialog).not.toHaveAttribute("open");
-  fireEvent.click(deleteTrigger);
-  fireEvent.click(
+  expect(view.queryByRole("alertdialog")).toBeNull();
+  expect(deleteTrigger).toHaveFocus();
+  await user.click(deleteTrigger);
+  dialog = view.getByRole("alertdialog", { name: "Delete document?" });
+  await user.click(
     within(dialog).getByRole("button", {
       name: "Delete document",
     }),
   );
   expect(deleteRequests).toBe(1);
   expect(within(dialog).getByRole("button", { name: "Cancel" })).toBeDisabled();
-  const cancel = new Event("cancel", { cancelable: true });
-
-  fireEvent(dialog, cancel);
-  expect(cancel.defaultPrevented).toBe(true);
+  await user.keyboard("{Escape}");
+  expect(view.getByRole("alertdialog")).toBe(dialog);
   completeDelete?.(
     Response.json({ error: "Storage offline" }, { status: 503 }),
   );
   await within(dialog).findByRole("alert");
-  expect(dialog).toHaveAttribute("open");
+  expect(view.getByRole("alertdialog")).toBe(dialog);
   expect(view.getAllByText("Storage offline")).toHaveLength(1);
-  fireEvent.click(
+  await user.click(
     within(dialog).getByRole("button", {
       name: "Delete document",
     }),
   );
-  await waitFor(() => expect(dialog).not.toHaveAttribute("open"));
+  await waitFor(() => expect(view.queryByRole("alertdialog")).toBeNull());
   expect(deleteRequests).toBe(2);
   await waitFor(() => expect(view.queryByText("policy.md")).toBeNull());
+  expect(view.getByRole("button", { name: "Upload document" })).toHaveFocus();
   view.unmount();
   client.clear();
 });
@@ -185,9 +171,7 @@ test("failed uploads keep their file and stable identity for a retry", async () 
     ),
   );
 
-  await view.findByText(
-    "No documents yet. Upload a file to build your shared knowledge base.",
-  );
+  await view.findByText("Upload a file to build your shared knowledge base.");
   fireEvent.change(view.getByLabelText("Document file"), {
     target: { files: [new File(["returns"], "policy.md")] },
   });

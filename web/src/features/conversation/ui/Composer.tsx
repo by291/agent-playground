@@ -9,7 +9,21 @@ import {
 } from "react";
 import { PaperclipIcon } from "@phosphor-icons/react/dist/csr/Paperclip";
 import { XIcon } from "@phosphor-icons/react/dist/csr/X";
-import { CircleNotchIcon } from "@phosphor-icons/react/dist/csr/CircleNotch";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import {
+  Attachment,
+  AttachmentAction,
+  AttachmentActions,
+  AttachmentContent,
+  AttachmentTitle,
+} from "@/components/ui/attachment";
+import { Kbd } from "@/components/ui/kbd";
+import { Spinner } from "@/components/ui/spinner";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { AnimatePresence } from "motion/react";
 import { AnimatedDiv } from "@/components/ui/motion";
 import { maxSkillFileBytes, skillFilenameSchema } from "@shared/skill-files";
@@ -226,22 +240,38 @@ export function Composer({
                       padding: 0,
                       borderWidth: 0,
                     }}
-                    className="flex max-w-full items-center gap-2 overflow-hidden rounded-lg border border-line px-2 py-1 text-xs"
+                    className="max-w-full min-w-0 overflow-hidden"
                   >
-                    <span className="truncate">{file.name}</span>
-                    <button
-                      type="button"
-                      aria-label={`Remove ${file.name}`}
-                      disabled={disabled}
-                      className="rounded p-1 hover:bg-sidebar focus-visible:ring-2 focus-visible:ring-accent"
-                      onClick={() =>
-                        setFiles((previous) =>
-                          previous.filter((item) => item.id !== id),
-                        )
-                      }
+                    <Attachment
+                      size="xs"
+                      state={uploading ? "uploading" : "idle"}
+                      className="min-w-0 flex-nowrap border-line"
                     >
-                      <XIcon size={14} aria-hidden="true" />
-                    </button>
+                      <AttachmentContent className="max-w-52">
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <AttachmentTitle tabIndex={disabled ? -1 : 0}>
+                              {file.name}
+                            </AttachmentTitle>
+                          </TooltipTrigger>
+                          <TooltipContent>{file.name}</TooltipContent>
+                        </Tooltip>
+                      </AttachmentContent>
+                      <AttachmentActions>
+                        <AttachmentAction
+                          type="button"
+                          aria-label={`Remove ${file.name}`}
+                          disabled={disabled}
+                          onClick={() =>
+                            setFiles((previous) =>
+                              previous.filter((item) => item.id !== id),
+                            )
+                          }
+                        >
+                          <XIcon size={14} aria-hidden="true" />
+                        </AttachmentAction>
+                      </AttachmentActions>
+                    </Attachment>
                   </AnimatedDiv>
                 ))}
               </AnimatePresence>
@@ -256,9 +286,9 @@ export function Composer({
               </p>
             )}
             {uploadError && (
-              <p role="alert" className="px-1 text-sm text-red-700">
-                {uploadError}
-              </p>
+              <Alert variant="destructive" className="px-3 py-2">
+                <AlertDescription>{uploadError}</AlertDescription>
+              </Alert>
             )}
             <InputGroupTextarea
               rows={1}
@@ -284,9 +314,17 @@ export function Composer({
                 <PaperclipIcon size={18} aria-hidden="true" />
               </InputGroupButton>
               <InputGroupText className="hidden min-w-0 truncate text-[11px] text-soft sm:block">
-                {preferences.sendShortcut === "enter"
-                  ? "Enter to send · Shift + Enter for a new line"
-                  : "Ctrl/Cmd + Enter to send · Enter for a new line"}
+                {preferences.sendShortcut === "enter" ? (
+                  <>
+                    <Kbd>Enter</Kbd> to send · <Kbd>Shift + Enter</Kbd> for a
+                    new line
+                  </>
+                ) : (
+                  <>
+                    <Kbd>Ctrl/Cmd + Enter</Kbd> to send · <Kbd>Enter</Kbd> for a
+                    new line
+                  </>
+                )}
               </InputGroupText>
               <div className="ml-auto flex min-w-0 items-center gap-2">
                 <ContextIndicator />
@@ -299,11 +337,7 @@ export function Composer({
                   className="size-10 rounded-md"
                 >
                   {uploading || recovering || responding ? (
-                    <CircleNotchIcon
-                      size={19}
-                      aria-hidden="true"
-                      className="motion-safe:animate-spin"
-                    />
+                    <Spinner aria-hidden="true" className="size-5" />
                   ) : (
                     <ArrowUpIcon size={19} weight="bold" aria-hidden="true" />
                   )}

@@ -53,5 +53,6 @@ test("recovered Skill outputs are downloadable while the tool process is collaps
     link.getAttribute("href"),
     "/conversations/file-thread/files/00000000-0000-4000-8000-000000000001",
   );
+  assert.equal(link.getAttribute("download"), "summary.json");
   assert.equal(view.queryByText("done"), null);
 });

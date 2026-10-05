@@ -1,3 +1,5 @@
+import { Skeleton } from "@/components/ui/skeleton";
+import { Spinner } from "@/components/ui/spinner";
 import { lazy, Suspense } from "react";
 import { NotFoundPage } from "@/pages/NotFoundPage";
 import { ChatPage } from "@/pages/chat/ChatPage";
@@ -52,8 +54,17 @@ function CurrentPage() {
         <title>A2UI Components · Agent Playground</title>
         <Suspense
           fallback={
-            <div className="min-h-dvh bg-canvas p-8 text-sm text-muted">
-              Loading components…
+            <div
+              role="status"
+              aria-label="Loading components"
+              className="min-h-dvh space-y-4 bg-canvas p-8 text-sm text-muted"
+            >
+              <div className="flex items-center gap-2">
+                <Spinner aria-hidden="true" />
+                Loading components…
+              </div>
+              <Skeleton className="h-10 max-w-sm" />
+              <Skeleton className="h-80" />
             </div>
           }
         >

@@ -10,6 +10,20 @@ if (typeof document !== "undefined") {
 
   await import("@testing-library/jest-dom/vitest");
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+  // jsdom has no layout observer; real browser tests cover resizing and overflow.
+  globalThis.ResizeObserver = class implements ResizeObserver {
+    observe() {
+      return;
+    }
+
+    unobserve() {
+      return;
+    }
+
+    disconnect() {
+      return;
+    }
+  };
   // Browser tests verify scrolling; jsdom needs a stable implementation for hooks.
   Object.defineProperty(HTMLElement.prototype, "scrollTo", {
     configurable: true,

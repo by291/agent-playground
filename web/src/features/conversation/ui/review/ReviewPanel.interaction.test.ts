@@ -2,7 +2,7 @@
 import { test } from "vitest";
 import assert from "node:assert/strict";
 import { createElement } from "react";
-import { render } from "@testing-library/react";
+import { render, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ReviewPanel } from "./ReviewPanel";
 import type { PlanReviewResponse } from "../../model/planReview";
@@ -58,4 +58,71 @@ test("review approval submits edited values and running prevents another decisio
 
   assert.ok(title instanceof HTMLInputElement);
   assert.equal(title.value, "  Edited plan  ");
+});
+
+test("batch decisions are exclusive keyboard choices and submit only after every plan is decided", async () => {
+  const decisions: PlanReviewResponse[][] = [];
+  const page = render(
+    createElement(ReviewPanel, {
+      reviews: [
+        { interruptId: "first", title: "First plan", steps: ["First step"] },
+        { interruptId: "second", title: "Second plan", steps: ["Second step"] },
+      ],
+      running: false,
+      onReview: (responses: PlanReviewResponse[]) => {
+        decisions.push(responses);
+
+        return Promise.resolve();
+      },
+    }),
+  );
+  const user = userEvent.setup();
+  const first = within(
+    page.getByRole("radiogroup", { name: "Decision for plan 1" }),
+  );
+  const second = within(
+    page.getByRole("radiogroup", { name: "Decision for plan 2" }),
+  );
+  const continueButton = page.getByRole("button", {
+    name: "Continue workflow",
+  });
+
+  assert.equal(continueButton.hasAttribute("disabled"), true);
+  await user.click(first.getByRole("radio", { name: "Reject" }));
+  // Radix defers arrow focus until after keydown. Hold it through that focus change.
+  await user.keyboard("{ArrowLeft>}");
+  await waitFor(() =>
+    assert.equal(
+      first
+        .getByRole("radio", { name: "Approve plan" })
+        .getAttribute("aria-checked"),
+      "true",
+    ),
+  );
+  await user.keyboard("{/ArrowLeft}");
+  assert.equal(
+    first.getByRole("radio", { name: "Reject" }).getAttribute("aria-checked"),
+    "false",
+  );
+  assert.equal(continueButton.hasAttribute("disabled"), true);
+  assert.deepEqual(decisions, []);
+  await user.click(second.getByRole("radio", { name: "Reject" }));
+  await user.click(continueButton);
+
+  assert.deepEqual(decisions, [
+    [
+      {
+        interruptId: "first",
+        title: "First plan",
+        steps: ["First step"],
+        decision: "approve",
+      },
+      {
+        interruptId: "second",
+        title: "Second plan",
+        steps: ["Second step"],
+        decision: "reject",
+      },
+    ],
+  ]);
 });

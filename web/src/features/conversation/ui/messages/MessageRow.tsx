@@ -2,6 +2,7 @@ import type { Message } from "@ag-ui/client";
 import { useLayoutEffect, useRef, type ReactNode } from "react";
 import { StackIcon } from "@phosphor-icons/react/dist/csr/Stack";
 import { Bubble, BubbleContent } from "@/components/ui/bubble";
+import { Spinner } from "@/components/ui/spinner";
 import {
   Message as ConversationMessage,
   MessageAvatar,
@@ -137,12 +138,8 @@ export function ThinkingStatus({ label = "Thinking" }: { label?: string }) {
       className="flex min-h-8 items-center gap-2 text-sm text-muted"
       role="status"
     >
+      <Spinner aria-hidden="true" />
       <span>{label}</span>
-      <span className="flex items-center gap-1" aria-hidden="true">
-        <span className="thinking-dot" />
-        <span className="thinking-dot" />
-        <span className="thinking-dot" />
-      </span>
     </div>
   );
 }

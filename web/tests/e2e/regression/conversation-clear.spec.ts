@@ -226,7 +226,11 @@ test("the confirmation layer preserves settings layout and restores focus on can
   );
 
   await page.getByRole("button", { name: "Open settings" }).click();
-  const settings = page.getByRole("dialog", { name: "Settings", exact: true });
+  const settings = page.getByRole("dialog", {
+    name: "Settings",
+    exact: true,
+    includeHidden: true,
+  });
   const trigger = settings.getByRole("button", {
     name: "Clear all conversations",
     exact: true,
@@ -257,8 +261,60 @@ test("the confirmation layer preserves settings layout and restores focus on can
   expect(await settings.boundingBox()).toEqual(bounds);
   await trigger.click();
   await page.mouse.click(8, 8);
+  await expect(confirmation).toBeVisible();
+  await confirmation
+    .getByRole("button", { name: "Cancel", exact: true })
+    .click();
   await expect(confirmation).not.toBeVisible();
   await expect(settings).toBeVisible();
   await expect(trigger).toBeFocused();
   expect(history.deletions()).toBe(0);
+});
+
+test("a failed clear stays open and permits an explicit retry", async ({
+  page,
+}) => {
+  let attempts = 0;
+  const history = await savedHistory(page, () => {
+    attempts += 1;
+
+    if (attempts === 1) {
+      return Promise.resolve({
+        status: 409,
+        error: "Wait for the run to finish",
+      });
+    }
+
+    return Promise.resolve({ status: 204 });
+  });
+
+  await page.getByRole("button", { name: "Open settings" }).click();
+  const settings = page.getByRole("dialog", { name: "Settings", exact: true });
+  const trigger = settings.getByRole("button", {
+    name: "Clear all conversations",
+    exact: true,
+  });
+
+  await trigger.click();
+  const confirmation = page.getByRole("alertdialog", {
+    name: "Clear all conversations?",
+    exact: true,
+  });
+  const confirm = confirmation.getByRole("button", {
+    name: "Delete all conversations",
+    exact: true,
+  });
+
+  await confirm.click();
+  await expect(confirmation.getByRole("alert")).toContainText(
+    "Wait for the run to finish",
+  );
+  await expect(confirmation).toBeVisible();
+  await expect(confirm).toBeEnabled();
+  expect(history.deletions()).toBe(1);
+  await confirm.click();
+  await expect(confirmation).not.toBeVisible();
+  await expect(settings).toBeVisible();
+  await expect(trigger).toBeFocused();
+  expect(history.deletions()).toBe(2);
 });

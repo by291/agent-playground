@@ -1,72 +1,136 @@
-import { useRef, useState, type SubmitEvent } from "react";
-import * as Popover from "@radix-ui/react-popover";
+import {
+  createContext,
+  useContext,
+  useId,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { DotsThreeIcon } from "@phosphor-icons/react/dist/csr/DotsThree";
 import { PencilSimpleIcon } from "@phosphor-icons/react/dist/csr/PencilSimple";
 import { TrashIcon } from "@phosphor-icons/react/dist/csr/Trash";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Field, FieldError, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { cn } from "cn";
+import { Spinner } from "@/components/ui/spinner";
 import { conversationTitleSchema } from "@shared/conversation";
+import { isRunActive, type RunStatus } from "@shared/run-status";
 import type { ConversationHistory } from "../model/useConversationHistory";
-import { motion } from "motion/react";
-import { useMotionTiming } from "@/components/ui/motion";
 
-export function ConversationActions({
-  threadId,
-  title,
-  deletionBlocked,
-  history,
-}: {
+interface ConversationActionsProps {
   threadId: string;
   title: string;
   deletionBlocked: boolean;
   history: ConversationHistory;
+}
+
+interface ConversationActionTarget extends ConversationActionsProps {
+  action: "rename" | "delete";
+}
+
+interface ConversationActionsState {
+  pending: boolean;
+  openAction: (
+    action: ConversationActionTarget["action"],
+    target: ConversationActionsProps,
+  ) => void;
+}
+
+const ConversationActionsContext =
+  createContext<ConversationActionsState | null>(null);
+
+export function ConversationActionsProvider({
+  children,
+  history,
+  current,
+}: {
+  children: ReactNode;
+  history?: ConversationHistory | undefined;
+  current?:
+    { threadId: string; status: RunStatus | null; busy: boolean } | undefined;
 }) {
-  const [open, setOpen] = useState(false);
-  const timing = useMotionTiming("panel");
-  const [mode, setMode] = useState<"actions" | "rename" | "delete">("actions");
-  const [draft, setDraft] = useState(title);
+  const id = useId();
+  const [target, setTarget] = useState<ConversationActionTarget | null>(null);
+  const [draft, setDraft] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const trigger = useRef<HTMLButtonElement>(null);
-  const [portalContainer, setPortalContainer] = useState<HTMLElement | null>(
-    null,
+  const focusThreadId = useRef<string | null>(null);
+  const action = target?.action ?? null;
+  const activeHistory = history ?? target?.history;
+  const entry = activeHistory?.conversations.find(
+    (entry) => entry.threadId === target?.threadId,
   );
-  const actionLabel =
-    mode === "rename" ? "Rename conversation" : "Delete conversation";
-  let submitLabel = mode === "rename" ? "Save title" : "Delete conversation";
+  const currentBlocked =
+    current !== undefined &&
+    current.threadId === target?.threadId &&
+    (current.busy ||
+      (current.status !== null && isRunActive(current.status)) ||
+      current.status === "submission_unknown");
+  const deletionBlocked =
+    currentBlocked ||
+    (entry
+      ? (entry.status !== null && isRunActive(entry.status)) ||
+        entry.status === "submission_unknown"
+      : (target?.deletionBlocked ?? false));
 
-  if (pending) {
-    submitLabel = "Saving…";
-  }
-
-  function changeOpen(next: boolean) {
-    if (pending) {
+  function openAction(
+    next: "rename" | "delete",
+    nextTarget: ConversationActionsProps,
+  ) {
+    if (pending || (next === "delete" && nextTarget.deletionBlocked)) {
       return;
     }
 
-    setOpen(next);
-
-    if (next) {
-      // A body portal is inert behind the mobile navigation's native modal dialog.
-      setPortalContainer(trigger.current?.closest("dialog") ?? null);
-      setMode("actions");
-      setDraft(title);
-      setError(null);
-      history.refresh();
-    }
+    focusThreadId.current = nextTarget.threadId;
+    setDraft(nextTarget.title);
+    setError(null);
+    setTarget({ ...nextTarget, action: next });
   }
 
-  async function submit(event: SubmitEvent<HTMLFormElement>) {
-    event.preventDefault();
+  function changeActionOpen(open: boolean) {
+    if (pending || open) {
+      return;
+    }
 
-    if (pending) {
+    setTarget(null);
+  }
+
+  async function submit(next: "rename" | "delete") {
+    if (
+      !target ||
+      !activeHistory ||
+      pending ||
+      (next === "delete" && deletionBlocked)
+    ) {
       return;
     }
 
     const parsed = conversationTitleSchema.safeParse(draft);
 
-    if (mode === "rename" && !parsed.success) {
+    if (next === "rename" && !parsed.success) {
       setError("Enter a title between 1 and 100 characters.");
 
       return;
@@ -76,13 +140,13 @@ export function ConversationActions({
     setError(null);
 
     try {
-      if (mode === "rename" && parsed.success) {
-        await history.rename(threadId, parsed.data);
-      } else if (mode === "delete") {
-        await history.remove(threadId);
+      if (next === "rename" && parsed.success) {
+        await activeHistory.rename(target.threadId, parsed.data);
+      } else if (next === "delete") {
+        await activeHistory.remove(target.threadId);
       }
 
-      setOpen(false);
+      setTarget(null);
     } catch (cause) {
       setError(
         cause instanceof Error ? cause.message : "Conversation update failed",
@@ -92,124 +156,253 @@ export function ConversationActions({
     }
   }
 
+  function restoreTriggerFocus(event: Event) {
+    event.preventDefault();
+
+    // Responsive navigation replaces row elements; restore the current trigger.
+    const triggers = Array.from(
+      document.querySelectorAll<HTMLButtonElement>(
+        "[data-conversation-actions]",
+      ),
+    );
+    const trigger = triggers.find(
+      (element) =>
+        element.dataset.conversationActions === focusThreadId.current &&
+        element.isConnected &&
+        !element.closest(
+          '[hidden], [inert], [data-slot="sheet-content"][data-state="closed"]',
+        ) &&
+        getComputedStyle(element).display !== "none" &&
+        getComputedStyle(element).visibility !== "hidden",
+    );
+
+    if (trigger) {
+      trigger.focus();
+
+      return;
+    }
+
+    const navigationTriggers = [
+      document.getElementById("workspace-sidebar-trigger"),
+      document.getElementById("workspace-navigation-trigger"),
+    ];
+    const navigationTrigger = navigationTriggers.find(
+      (element) =>
+        element?.isConnected &&
+        getComputedStyle(element).display !== "none" &&
+        getComputedStyle(element).visibility !== "hidden",
+    );
+
+    navigationTrigger?.focus();
+  }
+
   return (
-    <Popover.Root open={open} onOpenChange={changeOpen} modal>
-      <Popover.Trigger asChild>
+    <ConversationActionsContext.Provider value={{ pending, openAction }}>
+      {children}
+      <Dialog open={action === "rename"} onOpenChange={changeActionOpen}>
+        <DialogContent
+          showCloseButton={false}
+          className="fixed top-1/2 left-1/2 z-50 w-[calc(100%-2rem)] max-w-md origin-top-left transform-[translate(-50%,-50%)] rounded-xl border border-line bg-surface p-5 text-ink shadow-xl outline-none sm:p-6"
+          aria-busy={pending}
+          onCloseAutoFocus={restoreTriggerFocus}
+          onEscapeKeyDown={(event) => {
+            if (pending) {
+              event.preventDefault();
+            }
+          }}
+          onInteractOutside={(event) => {
+            if (pending) {
+              event.preventDefault();
+            }
+          }}
+        >
+          <DialogTitle className="text-lg font-semibold">
+            Rename conversation
+          </DialogTitle>
+          <DialogDescription className="mt-1 text-sm text-muted">
+            Update the title shown in your conversation history.
+          </DialogDescription>
+          <form
+            className="mt-5 space-y-5"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void submit("rename");
+            }}
+          >
+            <Field data-invalid={Boolean(error)}>
+              <FieldLabel htmlFor={`${id}-title`}>
+                Conversation title
+              </FieldLabel>
+              <Input
+                id={`${id}-title`}
+                value={draft}
+                disabled={pending}
+                aria-invalid={Boolean(error)}
+                aria-describedby={error ? `${id}-error` : undefined}
+                onChange={(event) => setDraft(event.target.value)}
+              />
+              {error && <FieldError id={`${id}-error`}>{error}</FieldError>}
+            </Field>
+            <div className="flex justify-end gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                disabled={pending}
+                onClick={() => changeActionOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" disabled={pending}>
+                {pending && <Spinner aria-hidden="true" />}
+                {pending ? "Saving…" : "Save title"}
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+      <AlertDialog open={action === "delete"} onOpenChange={changeActionOpen}>
+        <AlertDialogContent
+          className="w-[calc(100%-2rem)] sm:max-w-md"
+          aria-busy={pending}
+          onCloseAutoFocus={restoreTriggerFocus}
+          onEscapeKeyDown={(event) => {
+            if (pending) {
+              event.preventDefault();
+            }
+          }}
+        >
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete conversation?</AlertDialogTitle>
+            <AlertDialogDescription className="wrap-break-word">
+              “{target?.title}” will be removed from your history.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {deletionBlocked && (
+            <p className="text-xs text-muted">
+              Wait for the run to finish before deleting.
+            </p>
+          )}
+          {error && (
+            <Alert variant="destructive">
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          )}
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={pending}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              disabled={pending || deletionBlocked}
+              onClick={(event) => {
+                event.preventDefault();
+                void submit("delete");
+              }}
+            >
+              {pending && <Spinner aria-hidden="true" />}
+              {pending ? "Deleting…" : "Delete conversation"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </ConversationActionsContext.Provider>
+  );
+}
+
+export function ConversationActions(props: ConversationActionsProps) {
+  const sharedActions = useContext(ConversationActionsContext);
+
+  if (sharedActions) {
+    return <ConversationActionsMenu {...props} />;
+  }
+
+  return (
+    <ConversationActionsProvider
+      history={props.history}
+      current={{
+        threadId: props.threadId,
+        status: null,
+        busy: props.deletionBlocked,
+      }}
+    >
+      <ConversationActionsMenu {...props} />
+    </ConversationActionsProvider>
+  );
+}
+
+function ConversationActionsMenu(props: ConversationActionsProps) {
+  const { threadId, title, deletionBlocked, history } = props;
+  const actions = useContext(ConversationActionsContext);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const openingDialog = useRef(false);
+
+  if (!actions) {
+    throw new Error("Conversation actions require a modal provider.");
+  }
+
+  const { pending, openAction: openSharedAction } = actions;
+
+  function changeMenuOpen(next: boolean) {
+    if (pending) {
+      return;
+    }
+
+    setMenuOpen(next);
+
+    if (next) {
+      history.refresh();
+    }
+  }
+
+  function openAction(next: "rename" | "delete") {
+    openingDialog.current = true;
+    openSharedAction(next, props);
+  }
+
+  return (
+    <DropdownMenu open={menuOpen} onOpenChange={changeMenuOpen}>
+      <DropdownMenuTrigger asChild>
         <Button
-          ref={trigger}
           type="button"
           variant="ghost"
           size="icon"
           className="workspace-toolbar-button size-8 shrink-0"
           aria-label={`Actions for ${title}`}
+          data-conversation-actions={threadId}
         >
           <DotsThreeIcon size={20} aria-hidden="true" />
         </Button>
-      </Popover.Trigger>
-      <Popover.Portal container={portalContainer ?? undefined}>
-        <Popover.Content
-          side={portalContainer ? "bottom" : "right"}
-          align={portalContainer ? "end" : "start"}
-          sideOffset={6}
-          collisionPadding={12}
-          aria-label={mode === "actions" ? "Conversation actions" : actionLabel}
-          className="motion-popover z-50 text-sm text-ink"
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
+        side="right"
+        align="start"
+        sideOffset={6}
+        collisionPadding={12}
+        aria-label="Conversation actions"
+        className="w-44"
+        onCloseAutoFocus={(event) => {
+          if (openingDialog.current) {
+            event.preventDefault();
+            openingDialog.current = false;
+          }
+        }}
+      >
+        <DropdownMenuItem onSelect={() => openAction("rename")}>
+          <PencilSimpleIcon aria-hidden="true" />
+          Rename
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          variant="destructive"
+          disabled={deletionBlocked}
+          onSelect={() => openAction("delete")}
         >
-          <motion.div
-            layout="size"
-            transition={timing}
-            className={cn(
-              "max-w-[calc(100vw-1.5rem)] overflow-hidden rounded-lg border border-line bg-surface shadow-md",
-              mode === "actions" ? "w-44 p-1" : "w-56 p-3 sm:w-72",
-            )}
-          >
-            {mode === "actions" ? (
-              <motion.div
-                key="actions"
-                layout="position"
-                className="motion-content-enter flex flex-col gap-0.5"
-              >
-                <Button
-                  type="button"
-                  variant="ghost"
-                  className="h-11 justify-start gap-2 rounded-md px-2.5 font-normal focus-visible:border-muted focus-visible:bg-selected focus-visible:ring-0 sm:h-8"
-                  onClick={() => setMode("rename")}
-                >
-                  <PencilSimpleIcon aria-hidden="true" />
-                  Rename
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  className="h-11 justify-start gap-2 rounded-md px-2.5 font-normal text-destructive focus-visible:border-muted focus-visible:bg-selected focus-visible:ring-0 sm:h-8"
-                  disabled={deletionBlocked}
-                  onClick={() => setMode("delete")}
-                >
-                  <TrashIcon aria-hidden="true" />
-                  Delete
-                </Button>
-                {deletionBlocked && (
-                  <p className="px-2 pt-1 text-xs text-muted">
-                    Wait for the run to finish before deleting.
-                  </p>
-                )}
-              </motion.div>
-            ) : (
-              <motion.form
-                onSubmit={(event) => {
-                  void submit(event);
-                }}
-                key={mode}
-                layout="position"
-                className="motion-content-enter space-y-3"
-              >
-                {mode === "rename" ? (
-                  <label className="block space-y-2">
-                    <span className="font-medium">Conversation title</span>
-                    <Input
-                      value={draft}
-                      disabled={pending}
-                      onChange={(event) => setDraft(event.target.value)}
-                      autoFocus
-                    />
-                  </label>
-                ) : (
-                  <div className="space-y-2">
-                    <p className="font-medium">Delete conversation?</p>
-                    <p className="wrap-break-word text-muted">
-                      “{title}” will be removed from your history.
-                    </p>
-                  </div>
-                )}
-                {error && (
-                  <p role="alert" className="text-destructive">
-                    {error}
-                  </p>
-                )}
-                <div className="flex justify-end gap-2">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    className="h-10"
-                    disabled={pending}
-                    onClick={() => setOpen(false)}
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    type="submit"
-                    variant={mode === "delete" ? "destructive" : "default"}
-                    className="h-10"
-                    disabled={pending || (mode === "delete" && deletionBlocked)}
-                  >
-                    {submitLabel}
-                  </Button>
-                </div>
-              </motion.form>
-            )}
-          </motion.div>
-        </Popover.Content>
-      </Popover.Portal>
-    </Popover.Root>
+          <TrashIcon aria-hidden="true" />
+          Delete
+        </DropdownMenuItem>
+        {deletionBlocked && (
+          <p className="px-2 pt-1 text-xs text-muted">
+            Wait for the run to finish before deleting.
+          </p>
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }

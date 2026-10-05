@@ -1,4 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
+import {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+} from "@/components/ui/tooltip";
 import { Badge } from "@/components/ui/badge";
 
 export function ConnectionStatus({ compact = false }: { compact?: boolean }) {
@@ -26,15 +31,19 @@ export function ConnectionStatus({ compact = false }: { compact?: boolean }) {
   }
 
   return (
-    <Badge
-      variant="outline"
-      role="status"
-      aria-label={label}
-      title={compact ? label : undefined}
-      className={`h-8 gap-2 border-transparent bg-transparent text-xs text-muted ${compact ? "justify-center px-2" : "justify-start px-0"}`}
-    >
-      <span className={`size-2 rounded-full ${statusColor}`} />
-      <span className={compact ? "sr-only" : undefined}>{label}</span>
-    </Badge>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Badge
+          variant="outline"
+          role="status"
+          aria-label={label}
+          className={`h-8 gap-2 border-transparent bg-transparent text-xs text-muted ${compact ? "justify-center px-2" : "justify-start px-0"}`}
+        >
+          <span className={`size-2 rounded-full ${statusColor}`} />
+          <span className={compact ? "sr-only" : undefined}>{label}</span>
+        </Badge>
+      </TooltipTrigger>
+      <TooltipContent side="right">{label}</TooltipContent>
+    </Tooltip>
   );
 }

@@ -51,9 +51,39 @@ function CollapsibleTrigger({
 function CollapsibleContent({
   className,
   children,
+  keepMounted = false,
   ...props
-}: React.ComponentProps<typeof CollapsiblePrimitive.CollapsibleContent>) {
+}: React.ComponentProps<typeof CollapsiblePrimitive.CollapsibleContent> & {
+  keepMounted?: boolean;
+}) {
   const expanded = useContext(expandedContext);
+  const [hasOpened, setHasOpened] = useState(expanded);
+  const timing = useMotionTiming(expanded ? "panel" : "exit");
+
+  if (expanded && !hasOpened) {
+    setHasOpened(true);
+  }
+
+  if (keepMounted) {
+    return hasOpened ? (
+      <CollapsiblePrimitive.Content
+        {...props}
+        forceMount
+        data-slot="collapsible-content"
+        inert={!expanded}
+        aria-hidden={!expanded}
+      >
+        <motion.div
+          initial={false}
+          animate={{ height: expanded ? "auto" : 0, opacity: expanded ? 1 : 0 }}
+          transition={timing}
+          style={{ overflow: "hidden" }}
+        >
+          <div className={cn("flow-root", className)}>{children}</div>
+        </motion.div>
+      </CollapsiblePrimitive.Content>
+    ) : null;
+  }
 
   return (
     <AnimatePresence initial={false}>

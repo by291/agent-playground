@@ -26,13 +26,25 @@ test("the configured model sits beside send and opens context details on desktop
     await expect(
       page.locator("header").getByRole("button", { name: /test-model/ }),
     ).toHaveCount(0);
+    // Responsive panel measurement completes after the viewport change.
+    await expect
+      .poll(async () => {
+        const modelBounds = await model.boundingBox();
+        const sendBounds = await send.boundingBox();
+
+        if (!modelBounds || !sendBounds) {
+          return Infinity;
+        }
+
+        return Math.abs(modelBounds.y - sendBounds.y);
+      })
+      .toBeLessThan(1);
     const modelBox = await model.boundingBox();
     const sendBox = await send.boundingBox();
 
     expect(modelBox).not.toBeNull();
     expect(sendBox).not.toBeNull();
     expect(modelBox!.x + modelBox!.width).toBeLessThan(sendBox!.x);
-    expect(Math.abs(modelBox!.y - sendBox!.y)).toBeLessThan(1);
     expect(sendBox!.x + sendBox!.width).toBeLessThan(width);
     await model.click();
     await expect(page.getByLabel("Context usage details")).toBeVisible();
