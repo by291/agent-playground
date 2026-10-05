@@ -76,9 +76,13 @@ export function ConversationList({
   }, [hasMore, loadingMore, error, loadMore]);
 
   return (
-    <div className="mt-3 flex min-h-0 flex-1 flex-col gap-2">
-      {!collapsed && (
-        <div className="flex items-center justify-between pl-2">
+    <div className="workspace-sidebar-history flex min-h-0 flex-1 flex-col">
+      <div
+        className="workspace-history-heading"
+        aria-hidden={collapsed}
+        inert={collapsed}
+      >
+        <div className="flex min-h-0 items-center justify-between overflow-hidden pl-2">
           <p className="text-[11px] font-medium tracking-widest text-muted uppercase">
             Conversations
           </p>
@@ -93,7 +97,7 @@ export function ConversationList({
             <ArrowClockwiseIcon aria-hidden="true" />
           </Button>
         </div>
-      )}
+      </div>
       <div
         ref={scrollerRef}
         className="conversation-history-scroll min-h-0 flex-1 overflow-y-auto"
@@ -117,7 +121,7 @@ export function ConversationList({
               <Button
                 type="button"
                 variant="ghost"
-                className={`h-9 min-w-0 flex-1 rounded-md text-[13px] font-normal hover:bg-transparent max-md:h-10 ${collapsed ? "justify-center gap-0 px-0" : "justify-start gap-2 px-2.5"}`}
+                className="workspace-sidebar-item h-9 min-w-0 flex-1 rounded-md text-[13px] font-normal hover:bg-transparent max-md:h-10"
                 aria-label={entryTitle}
                 aria-current={selected ? "page" : undefined}
                 title={entryTitle}
@@ -129,7 +133,7 @@ export function ConversationList({
                   aria-hidden="true"
                 />
                 <span
-                  className={`workspace-sidebar-label truncate ${collapsed ? "hidden" : ""}`}
+                  className="workspace-sidebar-label truncate"
                   aria-hidden={collapsed}
                 >
                   {entryTitle}

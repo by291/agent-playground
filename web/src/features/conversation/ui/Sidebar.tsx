@@ -76,7 +76,7 @@ export function Sidebar({
         onClick={onNewConversation}
         aria-label="New conversation"
         title={collapsed ? "New conversation" : undefined}
-        className="workspace-sidebar-new h-10 w-full justify-start gap-2 rounded-md border-line bg-surface px-3 text-[13px] text-ink hover:bg-selected hover:text-ink"
+        className="workspace-sidebar-item workspace-sidebar-new h-10 w-full rounded-md border-line bg-surface text-[13px] text-ink hover:bg-selected hover:text-ink"
       >
         <PlusIcon size={18} aria-hidden="true" />
         <span className="workspace-sidebar-label" aria-hidden={collapsed}>
@@ -88,9 +88,9 @@ export function Sidebar({
         href="/knowledge"
         aria-label="Knowledge"
         title={collapsed ? "Knowledge" : undefined}
-        className="mt-2 flex h-10 shrink-0 items-center gap-2 rounded-md px-3 text-[13px] text-muted hover:bg-selected hover:text-ink focus-visible:ring-2 focus-visible:ring-accent"
+        className="workspace-sidebar-item mt-2 h-10 shrink-0 rounded-md border border-transparent text-[13px] text-muted hover:bg-selected hover:text-ink focus-visible:ring-2 focus-visible:ring-accent"
       >
-        <BookOpenIcon size={18} aria-hidden="true" />
+        <BookOpenIcon size={18} className="shrink-0" aria-hidden="true" />
         <span className="workspace-sidebar-label" aria-hidden={collapsed}>
           Knowledge
         </span>
@@ -120,7 +120,7 @@ export function Sidebar({
           <div
             aria-label={title}
             title={collapsed ? title : undefined}
-            className="workspace-sidebar-current flex h-10 w-full items-center gap-2 rounded-md bg-selected px-3 text-[13px]"
+            className="workspace-sidebar-item workspace-sidebar-current h-10 w-full rounded-md border border-transparent bg-selected text-[13px]"
           >
             <ChatCircleIcon
               size={18}

@@ -56,6 +56,36 @@
   min-width: 0;
   overflow: hidden;
   white-space: nowrap;
+  opacity: 1;
+  visibility: visible;
+}
+
+/* Keep the 40px icon column, including control borders, fixed during resize. */
+.workspace-sidebar-item {
+  display: grid;
+  grid-template-columns: calc(2.5rem - 2px) minmax(0, 1fr);
+  align-items: center;
+  justify-content: start;
+  gap: 0;
+  padding-inline: 0;
+  overflow: hidden;
+  text-align: left;
+}
+
+.workspace-sidebar-item > svg {
+  justify-self: center;
+}
+
+.workspace-sidebar-history {
+  margin-top: 0.75rem;
+}
+
+.workspace-history-heading {
+  display: grid;
+  grid-template-rows: 1fr;
+  margin-bottom: 0.5rem;
+  opacity: 1;
+  visibility: visible;
 }
 
 .conversation-history-scroll {
@@ -82,7 +112,18 @@
 
 .workspace-sidebar[data-collapsed="true"] .workspace-sidebar-label {
   opacity: 0;
-  transform: translateX(-4px);
+  visibility: hidden;
+}
+
+.workspace-sidebar[data-collapsed="true"] .workspace-sidebar-history {
+  margin-top: 0.5rem;
+}
+
+.workspace-sidebar[data-collapsed="true"] .workspace-history-heading {
+  grid-template-rows: 0fr;
+  margin-bottom: 0;
+  opacity: 0;
+  visibility: hidden;
 }
 
 .workspace-sidebar[data-collapsed="true"] .workspace-sidebar-new {
@@ -97,10 +138,6 @@
 
 .workspace-sidebar[data-collapsed="true"] .workspace-sidebar-current {
   margin-top: 0.5rem;
-}
-
-.workspace-sidebar-toggle[aria-expanded="false"] svg {
-  transform: rotateY(180deg);
 }
 
 .workspace-sidebar-shell[data-resizing="true"] {
@@ -128,32 +165,40 @@
 
 @media (prefers-reduced-motion: no-preference) {
   .workspace-sidebar-shell {
-    transition: width 220ms cubic-bezier(0.2, 0, 0, 1);
+    transition: width 180ms cubic-bezier(0.2, 0, 0, 1);
   }
 
   .workspace-sidebar-label {
     transition:
-      opacity 140ms ease-out,
-      transform 220ms cubic-bezier(0.2, 0, 0, 1);
+      opacity 120ms ease-out,
+      visibility 120ms;
   }
 
   .workspace-sidebar-new,
   .workspace-sidebar-current {
     transition:
-      margin-top 220ms cubic-bezier(0.2, 0, 0, 1),
+      margin-top 180ms cubic-bezier(0.2, 0, 0, 1),
       background-color 150ms,
       color 150ms;
   }
 
   .workspace-sidebar-section {
     transition:
-      grid-template-rows 220ms cubic-bezier(0.2, 0, 0, 1),
-      margin-top 220ms cubic-bezier(0.2, 0, 0, 1),
-      opacity 140ms ease-out;
+      grid-template-rows 180ms cubic-bezier(0.2, 0, 0, 1),
+      margin-top 180ms cubic-bezier(0.2, 0, 0, 1),
+      opacity 120ms ease-out;
   }
 
-  .workspace-sidebar-toggle svg {
-    transition: transform 220ms cubic-bezier(0.2, 0, 0, 1);
+  .workspace-sidebar-history {
+    transition: margin-top 180ms cubic-bezier(0.2, 0, 0, 1);
+  }
+
+  .workspace-history-heading {
+    transition:
+      grid-template-rows 180ms cubic-bezier(0.2, 0, 0, 1),
+      margin-bottom 180ms cubic-bezier(0.2, 0, 0, 1),
+      opacity 120ms ease-out,
+      visibility 120ms;
   }
 
   .welcome-intro {
