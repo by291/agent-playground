@@ -55,7 +55,7 @@ export function Sidebar({
       data-collapsed={collapsed}
       className="workspace-sidebar flex size-full shrink-0 flex-col overflow-hidden border-r border-line bg-sidebar px-3 pt-6 pb-2"
     >
-      <SidebarHeader className="h-10 shrink-0 flex-row items-center gap-2.5 p-0 px-1">
+      <SidebarHeader className="h-10 shrink-0 flex-row items-center gap-2.5 p-0 pl-1">
         <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground">
           <StackIcon size={20} aria-hidden="true" />
         </div>
@@ -75,7 +75,7 @@ export function Sidebar({
             size="icon"
             onClick={onClose}
             aria-label="Close navigation"
-            className="ml-auto size-9 text-muted"
+            className="workspace-toolbar-button ml-auto size-9 text-muted"
           >
             <XIcon size={18} aria-hidden="true" />
           </Button>
@@ -119,7 +119,7 @@ export function Sidebar({
         <TooltipContent side="right">Knowledge</TooltipContent>
       </Tooltip>
 
-      <SidebarContent className="gap-0 overflow-hidden">
+      <SidebarContent className="gap-0 overflow-visible">
         {history && current ? (
           <ConversationList
             history={history}
@@ -161,9 +161,12 @@ export function Sidebar({
         )}
       </SidebarContent>
       <SidebarFooter
-        className={`mt-auto flex w-full shrink-0 items-center border-t border-line pt-2 ${collapsed ? "flex-col gap-1" : "flex-row justify-between gap-2 px-2"}`}
+        className={`mt-auto flex w-full shrink-0 border-t border-line p-0 py-2 ${collapsed ? "flex-col items-start gap-1" : "flex-row items-center justify-between gap-2"}`}
       >
-        <ConnectionStatus compact={collapsed} />
+        <ConnectionStatus
+          compact={collapsed}
+          className={`workspace-sidebar-item ${collapsed ? "w-full" : "min-w-0 flex-1"}`}
+        />
         <SettingsControl onClearConversations={history?.clear} />
       </SidebarFooter>
     </NavigationSidebar>

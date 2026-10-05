@@ -4,6 +4,56 @@ import { timePrompt } from "../flows";
 test.describe("activity motion", () => {
   test.use({ reducedMotion: "no-preference" });
 
+  test("sidebar dragging moves nested panels directly without resize animations", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1920, height: 1080 });
+    await page.goto("/");
+    await page.getByRole("button", { name: "Show run activity" }).click();
+    const activity = page.getByRole("complementary", { name: "Run activity" });
+
+    await expect
+      .poll(async () => (await activity.boundingBox())!.width)
+      .toBe(520);
+    const separator = page.getByRole("separator", { name: "Sidebar width" });
+    const handle = (await separator.boundingBox())!;
+    const sidebar = page.getByRole("complementary", {
+      name: "Conversation navigation",
+    });
+    const initialWidth = (await sidebar.boundingBox())!.width;
+
+    await page.mouse.move(handle.x + handle.width / 2, handle.y + 100);
+    await page.mouse.down();
+    await expect(separator).toHaveAttribute("data-separator", "active");
+
+    try {
+      const transitions = await page
+        .locator("[data-panel]")
+        .evaluateAll((elements) =>
+          elements.map(
+            (element) => getComputedStyle(element).transitionProperty,
+          ),
+        );
+
+      expect(transitions).toEqual(["none", "none", "none", "none"]);
+
+      for (const offset of [32, -24, 56, 0]) {
+        await page.mouse.move(
+          handle.x + handle.width / 2 + offset,
+          handle.y + 100,
+        );
+        await expect
+          .poll(async () => (await sidebar.boundingBox())!.width)
+          .toBeCloseTo(initialWidth + offset, 0);
+        await expect
+          .poll(async () => (await activity.boundingBox())!.width)
+          .toBeCloseTo(520, 0);
+      }
+    } finally {
+      await page.mouse.up();
+    }
+  });
+
   test("activity can reverse its exit, preserves its draft and returns focus on desktop and mobile", async ({
     page,
   }) => {

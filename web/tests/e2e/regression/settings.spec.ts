@@ -1,5 +1,45 @@
 import { expect, test, capture } from "../fixtures";
 
+test("settings tooltips respond promptly to hover and remain available to keyboard focus", async ({
+  page,
+}) => {
+  await page.goto("/");
+  const trigger = page.getByRole("button", { name: "Open settings" });
+  const tooltip = page.getByRole("tooltip", { name: "Settings", exact: true });
+
+  await trigger.hover();
+  await expect(tooltip).toBeVisible({ timeout: 300 });
+  await page.mouse.move(1000, 100, { steps: 8 });
+  await expect(tooltip).toHaveCount(0);
+  await trigger.press("Tab");
+  await page.keyboard.press("Shift+Tab");
+  await expect(trigger).toBeFocused();
+  await expect(tooltip).toBeVisible();
+});
+
+test("pointer dismissal of settings restores focus without reopening its tooltip", async ({
+  page,
+}) => {
+  await page.goto("/");
+  const trigger = page.getByRole("button", { name: "Open settings" });
+  const tooltip = page.getByRole("tooltip", { name: "Settings", exact: true });
+
+  await trigger.hover();
+  await expect(tooltip).toBeVisible();
+  await trigger.click();
+  const settings = page.getByRole("dialog", { name: "Settings", exact: true });
+
+  await expect(settings).toBeVisible();
+  await page
+    .locator('[data-slot="dialog-overlay"]')
+    .click({ position: { x: 8, y: 8 } });
+  await expect(settings).toHaveCount(0);
+  await expect(trigger).toBeFocused();
+  await expect(tooltip).toHaveCount(0);
+  await trigger.hover();
+  await expect(tooltip).toBeVisible();
+});
+
 test.describe("reply animation preference", () => {
   test.use({ replyAnimation: true });
 

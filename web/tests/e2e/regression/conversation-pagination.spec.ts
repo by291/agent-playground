@@ -59,22 +59,22 @@ test("compact history loads only at the bottom with an animated indicator and pr
         const root = button.closest<HTMLElement>(
           ".conversation-history-scroll",
         )!;
+        const sidebar = button.closest<HTMLElement>("#workspace-sidebar")!;
+        const buttonBounds = button.getBoundingClientRect();
 
         return {
           gap:
             root.getBoundingClientRect().left +
             root.clientWidth -
-            button.getBoundingClientRect().right,
-          gutter: getComputedStyle(root).scrollbarGutter,
-          padding: getComputedStyle(root).paddingInlineEnd,
-          margin: getComputedStyle(root).marginInlineEnd,
+            buttonBounds.right,
+          rightIconInset:
+            sidebar.getBoundingClientRect().right -
+            (buttonBounds.x + buttonBounds.width / 2),
         };
       });
 
     expect(spacing.gap).toBeCloseTo(8, 0);
-    expect(spacing.gutter).toBe("auto");
-    expect(spacing.padding).toBe("8px");
-    expect(spacing.margin).toBe("-8px");
+    expect(spacing.rightIconInset).toBeCloseTo(32, 0);
     expect((await rows.first().boundingBox())!.height).toBe(36);
     await message.fill("Keep this draft and focus");
     await scroller.evaluate((element) => {

@@ -60,10 +60,14 @@
   visibility: visible;
 }
 
-/* Keep the 40px icon column, including control borders, fixed during resize. */
+.workspace-sidebar {
+  --workspace-sidebar-icon-track: calc(2.5rem - 2px);
+}
+
+/* Both edges share the 40px icon column, accounting for control borders. */
 .workspace-sidebar-item {
   display: grid;
-  grid-template-columns: calc(2.5rem - 2px) minmax(0, 1fr);
+  grid-template-columns: var(--workspace-sidebar-icon-track) minmax(0, 1fr);
   align-items: center;
   justify-content: start;
   gap: 0;
@@ -72,8 +76,12 @@
   text-align: left;
 }
 
-.workspace-sidebar-item > svg {
+.workspace-sidebar-item > :first-child {
   justify-self: center;
+}
+
+.workspace-sidebar .workspace-toolbar-button {
+  width: var(--workspace-sidebar-icon-track);
 }
 
 .workspace-sidebar-history {
@@ -89,7 +97,6 @@
 }
 
 .conversation-history-scroll {
-  margin-inline-end: -0.5rem;
   padding-inline-end: 0.5rem;
   scrollbar-width: thin;
 }
@@ -113,6 +120,10 @@
 .workspace-sidebar[data-collapsed="true"] .workspace-sidebar-label {
   opacity: 0;
   visibility: hidden;
+}
+
+.workspace-sidebar[data-collapsed="true"] .workspace-toolbar-button {
+  width: 2.5rem;
 }
 
 .workspace-sidebar[data-collapsed="true"] .workspace-sidebar-history {
@@ -225,11 +236,8 @@
     transition: flex-grow var(--motion-panel) var(--motion-enter-ease);
   }
 
-  [data-slot="resizable-panel-group"]:has(
-      > [data-separator="active"],
-      > [data-separator="focus"]
-    )
-    > [data-panel] {
+  #workspace-layout:has([data-separator="active"], [data-separator="focus"])
+    [data-panel] {
     transition: none;
   }
 

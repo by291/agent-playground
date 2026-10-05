@@ -111,7 +111,7 @@ export function ConversationList({
       </div>
       <ScrollArea
         viewportRef={scrollerRef}
-        className="min-h-0 flex-1"
+        className="-mr-2 min-h-0 flex-1"
         viewportClassName="conversation-history-scroll"
         viewportProps={{
           "aria-label": "Conversation history",

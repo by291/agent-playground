@@ -6,7 +6,13 @@ import {
 } from "@/components/ui/tooltip";
 import { Badge } from "@/components/ui/badge";
 
-export function ConnectionStatus({ compact = false }: { compact?: boolean }) {
+export function ConnectionStatus({
+  compact = false,
+  className = "",
+}: {
+  compact?: boolean;
+  className?: string;
+}) {
   const {
     data: healthy,
     isPending,
@@ -37,7 +43,7 @@ export function ConnectionStatus({ compact = false }: { compact?: boolean }) {
           variant="outline"
           role="status"
           aria-label={label}
-          className={`h-8 gap-2 border-transparent bg-transparent text-xs text-muted ${compact ? "justify-center px-2" : "justify-start px-0"}`}
+          className={`h-8 gap-2 border-transparent bg-transparent text-xs text-muted ${compact ? "justify-center px-2" : "justify-start px-0"} ${className}`}
         >
           <span className={`size-2 rounded-full ${statusColor}`} />
           <span className={compact ? "sr-only" : undefined}>{label}</span>

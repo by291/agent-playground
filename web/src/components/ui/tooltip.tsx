@@ -7,7 +7,7 @@ import { Tooltip as TooltipPrimitive } from "radix-ui";
 const tooltipProviderContext = React.createContext(false);
 
 function TooltipProvider({
-  delayDuration = 400,
+  delayDuration = 150,
   ...props
 }: React.ComponentProps<typeof TooltipPrimitive.Provider>) {
   return (
@@ -35,9 +35,23 @@ function Tooltip({
 }
 
 function TooltipTrigger({
+  onFocus,
   ...props
 }: React.ComponentProps<typeof TooltipPrimitive.Trigger>) {
-  return <TooltipPrimitive.Trigger data-slot="tooltip-trigger" {...props} />;
+  return (
+    <TooltipPrimitive.Trigger
+      data-slot="tooltip-trigger"
+      {...props}
+      onFocus={(event) => {
+        onFocus?.(event);
+
+        // Dialogs restore pointer focus too; only keyboard focus opens a tooltip.
+        if (!event.currentTarget.matches(":focus-visible")) {
+          event.preventDefault();
+        }
+      }}
+    />
+  );
 }
 
 function TooltipContent({

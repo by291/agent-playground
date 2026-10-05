@@ -1,6 +1,39 @@
 import { expect, test, capture } from "../fixtures";
 import { randomUUID } from "node:crypto";
 import { createCompletedConversation } from "../conversations";
+import type { Locator } from "@playwright/test";
+
+async function expectNavigationAlignment(navigation: Locator, title: string) {
+  const sidebarBounds = (await navigation.boundingBox())!;
+  const leftIcons = [
+    navigation.locator('[data-slot="sidebar-header"] svg').first(),
+    navigation
+      .getByRole("button", { name: "New conversation", exact: true })
+      .locator("svg"),
+    navigation.getByRole("link", { name: "Knowledge" }).locator("svg"),
+    navigation.getByRole("button", { name: title, exact: true }).locator("svg"),
+    navigation.getByRole("status").locator("span").first(),
+  ];
+  const rightIcons = [
+    navigation.getByRole("button", { name: "Refresh conversations" }),
+    navigation.getByRole("button", { name: `Actions for ${title}` }),
+    navigation.getByRole("button", { name: "Open settings" }),
+  ];
+
+  for (const icon of leftIcons) {
+    const bounds = (await icon.boundingBox())!;
+
+    expect(bounds.x + bounds.width / 2 - sidebarBounds.x).toBeCloseTo(32, 0);
+  }
+
+  for (const icon of rightIcons) {
+    const bounds = (await icon.boundingBox())!;
+
+    expect(
+      sidebarBounds.x + sidebarBounds.width - (bounds.x + bounds.width / 2),
+    ).toBeCloseTo(32, 0);
+  }
+}
 
 test("history opens, renames and deletes a saved conversation after reload", async ({
   page,
@@ -20,6 +53,7 @@ test("history opens, renames and deletes a saved conversation after reload", asy
   await expect(
     navigation.getByRole("button", { name: title, exact: true }),
   ).toBeVisible();
+  await expectNavigationAlignment(navigation, title);
   await navigation
     .getByRole("button", { name: "New conversation", exact: true })
     .click();
@@ -34,6 +68,15 @@ test("history opens, renames and deletes a saved conversation after reload", asy
   await navigation
     .getByRole("button", { name: `Actions for ${title}` })
     .click();
+
+  for (const name of ["Rename", "Delete"]) {
+    const bounds = (await page
+      .getByRole("menuitem", { name, exact: true })
+      .boundingBox())!;
+
+    expect(bounds.height).toBe(32);
+  }
+
   await page.getByRole("menuitem", { name: "Rename", exact: true }).click();
   const renamed = `Renamed ${title}`;
 
@@ -141,7 +184,21 @@ test("mobile navigation supports rename and delete without leaving the drawer", 
   await page.goto(`/c/${threadId}`);
   await expect(page.getByRole("textbox", { name: "Message" })).toBeEnabled();
   await page.getByRole("button", { name: "Open navigation" }).click();
+  const navigation = page.getByRole("complementary", {
+    name: "Conversation navigation",
+  });
+
+  await expectNavigationAlignment(navigation, title);
   await page.getByRole("button", { name: `Actions for ${title}` }).click();
+
+  for (const name of ["Rename", "Delete"]) {
+    const bounds = (await page
+      .getByRole("menuitem", { name, exact: true })
+      .boundingBox())!;
+
+    expect(bounds.height).toBe(44);
+  }
+
   await page.getByRole("menuitem", { name: "Rename", exact: true }).click();
   await expect(
     page.getByRole("textbox", { name: "Conversation title" }),
