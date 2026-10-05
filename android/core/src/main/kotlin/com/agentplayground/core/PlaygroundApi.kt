@@ -272,13 +272,14 @@ class PlaygroundApi(baseUrl: String) : ConversationApi, AutoCloseable {
 
     private fun checkResponse(response: Response) {
         if (!response.isSuccessful) {
-            val detail = runCatching {
-                protocolJson
-                    .parseToJsonElement(response.body?.string().orEmpty())
-                    .jsonObject
-                    .string("error")
-            }
-                .getOrNull()
+            val detail =
+                runCatching {
+                        protocolJson
+                            .parseToJsonElement(response.body?.string().orEmpty())
+                            .jsonObject
+                            .string("error")
+                    }
+                    .getOrNull()
             throw ApiException(response.code, detail ?: "Server request failed (${response.code}).")
         }
     }

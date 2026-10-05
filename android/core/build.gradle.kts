@@ -1,6 +1,16 @@
 plugins {
     alias(libs.plugins.kotlin.jvm)
     alias(libs.plugins.kotlin.serialization)
+    alias(libs.plugins.android.lint)
+}
+
+lint {
+    abortOnError = true
+    warningsAsErrors = true
+    checkTestSources = true
+    sarifReport = true
+    // Dependency upgrades are reviewed separately from code correctness.
+    disable += setOf("GradleDependency", "NewerVersionAvailable")
 }
 
 kotlin {

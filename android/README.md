@@ -10,7 +10,7 @@ Open this directory as a project in Android Studio. Use JDK 21, Android SDK **37
 cd android
 # Set JAVA_HOME to your JDK 21 installation.
 # Set ANDROID_HOME, or create an untracked local.properties with sdk.dir.
-./gradlew :core:test :app:testDebugUnitTest :app:lintDebug :app:assembleDebug
+./gradlew qualityCheck
 ```
 
 The debug APK is `app/build/outputs/apk/debug/app-debug.apk`. The wrapper uses Gradle 9.5.0 with AGP 9.3.3.
@@ -82,9 +82,15 @@ Files use the Storage Access Framework without broad storage permissions. Attach
 
 ## Verification
 
+- `spotlessApply` / `spotlessCheck`: format or check all Kotlin source/tests and Gradle Kotlin scripts with pinned Spotless + ktfmt, using four-space Kotlin language style. Generated build files are outside the formatter targets. `.editorconfig` uses matching Kotlin indentation.
+- `:core:lint` / `:app:lintDebug`: Android Lint analyzes the JVM core and Android app, including test sources. Warnings and errors fail the build; HTML/XML/SARIF reports are written under each module's `build/reports/`. Only dependency upgrade advisories (`GradleDependency` and `NewerVersionAvailable`) are disabled: pinned dependency upgrades are reviewed separately, so a new remote release cannot change the quality gate.
 - `:core:test`: protocol inputs, public reasoning compatibility, individual edited/expired reviews, output ordering/gap gates, prepared recovery, concurrent admission/draft persistence, stream settlement, visibility, stale checkpoints, real HTTP/SSE fixtures and file boundaries.
 - `:app:testDebugUnitTest`: Robolectric native Compose rendering of the official v0.9 workflow catalog, editable review UI, configuration recreation, save-target serialization, stable upload retry IDs and a complete conversation screen through real HTTP/SSE fixtures.
-- `:app:lintDebug` and `:app:assembleDebug`: Android static checks and installable debug build.
+- `:app:assembleDebug`: installable debug build.
 - `:app:assembleRelease`: optimized R8/resource-shrunk build; unsigned until a release signing configuration is supplied.
+
+`./gradlew qualityCheck` runs all checks above, including both builds. From the repository root, use `make android-format`, `make android-format-check`, `make android-lint` or `make android-check`. Android checks require JDK 21 and the Android SDK; the existing Python/TypeScript `make check` remains independent.
+
+The Android job in `.github/workflows/ci.yml` runs on pull requests and pushes to `main`. It sets up Temurin 21, SDK platform 37.1 and Build Tools 36.0.0, validates the Gradle wrapper through `setup-gradle`, caches Gradle dependencies and executes `qualityCheck`. Test and lint reports are retained as a CI artifact for 14 days, including when verification fails. CI uses JVM/Robolectric tests without an emulator or a live backend.
 
 These checks use controlled responses and do not prove live-model behavior. Device navigation, keyboard, system picker/save and background behavior should also be exercised on an emulator or physical device connected to the development stack.

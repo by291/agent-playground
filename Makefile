@@ -1,6 +1,7 @@
 .DEFAULT_GOAL := help
 
 .PHONY: help setup infra-up infra-down skills-smoke agent server web dev dev-stop observability-up dev-observability agent-observability server-observability web-observability typecheck lint format format-check test build check
+.PHONY: android-format android-format-check android-lint android-check
 
 help:
 	@echo "Setup:   make setup, make infra-up, make infra-down"
@@ -8,6 +9,7 @@ help:
 	@echo "Skills:  make skills-smoke"
 	@echo "Observe: make observability-up, make dev-observability"
 	@echo "Quality: make check, make typecheck, make lint, make format, make format-check, make test, make build"
+	@echo "Android: make android-check, make android-lint, make android-format, make android-format-check"
 
 setup:
 	@if [ ! -f .env ]; then cp .env.example .env; echo "Created .env; set DEEPSEEK_API_KEY before running the agent."; fi
@@ -84,3 +86,15 @@ build:
 	pnpm build
 
 check: typecheck lint format-check test build
+
+android-format:
+	./android/gradlew -p android spotlessApply
+
+android-format-check:
+	./android/gradlew -p android spotlessCheck
+
+android-lint:
+	./android/gradlew -p android :core:lint :app:lintDebug
+
+android-check:
+	./android/gradlew -p android qualityCheck

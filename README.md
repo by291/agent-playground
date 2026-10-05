@@ -61,4 +61,6 @@ pnpm test:e2e
 
 `make check` runs types, lint, formatting, tests and the web build. Database/browser tests require Docker and own isolated temporary services. Browser regression uses controlled Aegra/embedding responses; [live smoke](web/tests/e2e/README.md#live-smoke) separately validates the running Python agent and configured model.
 
+`make android-check` runs Android formatting checks, Lint, JVM/Robolectric tests and debug/unsigned release builds with JDK 21 and the Android SDK. Use `make android-format` to apply Kotlin formatting or `make android-lint` for static analysis. [Android verification](android/README.md#verification) documents the matching GitHub CI job.
+
 The application currently uses a shared workspace without user authentication or tenant ownership, and recovers persisted results without durable AG-UI event replay. SQL/report services are demonstrations; SQL is never executed. Feature guides describe further limits. Compose provides local development configuration, not a complete production deployment.

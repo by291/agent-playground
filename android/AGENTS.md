@@ -7,5 +7,7 @@
 - Maintain explicit resource ownership. Release jobs and API clients when their owner is disposed; preserve original admission identities before network requests.
 - Store settings and journals by normalized server URL. Never copy backend model/storage credentials into the app.
 - Use Kotlin language style (four-space indentation), braces and separate statements. Keep validation, preparation, persistence/network and UI state stages visibly grouped.
-- Verify with `./gradlew :core:test :app:testDebugUnitTest :app:lintDebug :app:assembleDebug` from this directory. Live device/model validation is separate.
+- Format Kotlin source/tests and Gradle Kotlin scripts with `./gradlew spotlessApply`. Spotless pins ktfmt with Kotlin language style; `spotlessCheck` verifies without editing files.
+- Android Lint covers both the Android app and the JVM core, including tests. Warnings fail the check; fix findings rather than adding a blanket baseline. Dependency upgrade advisories (`GradleDependency` and `NewerVersionAvailable`) are disabled because versions are pinned and upgrades are reviewed separately.
+- Verify with `./gradlew qualityCheck` from this directory. It checks formatting, lint, JVM/Robolectric tests and debug/unsigned release builds; GitHub CI runs the same task. Live device/model validation is separate.
 - Keep this guide and README current when compatibility requirements or public behavior changes.

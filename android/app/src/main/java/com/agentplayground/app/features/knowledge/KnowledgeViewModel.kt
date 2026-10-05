@@ -5,9 +5,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.agentplayground.app.files.*
 import com.agentplayground.core.*
+import kotlin.time.Duration.Companion.milliseconds
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
-import kotlin.time.Duration.Companion.milliseconds
 
 class KnowledgeViewModel(val api: PlaygroundApi, private val files: DocumentAccess) : ViewModel() {
     private val mutable = MutableStateFlow(KnowledgeUiState())

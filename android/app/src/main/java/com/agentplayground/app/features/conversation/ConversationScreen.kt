@@ -70,9 +70,11 @@ fun ConversationScreen(vm: ConversationViewModel, preferences: AppPreferences) {
                 state.session?.messages.orEmpty().filterIsInstance<ToolMessage>().flatMap { message
                     ->
                     (runCatching {
-                            protocolJson.parseToJsonElement(message.content).jsonObject["sources"]
-                                as? JsonArray
-                        }
+                                protocolJson
+                                    .parseToJsonElement(message.content)
+                                    .jsonObject["sources"]
+                                    as? JsonArray
+                            }
                             .getOrNull())
                         .orEmpty()
                 }

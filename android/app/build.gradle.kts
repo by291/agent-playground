@@ -28,6 +28,14 @@ android {
         }
     }
     testOptions { unitTests.isIncludeAndroidResources = true }
+    lint {
+        abortOnError = true
+        warningsAsErrors = true
+        checkTestSources = true
+        sarifReport = true
+        // Dependency upgrades are reviewed separately from code correctness.
+        disable += setOf("GradleDependency", "NewerVersionAvailable")
+    }
 }
 
 dependencies {

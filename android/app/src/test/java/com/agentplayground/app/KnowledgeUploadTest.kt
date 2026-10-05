@@ -7,6 +7,7 @@ import android.database.MatrixCursor
 import android.net.Uri
 import android.os.Looper
 import android.provider.OpenableColumns
+import androidx.core.net.toUri
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.ViewModelStore
 import com.agentplayground.app.features.knowledge.KnowledgeViewModel
@@ -36,7 +37,7 @@ class KnowledgeUploadTest {
             server.start()
             val context = RuntimeEnvironment.getApplication()
             val resolver = context.contentResolver
-            val uri = Uri.parse("content://upload-fixture/notes")
+            val uri = "content://upload-fixture/notes".toUri()
             ShadowContentResolver.registerProviderInternal("upload-fixture", MetadataProvider())
             Shadows.shadowOf(resolver).registerInputStreamSupplier(uri) {
                 ByteArrayInputStream("Hello".toByteArray())

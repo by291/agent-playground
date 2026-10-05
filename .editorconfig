@@ -10,5 +10,8 @@ indent_size = 2
 [*.py]
 indent_size = 4
 
+[{*.kt,*.kts}]
+indent_size = 4
+
 [Makefile]
 indent_style = tab
