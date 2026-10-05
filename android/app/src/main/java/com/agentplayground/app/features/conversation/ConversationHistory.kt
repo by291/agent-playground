@@ -8,7 +8,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.agentplayground.app.design.*
 import com.agentplayground.core.*
@@ -23,19 +25,50 @@ fun ConversationHistory(
     var rename by remember { mutableStateOf<ConversationSummary?>(null) }
     var delete by remember { mutableStateOf<ConversationSummary?>(null) }
     var title by remember { mutableStateOf("") }
-    Column(modifier.padding(12.dp)) {
-        Text("Conversations", Modifier.padding(12.dp), style = MaterialTheme.typography.titleMedium)
-        Button(
+    Column(modifier.padding(horizontal = 16.dp, vertical = 20.dp)) {
+        Row(
+            Modifier.fillMaxWidth().padding(bottom = 24.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            AgentMark()
+            Column(Modifier.weight(1f)) {
+                Text("Playground", style = MaterialTheme.typography.titleLarge)
+                Text(
+                    "Your workspace",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+        FilledTonalButton(
             onClick = { onSelect(null) },
             enabled = !state.uploading,
-            modifier = Modifier.fillMaxWidth(),
+            shape = MaterialTheme.shapes.medium,
+            modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
         ) {
-            Icon(Icons.Outlined.Add, null)
+            Icon(Icons.Outlined.Add, null, Modifier.size(20.dp))
             Spacer(Modifier.width(8.dp))
             Text("New conversation")
         }
-        TextButton(onClick = vm::refreshHistory, enabled = !state.historyLoading) {
-            Text("Refresh history")
+        Row(
+            Modifier.fillMaxWidth().padding(top = 20.dp, bottom = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                "RECENT",
+                Modifier.weight(1f),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            IconButton(onClick = vm::refreshHistory, enabled = !state.historyLoading) {
+                Icon(
+                    Icons.Outlined.Refresh,
+                    "Refresh history",
+                    Modifier.size(20.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
         state.historyError?.let { ErrorNotice(it, vm::refreshHistory) }
         if (state.historyLoading) {
@@ -52,9 +85,9 @@ fun ConversationHistory(
                     shape = MaterialTheme.shapes.medium,
                     color =
                         if (selected) {
-                            MaterialTheme.colorScheme.secondaryContainer
+                            MaterialTheme.colorScheme.primaryContainer
                         } else {
-                            MaterialTheme.colorScheme.surface
+                            MaterialTheme.colorScheme.background
                         },
                 ) {
                     Row(
@@ -64,24 +97,36 @@ fun ConversationHistory(
                         Column(
                             Modifier.weight(1f)
                                 .clickable(enabled = !state.uploading) { onSelect(row.threadId) }
-                                .padding(12.dp)
+                                .heightIn(min = 60.dp)
+                                .padding(horizontal = 14.dp, vertical = 12.dp)
                         ) {
                             Text(
                                 row.title,
                                 maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
                                 style = MaterialTheme.typography.bodyMedium,
+                                color =
+                                    if (selected) MaterialTheme.colorScheme.onPrimaryContainer
+                                    else MaterialTheme.colorScheme.onSurface,
                             )
-                            row.status?.let {
-                                Text(
-                                    it.replace('_', ' '),
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
+                            row.status
+                                ?.takeIf { isActiveRun(it) }
+                                ?.let {
+                                    Text(
+                                        it.replace('_', ' '),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
                         }
                         Box {
                             IconButton(onClick = { menu = true }) {
-                                Icon(Icons.Outlined.MoreVert, "Conversation actions")
+                                Icon(
+                                    Icons.Outlined.MoreHoriz,
+                                    "Conversation actions",
+                                    Modifier.size(20.dp),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
                             }
                             DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                                 DropdownMenuItem(

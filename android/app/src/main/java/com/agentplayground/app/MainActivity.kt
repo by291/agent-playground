@@ -5,12 +5,19 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.unit.dp
+import androidx.core.view.WindowCompat
 import androidx.lifecycle.*
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -32,7 +39,16 @@ class MainActivity : ComponentActivity() {
             val preferences by
                 application.preferences.preferences.collectAsStateWithLifecycle(initialValue = null)
             preferences?.let { value ->
-                PlaygroundTheme(value.theme) { PlaygroundApp(application, value) }
+                PlaygroundTheme(value.theme) {
+                    val lightBars = MaterialTheme.colorScheme.surface.luminance() > 0.5f
+                    SideEffect {
+                        WindowCompat.getInsetsController(window, window.decorView).apply {
+                            isAppearanceLightStatusBars = lightBars
+                            isAppearanceLightNavigationBars = lightBars
+                        }
+                    }
+                    PlaygroundApp(application, value)
+                }
             }
         }
     }
@@ -82,25 +98,48 @@ private fun PlaygroundApp(application: PlaygroundApplication, preferences: AppPr
     }
     Scaffold(
         bottomBar = {
-            NavigationBar {
-                NavigationBarItem(
-                    selected = destination == "chat",
-                    onClick = { destination = "chat" },
-                    icon = { Icon(Icons.Outlined.ChatBubbleOutline, null) },
-                    label = { Text("Chat") },
-                )
-                NavigationBarItem(
-                    selected = destination == "knowledge",
-                    onClick = { destination = "knowledge" },
-                    icon = { Icon(Icons.Outlined.FolderOpen, null) },
-                    label = { Text("Knowledge") },
-                )
-                NavigationBarItem(
-                    selected = destination == "settings",
-                    onClick = { destination = "settings" },
-                    icon = { Icon(Icons.Outlined.Settings, null) },
-                    label = { Text("Settings") },
-                )
+            if (WindowInsets.ime.getBottom(LocalDensity.current) == 0) {
+                Surface(color = MaterialTheme.colorScheme.surface) {
+                    Column {
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                        Row(
+                            Modifier.fillMaxWidth()
+                                .navigationBarsPadding()
+                                .padding(horizontal = 20.dp, vertical = 6.dp)
+                        ) {
+                            listOf(
+                                    Triple("chat", "Chat", Icons.Outlined.ChatBubbleOutline),
+                                    Triple("knowledge", "Knowledge", Icons.Outlined.FolderOpen),
+                                    Triple("settings", "Settings", Icons.Outlined.Settings),
+                                )
+                                .forEach { (route, label, icon) ->
+                                    val selected = destination == route
+                                    val color =
+                                        if (selected) MaterialTheme.colorScheme.primary
+                                        else MaterialTheme.colorScheme.onSurfaceVariant
+                                    Column(
+                                        Modifier.weight(1f)
+                                            .selectable(
+                                                selected,
+                                                role = Role.Tab,
+                                                onClick = { destination = route },
+                                            )
+                                            .padding(vertical = 8.dp)
+                                            .heightIn(min = 48.dp),
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                                    ) {
+                                        Icon(icon, null, Modifier.size(22.dp), tint = color)
+                                        Text(
+                                            label,
+                                            style = MaterialTheme.typography.labelMedium,
+                                            color = color,
+                                        )
+                                    }
+                                }
+                        }
+                    }
+                }
             }
         },
         contentWindowInsets = WindowInsets(0, 0, 0, 0),

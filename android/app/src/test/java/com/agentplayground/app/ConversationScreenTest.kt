@@ -156,7 +156,9 @@ class ConversationScreenTest {
                     .assertTextEquals("Android integration")
                     .assertIsDisplayed()
                 compose.onNodeWithText("Review our next experiment.").assertIsDisplayed()
-                compose.onNodeWithText("Message").performTextInput("Check recovery and ordering.")
+                compose
+                    .onNodeWithContentDescription("Message")
+                    .performTextInput("Check recovery and ordering.")
                 // This standalone screen fixture has no Activity lifecycle effect.
                 vm.setVisible(true)
                 compose.onNodeWithContentDescription("Send message").performClick()

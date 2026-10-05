@@ -43,6 +43,12 @@ If the emulator cannot reach the host alias, run `adb reverse tcp:3000 tcp:3000`
 
 The web-only Monaco/A2UI development gallery and browser telemetry bootstrap are not Android screens. There is no client-side agent execution, offline execution, background Android worker or cancellation endpoint. Leaving the app does not cancel the server run. Streaming observation recovers from snapshots rather than a durable event replay log. Reply animation uses native scrolling rather than reproducing the browser's text-draining animation.
 
+## Interface
+
+The client uses white and graphite surfaces, restrained blue accents, scalable typography and matching light/dark themes. Chat has a compact header, an integrated composer and expandable reasoning, tools and sources. Starter prompts populate the draft for editing before sending. History uses a drawer on phones and a persistent sidebar on wide screens; the system Back action closes the drawer first. The bottom navigation is hidden while the software keyboard is open.
+
+Knowledge groups upload guidance and document status, with save/reindex/delete in each document's actions menu. Settings groups connection, appearance, keyboard and conversation data. Workflow results and review actions share the same card styles. Layouts remain scrollable with larger system text and constrain reading width on wide screens.
+
 ## Architecture
 
 ```text

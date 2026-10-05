@@ -25,6 +25,7 @@ import kotlinx.serialization.json.*
 @Composable
 fun Markdown(content: String, onLink: (String) -> Unit) {
     val color = MaterialTheme.colorScheme.onSurface.toArgb()
+    val linkColor = MaterialTheme.colorScheme.primary.toArgb()
     val callback by rememberUpdatedState(onLink)
     AndroidView(
         factory = { context ->
@@ -32,12 +33,13 @@ fun Markdown(content: String, onLink: (String) -> Unit) {
                 textSize = 16f
                 setTextIsSelectable(true)
                 movementMethod = LinkMovementMethod.getInstance()
-                setLineSpacing(0f, 1.2f)
+                setLineSpacing(0f, 1.3f)
             }
         },
         modifier = Modifier.fillMaxWidth(),
         update = { view ->
             view.setTextColor(color)
+            view.setLinkTextColor(linkColor)
             val renderer =
                 view.tag as? Markwon
                     ?: Markwon.builder(view.context)
@@ -74,11 +76,17 @@ fun MessageContent(
                     color = MaterialTheme.colorScheme.surfaceVariant,
                     modifier = Modifier.widthIn(max = 560.dp),
                 ) {
-                    SelectionContainer { Text(message.content, Modifier.padding(16.dp)) }
+                    SelectionContainer {
+                        Text(
+                            message.content,
+                            Modifier.padding(horizontal = 18.dp, vertical = 12.dp),
+                            style = MaterialTheme.typography.bodyLarge,
+                        )
+                    }
                 }
             }
         is AssistantMessage ->
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (!message.content.isNullOrBlank()) {
                     if (isReasoning(message)) {
                         Details("Thinking") { Markdown(message.content.orEmpty(), onLink) }
@@ -87,7 +95,7 @@ fun MessageContent(
                     }
                 }
                 message.toolCalls.orEmpty().forEach { call ->
-                    Details("Tool: ${call.function.name}") {
+                    Details("Tool · ${call.function.name.replace('_', ' ')}") {
                         Text(
                             call.function.arguments,
                             fontFamily = FontFamily.Monospace,
@@ -116,13 +124,12 @@ private fun ToolResult(message: ToolMessage, api: PlaygroundApi, onDownload: (Do
     }
     val sources = (payload?.get("sources") as? JsonArray).orEmpty()
     if (payload?.string("kind") == "knowledge_search_result") {
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("Knowledge sources", style = MaterialTheme.typography.labelLarge)
+        Details("Knowledge sources (${sources.size})") {
             payload.string("error")?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             sources.forEach { source ->
                 val item = source.jsonObject
-                OutlinedCard {
-                    Column(Modifier.padding(12.dp)) {
+                OutlinedCard(Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(16.dp)) {
                         Text(
                             item.string("name").orEmpty(),
                             style = MaterialTheme.typography.titleSmall,

@@ -10,6 +10,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import com.agentplayground.app.design.Details
+import com.agentplayground.app.design.SectionCard
+import com.agentplayground.app.design.StatusTag
 
 private val childrenProperty = A2uiProperty.childList("children", required = true)
 
@@ -30,11 +32,9 @@ private object WorkflowPanel : A2uiComponent {
         properties: A2uiComponentProperties,
         modifier: Modifier,
     ) {
-        OutlinedCard(modifier.fillMaxWidth()) {
-            Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                properties.bindChildReferences(childrenProperty).orEmpty().forEach {
-                    RenderComponent(observeA2uiComponentState(it))
-                }
+        SectionCard(modifier) {
+            properties.bindChildReferences(childrenProperty).orEmpty().forEach {
+                RenderComponent(observeA2uiComponentState(it))
             }
         }
     }
@@ -136,41 +136,38 @@ private object WorkflowSql : A2uiComponent {
                         "Changes required"
                     }
             }
-        OutlinedCard(modifier.fillMaxWidth()) {
-            Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("SQL review", style = MaterialTheme.typography.titleMedium)
-                Text(
-                    "Version ${properties[revision]?.toInt()} · $label",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.primary,
-                )
-                Surface(
-                    shape = MaterialTheme.shapes.small,
-                    color = MaterialTheme.colorScheme.surfaceVariant,
-                ) {
-                    SelectionContainer {
-                        Text(
-                            properties[sql].orEmpty(),
-                            Modifier.fillMaxWidth().padding(12.dp),
-                            fontFamily = FontFamily.Monospace,
-                        )
-                    }
+        SectionCard(modifier) {
+            Text("SQL review", style = MaterialTheme.typography.titleMedium)
+            StatusTag(
+                "Version ${properties[revision]?.toInt()} · $label",
+                emphasis = checked?.get(passed) == true,
+            )
+            Surface(
+                shape = MaterialTheme.shapes.small,
+                color = MaterialTheme.colorScheme.surfaceVariant,
+            ) {
+                SelectionContainer {
+                    Text(
+                        properties[sql].orEmpty(),
+                        Modifier.fillMaxWidth().padding(12.dp),
+                        fontFamily = FontFamily.Monospace,
+                    )
                 }
-                checked?.get(issues).orEmpty().forEach {
-                    Text(it, color = MaterialTheme.colorScheme.error)
-                }
-                Details("Original SQL") {
-                    Text(properties[original].orEmpty(), fontFamily = FontFamily.Monospace)
-                }
-                properties[receipt]?.let {
-                    Text("Receipt: $it", style = MaterialTheme.typography.bodySmall)
-                }
-                Text(
-                    "Demo checks only. Submission records SQL without executing it.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
             }
+            checked?.get(issues).orEmpty().forEach {
+                Text(it, color = MaterialTheme.colorScheme.error)
+            }
+            Details("Original SQL") {
+                Text(properties[original].orEmpty(), fontFamily = FontFamily.Monospace)
+            }
+            properties[receipt]?.let {
+                Text("Receipt: $it", style = MaterialTheme.typography.bodySmall)
+            }
+            Text(
+                "Demo checks only. Submission records SQL without executing it.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }

@@ -10,7 +10,9 @@ import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.agentplayground.app.design.*
@@ -41,10 +43,15 @@ fun KnowledgeScreen(vm: KnowledgeViewModel) {
             download = null
         }
     Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             TopAppBar(
-                title = { Text("Knowledge") },
+                colors =
+                    TopAppBarDefaults.topAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.background
+                    ),
+                title = { Text("Knowledge", style = MaterialTheme.typography.titleLarge) },
                 actions = {
                     IconButton(onClick = vm::reload, enabled = !state.loading) {
                         Icon(Icons.Outlined.Refresh, "Refresh documents")
@@ -52,29 +59,67 @@ fun KnowledgeScreen(vm: KnowledgeViewModel) {
                 },
             )
         },
-        floatingActionButton = {
-            ExtendedFloatingActionButton(
-                onClick = {
-                    if (!state.busy && state.pendingUploads.isEmpty()) {
-                        picker.launch(arrayOf("text/plain", "text/markdown", "application/pdf"))
-                    }
-                },
-                icon = { Icon(Icons.Outlined.UploadFile, null) },
-                text = { Text("Upload documents") },
-            )
-        },
     ) { padding ->
         LazyColumn(
             Modifier.fillMaxSize().padding(padding),
-            contentPadding =
-                PaddingValues(start = 20.dp, end = 20.dp, top = 16.dp, bottom = 100.dp),
+            contentPadding = PaddingValues(horizontal = 20.dp, vertical = 24.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             item {
-                Text(
-                    "Shared across conversations. Upload UTF-8 TXT, Markdown or text PDF files, up to 10 MiB each.",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                Column(
+                    Modifier.widthIn(max = 760.dp).fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(20.dp),
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(
+                            "Your shared library.",
+                            style = MaterialTheme.typography.headlineMedium,
+                        )
+                        Text(
+                            "Give your agent a shared library to draw from in every conversation.",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    SectionCard {
+                        SectionHeading(
+                            "Add to your library",
+                            "TXT, Markdown or text PDF · up to 10 MiB each",
+                            Icons.Outlined.UploadFile,
+                        )
+                        Button(
+                            onClick = {
+                                picker.launch(
+                                    arrayOf("text/plain", "text/markdown", "application/pdf")
+                                )
+                            },
+                            enabled = !state.busy && state.pendingUploads.isEmpty(),
+                            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                            shape = MaterialTheme.shapes.small,
+                        ) {
+                            Icon(Icons.Outlined.Add, null, Modifier.size(20.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text("Upload documents")
+                        }
+                    }
+                    Row(
+                        Modifier.fillMaxWidth().padding(top = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            "YOUR DOCUMENTS",
+                            Modifier.weight(1f),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Text(
+                            "${state.documents.size}",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
             }
             state.error?.let {
                 item {
@@ -108,45 +153,102 @@ fun KnowledgeScreen(vm: KnowledgeViewModel) {
                 }
             }
             if (state.documents.isEmpty() && !state.loading) {
-                item { Text("No documents yet", style = MaterialTheme.typography.titleMedium) }
+                item {
+                    SectionCard(Modifier.widthIn(max = 760.dp)) {
+                        SectionHeading(
+                            "No documents yet",
+                            "Upload a source to make it available to your agent.",
+                            Icons.Outlined.FolderOpen,
+                        )
+                    }
+                }
             }
             items(state.documents, key = { it.id }) { document ->
-                OutlinedCard(Modifier.fillMaxWidth()) {
-                    Column(
-                        Modifier.padding(20.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                SectionCard(Modifier.widthIn(max = 760.dp)) {
+                    var menu by remember { mutableStateOf(false) }
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.Top,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
-                        Text(document.name, style = MaterialTheme.typography.titleMedium)
-                        Text(
-                            "${document.status} · ${document.size / 1024} KiB · ${document.chunkCount} chunks",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.primary,
-                        )
-                        document.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            TextButton(
-                                onClick = {
-                                    download =
-                                        Download(vm.api.documentPath(document.id), document.name)
-                                    saver.launch(document.name)
-                                },
-                                enabled = !state.busy && document.status != "uploading",
-                            ) {
-                                Text("Save original")
+                        IconTile(Icons.Outlined.Description)
+                        Column(
+                            Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(6.dp),
+                        ) {
+                            Text(
+                                document.name,
+                                style = MaterialTheme.typography.titleSmall,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            Text(
+                                "${document.size / 1024} KiB · ${document.chunkCount} chunks",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        Box {
+                            IconButton(onClick = { menu = true }) {
+                                Icon(Icons.Outlined.MoreHoriz, "Document actions")
                             }
-                            TextButton(
-                                onClick = { vm.reindex(document.id) },
-                                enabled =
-                                    !state.busy &&
-                                        document.status !in
-                                            setOf("uploading", "indexing", "queued"),
-                            ) {
-                                Text("Reindex")
-                            }
-                            TextButton(onClick = { deleting = document }, enabled = !state.busy) {
-                                Text("Delete", color = MaterialTheme.colorScheme.error)
+                            DropdownMenu(menu, onDismissRequest = { menu = false }) {
+                                DropdownMenuItem(
+                                    text = { Text("Save original") },
+                                    leadingIcon = { Icon(Icons.Outlined.FileDownload, null) },
+                                    enabled = !state.busy && document.status != "uploading",
+                                    onClick = {
+                                        menu = false
+                                        download =
+                                            Download(
+                                                vm.api.documentPath(document.id),
+                                                document.name,
+                                            )
+                                        saver.launch(document.name)
+                                    },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Reindex") },
+                                    leadingIcon = { Icon(Icons.Outlined.Refresh, null) },
+                                    enabled =
+                                        !state.busy &&
+                                            document.status !in
+                                                setOf("uploading", "indexing", "queued"),
+                                    onClick = {
+                                        menu = false
+                                        vm.reindex(document.id)
+                                    },
+                                )
+                                DropdownMenuItem(
+                                    text = {
+                                        Text("Delete", color = MaterialTheme.colorScheme.error)
+                                    },
+                                    leadingIcon = {
+                                        Icon(
+                                            Icons.Outlined.DeleteOutline,
+                                            null,
+                                            tint = MaterialTheme.colorScheme.error,
+                                        )
+                                    },
+                                    enabled = !state.busy,
+                                    onClick = {
+                                        menu = false
+                                        deleting = document
+                                    },
+                                )
                             }
                         }
+                    }
+                    StatusTag(
+                        document.status.replaceFirstChar { it.uppercase() },
+                        emphasis = document.status == "ready",
+                    )
+                    document.error?.let {
+                        Text(
+                            it,
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodySmall,
+                        )
                     }
                 }
             }

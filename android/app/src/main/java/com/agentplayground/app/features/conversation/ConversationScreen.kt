@@ -1,5 +1,6 @@
 package com.agentplayground.app.features.conversation
 
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
@@ -11,9 +12,11 @@ import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.agentplayground.app.data.AppPreferences
@@ -32,7 +35,11 @@ fun ConversationScreen(vm: ConversationViewModel, preferences: AppPreferences) {
     val state by vm.state.collectAsStateWithLifecycle()
     val drawer = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
+    BackHandler(enabled = drawer.isOpen) {
+        scope.launch { drawer.close() }
+    }
     var activity by remember { mutableStateOf(false) }
+    var menu by remember { mutableStateOf(false) }
     var download by rememberSaveable(stateSaver = DownloadSaver) { mutableStateOf<Download?>(null) }
     var source by remember { mutableStateOf<JsonObject?>(null) }
     var sourceUnavailable by remember { mutableStateOf(false) }
@@ -78,6 +85,7 @@ fun ConversationScreen(vm: ConversationViewModel, preferences: AppPreferences) {
 
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val expanded = maxWidth >= 840.dp
+        val compactHeight = maxHeight < 600.dp
         val onSelect: (String?) -> Unit = { id ->
             vm.select(id)
             scope.launch { drawer.close() }
@@ -89,21 +97,40 @@ fun ConversationScreen(vm: ConversationViewModel, preferences: AppPreferences) {
                         Modifier.width(280.dp).fillMaxHeight(),
                         color = MaterialTheme.colorScheme.surface,
                     ) {
-                        ConversationHistory(state, vm, onSelect, Modifier.fillMaxSize())
+                        ConversationHistory(
+                            state,
+                            vm,
+                            onSelect,
+                            Modifier.fillMaxSize().statusBarsPadding(),
+                        )
                     }
                     VerticalDivider()
                 }
                 Scaffold(
                     modifier = Modifier.weight(1f),
+                    containerColor = MaterialTheme.colorScheme.surface,
                     contentWindowInsets = WindowInsets(0, 0, 0, 0),
                     topBar = {
                         TopAppBar(
+                            colors =
+                                TopAppBarDefaults.topAppBarColors(
+                                    containerColor = MaterialTheme.colorScheme.surface
+                                ),
                             title = {
-                                Text(
-                                    state.session?.title ?: "Agent Playground",
-                                    maxLines = 1,
-                                    modifier = Modifier.testTag("conversation-title"),
-                                )
+                                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                    Text(
+                                        state.session?.title ?: "Agent Playground",
+                                        style = MaterialTheme.typography.titleMedium,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.testTag("conversation-title"),
+                                    )
+                                    Text(
+                                        "Agent Playground",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
                             },
                             navigationIcon = {
                                 if (!expanded) {
@@ -113,11 +140,34 @@ fun ConversationScreen(vm: ConversationViewModel, preferences: AppPreferences) {
                                 }
                             },
                             actions = {
-                                IconButton(onClick = { activity = true }) {
-                                    Icon(Icons.Outlined.Timeline, "Agent activity")
+                                IconButton(
+                                    onClick = { onSelect(null) },
+                                    enabled = !state.uploading,
+                                ) {
+                                    Icon(Icons.Outlined.Add, "New conversation")
                                 }
-                                IconButton(onClick = vm::recover) {
-                                    Icon(Icons.Outlined.Refresh, "Refresh conversation")
+                                Box {
+                                    IconButton(onClick = { menu = true }) {
+                                        Icon(Icons.Outlined.MoreHoriz, "Conversation options")
+                                    }
+                                    DropdownMenu(menu, onDismissRequest = { menu = false }) {
+                                        DropdownMenuItem(
+                                            text = { Text("Agent activity") },
+                                            leadingIcon = { Icon(Icons.Outlined.Timeline, null) },
+                                            onClick = {
+                                                menu = false
+                                                activity = true
+                                            },
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text("Refresh conversation") },
+                                            leadingIcon = { Icon(Icons.Outlined.Refresh, null) },
+                                            onClick = {
+                                                menu = false
+                                                vm.recover()
+                                            },
+                                        )
+                                    }
                                 }
                             },
                         )
@@ -146,6 +196,8 @@ fun ConversationScreen(vm: ConversationViewModel, preferences: AppPreferences) {
                             onDownload,
                             onLink,
                             vm.api,
+                            vm::editDraft,
+                            compactHeight,
                         )
                     }
                 }
@@ -157,7 +209,7 @@ fun ConversationScreen(vm: ConversationViewModel, preferences: AppPreferences) {
             ModalNavigationDrawer(
                 drawerState = drawer,
                 drawerContent = {
-                    ModalDrawerSheet {
+                    ModalDrawerSheet(drawerContainerColor = MaterialTheme.colorScheme.background) {
                         ConversationHistory(
                             state,
                             vm,
@@ -241,6 +293,8 @@ private fun ConversationTimeline(
     onDownload: (Download) -> Unit,
     onLink: (String) -> Unit,
     api: PlaygroundApi,
+    onSuggestion: (String) -> Unit,
+    compactHeight: Boolean,
 ) {
     val list = rememberLazyListState()
     val renderer = rememberWorkflowRenderer(state.threadId, state.outputs)
@@ -287,10 +341,12 @@ private fun ConversationTimeline(
         }
     }
     LazyColumn(
-        modifier.fillMaxSize(),
+        modifier.fillMaxSize().wrapContentSize(Alignment.TopCenter).widthIn(max = 808.dp),
         state = list,
-        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 24.dp),
-        verticalArrangement = Arrangement.spacedBy(20.dp),
+        contentPadding =
+            PaddingValues(horizontal = 24.dp, vertical = if (compactHeight) 12.dp else 28.dp),
+        verticalArrangement = Arrangement.spacedBy(24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         if (state.loading) {
             item { LinearProgressIndicator(Modifier.fillMaxWidth()) }
@@ -310,23 +366,57 @@ private fun ConversationTimeline(
         if (state.messages.isEmpty() && !state.loading && !state.busy) {
             item {
                 Column(
-                    Modifier.fillMaxWidth().padding(vertical = 40.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    Modifier.widthIn(max = 560.dp)
+                        .fillMaxWidth()
+                        .padding(top = if (compactHeight) 0.dp else 44.dp, bottom = 24.dp),
+                    verticalArrangement = Arrangement.spacedBy(24.dp),
                 ) {
-                    Text(
-                        "What would you like to work on?",
-                        style = MaterialTheme.typography.headlineSmall,
-                    )
-                    Text(
-                        "Ask a question, explore your knowledge base, or start a workflow.",
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                    if (!compactHeight) {
+                        AgentMark()
+                    }
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text(
+                            if (compactHeight) "What can I help with today?"
+                            else "What can I help\nwith today?",
+                            style =
+                                if (compactHeight) MaterialTheme.typography.headlineSmall
+                                else MaterialTheme.typography.headlineLarge,
+                        )
+                        Text(
+                            "Explore an idea, work with your documents, or turn a task into a plan.",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = MaterialTheme.typography.bodyLarge,
+                        )
+                    }
+                    Column(
+                        Modifier.padding(top = 8.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        SuggestionRow(
+                            Icons.Outlined.Lightbulb,
+                            "Explore an idea",
+                            "Help me think through an idea and its next steps.",
+                            onSuggestion,
+                        )
+                        SuggestionRow(
+                            Icons.Outlined.Description,
+                            "Ask your knowledge base",
+                            "Search my knowledge base and summarize the key points.",
+                            onSuggestion,
+                        )
+                        SuggestionRow(
+                            Icons.Outlined.Checklist,
+                            "Make a plan",
+                            "Create an experiment plan for a task I describe.",
+                            onSuggestion,
+                        )
+                    }
                 }
             }
         }
         items(state.messages, key = { it.id }) { message ->
             Column(
-                Modifier.fillMaxWidth().widthIn(max = 760.dp),
+                Modifier.widthIn(max = 760.dp).fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
                 MessageContent(message, api, onDownload, onLink)
@@ -392,6 +482,46 @@ private fun WorkflowPresentation(
     if (older.isNotEmpty()) {
         Details("Earlier workflow results (${older.size})") {
             older.forEach { WorkflowSurface(renderer, it.workflow!!.presentation!!.surfaceId) }
+        }
+    }
+}
+
+@Composable
+private fun SuggestionRow(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    title: String,
+    prompt: String,
+    onSelect: (String) -> Unit,
+) {
+    OutlinedCard(
+        onClick = { onSelect(prompt) },
+        modifier = Modifier.fillMaxWidth(),
+        colors =
+            CardDefaults.outlinedCardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border =
+            androidx.compose.foundation.BorderStroke(
+                1.dp,
+                MaterialTheme.colorScheme.outlineVariant,
+            ),
+    ) {
+        Row(
+            Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Icon(
+                icon,
+                null,
+                Modifier.size(20.dp),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(title, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+            Icon(
+                Icons.Outlined.NorthEast,
+                null,
+                Modifier.size(16.dp),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }
