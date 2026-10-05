@@ -1,9 +1,40 @@
 import * as CollapsiblePrimitive from "@radix-ui/react-collapsible";
+import { cn } from "cn";
+import { createContext, useContext, useState } from "react";
+import { AnimatePresence, motion, useIsPresent } from "motion/react";
+import { useMotionTiming } from "./motion";
+
+const expandedContext = createContext(false);
+
+type CollapsibleProps = Omit<
+  React.ComponentProps<typeof CollapsiblePrimitive.Root>,
+  "onOpenChange"
+> & { onOpenChange?: (open: boolean) => void };
 
 function Collapsible({
+  open,
+  defaultOpen = false,
+  onOpenChange,
   ...props
-}: React.ComponentProps<typeof CollapsiblePrimitive.Root>) {
-  return <CollapsiblePrimitive.Root data-slot="collapsible" {...props} />;
+}: CollapsibleProps) {
+  const [uncontrolledOpen, setUncontrolledOpen] = useState(defaultOpen);
+  const expanded = open ?? uncontrolledOpen;
+
+  function changeOpen(next: boolean) {
+    setUncontrolledOpen(next);
+    onOpenChange?.(next);
+  }
+
+  return (
+    <expandedContext.Provider value={expanded}>
+      <CollapsiblePrimitive.Root
+        data-slot="collapsible"
+        open={expanded}
+        onOpenChange={changeOpen}
+        {...props}
+      />
+    </expandedContext.Provider>
+  );
 }
 
 function CollapsibleTrigger({
@@ -18,13 +49,50 @@ function CollapsibleTrigger({
 }
 
 function CollapsibleContent({
+  className,
+  children,
   ...props
 }: React.ComponentProps<typeof CollapsiblePrimitive.CollapsibleContent>) {
+  const expanded = useContext(expandedContext);
+
   return (
-    <CollapsiblePrimitive.CollapsibleContent
+    <AnimatePresence initial={false}>
+      {expanded && (
+        <DisclosureContent {...props} className={className}>
+          {children}
+        </DisclosureContent>
+      )}
+    </AnimatePresence>
+  );
+}
+
+function DisclosureContent({
+  className,
+  children,
+  ...props
+}: React.ComponentProps<typeof CollapsiblePrimitive.Content>) {
+  const present = useIsPresent();
+  const timing = useMotionTiming("panel");
+  const exitTiming = useMotionTiming("exit");
+
+  return (
+    <CollapsiblePrimitive.Content
       data-slot="collapsible-content"
       {...props}
-    />
+      forceMount
+      inert={!present}
+      aria-hidden={!present}
+    >
+      <motion.div
+        initial={{ height: 0, opacity: 0 }}
+        animate={{ height: "auto", opacity: 1 }}
+        exit={{ height: 0, opacity: 0, transition: exitTiming }}
+        transition={timing}
+        style={{ overflow: "hidden" }}
+      >
+        <div className={cn("flow-root", className)}>{children}</div>
+      </motion.div>
+    </CollapsiblePrimitive.Content>
   );
 }
 

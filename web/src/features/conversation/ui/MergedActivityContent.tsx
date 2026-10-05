@@ -9,7 +9,7 @@ export function MergedActivityContent({
   stream: ActivityStream;
   toolArguments: boolean;
 }) {
-  const [rawOpen, setRawOpen] = useState(false);
+  const [hasOpenedRaw, setHasOpenedRaw] = useState(false);
 
   return (
     <div className="mt-3">
@@ -38,13 +38,17 @@ export function MergedActivityContent({
         </pre>
       )}
       <details
-        className="mt-3"
-        onToggle={(event) => setRawOpen(event.currentTarget.open)}
+        className="motion-details mt-3"
+        onToggle={(event) => {
+          if (event.currentTarget.open) {
+            setHasOpenedRaw(true);
+          }
+        }}
       >
         <summary className="cursor-pointer rounded-sm py-2 text-xs/6 text-muted focus-visible:outline-2 focus-visible:outline-muted">
           Original events ({stream.events.length})
         </summary>
-        {rawOpen && (
+        {hasOpenedRaw && (
           <JsonPayload
             source={JSON.stringify(
               stream.events.map(({ event }) => event),

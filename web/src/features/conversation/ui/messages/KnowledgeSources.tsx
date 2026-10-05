@@ -150,6 +150,7 @@ export function KnowledgeSources({
           </DialogTrigger>
         </div>
         <DialogContent
+          data-motion="sheet"
           className="fixed inset-y-0 right-0 z-50 flex w-full max-w-md flex-col border-l border-line bg-surface shadow-xl outline-none"
           onCloseAutoFocus={(event) => {
             if (citationOpener.current?.isConnected) {
@@ -264,7 +265,7 @@ export function KnowledgeSources({
               </div>
               <div
                 key={source.chunkId}
-                className="min-h-0 flex-1 overflow-y-auto p-5"
+                className="motion-content-enter min-h-0 flex-1 overflow-y-auto p-5"
               >
                 <p className="mb-3 text-xs font-medium text-accent">
                   Source [{source.number}]

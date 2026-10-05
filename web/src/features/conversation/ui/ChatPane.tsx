@@ -25,6 +25,9 @@ import { ExternalTaskPanel } from "./ExternalTaskPanel";
 import { WorkflowReviewPanel } from "./review/WorkflowReviewPanel";
 import { useConversation } from "../ConversationProvider";
 import { Welcome } from "./Welcome";
+import { isRunActive } from "@shared/run-status";
+import { AnimatePresence } from "motion/react";
+import { AnimatedDiv } from "@/components/ui/motion";
 
 const A2UISurface = lazy(() =>
   import("@/features/a2ui/A2UISurface").then(({ A2UISurface }) => ({
@@ -80,6 +83,9 @@ export function ChatPane({
       onWorkflowReview: state.reviewWorkflow,
     })),
   );
+  const activeMessageIds = new Set(
+    runs.filter((run) => isRunActive(run.status)).map((run) => run.messageId),
+  );
   const view = useMemo(
     () =>
       conversationView({
@@ -124,7 +130,7 @@ export function ChatPane({
         <MessageScrollerProvider autoScroll defaultScrollPosition="end">
           <MessageScroller className="min-h-0 flex-1">
             <MessageScrollerViewport className="px-4 sm:px-8">
-              <MessageScrollerContent className="conversation-layout gap-8 pt-8 pb-12 sm:pt-12">
+              <MessageScrollerContent className="motion-content-enter conversation-layout gap-8 pt-8 pb-12 sm:pt-12">
                 {turns.map(
                   ({
                     turn,
@@ -138,7 +144,15 @@ export function ChatPane({
                       <Fragment key={turn.id}>
                         {turn.user && (
                           <MessageScrollerItem className="conversation-column">
-                            <MessageRow message={turn.user} />
+                            <div
+                              className={
+                                activeMessageIds.has(turn.user.id)
+                                  ? "motion-item-enter"
+                                  : undefined
+                              }
+                            >
+                              <MessageRow message={turn.user} />
+                            </div>
                           </MessageScrollerItem>
                         )}
                         {hasReply && (
@@ -164,34 +178,64 @@ export function ChatPane({
                                 )
                               }
                             >
-                              {turnTasks.map((task) => (
-                                <ExternalTaskPanel
-                                  key={task.taskId}
-                                  task={task}
-                                />
-                              ))}
-                              {artifacts.current.map((view) => (
-                                <Surface
-                                  key={view.id}
-                                  view={view}
-                                  inChat={false}
-                                />
-                              ))}
-                              {artifacts.reviews.length > 0 && (
-                                <ReviewPanel
-                                  key={reviewKey}
-                                  reviews={artifacts.reviews}
-                                  running={running}
-                                  onReview={onReview}
-                                />
-                              )}
-                              {workflowReviews.length > 0 && (
-                                <WorkflowReviewPanel
-                                  reviews={workflowReviews}
-                                  running={running}
-                                  onReview={onWorkflowReview}
-                                />
-                              )}
+                              <AnimatePresence initial={false}>
+                                {turnTasks.map((task) => (
+                                  <AnimatedDiv
+                                    key={task.taskId}
+                                    exit={{
+                                      opacity: 0,
+                                      height: 0,
+                                      overflow: "hidden",
+                                    }}
+                                  >
+                                    <ExternalTaskPanel task={task} />
+                                  </AnimatedDiv>
+                                ))}
+                                {artifacts.current.map((view) => (
+                                  <AnimatedDiv
+                                    key={view.id}
+                                    exit={{
+                                      opacity: 0,
+                                      height: 0,
+                                      overflow: "hidden",
+                                    }}
+                                  >
+                                    <Surface view={view} inChat={false} />
+                                  </AnimatedDiv>
+                                ))}
+                                {artifacts.reviews.length > 0 && (
+                                  <AnimatedDiv
+                                    key={reviewKey}
+                                    exit={{
+                                      opacity: 0,
+                                      height: 0,
+                                      overflow: "hidden",
+                                    }}
+                                  >
+                                    <ReviewPanel
+                                      reviews={artifacts.reviews}
+                                      running={running}
+                                      onReview={onReview}
+                                    />
+                                  </AnimatedDiv>
+                                )}
+                                {workflowReviews.length > 0 && (
+                                  <AnimatedDiv
+                                    key="workflow-reviews"
+                                    exit={{
+                                      opacity: 0,
+                                      height: 0,
+                                      overflow: "hidden",
+                                    }}
+                                  >
+                                    <WorkflowReviewPanel
+                                      reviews={workflowReviews}
+                                      running={running}
+                                      onReview={onWorkflowReview}
+                                    />
+                                  </AnimatedDiv>
+                                )}
+                              </AnimatePresence>
                             </AssistantReply>
                           </MessageScrollerItem>
                         )}
@@ -199,45 +243,66 @@ export function ChatPane({
                     );
                   },
                 )}
-                {unattachedTasks.map((task) => (
-                  <MessageScrollerItem
-                    className="conversation-column"
-                    key={task.taskId}
-                  >
-                    <ExternalTaskPanel task={task} />
-                  </MessageScrollerItem>
-                ))}
-                {unattachedSurfaces.map((view) => (
-                  <MessageScrollerItem
-                    key={view.id}
-                    className="conversation-column"
-                  >
-                    <Surface view={view} />
-                  </MessageScrollerItem>
-                ))}
-                {unattachedReviews.length > 0 && (
-                  <MessageScrollerItem
-                    className="conversation-column"
-                    key={unattachedReviews
-                      .map((review) => review.interruptId)
-                      .join(",")}
-                  >
-                    <ReviewPanel
-                      reviews={unattachedReviews}
-                      running={running}
-                      onReview={onReview}
-                    />
-                  </MessageScrollerItem>
-                )}
-                {unattachedWorkflowReviews.length > 0 && (
-                  <MessageScrollerItem className="conversation-column">
-                    <WorkflowReviewPanel
-                      reviews={unattachedWorkflowReviews}
-                      running={running}
-                      onReview={onWorkflowReview}
-                    />
-                  </MessageScrollerItem>
-                )}
+                <AnimatePresence initial={false}>
+                  {unattachedTasks.map((task) => (
+                    <MessageScrollerItem
+                      className="conversation-column"
+                      key={task.taskId}
+                    >
+                      <AnimatedDiv
+                        exit={{ opacity: 0, height: 0, overflow: "hidden" }}
+                      >
+                        <ExternalTaskPanel task={task} />
+                      </AnimatedDiv>
+                    </MessageScrollerItem>
+                  ))}
+                  {unattachedSurfaces.map((view) => (
+                    <MessageScrollerItem
+                      key={view.id}
+                      className="conversation-column"
+                    >
+                      <AnimatedDiv
+                        exit={{ opacity: 0, height: 0, overflow: "hidden" }}
+                      >
+                        <Surface view={view} />
+                      </AnimatedDiv>
+                    </MessageScrollerItem>
+                  ))}
+                  {unattachedReviews.length > 0 && (
+                    <MessageScrollerItem
+                      className="conversation-column"
+                      key={unattachedReviews
+                        .map((review) => review.interruptId)
+                        .join(",")}
+                    >
+                      <AnimatedDiv
+                        exit={{ opacity: 0, height: 0, overflow: "hidden" }}
+                      >
+                        <ReviewPanel
+                          reviews={unattachedReviews}
+                          running={running}
+                          onReview={onReview}
+                        />
+                      </AnimatedDiv>
+                    </MessageScrollerItem>
+                  )}
+                  {unattachedWorkflowReviews.length > 0 && (
+                    <MessageScrollerItem
+                      key="unattached-workflow-reviews"
+                      className="conversation-column"
+                    >
+                      <AnimatedDiv
+                        exit={{ opacity: 0, height: 0, overflow: "hidden" }}
+                      >
+                        <WorkflowReviewPanel
+                          reviews={unattachedWorkflowReviews}
+                          running={running}
+                          onReview={onWorkflowReview}
+                        />
+                      </AnimatedDiv>
+                    </MessageScrollerItem>
+                  )}
+                </AnimatePresence>
                 {recoveryIssue && (
                   <MessageScrollerItem
                     key="recovery-issue"

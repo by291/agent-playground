@@ -6,6 +6,8 @@ import { Button } from "@/components/ui/button";
 import type { ConversationHistory } from "../model/useConversationHistory";
 import { isRunActive, type RunStatus } from "@shared/run-status";
 import { ConversationActions } from "./ConversationActions";
+import { AnimatePresence } from "motion/react";
+import { AnimatedDiv } from "@/components/ui/motion";
 
 export function ConversationList({
   history,
@@ -105,51 +107,55 @@ export function ConversationList({
         aria-label="Conversation history"
         aria-busy={history.loading || loadingMore}
       >
-        {rows.map((entry) => {
-          const selected = entry.threadId === threadId;
-          const busy =
-            (selected && currentBusy) ||
-            (entry.status !== null && isRunActive(entry.status)) ||
-            entry.status === "submission_unknown";
-          const entryTitle = selected ? title : entry.title;
+        <AnimatePresence initial={false}>
+          {rows.map((entry) => {
+            const selected = entry.threadId === threadId;
+            const busy =
+              (selected && currentBusy) ||
+              (entry.status !== null && isRunActive(entry.status)) ||
+              entry.status === "submission_unknown";
+            const entryTitle = selected ? title : entry.title;
 
-          return (
-            <div
-              key={entry.threadId}
-              className={`mb-0.5 flex items-center rounded-md ${selected ? "bg-selected" : "hover:bg-selected/60"}`}
-            >
-              <Button
-                type="button"
-                variant="ghost"
-                className="workspace-sidebar-item h-9 min-w-0 flex-1 rounded-md text-[13px] font-normal hover:bg-transparent max-md:h-10"
-                aria-label={entryTitle}
-                aria-current={selected ? "page" : undefined}
-                title={entryTitle}
-                onClick={() => onSelect(entry.threadId)}
+            return (
+              <AnimatedDiv
+                key={entry.threadId}
+                layout="position"
+                exit={{ opacity: 0, height: 0, marginBottom: 0 }}
+                className={`mb-0.5 flex items-center rounded-md transition-colors duration-(--motion-feedback) ${selected ? "bg-selected" : "hover:bg-selected/60"}`}
               >
-                <ChatCircleIcon
-                  size={18}
-                  className={`size-4 shrink-0 ${selected ? "text-accent" : "text-muted"}`}
-                  aria-hidden="true"
-                />
-                <span
-                  className="workspace-sidebar-label truncate"
-                  aria-hidden={collapsed}
-                >
-                  {entryTitle}
-                </span>
-              </Button>
-              {!collapsed && (currentListed || !selected || !empty) && (
-                <ConversationActions
-                  threadId={entry.threadId}
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="workspace-sidebar-item h-9 min-w-0 flex-1 rounded-md text-[13px] font-normal hover:bg-transparent max-md:h-10"
+                  aria-label={entryTitle}
+                  aria-current={selected ? "page" : undefined}
                   title={entryTitle}
-                  deletionBlocked={busy}
-                  history={history}
-                />
-              )}
-            </div>
-          );
-        })}
+                  onClick={() => onSelect(entry.threadId)}
+                >
+                  <ChatCircleIcon
+                    size={18}
+                    className={`size-4 shrink-0 ${selected ? "text-accent" : "text-muted"}`}
+                    aria-hidden="true"
+                  />
+                  <span
+                    className="workspace-sidebar-label truncate"
+                    aria-hidden={collapsed}
+                  >
+                    {entryTitle}
+                  </span>
+                </Button>
+                {!collapsed && (currentListed || !selected || !empty) && (
+                  <ConversationActions
+                    threadId={entry.threadId}
+                    title={entryTitle}
+                    deletionBlocked={busy}
+                    history={history}
+                  />
+                )}
+              </AnimatedDiv>
+            );
+          })}
+        </AnimatePresence>
         {!collapsed && history.loading && (
           <p role="status" className="px-2 py-3 text-xs text-muted">
             Loading conversations…

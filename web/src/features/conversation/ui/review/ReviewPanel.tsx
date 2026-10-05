@@ -3,6 +3,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import type { PlanReview, PlanReviewResponse } from "../../model/planReview";
+import { AnimatePresence } from "motion/react";
+import { AnimatedDiv } from "@/components/ui/motion";
 
 interface ReviewDraft {
   interruptId: string;
@@ -93,88 +95,94 @@ export function ReviewPanel({
 
   return (
     <form onSubmit={submit} className="space-y-3">
-      {drafts.map((draft, index) => {
-        // A parallel plan may finish while its siblings are still applying.
-        // Keep their local edits and batch decisions until the batch changes.
-        if (!visibleReviews.has(draft.interruptId)) {
-          return null;
-        }
+      <AnimatePresence initial={false}>
+        {drafts.map((draft, index) => {
+          // A parallel plan may finish while its siblings are still applying.
+          // Keep their local edits and batch decisions until the batch changes.
+          if (!visibleReviews.has(draft.interruptId)) {
+            return null;
+          }
 
-        return (
-          <fieldset
-            key={draft.interruptId}
-            className="review-panel-enter min-w-0 space-y-4 overflow-hidden rounded-lg border border-line bg-surface p-4 sm:p-5"
-          >
-            <legend className="sr-only">Review plan {index + 1}</legend>
-            <div className="-mx-4 -mt-4 border-b border-line bg-sidebar px-4 py-3 sm:-mx-5 sm:-mt-5 sm:px-5">
-              <p className="text-xs font-medium text-amber-800">
-                {running ? "Applying review" : "Review required"}
-              </p>
-              <p className="mt-1 text-xs/5 text-muted">
-                Edit the plan below, then approve or reject it.
-              </p>
-            </div>
-            <label className="block text-xs font-medium text-ink">
-              Title
-              <Input
-                value={draft.title}
-                onChange={(event) =>
-                  update(index, { title: event.target.value })
-                }
-                disabled={running}
-                className="mt-1 h-11 bg-surface"
-              />
-            </label>
-            <label className="block text-xs font-medium text-ink">
-              Steps, one per line
-              <Textarea
-                value={draft.stepsText}
-                onChange={(event) =>
-                  update(index, { stepsText: event.target.value })
-                }
-                disabled={running}
-                rows={Math.min(
-                  8,
-                  Math.max(3, draft.stepsText.split("\n").length),
+          return (
+            <AnimatedDiv
+              key={draft.interruptId}
+              exit={{ opacity: 0, height: 0, overflow: "hidden" }}
+            >
+              <fieldset className="min-w-0 space-y-4 overflow-hidden rounded-lg border border-line bg-surface p-4 sm:p-5">
+                <legend className="sr-only">Review plan {index + 1}</legend>
+                <div className="-mx-4 -mt-4 border-b border-line bg-sidebar px-4 py-3 sm:-mx-5 sm:-mt-5 sm:px-5">
+                  <p className="text-xs font-medium text-amber-800">
+                    {running ? "Applying review" : "Review required"}
+                  </p>
+                  <p className="mt-1 text-xs/5 text-muted">
+                    Edit the plan below, then approve or reject it.
+                  </p>
+                </div>
+                <label className="block text-xs font-medium text-ink">
+                  Title
+                  <Input
+                    value={draft.title}
+                    onChange={(event) =>
+                      update(index, { title: event.target.value })
+                    }
+                    disabled={running}
+                    className="mt-1 h-11 bg-surface"
+                  />
+                </label>
+                <label className="block text-xs font-medium text-ink">
+                  Steps, one per line
+                  <Textarea
+                    value={draft.stepsText}
+                    onChange={(event) =>
+                      update(index, { stepsText: event.target.value })
+                    }
+                    disabled={running}
+                    rows={Math.min(
+                      8,
+                      Math.max(3, draft.stepsText.split("\n").length),
+                    )}
+                    className="mt-1 resize-y bg-surface"
+                  />
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type={multiple ? "button" : "submit"}
+                    disabled={running || !validPlan(draft)}
+                    aria-pressed={
+                      multiple ? draft.decision === "approve" : undefined
+                    }
+                    onClick={
+                      multiple ? () => choose(index, "approve") : undefined
+                    }
+                    className="h-10 rounded-md px-4"
+                  >
+                    Approve plan
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={running}
+                    aria-pressed={
+                      multiple ? draft.decision === "reject" : undefined
+                    }
+                    onClick={() => choose(index, "reject")}
+                    className="h-10 rounded-md bg-surface px-4"
+                  >
+                    Reject
+                  </Button>
+                </div>
+                {multiple && draft.decision && (
+                  <p role="status" className="text-xs text-muted">
+                    {draft.decision === "approve"
+                      ? "Approval selected"
+                      : "Rejection selected"}
+                  </p>
                 )}
-                className="mt-1 resize-y bg-surface"
-              />
-            </label>
-            <div className="flex flex-wrap gap-2">
-              <Button
-                type={multiple ? "button" : "submit"}
-                disabled={running || !validPlan(draft)}
-                aria-pressed={
-                  multiple ? draft.decision === "approve" : undefined
-                }
-                onClick={multiple ? () => choose(index, "approve") : undefined}
-                className="h-10 rounded-md px-4"
-              >
-                Approve plan
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                disabled={running}
-                aria-pressed={
-                  multiple ? draft.decision === "reject" : undefined
-                }
-                onClick={() => choose(index, "reject")}
-                className="h-10 rounded-md bg-surface px-4"
-              >
-                Reject
-              </Button>
-            </div>
-            {multiple && draft.decision && (
-              <p role="status" className="text-xs text-muted">
-                {draft.decision === "approve"
-                  ? "Approval selected"
-                  : "Rejection selected"}
-              </p>
-            )}
-          </fieldset>
-        );
-      })}
+              </fieldset>
+            </AnimatedDiv>
+          );
+        })}
+      </AnimatePresence>
       {multiple && (
         <div className="space-y-2">
           <p className="text-xs text-muted">

@@ -1,4 +1,4 @@
-import { Fragment, useMemo, useState, type CSSProperties } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { CopyIcon } from "@phosphor-icons/react/dist/csr/Copy";
 import { PulseIcon } from "@phosphor-icons/react/dist/csr/Pulse";
 import { XIcon } from "@phosphor-icons/react/dist/csr/X";
@@ -11,17 +11,12 @@ import { usePanelWidth } from "./usePanelWidth";
 export function ActivityPanel({
   threadId,
   onClose,
+  panelWidth,
 }: {
   threadId: string | null;
   onClose: () => void;
+  panelWidth: ReturnType<typeof usePanelWidth>;
 }) {
-  const panelWidth = usePanelWidth({
-    storageKey: "agent-playground-activity-width",
-    minimumWidth: 400,
-    maximumWidth: 720,
-    defaultWidth: 520,
-    side: "right",
-  });
   const activity = useConversation((state) => state.activity);
   const received = useConversation((state) => state.activityReceived);
   const clearActivity = useConversation((state) => state.clearActivity);
@@ -68,8 +63,7 @@ export function ActivityPanel({
     <aside
       id="workspace-activity"
       aria-label="Run activity"
-      className="activity-panel-enter relative flex min-w-0 flex-1 flex-col border-l border-line bg-canvas 2xl:w-(--activity-width) 2xl:flex-none"
-      style={{ "--activity-width": `${panelWidth.width}px` } as CSSProperties}
+      className="relative flex h-full min-w-0 flex-1 flex-col border-l border-line bg-canvas"
     >
       <div
         {...panelWidth.handleProps}

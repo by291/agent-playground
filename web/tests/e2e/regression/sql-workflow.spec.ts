@@ -37,7 +37,9 @@ test("SQL revisions and explanations survive reload and submit the accepted vers
   await expect(
     page.getByRole("button", { name: "Accept and submit" }),
   ).toBeEnabled();
-  await expect(page.getByLabel("SQL workflow")).toContainText("Version 2");
+  await expect(
+    page.getByRole("region", { name: "SQL workflow" }),
+  ).toContainText("Version 2");
   const initial = await request.get(
     `http://127.0.0.1:4300/conversations/${threadId}`,
   );
@@ -60,12 +62,16 @@ test("SQL revisions and explanations survive reload and submit the accepted vers
       { exact: true },
     ),
   ).toBeVisible();
-  await expect(page.getByLabel("SQL workflow")).toContainText("Version 2");
+  await expect(
+    page.getByRole("region", { name: "SQL workflow" }),
+  ).toContainText("Version 2");
   await send(page, "Only amounts please");
-  await expect(page.getByLabel("SQL workflow")).toContainText(
-    "SELECT amount FROM orders;",
-  );
-  await expect(page.getByLabel("SQL workflow")).toContainText("Version 3");
+  await expect(
+    page.getByRole("region", { name: "SQL workflow" }),
+  ).toContainText("SELECT amount FROM orders;");
+  await expect(
+    page.getByRole("region", { name: "SQL workflow" }),
+  ).toContainText("Version 3");
   await page.reload();
   await expect(
     page.getByText("Explain this query", { exact: true }),
@@ -104,8 +110,12 @@ test("SQL revisions and explanations survive reload and submit the accepted vers
 
   expect(stale.status()).toBe(409);
   await page.getByRole("button", { name: "Accept and submit" }).click();
-  await expect(page.getByLabel("SQL workflow")).toContainText("SQL submitted");
-  await expect(page.getByLabel("SQL workflow")).toContainText("Receipt:");
+  await expect(
+    page.getByRole("region", { name: "SQL workflow" }),
+  ).toContainText("SQL submitted");
+  await expect(
+    page.getByRole("region", { name: "SQL workflow" }),
+  ).toContainText("Receipt:");
   await expect(
     page.getByRole("button", { name: "Accept and submit" }),
   ).toHaveCount(0);
@@ -118,7 +128,9 @@ test("SQL revisions and explanations survive reload and submit the accepted vers
     page.getByRole("button", { name: /Tool.*run_sql_workflow.*Completed/ }),
   ).toBeVisible();
   await page.reload();
-  await expect(page.getByLabel("SQL workflow")).toContainText("SQL submitted");
+  await expect(
+    page.getByRole("region", { name: "SQL workflow" }),
+  ).toContainText("SQL submitted");
   await expect(page.getByRole("textbox", { name: "Message" })).toBeEnabled();
 });
 
@@ -134,16 +146,20 @@ test("SQL that fails rechecking cannot be submitted and can be abandoned", async
   await expect(
     page.getByRole("button", { name: "Accept and submit" }),
   ).toBeDisabled();
-  await expect(page.getByLabel("SQL workflow")).toContainText(
-    "Changes required",
-  );
+  await expect(
+    page.getByRole("region", { name: "SQL workflow" }),
+  ).toContainText("Changes required");
   await page.reload();
   await expect(
     page.getByRole("button", { name: "Accept and submit" }),
   ).toBeDisabled();
   await page.getByRole("button", { name: "Abandon", exact: true }).click();
-  await expect(page.getByLabel("SQL workflow")).toContainText("SQL abandoned");
-  await expect(page.getByLabel("SQL workflow")).not.toContainText("Receipt:");
+  await expect(
+    page.getByRole("region", { name: "SQL workflow" }),
+  ).toContainText("SQL abandoned");
+  await expect(
+    page.getByRole("region", { name: "SQL workflow" }),
+  ).not.toContainText("Receipt:");
   await expect(
     page.getByRole("button", { name: "Waiting for your review", exact: true }),
   ).toHaveCount(0);

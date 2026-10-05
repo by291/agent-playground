@@ -1,8 +1,240 @@
+:root {
+  --motion-feedback: 120ms;
+  --motion-content: 180ms;
+  --motion-panel: 220ms;
+  --motion-exit: 140ms;
+  --motion-enter-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --motion-exit-ease: cubic-bezier(0.4, 0, 1, 1);
+}
+
 @media (prefers-reduced-motion: no-preference) {
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  @keyframes fade-out {
+    from {
+      opacity: 1;
+    }
+    to {
+      opacity: 0;
+    }
+  }
+
+  @keyframes popup-in {
+    from {
+      opacity: 0;
+      scale: 0.98;
+      translate: 0 4px;
+    }
+    to {
+      opacity: 1;
+      scale: 1;
+      translate: 0 0;
+    }
+  }
+
+  @keyframes popup-out {
+    from {
+      opacity: 1;
+      scale: 1;
+      translate: 0 0;
+    }
+    to {
+      opacity: 0;
+      scale: 0.98;
+      translate: 0 4px;
+    }
+  }
+
+  @keyframes sheet-in {
+    from {
+      opacity: 0;
+      translate: 24px 0;
+    }
+    to {
+      opacity: 1;
+      translate: 0 0;
+    }
+  }
+
+  @keyframes sheet-out {
+    from {
+      opacity: 1;
+      translate: 0 0;
+    }
+    to {
+      opacity: 0;
+      translate: 24px 0;
+    }
+  }
+
+  .motion-content-enter {
+    animation: fade-in var(--motion-content) var(--motion-enter-ease);
+  }
+
+  .motion-item-enter {
+    animation: rise-in var(--motion-content) var(--motion-enter-ease);
+  }
+
+  [data-slot="dialog-overlay"][data-state="open"] {
+    animation: fade-in var(--motion-panel) ease-out;
+  }
+
+  [data-slot="dialog-overlay"][data-state="closed"] {
+    animation: fade-out var(--motion-exit) ease-in;
+  }
+
+  :is(
+    [data-slot="dialog-content"],
+    .motion-popover,
+    [data-slot="select-content"]
+  )[data-state="open"] {
+    animation: popup-in var(--motion-panel) var(--motion-enter-ease);
+  }
+
+  :is(
+    [data-slot="dialog-content"],
+    .motion-popover,
+    [data-slot="select-content"]
+  )[data-state="closed"] {
+    animation: popup-out var(--motion-exit) var(--motion-exit-ease);
+    pointer-events: none;
+  }
+
+  [data-slot="dialog-content"][data-motion="sheet"][data-state="open"] {
+    animation-name: sheet-in;
+  }
+
+  [data-slot="dialog-content"][data-motion="sheet"][data-state="closed"] {
+    animation-name: sheet-out;
+  }
+
+  [data-slot="collapsible-content"] {
+    overflow: hidden;
+  }
+
+  [data-slot="collapsible-content"][data-state="closed"] {
+    pointer-events: none;
+  }
+
+  .motion-chevron {
+    transition: transform var(--motion-content) var(--motion-enter-ease);
+  }
+
+  .motion-progress {
+    transform-origin: left;
+    transition: transform var(--motion-panel) var(--motion-enter-ease);
+  }
+
+  .motion-context-ring {
+    transition: stroke-dashoffset var(--motion-panel) var(--motion-enter-ease);
+  }
+
+  :is(button, a, summary, [data-slot="select-item"]):not(
+    [data-slot="message-scroller-button"]
+  ) {
+    transition-property:
+      color, background-color, border-color, opacity, box-shadow;
+    transition-duration: var(--motion-feedback);
+  }
+
+  /* Native dialogs retain their top-layer position until the visual exit ends. */
+  @supports (transition-behavior: allow-discrete) {
+    dialog {
+      opacity: 0;
+      scale: 0.98;
+      translate: 0 6px;
+      transition:
+        opacity var(--motion-exit) ease-in,
+        scale var(--motion-exit) ease-in,
+        translate var(--motion-exit) ease-in,
+        display var(--motion-exit) allow-discrete,
+        overlay var(--motion-exit) allow-discrete;
+    }
+
+    dialog[open] {
+      opacity: 1;
+      scale: 1;
+      translate: 0 0;
+      transition-duration: var(--motion-panel);
+      transition-timing-function: var(--motion-enter-ease);
+    }
+
+    dialog:not([open]),
+    dialog:not([open])::backdrop {
+      pointer-events: none;
+    }
+
+    dialog::backdrop {
+      opacity: 0;
+      transition:
+        opacity var(--motion-exit),
+        display var(--motion-exit) allow-discrete,
+        overlay var(--motion-exit) allow-discrete;
+    }
+
+    dialog[open]::backdrop {
+      opacity: 1;
+      transition-duration: var(--motion-panel);
+    }
+
+    .workspace-navigation-dialog {
+      scale: 1;
+      translate: -100% 0;
+    }
+    .workspace-navigation-dialog[open] {
+      translate: 0 0;
+    }
+
+    @starting-style {
+      dialog[open] {
+        opacity: 0;
+        scale: 0.98;
+        translate: 0 6px;
+      }
+      dialog[open]::backdrop {
+        opacity: 0;
+      }
+      .workspace-navigation-dialog[open] {
+        scale: 1;
+        translate: -100% 0;
+      }
+    }
+  }
+
+  @supports not (transition-behavior: allow-discrete) {
+    dialog[open] {
+      animation: popup-in var(--motion-panel) var(--motion-enter-ease);
+    }
+  }
+
+  @supports (interpolate-size: allow-keywords) {
+    .motion-details::details-content {
+      interpolate-size: allow-keywords;
+      height: 0;
+      opacity: 0;
+      overflow: clip;
+      transition:
+        height var(--motion-panel) var(--motion-enter-ease),
+        opacity var(--motion-content),
+        content-visibility var(--motion-panel) allow-discrete;
+    }
+
+    .motion-details[open]::details-content {
+      height: auto;
+      opacity: 1;
+    }
+  }
   @keyframes rise-in {
     from {
       opacity: 0;
-      transform: translateY(10px);
+      transform: translateY(6px);
     }
     to {
       opacity: 1;

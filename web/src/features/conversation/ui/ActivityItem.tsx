@@ -76,7 +76,7 @@ export const ActivityItem = memo(function ActivityItem({
   entry: Activity;
   stream: ActivityStream | undefined;
 }) {
-  const [open, setOpen] = useState(false);
+  const [hasOpened, setHasOpened] = useState(false);
   const { event } = entry;
   const failed = event.type === EventType.RUN_ERROR;
   let category =
@@ -105,9 +105,13 @@ export const ActivityItem = memo(function ActivityItem({
   return (
     <li>
       <details
-        onToggle={(event) => setOpen(event.currentTarget.open)}
+        onToggle={(event) => {
+          if (event.currentTarget.open) {
+            setHasOpened(true);
+          }
+        }}
         className={cn(
-          "group/event overflow-hidden rounded-lg border border-line bg-surface",
+          "motion-details group/event overflow-hidden rounded-lg border border-line bg-surface",
           failed && "border-destructive/30",
         )}
       >
@@ -168,10 +172,10 @@ export const ActivityItem = memo(function ActivityItem({
           <CaretRightIcon
             size={12}
             aria-hidden="true"
-            className="mt-1 shrink-0 text-muted group-open/event:rotate-90"
+            className="motion-chevron mt-1 shrink-0 text-muted group-open/event:rotate-90"
           />
         </summary>
-        {open && (
+        {hasOpened && (
           <div className="border-t border-line p-3">
             <p className="text-xs text-muted">Run ID</p>
             <code className="mt-1 block break-all text-xs/5 text-ink">

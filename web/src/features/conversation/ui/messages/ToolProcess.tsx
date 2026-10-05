@@ -105,13 +105,16 @@ function ToolDetails({ step }: { step: ToolStep }) {
         <span className="min-w-0 flex-1 wrap-anywhere">
           {skill?.path ?? label}
         </span>
-        <span className="shrink-0 text-xs text-muted">
+        <span
+          key={step.status}
+          className="motion-content-enter shrink-0 text-xs text-muted"
+        >
           {statuses[step.status]}
         </span>
         <CaretDownIcon
           aria-hidden="true"
           size={12}
-          className={open ? "shrink-0 rotate-180" : "shrink-0"}
+          className={`motion-chevron shrink-0 ${open ? "rotate-180" : ""}`}
         />
       </CollapsibleTrigger>
       <CollapsibleContent className="space-y-3 px-2 pt-2 pb-3">
@@ -153,6 +156,7 @@ export function ToolProcess({
   const [open, setOpen] = useState(false);
   const steps = process.flatMap((entry) => entry.calls);
   const failed = steps.some((step) => step.status === "failed");
+  const running = steps.some((step) => step.status === "running");
   const error = steps.find((step) => step.result?.error)?.result?.error;
   const name =
     skillName ??
@@ -170,20 +174,35 @@ export function ToolProcess({
   return (
     <Collapsible open={open} onOpenChange={setOpen} className="w-full min-w-0">
       <CollapsibleTrigger
+        aria-label={`${skillName ? "Skill" : "Tool"} ${name} ${summary(steps)}`}
         className={`flex min-h-8 max-w-full cursor-pointer items-center gap-2 rounded-lg px-2 py-1 text-left text-sm hover:bg-sidebar focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none ${failed ? "text-red-700" : "text-muted"}`}
       >
-        <Icon aria-hidden="true" size={16} className="shrink-0" />
+        {running ? (
+          <CircleNotchIcon
+            aria-hidden="true"
+            size={16}
+            className="shrink-0 motion-safe:animate-spin"
+          />
+        ) : (
+          <Icon aria-hidden="true" size={16} className="shrink-0" />
+        )}
         <span className="shrink-0 rounded border border-line px-1.5 py-0.5 text-[11px] font-medium">
           {skillName ? "Skill" : "Tool"}
         </span>
         <span className="min-w-0 truncate font-medium text-ink" title={name}>
           {name}
         </span>
-        <span className="text-xs">{summary(steps)}</span>
+        <span
+          key={summary(steps)}
+          className="motion-content-enter text-xs"
+          role="status"
+        >
+          {summary(steps)}
+        </span>
         <CaretDownIcon
           aria-hidden="true"
           size={14}
-          className={open ? "shrink-0 rotate-180" : "shrink-0"}
+          className={`motion-chevron shrink-0 ${open ? "rotate-180" : ""}`}
         />
       </CollapsibleTrigger>
       {error && (

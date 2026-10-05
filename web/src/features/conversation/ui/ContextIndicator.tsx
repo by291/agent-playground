@@ -71,6 +71,7 @@ export function ContextIndicator() {
               strokeLinecap="round"
               strokeDasharray={2 * Math.PI * 9}
               strokeDashoffset={2 * Math.PI * 9 * (1 - Math.min(ratio, 1))}
+              className="motion-context-ring"
               transform="rotate(-90 12 12)"
             />
           </svg>
@@ -84,7 +85,7 @@ export function ContextIndicator() {
           side="top"
           sideOffset={8}
           collisionPadding={16}
-          className="z-50 w-80 max-w-[calc(100vw-2rem)] rounded-lg border border-line bg-surface p-5 text-ink shadow-lg outline-none"
+          className="motion-popover z-50 w-80 max-w-[calc(100vw-2rem)] rounded-lg border border-line bg-surface p-5 text-ink shadow-lg outline-none"
           aria-label="Context usage details"
         >
           <div className="mb-4 flex items-center justify-between gap-3">
@@ -138,8 +139,8 @@ function ContextDetails({ usage }: { usage: ContextUsage }) {
           aria-valuetext={`Approximately ${percentage}% used`}
         >
           <div
-            className="h-full rounded-full bg-accent"
-            style={{ width: `${Math.min(ratio, 1) * 100}%` }}
+            className="motion-progress h-full origin-left rounded-full bg-accent"
+            style={{ transform: `scaleX(${Math.min(ratio, 1)})` }}
           />
         </div>
         <p className="mt-2 text-xs text-soft">
@@ -176,8 +177,8 @@ function ContextDetails({ usage }: { usage: ContextUsage }) {
                   aria-hidden="true"
                 >
                   <div
-                    className={`h-full rounded-full ${color}`}
-                    style={{ width: `${width}%` }}
+                    className={`motion-progress h-full origin-left rounded-full ${color}`}
+                    style={{ transform: `scaleX(${width / 100})` }}
                   />
                 </div>
               </div>

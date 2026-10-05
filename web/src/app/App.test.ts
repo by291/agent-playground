@@ -17,6 +17,8 @@ function renderInitialPage(
 ) {
   vi.stubGlobal("window", {
     location: { pathname },
+    addEventListener: () => undefined,
+    removeEventListener: () => undefined,
   });
   vi.stubGlobal("localStorage", {
     getItem: () => JSON.stringify(saved),

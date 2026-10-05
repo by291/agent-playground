@@ -1,5 +1,5 @@
 @media (prefers-reduced-motion: no-preference) {
   .gallery-preview-enter {
-    animation: rise-in 240ms cubic-bezier(0.16, 1, 0.3, 1) both;
+    animation: rise-in var(--motion-panel) var(--motion-enter-ease) both;
   }
 }

@@ -12,8 +12,13 @@ export function DialogContent({
 }: React.ComponentProps<typeof DialogPrimitive.Content>) {
   return (
     <DialogPrimitive.Portal>
-      <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-ink/10" />
-      <DialogPrimitive.Content {...props}>{children}</DialogPrimitive.Content>
+      <DialogPrimitive.Overlay
+        data-slot="dialog-overlay"
+        className="fixed inset-0 z-50 bg-ink/10"
+      />
+      <DialogPrimitive.Content data-slot="dialog-content" {...props}>
+        {children}
+      </DialogPrimitive.Content>
     </DialogPrimitive.Portal>
   );
 }

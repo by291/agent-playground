@@ -54,7 +54,7 @@ export function ReasoningProcess({
         <CaretDownIcon
           size={14}
           aria-hidden="true"
-          className={open ? "rotate-180" : ""}
+          className={`motion-chevron ${open ? "rotate-180" : ""}`}
         />
       </CollapsibleTrigger>
       <CollapsibleContent className="chat-markdown mt-2 space-y-3 border-l border-line pl-3 text-sm text-muted">

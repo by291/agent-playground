@@ -34,3 +34,69 @@ test("the development gallery selects a valid WorkflowText preview", async ({
   await expect(editor).toBeVisible();
   expect(errors).toEqual([]);
 });
+
+test.describe("Select positioning during motion", () => {
+  test.use({ reducedMotion: "no-preference" });
+
+  for (const side of ["bottom", "top"] as const) {
+    test(`the ${side} menu keeps its bounds when its entrance finishes`, async ({
+      page,
+    }) => {
+      await page.setViewportSize({ width: 1440, height: 900 });
+      await page.goto("/dev/a2ui-components");
+      const trigger = page.getByRole("combobox", {
+        name: "Component",
+        exact: true,
+      });
+
+      await expect(trigger).toBeVisible();
+      await page.evaluate(() => {
+        // Give the browser clock enough room to inspect the final animation frame.
+        document.documentElement.style.setProperty("--motion-panel", "2s");
+      });
+
+      if (side === "top") {
+        await trigger.evaluate((element) => {
+          element.style.position = "fixed";
+          element.style.bottom = "10px";
+          element.style.left = "20px";
+        });
+      }
+
+      await trigger.evaluate((element) => (element as HTMLElement).click());
+      const menu = page.getByRole("listbox");
+
+      await expect(menu).toHaveAttribute("data-side", side);
+      const shift = await menu.evaluate((element) => {
+        const animation = element.getAnimations()[0];
+
+        if (!animation?.effect) {
+          throw new Error("Select entrance animation did not start");
+        }
+
+        animation.pause();
+        animation.currentTime =
+          Number(animation.effect.getTiming().duration) - 0.1;
+        const before = element.getBoundingClientRect();
+
+        animation.finish();
+        const after = element.getBoundingClientRect();
+
+        return Math.max(
+          Math.abs(after.x - before.x),
+          Math.abs(after.y - before.y),
+          Math.abs(after.width - before.width),
+          Math.abs(after.height - before.height),
+        );
+      });
+
+      expect(shift).toBeLessThan(0.5);
+      await page
+        .getByRole("option", { name: "WorkflowText", exact: true })
+        .click();
+      await expect(trigger).toHaveText("WorkflowText");
+      await expect(menu).toHaveCount(0);
+      await expect(trigger).toBeFocused();
+    });
+  }
+});

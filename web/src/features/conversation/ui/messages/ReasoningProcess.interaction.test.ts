@@ -47,10 +47,14 @@ test("reasoning opens while thinking and folds on visible answer text without ov
   const toggle = page.getByRole("button", { name: "Reasoning" });
 
   await waitFor(() => expect(toggle).toHaveAttribute("aria-expanded", "false"));
-  expect(page.queryByText("First, compare the constraints.")).toBeNull();
+  await waitFor(() =>
+    expect(page.queryByText("First, compare the constraints.")).toBeNull(),
+  );
   expect(page.getByText("Approach A is simpler.")).toBeVisible();
   await user.click(toggle);
-  expect(page.getByText("First, compare the constraints.")).toBeVisible();
+  await waitFor(() =>
+    expect(page.getByText("First, compare the constraints.")).toBeVisible(),
+  );
   messages[2] = {
     id: "answer",
     role: "assistant",
@@ -83,7 +87,9 @@ test("reasoning opens while thinking and folds on visible answer text without ov
   page.rerender(
     createElement(AssistantReply, { turn: turn(), animatedMessageId: null }),
   );
-  expect(page.getByText("Now check the tradeoffs.")).toBeVisible();
+  await waitFor(() =>
+    expect(page.getByText("Now check the tradeoffs.")).toBeVisible(),
+  );
 });
 
 test("reasoning stays open until the paced answer actually renders text", async () => {
@@ -150,7 +156,9 @@ test("an empty code fence does not fold reasoning before its code body appears",
     createElement(AssistantReply, { turn: turn(), animatedMessageId: null }),
   );
   await waitFor(() => expect(toggle).toHaveAttribute("aria-expanded", "false"));
-  expect(page.queryByText("Choose a small example.")).toBeNull();
+  await waitFor(() =>
+    expect(page.queryByText("Choose a small example.")).toBeNull(),
+  );
   expect(page.container.querySelector("code")?.textContent).toContain(
     "print(1)",
   );
@@ -213,5 +221,7 @@ test("restored reasoning-only replies remain accessible and start collapsed", as
 
   expect(toggle).toHaveAttribute("aria-expanded", "false");
   await user.click(toggle);
-  expect(page.getByText("The input could not be resolved.")).toBeVisible();
+  await waitFor(() =>
+    expect(page.getByText("The input could not be resolved.")).toBeVisible(),
+  );
 });

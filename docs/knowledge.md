@@ -44,6 +44,8 @@ Citations bind a sentence/paragraph to a retrieved chunk ID, not a guessed filen
 
 ## Deletion and cleanup
 
+**Delete** opens a confirmation naming the shared document. Cancellation sends no deletion request. While deletion is pending, dismissal is blocked; request errors stay in the dialog and allow an explicit retry. Upload and reindex feedback identify the operation and affected document separately.
+
 Deleting a document immediately hides its index and download. The server independently retries S3 cleanup and removes chunks. It also scans one `knowledge/` object-list page per cleanup pass to remove uploads that finish remotely after a client timeout; S3 credentials need list, get, put and delete permissions for these objects. A small metadata tombstone prevents delayed upload retries from recreating deleted document IDs. Conversation deletion does not delete shared documents; previously saved conversation excerpts remain part of that conversation's history.
 
 ## API and limits

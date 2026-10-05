@@ -5,6 +5,8 @@ import {
   type SkillFile,
 } from "@shared/skill-files";
 import type { toolProcess } from "../../model/turns";
+import { AnimatePresence, motion, useIsPresent } from "motion/react";
+import { useMotionTiming } from "@/components/ui/motion";
 
 export function SkillFiles({
   process,
@@ -33,26 +35,42 @@ export function SkillFiles({
     }
   }
 
-  if (!files.size) {
-    return null;
-  }
+  return (
+    <div
+      className="flex flex-wrap gap-2 empty:hidden"
+      aria-label="Generated files"
+    >
+      <AnimatePresence initial={false}>
+        {[...files.values()].map((file) => (
+          <FileLink key={file.id} file={file} />
+        ))}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+function FileLink({ file }: { file: SkillFile }) {
+  const present = useIsPresent();
+  const timing = useMotionTiming();
+  const exitTiming = useMotionTiming("exit");
 
   return (
-    <div className="flex flex-wrap gap-2" aria-label="Generated files">
-      {[...files.values()].map((file) => (
-        <a
-          key={file.id}
-          href={skillFileUrl(file)}
-          download={file.name}
-          className="inline-flex max-w-full items-center gap-2 rounded-lg border border-line px-3 py-2 text-sm hover:bg-sidebar focus-visible:ring-2 focus-visible:ring-accent"
-        >
-          <DownloadSimpleIcon size={17} aria-hidden="true" />
-          <span className="truncate">{file.name}</span>
-          <span className="text-xs text-muted">
-            {Math.ceil(file.size / 1024)} KB
-          </span>
-        </a>
-      ))}
-    </div>
+    <motion.a
+      href={skillFileUrl(file)}
+      download={file.name}
+      inert={!present}
+      aria-hidden={!present}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0, transition: exitTiming }}
+      transition={timing}
+      className="inline-flex max-w-full items-center gap-2 rounded-lg border border-line px-3 py-2 text-sm hover:bg-sidebar focus-visible:ring-2 focus-visible:ring-accent"
+    >
+      <DownloadSimpleIcon size={17} aria-hidden="true" />
+      <span className="truncate">{file.name}</span>
+      <span className="text-xs text-muted">
+        {Math.ceil(file.size / 1024)} KB
+      </span>
+    </motion.a>
   );
 }

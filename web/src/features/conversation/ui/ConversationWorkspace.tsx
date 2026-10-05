@@ -2,7 +2,7 @@ import { PlusIcon } from "@phosphor-icons/react/dist/csr/Plus";
 import { PulseIcon } from "@phosphor-icons/react/dist/csr/Pulse";
 import { SidebarSimpleIcon } from "@phosphor-icons/react/dist/csr/SidebarSimple";
 import { SquaresFourIcon } from "@phosphor-icons/react/dist/csr/SquaresFour";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ChatPane } from "@/features/conversation/ui/ChatPane";
@@ -14,6 +14,7 @@ import { ResizableSidebar } from "./ResizableSidebar";
 import { isEmpty, isRunning, isRestoring } from "../model/selectors";
 import { ReplyPresentationProvider } from "./ReplyPresentation";
 import type { ConversationHistory } from "../model/useConversationHistory";
+import { usePanelWidth } from "./usePanelWidth";
 
 const collapsedStorageKey = "agent-playground-sidebar-collapsed";
 
@@ -42,6 +43,7 @@ export function ConversationWorkspace({
   const [prompt, setPrompt] = useState("");
   const [navigationOpen, setNavigationOpen] = useState(false);
   const navigation = useRef<HTMLDialogElement>(null);
+  const activityTrigger = useRef<HTMLButtonElement>(null);
   const empty = useConversation(isEmpty);
   const threadId =
     useConversation((state) => state.threadId) ?? conversation.threadId ?? null;
@@ -57,6 +59,13 @@ export function ConversationWorkspace({
     (empty ? "New conversation" : "Current conversation");
   const current = { threadId: threadId ?? "", title, status, busy };
   const showActivity = development && activityOpen;
+  const activityWidth = usePanelWidth({
+    storageKey: "agent-playground-activity-width",
+    minimumWidth: 400,
+    maximumWidth: 720,
+    defaultWidth: 520,
+    side: "right",
+  });
 
   useEffect(() => {
     function closeOnDesktop() {
@@ -93,6 +102,16 @@ export function ConversationWorkspace({
       localStorage.setItem(collapsedStorageKey, String(collapsed));
     } catch {
       // Navigation still works when browser preferences cannot be saved.
+    }
+  }
+
+  function closeActivity() {
+    const focusInPanel = document.activeElement?.closest("#workspace-activity");
+
+    setActivityOpen(false);
+
+    if (focusInPanel) {
+      activityTrigger.current?.focus();
     }
   }
 
@@ -174,6 +193,7 @@ export function ConversationWorkspace({
                   <span className="hidden text-xs xl:inline">Components</span>
                 </a>
                 <Button
+                  ref={activityTrigger}
                   type="button"
                   variant="ghost"
                   onClick={() => setActivityOpen((open) => !open)}
@@ -202,20 +222,33 @@ export function ConversationWorkspace({
           </div>
         </header>
 
-        <div className="flex min-h-0 flex-1">
-          <main
-            className={`${showActivity ? "hidden 2xl:flex" : "flex"} min-w-0 flex-1 flex-col`}
-          >
+        <div
+          className="workspace-content relative flex min-h-0 flex-1 overflow-hidden"
+          data-activity-open={showActivity}
+          data-resizing={activityWidth.resizing}
+          style={
+            { "--activity-width": `${activityWidth.width}px` } as CSSProperties
+          }
+        >
+          <main className="workspace-chat flex min-w-0 flex-1 flex-col">
             <ReplyPresentationProvider>
               <ChatPane onSelectPrompt={setPrompt} />
               <Composer prompt={prompt} onPromptChange={setPrompt} />
             </ReplyPresentationProvider>
           </main>
-          {showActivity && (
-            <ActivityPanel
-              threadId={threadId}
-              onClose={() => setActivityOpen(false)}
-            />
+          {development && (
+            <div
+              className="workspace-activity-shell"
+              data-open={showActivity}
+              inert={!showActivity}
+              aria-hidden={!showActivity}
+            >
+              <ActivityPanel
+                threadId={threadId}
+                panelWidth={activityWidth}
+                onClose={closeActivity}
+              />
+            </div>
           )}
         </div>
       </div>

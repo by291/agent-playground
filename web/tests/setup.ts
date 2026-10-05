@@ -1,8 +1,11 @@
 import { afterEach, vi } from "vitest";
+import { MotionGlobalConfig } from "motion/react";
 
 let cleanupDom: (() => void) | undefined;
 
 if (typeof document !== "undefined") {
+  // Browser regression tests exercise motion; DOM tests exercise state changes.
+  MotionGlobalConfig.skipAnimations = true;
   const { cleanup } = await import("@testing-library/react/pure");
 
   await import("@testing-library/jest-dom/vitest");
@@ -12,6 +15,7 @@ if (typeof document !== "undefined") {
     configurable: true,
     value: () => undefined,
   });
+  window.scrollTo = () => undefined;
   cleanupDom = () => {
     cleanup();
     window.localStorage.clear();

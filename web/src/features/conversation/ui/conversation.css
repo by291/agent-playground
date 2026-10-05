@@ -163,7 +163,74 @@
   background: rgb(17 24 39 / 30%);
 }
 
+.workspace-activity-shell {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  overflow: hidden;
+  opacity: 0;
+  visibility: hidden;
+  translate: 24px 0;
+  pointer-events: none;
+}
+
+.workspace-activity-shell[data-open="true"] {
+  opacity: 1;
+  visibility: visible;
+  translate: 0 0;
+  pointer-events: auto;
+}
+
+@media (max-width: 1535px) {
+  .workspace-content[data-activity-open="true"] .workspace-chat {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+  }
+}
+
+@media (min-width: 1536px) {
+  .workspace-activity-shell {
+    position: relative;
+    inset: auto;
+    z-index: auto;
+    width: 0;
+    flex-shrink: 0;
+    overflow: visible;
+    translate: none;
+  }
+
+  .workspace-activity-shell[data-open="true"] {
+    width: var(--activity-width);
+  }
+
+  .workspace-activity-shell > aside {
+    min-width: var(--activity-width);
+  }
+}
+
 @media (prefers-reduced-motion: no-preference) {
+  .workspace-chat {
+    transition:
+      opacity var(--motion-panel),
+      visibility var(--motion-panel);
+  }
+  .workspace-activity-shell {
+    transition:
+      width var(--motion-exit) var(--motion-enter-ease),
+      opacity var(--motion-exit),
+      translate var(--motion-exit) var(--motion-enter-ease),
+      visibility var(--motion-exit);
+  }
+
+  .workspace-activity-shell[data-open="true"] {
+    transition-duration: var(--motion-panel);
+  }
+
+  .workspace-content[data-resizing="true"] .workspace-activity-shell {
+    transition: none;
+  }
   .workspace-sidebar-shell {
     transition: width 180ms cubic-bezier(0.2, 0, 0, 1);
   }
@@ -202,19 +269,15 @@
   }
 
   .welcome-intro {
-    animation: rise-in 380ms cubic-bezier(0.16, 1, 0.3, 1) both;
+    animation: rise-in var(--motion-panel) var(--motion-enter-ease) both;
   }
 
   .welcome-suggestions {
-    animation: rise-in 420ms 80ms cubic-bezier(0.16, 1, 0.3, 1) both;
-  }
-
-  .activity-panel-enter {
-    animation: slide-in 260ms cubic-bezier(0.16, 1, 0.3, 1) both;
+    animation: rise-in var(--motion-panel) 40ms var(--motion-enter-ease) both;
   }
 
   .review-panel-enter {
-    animation: rise-in 260ms cubic-bezier(0.16, 1, 0.3, 1) both;
+    animation: rise-in var(--motion-panel) var(--motion-enter-ease) both;
   }
 
   .thinking-dot {

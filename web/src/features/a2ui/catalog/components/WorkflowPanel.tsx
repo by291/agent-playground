@@ -11,7 +11,7 @@ const panelApi = {
 export const WorkflowPanel = createComponentImplementation(
   panelApi,
   ({ props, buildChild }) => (
-    <section className="rounded-lg border border-line bg-surface p-5">
+    <section className="motion-item-enter rounded-lg border border-line bg-surface p-5">
       <div className="flex flex-col gap-3">
         {props.children.map((child) => (
           <Fragment key={typeof child === "string" ? child : child.id}>

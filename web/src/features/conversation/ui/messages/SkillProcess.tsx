@@ -44,7 +44,7 @@ export function ExecutionProcess({
   }
 
   return (
-    <div className="space-y-2">
+    <div className="motion-content-enter space-y-2">
       {[...groups].map(([name, entries]) => (
         <ToolProcess key={name} process={entries} skillName={name} />
       ))}

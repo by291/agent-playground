@@ -102,6 +102,10 @@ The development gallery import is guarded directly by Vite's compile-time `impor
 
 `styles/theme.css` is the shared token source. shadcn variables reference the same semantic colors instead of repeating palette values. Global base/motion rules and feature-specific CSS are separate. The editor/gallery CSS loads with its development page. Shared app-header branding lives in `components/AppBrand.tsx`.
 
+`styles/motion.css` defines shared feedback, content, panel and exit durations (120/180/220/140 ms). Radix popups use CSS entrance/exit animations; native dialogs use discrete display/top-layer transitions where supported, with an entrance-only fallback in older browsers. Native log and task-history disclosures progressively enhance height transitions. Motion handles collapsible height, list layout and retained exits through `components/ui/motion.tsx`. Motion-retained exiting content becomes inert and hidden from assistive technology immediately. Reduced-motion preferences disable CSS movement and set Motion durations to zero. Streaming text pacing remains independent; completed history messages do not replay submission animations.
+
+Select menu spacing uses Radix's `sideOffset` (4 px by default). Keep persistent positioning offsets out of animation transforms so the final animated frame and resting menu bounds agree, including when collision handling flips the menu above its trigger.
+
 ## Components and development tools
 
 shadcn/ui primitives live in `web/src/components/ui/`. To add one, run `pnpm dlx shadcn@latest add <component>` from `web/`; `components.json` contains registry settings. The A2UI catalog keeps each component schema and renderer together in `features/a2ui/catalog/components/`, registered by `catalog/index.tsx`.
@@ -111,6 +115,8 @@ Inter weights 400, 500, 600 and 700 are bundled with Fontsource rather than down
 **Activity** shows SDK-observed AG-UI events from the current page session with receive times, run/step/tool identity and complete JSON. Its default merged view combines text, reasoning and tool-argument deltas within run/message/call boundaries; turn merging off to inspect individual events. Partial boundaries remain explicitly partial. JSON highlighting is lazy, and original retained values are preserved.
 
 The Activity panel's desktop width is saved separately from navigation width and supports pointer and keyboard resizing. On smaller screens it fills the workspace. **Copy log** includes all retained original events in receive order, the latest run summary and client issues regardless of the filtered/merged view; the retained buffer is capped at 500 events. The badge counts received events since **Clear log**, and discarded entries are marked as a partial log. Clearing the log does not alter conversation data, clear client issues or stop execution; refresh or conversation switching clears the log. Exported event content can contain user data and should be reviewed before sharing.
+
+The Activity shell stays mounted during open/close transitions and preserves its display controls and expanded events. Closing makes it inert immediately and returns focus to the Activity trigger when focus was inside the panel. Width resizing bypasses transitions so the separator follows pointer movement directly. Event payloads are created on first expansion and retained for disclosure exits until their event is removed.
 
 These events have passed through the server adapter and SDK filtering/normalization. Activity does not capture rejected events, raw HTTP/SSE bytes, Aegra queue diagnostics or a durable replay log; restored checkpoint messages are not historical AG-UI events. Its receive times cannot measure browser paint or queue delay. Both Activity and the component gallery are excluded from production builds.
 
@@ -125,6 +131,8 @@ pnpm format:check
 ```
 
 Unit, SDK session and DOM interaction tests are colocated with their modules and run with [Vitest](https://vitest.dev/). Pure logic tests use the Node environment. DOM interaction files declare `@vitest-environment jsdom` and use [React Testing Library](https://testing-library.com/docs/react-testing-library/intro/), user-event and jest-dom. `web/tests/setup.ts` cleans up rendered components and browser storage, then restores mocks, globals, environment stubs and timers after each test. They cover actual input, tool folds and edited review submission. The provider test mounts Query, the session and the official streaming SDK together using controlled HTTP responses, checking fresh-query deferral and restored snapshot delivery.
+
+DOM tests skip Motion animations and await final state changes. Browser regressions cover normal motion, interrupted exits, focus restoration and reduced-motion behavior separately from the suite's default reduced-motion setting.
 
 `pnpm --filter agent-playground-web test:watch` reruns affected tests during development. `pnpm --filter agent-playground-web test:coverage` collects V8 coverage and writes HTML and LCOV reports under `web/coverage/`. The test configuration reuses the application's Vite transforms and module resolution. Test execution does not replace the separate TypeScript check.
 

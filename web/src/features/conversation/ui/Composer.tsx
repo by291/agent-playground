@@ -9,6 +9,9 @@ import {
 } from "react";
 import { PaperclipIcon } from "@phosphor-icons/react/dist/csr/Paperclip";
 import { XIcon } from "@phosphor-icons/react/dist/csr/X";
+import { CircleNotchIcon } from "@phosphor-icons/react/dist/csr/CircleNotch";
+import { AnimatePresence } from "motion/react";
+import { AnimatedDiv } from "@/components/ui/motion";
 import { maxSkillFileBytes, skillFilenameSchema } from "@shared/skill-files";
 import { uploadFile } from "../api/files";
 import { useShallow } from "zustand/react/shallow";
@@ -209,12 +212,21 @@ export function Composer({
             }}
           />
           <InputGroup className="h-auto flex-col items-stretch gap-1 rounded-xl border-line bg-surface p-3 shadow-[0_3px_12px_rgba(32,36,44,0.04)] transition-colors duration-150 focus-within:border-accent sm:p-4">
-            {files.length > 0 && (
-              <div className="flex flex-wrap gap-2 px-1">
+            <div className="flex flex-wrap gap-2 px-1 empty:hidden">
+              <AnimatePresence initial={false}>
                 {files.map(({ id, file }) => (
-                  <div
+                  <AnimatedDiv
                     key={id}
-                    className="flex max-w-full items-center gap-2 rounded-lg border border-line px-2 py-1 text-xs"
+                    layout="position"
+                    exit={{
+                      opacity: 0,
+                      height: 0,
+                      width: 0,
+                      margin: 0,
+                      padding: 0,
+                      borderWidth: 0,
+                    }}
+                    className="flex max-w-full items-center gap-2 overflow-hidden rounded-lg border border-line px-2 py-1 text-xs"
                   >
                     <span className="truncate">{file.name}</span>
                     <button
@@ -230,9 +242,18 @@ export function Composer({
                     >
                       <XIcon size={14} aria-hidden="true" />
                     </button>
-                  </div>
+                  </AnimatedDiv>
                 ))}
-              </div>
+              </AnimatePresence>
+            </div>
+            {uploading && (
+              <p
+                role="status"
+                className="motion-content-enter px-1 text-xs text-muted"
+              >
+                Uploading {files.length} {files.length === 1 ? "file" : "files"}
+                …
+              </p>
             )}
             {uploadError && (
               <p role="alert" className="px-1 text-sm text-red-700">
@@ -277,7 +298,15 @@ export function Composer({
                   aria-label={sendLabel}
                   className="size-10 rounded-md"
                 >
-                  <ArrowUpIcon size={19} weight="bold" aria-hidden="true" />
+                  {uploading || recovering || responding ? (
+                    <CircleNotchIcon
+                      size={19}
+                      aria-hidden="true"
+                      className="motion-safe:animate-spin"
+                    />
+                  ) : (
+                    <ArrowUpIcon size={19} weight="bold" aria-hidden="true" />
+                  )}
                 </InputGroupButton>
               </div>
             </InputGroupAddon>

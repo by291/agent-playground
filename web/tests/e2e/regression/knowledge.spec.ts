@@ -212,9 +212,17 @@ test("shared documents index through Python, retry failures and restore retrieve
     await reader.getByRole("button", { name: "Close sources" }).click();
     await page.goto("/knowledge");
     await row.getByRole("button", { name: `Delete ${filename}` }).click();
+    await page
+      .getByRole("dialog", { name: "Delete document?" })
+      .getByRole("button", { name: "Delete document", exact: true })
+      .click();
     await expect(row).toHaveCount(0);
     await courierRow
       .getByRole("button", { name: `Delete ${courierFilename}` })
+      .click();
+    await page
+      .getByRole("dialog", { name: "Delete document?" })
+      .getByRole("button", { name: "Delete document", exact: true })
       .click();
     await expect(courierRow).toHaveCount(0);
     expect(

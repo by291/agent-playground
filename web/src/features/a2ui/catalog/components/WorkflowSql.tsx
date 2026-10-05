@@ -13,11 +13,14 @@ export function SqlCardContent({ card }: { card: SqlCard }) {
   return (
     <section
       aria-label="SQL workflow"
-      className="min-w-0 space-y-4 rounded-lg border border-line bg-surface p-4 sm:p-5"
+      className="motion-item-enter min-w-0 space-y-4 rounded-lg border border-line bg-surface p-4 sm:p-5"
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h3 className="text-base font-semibold text-ink">SQL review</h3>
-        <span className="text-xs font-medium text-accent">
+        <span
+          key={`${card.revision}-${card.status}`}
+          className="motion-content-enter text-xs font-medium text-accent"
+        >
           Version {card.revision} · {status}
         </span>
       </div>
@@ -31,7 +34,7 @@ export function SqlCardContent({ card }: { card: SqlCard }) {
           ))}
         </ul>
       )}
-      <details className="text-xs/5 text-muted">
+      <details className="motion-details text-xs/5 text-muted">
         <summary className="cursor-pointer">Original SQL</summary>
         <pre className="mt-2 overflow-auto whitespace-pre-wrap">
           <code>{card.originalSql}</code>

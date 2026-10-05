@@ -1,6 +1,57 @@
 import { expect, test, capture } from "../fixtures";
 import { timePrompt } from "../flows";
 
+test.describe("activity motion", () => {
+  test.use({ reducedMotion: "no-preference" });
+
+  test("activity can reverse its exit, preserves its draft and returns focus on desktop and mobile", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1920, height: 1080 });
+    await page.goto("/");
+    const composer = page.getByRole("textbox", { name: "Message" });
+
+    await composer.fill("Preserve the draft");
+    const toggle = page.getByRole("button", { name: "Show run activity" });
+
+    await toggle.click();
+    const panel = page.getByRole("complementary", { name: "Run activity" });
+    const shell = page.locator(".workspace-activity-shell");
+
+    await expect.poll(async () => (await panel.boundingBox())!.width).toBe(520);
+    expect(
+      await shell.evaluate(
+        (element) => getComputedStyle(element).transitionProperty,
+      ),
+    ).toContain("width");
+    await page.getByRole("button", { name: "Close run activity" }).focus();
+    await page
+      .getByRole("button", { name: "Close run activity" })
+      .evaluate((element) => (element as HTMLElement).click());
+    await expect(shell).toHaveAttribute("inert");
+    await expect(
+      page.getByRole("button", { name: "Show run activity" }),
+    ).toBeFocused();
+    await page
+      .getByRole("button", { name: "Show run activity" })
+      .evaluate((element) => (element as HTMLElement).click());
+    await expect(shell).not.toHaveAttribute("inert");
+    await expect.poll(async () => (await panel.boundingBox())!.width).toBe(520);
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expect(composer).toBeHidden();
+    await expect
+      .poll(async () => (await panel.boundingBox())!.width)
+      .toBeCloseTo(390, 2);
+    await page.getByRole("button", { name: "Close run activity" }).click();
+    await expect(composer).toBeVisible();
+    await expect(composer).toHaveValue("Preserve the draft");
+    await expect(panel).toBeHidden();
+    await expect(
+      page.getByRole("button", { name: "Show run activity" }),
+    ).toBeFocused();
+  });
+});
+
 test("activity width supports dragging and keyboard bounds and persists without changing the draft", async ({
   page,
 }) => {
@@ -17,6 +68,7 @@ test("activity width supports dragging and keyboard bounds and persists without 
   await expect.poll(async () => (await panel.boundingBox())!.width).toBe(520);
   await separator.press("ArrowLeft");
   await expect(separator).toHaveAttribute("aria-valuenow", "536");
+  await expect.poll(async () => (await panel.boundingBox())!.width).toBe(536);
   const handle = await separator.boundingBox();
 
   await page.mouse.move(handle!.x + handle!.width / 2, handle!.y + 100);
