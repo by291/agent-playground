@@ -78,7 +78,7 @@ export function ConversationList({
   return (
     <div className="mt-3 flex min-h-0 flex-1 flex-col gap-2">
       {!collapsed && (
-        <div className="flex items-center justify-between px-2">
+        <div className="flex items-center justify-between pl-2">
           <p className="text-[11px] font-medium tracking-widest text-muted uppercase">
             Conversations
           </p>
