@@ -16,6 +16,7 @@ from openai import AsyncOpenAI
 from agent_playground.knowledge.embeddings import EmbeddingService
 from agent_playground.knowledge.rate_limits import EmbeddingQuota
 from agent_playground.knowledge.store import EmbeddingConfig
+from agent_playground.knowledge.token_estimation import EmbeddingTokenEstimator
 from agent_playground.knowledge.worker import SupersededIndexJob
 
 
@@ -26,7 +27,9 @@ def config() -> EmbeddingConfig:
     )
 
 
-def embedding_response(request: httpx2.Request) -> httpx2.Response:
+def embedding_response(
+    request: httpx2.Request, prompt_tokens: int | None = 42
+) -> httpx2.Response:
     texts = json.loads(request.content)["input"]
 
     return httpx2.Response(
@@ -39,7 +42,9 @@ def embedding_response(request: httpx2.Request) -> httpx2.Response:
             "data": [
                 {"index": index, "embedding": [1.0, 0.1]} for index in range(len(texts))
             ],
-            "usage": {"prompt_tokens": 42, "total_tokens": 42},
+            "usage": {"prompt_tokens": prompt_tokens, "total_tokens": prompt_tokens}
+            if prompt_tokens is not None
+            else None,
         },
     )
 
@@ -232,3 +237,161 @@ def test_invalid_vectors_stop_before_the_next_batch(
 
     asyncio.run(run())
     assert len(requests) == 1
+
+
+def test_index_uses_reported_usage_to_pack_later_batches(
+    config: EmbeddingConfig, embedding_redis_url: str, caplog: pytest.LogCaptureFixture
+):
+    quota = replace(config, tokens_per_minute=100_000)
+    requests: list[list[str]] = []
+    caplog.set_level(logging.INFO, logger="agent_playground.knowledge.embeddings")
+
+    def handle(request: httpx2.Request):
+        texts = json.loads(request.content)["input"]
+        requests.append(texts)
+
+        return embedding_response(request, len(texts) * 128)
+
+    async def run():
+        async with controlled_embeddings(quota, embedding_redis_url, handle) as service:
+            assert (
+                await service.aembed_documents(["中文" * 100] * 20) == [[1.0, 0.1]] * 20
+            )
+
+    asyncio.run(run())
+    assert [len(batch) for batch in requests[:3]] == [2, 2, 2]
+    assert max(len(batch) for batch in requests[3:]) >= 6
+    assert len(requests) <= 6
+    assert "calibration_samples=" in caplog.text
+
+
+def test_index_calibration_is_reset_for_each_document_and_not_used_by_queries(
+    config: EmbeddingConfig, embedding_redis_url: str, caplog: pytest.LogCaptureFixture
+):
+    quota = replace(config, tokens_per_minute=100_000)
+    requests: list[list[str]] = []
+    caplog.set_level(logging.INFO, logger="agent_playground.knowledge.embeddings")
+
+    def handle(request: httpx2.Request):
+        texts = json.loads(request.content)["input"]
+        requests.append(texts)
+
+        return embedding_response(request, len(texts) * 128)
+
+    async def run():
+        async with controlled_embeddings(quota, embedding_redis_url, handle) as service:
+            await service.aembed_documents(["中文" * 100] * 14)
+            assert max(len(batch) for batch in requests) >= 6
+            second_document = len(requests)
+            await service.aembed_documents(["中文" * 100] * 3)
+            assert len(requests[second_document]) == 2
+            await service.aembed_query("中文" * 100)
+
+    asyncio.run(run())
+    query_logs = [
+        record.message
+        for record in caplog.records
+        if "operation=query" in record.message
+    ]
+    assert len(query_logs) == 1
+    assert "estimated_tokens=608" in query_logs[0]
+
+
+def test_calibrated_batch_is_split_conservatively_after_429(
+    config: EmbeddingConfig, embedding_redis_url: str
+):
+    quota = replace(config, tokens_per_minute=100_000, max_retries=1)
+    requests: list[list[str]] = []
+    accepted: list[str] = []
+    rejected_at: int | None = None
+    texts = ["中文" * 100 + f" {index}" for index in range(14)]
+
+    def handle(request: httpx2.Request):
+        nonlocal rejected_at
+        batch = json.loads(request.content)["input"]
+        requests.append(batch)
+
+        if len(batch) > 2 and rejected_at is None:
+            rejected_at = len(requests) - 1
+
+            return httpx2.Response(
+                429,
+                headers={"Retry-After": "0.01"},
+                json={"error": {"message": "Allocated quota exceeded"}},
+            )
+
+        accepted.extend(batch)
+
+        return embedding_response(request, len(batch) * 128)
+
+    async def run():
+        async with controlled_embeddings(quota, embedding_redis_url, handle) as service:
+            assert await service.aembed_documents(texts) == [[1.0, 0.1]] * len(texts)
+
+    asyncio.run(run())
+    assert rejected_at is not None
+    assert len(requests[rejected_at]) >= 6
+    assert all(len(batch) <= 2 for batch in requests[rejected_at + 1 :])
+    assert accepted == texts
+
+
+def test_missing_usage_restores_conservative_batches_after_calibration(
+    config: EmbeddingConfig, embedding_redis_url: str
+):
+    quota = replace(config, tokens_per_minute=100_000)
+    requests: list[list[str]] = []
+    missing_at: int | None = None
+
+    def handle(request: httpx2.Request):
+        nonlocal missing_at
+        batch = json.loads(request.content)["input"]
+        requests.append(batch)
+
+        if len(batch) > 2 and missing_at is None:
+            missing_at = len(requests) - 1
+
+            return embedding_response(request, None)
+
+        return embedding_response(request, len(batch) * 128)
+
+    async def run():
+        async with controlled_embeddings(quota, embedding_redis_url, handle) as service:
+            assert (
+                await service.aembed_documents(["中文" * 100] * 20) == [[1.0, 0.1]] * 20
+            )
+
+    asyncio.run(run())
+    assert missing_at is not None
+    assert len(requests[missing_at + 1]) <= 2
+
+
+def test_split_batches_cannot_reset_an_exhausted_retry_allowance(
+    config: EmbeddingConfig, embedding_redis_url: str
+):
+    quota = replace(config, tokens_per_minute=100_000, max_retries=1)
+    requests: list[list[str]] = []
+    text = "中文" * 100
+    estimator = EmbeddingTokenEstimator()
+
+    for _ in range(3):
+        estimator.observe([text], 128)
+
+    def reject(request: httpx2.Request):
+        requests.append(json.loads(request.content)["input"])
+
+        return httpx2.Response(
+            429,
+            headers={"Retry-After": "0.01"},
+            json={"error": {"message": "Allocated quota exceeded"}},
+        )
+
+    async def run():
+        async with controlled_embeddings(quota, embedding_redis_url, reject) as service:
+            with pytest.raises(ValueError, match="token rate limit"):
+                await service.embed_batch(
+                    [text] * 8, 0, "index", None, estimator=estimator
+                )
+
+    asyncio.run(run())
+    # One rejected calibrated request permits one conservative retry, then stops.
+    assert [len(batch) for batch in requests] == [8, 2]

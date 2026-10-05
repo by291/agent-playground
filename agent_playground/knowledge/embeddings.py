@@ -16,16 +16,12 @@ from langchain_core.embeddings import Embeddings
 from openai import APIConnectionError, APIStatusError, AsyncOpenAI, RateLimitError, omit
 
 from agent_playground.knowledge.rate_limits import BeforeRequest, EmbeddingQuota
+from agent_playground.knowledge.token_estimation import EmbeddingTokenEstimator
 
 if TYPE_CHECKING:
     from agent_playground.knowledge.store import EmbeddingConfig
 
 logger = logging.getLogger(__name__)
-
-
-def estimate_tokens(text: str) -> int:
-    # UTF-8 bytes conservatively bound byte-based tokenizers without assuming OpenAI's vocabulary.
-    return len(text.encode("utf-8")) + 8
 
 
 def validate_vectors(vectors: list[list[float]], count: int) -> int:
@@ -94,30 +90,32 @@ class EmbeddingService(Embeddings):
     def embed_query(self, text: str) -> list[float]:
         raise NotImplementedError("Use asynchronous embedding methods")
 
-    def batches(self, texts: list[str]) -> Iterator[list[str]]:
-        batch: list[str] = []
-        tokens = 0
+    def batches(
+        self, texts: list[str], estimator: EmbeddingTokenEstimator
+    ) -> Iterator[list[str]]:
+        offset = 0
 
-        for text in texts:
-            cost = estimate_tokens(text)
+        while offset < len(texts):
+            batch: list[str] = []
+            tokens = 0
 
-            if cost > self.config.batch_token_budget:
-                raise ValueError(
-                    "A text fragment exceeds the conservative per-second embedding budget; check RAG_EMBEDDING_TPM or shorten the text"
-                )
+            for text in texts[offset : offset + self.config.batch_size]:
+                cost = estimator.estimate(text)
 
-            if batch and (
-                len(batch) >= self.config.batch_size
-                or tokens + cost > self.config.batch_token_budget
-            ):
-                yield batch
-                batch = []
-                tokens = 0
+                if cost > self.config.batch_token_budget:
+                    raise ValueError(
+                        "A text fragment exceeds the per-second embedding budget; check RAG_EMBEDDING_TPM or shorten the text"
+                    )
 
-            batch.append(text)
-            tokens += cost
+                if batch and tokens + cost > self.config.batch_token_budget:
+                    break
 
-        if batch:
+                batch.append(text)
+                tokens += cost
+
+            offset += len(batch)
+
+            # Resume with the latest usage, rather than keeping a precomputed next-fragment cost.
             yield batch
 
     @override
@@ -129,9 +127,12 @@ class EmbeddingService(Embeddings):
     ) -> list[list[float]]:
         vectors: list[list[float]] = []
         dimension: int | None = None
+        estimator = EmbeddingTokenEstimator()
 
-        for index, batch in enumerate(self.batches(texts)):
-            result = await self.embed_batch(batch, index, "index", before_request)
+        for index, batch in enumerate(self.batches(texts, estimator)):
+            result = await self.embed_batch(
+                batch, index, "index", before_request, estimator=estimator
+            )
             batch_dimension = validate_vectors(result, len(batch))
 
             if dimension is not None and batch_dimension != dimension:
@@ -154,10 +155,41 @@ class EmbeddingService(Embeddings):
         index: int,
         operation: str,
         before_request: BeforeRequest | None,
+        *,
+        estimator: EmbeddingTokenEstimator | None = None,
+        max_retries: int | None = None,
     ) -> list[list[float]]:
-        tokens = sum(estimate_tokens(text) for text in batch)
+        estimator = estimator or EmbeddingTokenEstimator()
+        retry_limit = self.config.max_retries if max_retries is None else max_retries
 
-        for retry in range(self.config.max_retries + 1):
+        for retry in range(retry_limit + 1):
+            tokens = sum(estimator.estimate(text) for text in batch)
+
+            if tokens > self.config.batch_token_budget:
+                logger.info(
+                    "Embedding batch split to fit quota budget: batch=%s texts=%s estimated_tokens=%s",
+                    index,
+                    len(batch),
+                    tokens,
+                )
+                result: list[list[float]] = []
+
+                for part in self.batches(batch, estimator):
+                    result.extend(
+                        await self.embed_batch(
+                            part,
+                            index,
+                            operation,
+                            before_request,
+                            estimator=estimator,
+                            max_retries=retry_limit - retry,
+                        )
+                    )
+
+                return result
+
+            ratio = estimator.ratio
+            samples = estimator.samples
             wait = await self.quota.acquire(tokens, before_request)
 
             if before_request:
@@ -182,14 +214,22 @@ class EmbeddingService(Embeddings):
 
                 result = [entry.embedding for entry in entries]
                 validate_vectors(result, len(batch))
-                actual = response.usage.prompt_tokens if response.usage else None
+                actual = getattr(
+                    getattr(response, "usage", None), "prompt_tokens", None
+                )
+
+                if operation == "index":
+                    estimator.observe(batch, actual)
+
                 logger.info(
-                    "Embedding batch completed: operation=%s batch=%s texts=%s estimated_tokens=%s actual_tokens=%s quota_wait_seconds=%.3f duration_seconds=%.3f retries=%s request_id=%s remaining_tokens=%s",
+                    "Embedding batch completed: operation=%s batch=%s texts=%s estimated_tokens=%s actual_tokens=%s token_ratio=%.3f calibration_samples=%s quota_wait_seconds=%.3f duration_seconds=%.3f retries=%s request_id=%s remaining_tokens=%s",
                     operation,
                     index,
                     len(batch),
                     tokens,
                     actual,
+                    ratio,
+                    samples,
                     wait,
                     time.monotonic() - started,
                     retry,
@@ -213,8 +253,9 @@ class EmbeddingService(Embeddings):
                 if isinstance(error, RateLimitError):
                     # All clients observe the longest provider cooldown, even after this attempt fails.
                     await self.quota.cooldown(delay)
+                    estimator.backoff()
 
-                if retry == self.config.max_retries:
+                if retry == retry_limit:
                     logger.error(
                         "Embedding batch failed: operation=%s batch=%s estimated_tokens=%s attempts=%s error=%s request_id=%s",
                         operation,
