@@ -77,6 +77,34 @@ test("history opens, renames and deletes a saved conversation after reload", asy
     expect(bounds.height).toBe(32);
   }
 
+  await page.keyboard.press("Escape");
+  const actionTrigger = navigation.getByRole("button", {
+    name: `Actions for ${title}`,
+  });
+
+  await expect(actionTrigger).toBeFocused();
+  const focusIndicator = await actionTrigger.evaluate((button) => {
+    const bounds = button.getBoundingClientRect();
+    const viewport = button
+      .closest('[data-slot="scroll-area-viewport"]')!
+      .getBoundingClientRect();
+    const style = getComputedStyle(button);
+    const width = Number.parseFloat(style.outlineWidth);
+    const outset = Math.max(0, width + Number.parseFloat(style.outlineOffset));
+
+    return {
+      width,
+      clipped:
+        bounds.top - outset < viewport.top ||
+        bounds.bottom + outset > viewport.bottom ||
+        bounds.left - outset < viewport.left ||
+        bounds.right + outset > viewport.right,
+    };
+  });
+
+  expect(focusIndicator.width).toBeGreaterThan(0);
+  expect(focusIndicator.clipped).toBe(false);
+  await actionTrigger.click();
   await page.getByRole("menuitem", { name: "Rename", exact: true }).click();
   const renamed = `Renamed ${title}`;
 

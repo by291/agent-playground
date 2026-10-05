@@ -123,7 +123,7 @@ export const ActivityItem = memo(function ActivityItem({
           failed && "border-destructive/30",
         )}
       >
-        <CollapsibleTrigger className="flex w-full text-left cursor-pointer list-none items-start gap-3 p-3 outline-none hover:bg-sidebar focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-muted [&::-webkit-details-marker]:hidden">
+        <CollapsibleTrigger className="flex w-full text-left cursor-pointer list-none items-start gap-3 p-3 outline-none hover:bg-sidebar focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring [&::-webkit-details-marker]:hidden">
           <Icon
             size={18}
             aria-hidden="true"

@@ -43,7 +43,7 @@
 }
 
 .workspace-toolbar-button:focus-visible {
-  outline: 2px solid var(--color-muted);
+  outline: 2px solid var(--ring);
   outline-offset: 2px;
   box-shadow: none;
 }
@@ -82,6 +82,14 @@
 
 .workspace-sidebar .workspace-toolbar-button {
   width: var(--workspace-sidebar-icon-track);
+}
+
+/* The history viewport clips outlines drawn outside its controls. */
+.workspace-sidebar .workspace-toolbar-button:focus-visible,
+.workspace-sidebar .workspace-sidebar-item:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: -2px;
+  box-shadow: none;
 }
 
 .workspace-sidebar-history {

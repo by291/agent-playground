@@ -40,6 +40,17 @@ test("shared documents index through Python, retry failures and restore retrieve
     });
     await row.getByRole("button", { name: "Retry indexing" }).click();
     await expect(row).toContainText("ready");
+    const unusedCardHeight = await row.evaluate((element) => {
+      const list = element.closest("ul")!;
+      const card = list.closest('[data-slot="card"]')!;
+
+      return (
+        card.getBoundingClientRect().height -
+        list.getBoundingClientRect().height
+      );
+    });
+
+    expect(unusedCardHeight).toBeLessThanOrEqual(4);
     await capture(page, testInfo, "knowledge-ready.png");
     const documentUrl = await row
       .getByRole("link", { name: "Download", exact: true })

@@ -247,7 +247,7 @@ export function KnowledgeWorkspace() {
             </Button>
           </Alert>
         )}
-        <Card className="mt-8 min-h-36 gap-0 border border-line bg-surface py-0 ring-0">
+        <Card className="mt-8 gap-0 border border-line bg-surface py-0 ring-0">
           {documents.isPending && (
             <div role="status" className="min-h-36 p-6">
               <span className="sr-only">Loading documents…</span>
