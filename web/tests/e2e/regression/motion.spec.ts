@@ -92,6 +92,93 @@ async function installConversation(page: Page) {
 test.describe("normal motion", () => {
   test.use({ reducedMotion: "no-preference" });
 
+  test("conversation forms retain their control size while the menu grows", async ({
+    page,
+  }) => {
+    await installConversation(page);
+    await page.goto("/c/motion-fixture");
+    await page
+      .getByRole("button", { name: "Actions for Motion fixture" })
+      .click();
+    const menu = page.getByLabel("Conversation actions");
+
+    await expect
+      .poll(() => menu.evaluate((element) => getComputedStyle(element).opacity))
+      .toBe("1");
+    const scales = await page
+      .getByRole("button", { name: "Rename", exact: true })
+      .evaluate(async (element) => {
+        (element as HTMLElement).click();
+        const samples: number[] = [];
+
+        for (let frame = 0; frame < 24; frame++) {
+          await new Promise<void>((resolve) =>
+            requestAnimationFrame(() => resolve()),
+          );
+          const input = document.querySelector<HTMLInputElement>(
+            '[aria-label="Rename conversation"] input',
+          );
+
+          if (input) {
+            samples.push(
+              input.getBoundingClientRect().width / input.offsetWidth,
+            );
+          }
+        }
+
+        return samples;
+      });
+
+    expect(scales.length).toBeGreaterThan(0);
+    expect(Math.min(...scales)).toBeGreaterThan(0.98);
+    expect(Math.max(...scales)).toBeLessThan(1.02);
+    await expect(
+      page.getByRole("textbox", { name: "Conversation title" }),
+    ).toBeFocused();
+  });
+
+  test("chat finishes returning when the activity overlay finishes exiting", async ({
+    page,
+  }) => {
+    await installConversation(page);
+    await page.setViewportSize({ width: 1024, height: 768 });
+    await page.goto("/c/motion-fixture");
+    await page.getByRole("button", { name: "Show run activity" }).click();
+    const shell = page.locator(".workspace-activity-shell");
+
+    await expect
+      .poll(() =>
+        shell.evaluate((element) => getComputedStyle(element).opacity),
+      )
+      .toBe("1");
+    const opacity = await page
+      .getByRole("button", { name: "Close run activity" })
+      .evaluate(async (element) => {
+        (element as HTMLElement).click();
+        const shell = document.querySelector<HTMLElement>(
+          ".workspace-activity-shell",
+        )!;
+        const chat = document.querySelector<HTMLElement>(".workspace-chat")!;
+
+        for (let frame = 0; frame < 120; frame++) {
+          await new Promise<void>((resolve) =>
+            requestAnimationFrame(() => resolve()),
+          );
+
+          if (getComputedStyle(shell).opacity === "0") {
+            return Number(getComputedStyle(chat).opacity);
+          }
+        }
+
+        throw new Error("Activity overlay did not finish exiting");
+      });
+
+    expect(opacity).toBeGreaterThan(0.99);
+    await expect(
+      page.getByRole("button", { name: "Show run activity" }),
+    ).toBeFocused();
+  });
+
   test("disclosures can reverse during exit and source exits restore focus", async ({
     page,
   }) => {

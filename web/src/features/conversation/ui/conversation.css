@@ -213,8 +213,12 @@
 @media (prefers-reduced-motion: no-preference) {
   .workspace-chat {
     transition:
-      opacity var(--motion-panel),
-      visibility var(--motion-panel);
+      opacity var(--motion-exit) var(--motion-enter-ease),
+      visibility var(--motion-exit);
+  }
+
+  .workspace-content[data-activity-open="true"] .workspace-chat {
+    transition-duration: var(--motion-panel);
   }
   .workspace-activity-shell {
     transition:

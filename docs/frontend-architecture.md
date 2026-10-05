@@ -106,6 +106,8 @@ The development gallery import is guarded directly by Vite's compile-time `impor
 
 Select menu spacing uses Radix's `sideOffset` (4 px by default). Keep persistent positioning offsets out of animation transforms so the final animated frame and resting menu bounds agree, including when collision handling flips the menu above its trigger.
 
+Conversation action menus resize their container while nested Motion layout elements preserve the size of text and form controls. The container clips content until the resize reveals it. When Activity covers the chat, both finish their open/close transitions together; returning to the chat uses the shorter exit duration.
+
 ## Components and development tools
 
 shadcn/ui primitives live in `web/src/components/ui/`. To add one, run `pnpm dlx shadcn@latest add <component>` from `web/`; `components.json` contains registry settings. The A2UI catalog keeps each component schema and renderer together in `features/a2ui/catalog/components/`, registered by `catalog/index.tsx`.

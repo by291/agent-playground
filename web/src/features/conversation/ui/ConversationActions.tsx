@@ -119,13 +119,14 @@ export function ConversationActions({
             layout="size"
             transition={timing}
             className={cn(
-              "max-w-[calc(100vw-1.5rem)] rounded-lg border border-line bg-surface shadow-md",
+              "max-w-[calc(100vw-1.5rem)] overflow-hidden rounded-lg border border-line bg-surface shadow-md",
               mode === "actions" ? "w-44 p-1" : "w-56 p-3 sm:w-72",
             )}
           >
             {mode === "actions" ? (
-              <div
+              <motion.div
                 key="actions"
+                layout="position"
                 className="motion-content-enter flex flex-col gap-0.5"
               >
                 <Button
@@ -152,13 +153,14 @@ export function ConversationActions({
                     Wait for the run to finish before deleting.
                   </p>
                 )}
-              </div>
+              </motion.div>
             ) : (
-              <form
+              <motion.form
                 onSubmit={(event) => {
                   void submit(event);
                 }}
                 key={mode}
+                layout="position"
                 className="motion-content-enter space-y-3"
               >
                 {mode === "rename" ? (
@@ -203,7 +205,7 @@ export function ConversationActions({
                     {submitLabel}
                   </Button>
                 </div>
-              </form>
+              </motion.form>
             )}
           </motion.div>
         </Popover.Content>
