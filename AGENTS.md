@@ -1,52 +1,53 @@
-# 项目规约
+# Project rules
 
-## 项目目标
+## Project goals
 
-- 这是持续演进的 agent 应用项目，在验证 agent runtime 能力的同时，逐步提升工程严谨性并向生产使用靠拢。
-- 实现应保持清晰的职责边界、可理解的状态模型和可回归验证的行为；涉及运行、恢复和持久化的改动优先保证一致性与资源生命周期。根据实际需求演进，避免提前引入缺乏依据的复杂度。
-- 澄清影响实现的关键需求后直接推进；根据改动范围选择必要的设计和验证步骤，不要求固定流程。
+- This is an evolving agent application. It validates agent runtime capabilities while strengthening engineering discipline toward production use.
+- Keep responsibilities clear, state models understandable and behavior covered by regression checks. Changes to execution, recovery and persistence should prioritize consistency and resource lifecycles. Evolve from actual requirements rather than introducing complexity without evidence.
+- Once key requirements affecting implementation are clear, proceed directly. Select design and verification steps appropriate to the change; a fixed process is not required.
 
-## 仓库导航
+## Repository navigation
 
-- `agent_playground/`：Python agent、tools 和 MCP，`skills/` 管理已发布 Skill 的发现、脚本沙箱和文件传递，由 Aegra 提供 Agent Protocol 服务；`workflows/` 按业务组织图、工具入口与卡片，SQL 的状态模型、模型调用和 API client 分开；通用对话审核放在 `workflows/review.py`，通用外部任务注册与等待放在 `workflows/external.py`；输出发布与回复/展示元数据放在 `workflows/output.py`。会话层通过通用审核和输出契约处理反馈、归档与展示归属；业务卡片不承载消息归档逻辑。`knowledge/` 管理共享知识文档的抽取、embedding、后台索引和检索工具，文件与文档生命周期由 TypeScript 服务拥有；`services/` 按业务组织 API 服务，`sql/` 管理 SQL 模拟 API、接口模型和校验，`report/` 管理异步报告模拟 API 和后台回调投递；服务实现不依赖 workflow，SQL workflow 复用服务的接口模型；共用应用配置放在 `config.py`；`db/` 管理数据库契约、连接、workflow 输出与模拟服务数据的持久化，不依赖 HTTP 请求和异常。
-- `server/`：TypeScript 后端；`http/` 组织路由、请求校验和会话变更 SSE 传输，`app.ts` 只装配 HTTP 应用，`server.ts` 管理服务进程及资源生命周期；`agent/` 适配 Aegra 与 AG-UI，`conversation/` 管理运行、恢复、持久外部任务及后台续跑、会话变更通知和会话文件的 S3 存储生命周期，`knowledge/` 管理共享知识文档的 HTTP 业务与删除清理，`storage/` 管理 Skill 与知识库共用的对象存储；`db/` 管理应用数据，根目录保留应用与进程入口、配置。
-- `web/`：TypeScript 前端；`src/app/` 管理入口、路由、配置和全局 provider，`src/pages/` 组合页面并拥有开发预览，`src/features/` 按 conversation、A2UI 与 knowledge 能力组织 API、模型、运行和 UI；`src/components/ui/` 存放 shadcn/ui 基础控件，`src/styles/` 管理主题与全局样式。
-- `shared/`：TypeScript 应用共用的运行状态契约；AG-UI 和 A2UI 类型继续使用官方库。
-- `compose.yaml`：本地 PostgreSQL、Redis 等基础设施；`tests/`：Python 侧测试。
-- 完整启动步骤、当前能力、协议传递方式和已知限制见 `README.md`；不要把容易变化的项目现状重复写进本文件。
+- `agent_playground/`: Python agent, tools and MCP, served through Aegra's Agent Protocol. `skills/` discovers published bundles, executes sandboxed scripts and transfers files. `workflows/` groups graphs, tool entries and cards by business domain; SQL state/contracts, model calls and API clients are separate. `workflows/review.py` owns common conversational review; `workflows/external.py` registers and waits for external tasks; `workflows/output.py` publishes outputs and reply/presentation metadata. The conversation layer uses these contracts for feedback, archiving and presentation ownership; business cards do not archive messages. `knowledge/` owns extraction, embeddings, background indexing and retrieval; the TypeScript server owns file/document lifecycles. `services/sql/` contains demo API models, routes and checks; `services/report/` contains the asynchronous report API and background callbacks. Services do not depend on workflows; SQL workflows reuse service API models. `config.py` holds shared application settings. `db/` owns database contracts, connections, workflow outputs and demo-service persistence, independent of HTTP requests and exceptions.
+- `server/`: TypeScript backend. `http/` owns routes, request validation and conversation-change SSE. `app.ts` assembles HTTP; `server.ts` owns process/resource lifecycles. `agent/` adapts Aegra and AG-UI. `conversation/` owns runs, recovery, persistent external tasks, background continuation, change notifications and conversation-file S3 lifecycles. `knowledge/` owns shared-document operations and cleanup; `storage/` contains the common Skill/knowledge object-storage client. `db/` owns application data. Application/process entries and configuration remain at the project root.
+- `web/`: TypeScript frontend. `src/app/` owns entries, routes, configuration and global providers; `src/pages/` composes pages and owns development previews; `src/features/` groups APIs, models, runtime and UI by conversation, A2UI and knowledge capability. `src/components/ui/` holds shadcn/ui primitives; `src/styles/` holds theme and global styles.
+- `shared/`: TypeScript application contracts for runs, conversations, context, workflow review/output, external tasks, files and knowledge. Use official library types for AG-UI and A2UI.
+- `compose.yaml`: Local PostgreSQL, Redis and other infrastructure. `tests/`: Python tests.
+- `skills/`: Maintainer-published Skill bundles. `docs/`: Current development, capability and architecture guides, plus explicitly dated validation records.
+- See [README.md](README.md) for the quick start and [docs/README.md](docs/README.md) for detailed guides. Do not duplicate changing feature status in this file.
 
-## 实现约定
+## Implementation conventions
 
-- Agent 逻辑放在 Python 项目中；`server/` 处理协议适配和 HTTP，`web/` 处理交互与展示。修改跨层链路时先确认各层职责。
-- 优先使用现有库和协议提供的类型、模型与适配器，避免重复手写 AG-UI 或 A2UI 协议实现。
-- Python 使用 uv，TypeScript 使用 pnpm；通过各自的包管理器增删依赖并更新锁文件。仅在验证目标需要时引入新库或基础设施。
-- 基础设施通过 Docker Compose 维护。根目录、`server/` 和 `web/` 各自使用自己的 `.env`，避免跨项目读取配置。
-- 代码是写给人阅读的：使用清晰命名和直接结构；只在意图、边界条件或不直观的处理需要解释时添加注释，不要让文件主要由注释构成。
-- 前端依赖从 app 指向 pages、features 和基础模块；跨 feature 只通过公开入口，当前只允许 conversation 依赖 A2UI。feature 内部直接引用内部模块，避免通过自己的公开入口形成循环；测试与实现就近放置，浏览器流程放在 `web/tests/e2e/`。
-- 运行状态写入归 conversation 层，恢复查询不能覆盖更新后的映射或终态；快照读取与上游同步分开。前端 Query 负责取数和交付结果，session 负责状态协调，资源由创建者明确释放。
+- Keep agent logic in Python, protocol/HTTP adaptation in `server/`, and interaction/presentation in `web/`. Confirm each layer's responsibility before changing a cross-layer path.
+- Prefer existing library/protocol types, models and adapters over handwritten AG-UI or A2UI implementations.
+- Use uv for Python and pnpm for TypeScript. Add/remove dependencies through the package manager and update lockfiles. Introduce libraries or infrastructure only when the verification or implementation requires them.
+- Maintain infrastructure through Docker Compose. The repository root, `server/` and `web/` each read their own `.env`; do not read another project's configuration file.
+- Write code for human readers, with clear names and direct structure. Comment on intent, boundaries or non-obvious behavior; do not make files primarily comments.
+- Frontend dependencies flow from app to pages, features and foundations. Cross-feature imports use public entries; currently only conversation may depend on A2UI. Feature internals import their own modules directly rather than using their public barrel and creating cycles. Colocate tests with implementation; browser flows belong in `web/tests/e2e/`.
+- Conversation owns run-state writes. Recovery observations must not overwrite newer mappings or terminal states. Separate snapshot reads from upstream synchronization. Frontend Query fetches/delivers data, session coordinates state, and resource creators explicitly release resources.
 
-## 代码风格与可读性
+## Code style and readability
 
-参考 [Google TypeScript Style Guide](https://google.github.io/styleguide/tsguide.html#control-flow-statements-and-blocks) 的控制流与函数排版，以及 [PEP 8](https://peps.python.org/pep-0008/#blank-lines) 的逻辑分段。以下是本项目的明确要求；TypeScript 不采用指南中允许单行 `if` 的例外。
+Follow the control-flow and function-layout guidance in the [Google TypeScript Style Guide](https://google.github.io/styleguide/tsguide.html#control-flow-statements-and-blocks) and the logical grouping in [PEP 8](https://peps.python.org/pep-0008/#blank-lines). The project requirements below take precedence; TypeScript does not use the guide's single-line `if` exception.
 
-- TypeScript 的 `if`、`else`、`for`、`while`、`do` 始终使用花括号，语句另起一行。即使只有 `return`、`throw` 或 `continue` 也一样；禁止 `if (condition) return value;` 和无花括号的多行分支。
-- Python 的分支、循环和异常处理也将语句另起一行；禁止 `if condition: return value` 和用分号拼接多条语句。
-- 函数内部按逻辑阶段分组，例如输入校验、准备数据、执行或持久化、组装返回值。不同阶段之间保留一个空行，相关的连续声明或操作可以放在一起；不要每行都加空行，也不要把多阶段函数挤成连续代码。
-- TypeScript 的声明组后、控制流块前后、最终 `return` 前保留一个空行；块内只有一条语句时不额外加空行。函数或方法之间保留一个空行。Python 模块级函数和类之间保留两个空行，类方法之间保留一个空行。
-- 简单的三元表达式和单表达式箭头函数可以保留；禁止嵌套三元表达式。涉及多个判断、赋值或副作用时使用展开的分支或具名函数。
-- 使用表达领域含义的变量和函数名。复杂条件先提取具名变量，避免让读者同时解码条件、状态和副作用；不要仅为缩短行数增加抽象层。
-- 注释解释意图、协议边界、竞争条件和非直观处理，不重复代码正在做的事情。必要注释紧贴对应逻辑分组。
-- Prettier 与 Ruff 负责缩进、换行和基础格式；共享的 `eslint.style.mjs` 约束 TypeScript 花括号、嵌套三元和语句间空行。自动格式化不能替代对逻辑分组的人工检查。源码与测试采用相同规则，第三方生成的数据库快照保持生成格式。
+- Always use braces for TypeScript `if`, `else`, `for`, `while` and `do`, with statements on separate lines, even for a single `return`, `throw` or `continue`. Do not use `if (condition) return value;` or multiline branches without braces.
+- Python branches, loops and exception handlers also place statements on separate lines. Do not use `if condition: return value` or join statements with semicolons.
+- Group function bodies by logical stages, such as validation, preparation, execution/persistence and response construction. Separate stages with a blank line; related declarations or operations can stay together. Avoid both a blank line after every statement and an unbroken multistage body.
+- In TypeScript, add a blank line after declaration groups, before/after control-flow blocks and before the final `return`. A block containing one statement needs no extra internal blank lines. Separate functions/methods with a blank line. In Python, use two blank lines between module-level functions/classes and one between methods.
+- Simple ternaries and single-expression arrow functions are acceptable; nested ternaries are not. Expand multiple checks, assignments or side effects into branches or named functions.
+- Use domain names for variables/functions. Extract complex conditions into named variables so readers do not decode conditions, state and side effects at once. Do not add abstractions solely to shorten the code.
+- Comments explain intent, protocol boundaries, races and non-obvious handling rather than restating code. Put necessary comments beside the relevant logical group.
+- Prettier and Ruff handle indentation, wrapping and basic formatting. `eslint.style.mjs` enforces TypeScript braces, nested-ternary restrictions and statement spacing. Automated formatting does not replace manual review of logical grouping. Source and tests follow the same rules; generated third-party database snapshots retain generated formatting.
 
-## 开发与验证
+## Development and verification
 
-- `make help` 查看快捷命令，`make setup` 准备依赖和环境文件，`make dev` 启动本地开发环境。
-- 修改后运行与改动相关的检查；涉及跨项目链路时可运行 `make check`。`make test` 和 `make check` 的 PostgreSQL 测试通过 Testcontainers 启动临时容器，需要 Docker daemon。
-- TypeScript 单元、集成与 DOM 交互测试使用 Vitest；纯逻辑与服务端测试使用 Node 环境，前端 DOM 交互测试通过文件级 `@vitest-environment jsdom` 指定环境。前端共享 setup 负责 DOM 清理与 mock、timer 的恢复；需要 PostgreSQL 的服务端测试使用 `.integration.test.ts` 命名，以便单独运行。
-- 浏览器 E2E 使用 Playwright Test，放在 `web/tests/e2e/`。常规回归通过临时 PostgreSQL、真实 TypeScript 后端和可控 Aegra HTTP 夹具运行；真实模型 smoke 使用单独命令连接已有开发环境。测试服务与临时资源由创建者释放，不复用日常开发数据库。
-- 运行方式、环境变量、对外行为或已知限制发生变化时更新 `README.md`；长期约定或目录职责发生变化时更新本文件。
+- `make help` lists shortcuts; `make setup` prepares dependencies/environment files; `make dev` starts local development.
+- Run checks relevant to each change. Use `make check` for cross-project paths when appropriate. PostgreSQL tests in `make test` and `make check` use Testcontainers and require a Docker daemon.
+- TypeScript unit, integration and DOM tests use Vitest. Pure logic/server tests use Node; frontend DOM files declare `@vitest-environment jsdom`. Shared frontend setup cleans DOM and restores mocks/timers. Name PostgreSQL server tests `*.integration.test.ts` so they can run separately.
+- Browser E2E uses Playwright Test in `web/tests/e2e/`. Controlled regression uses temporary PostgreSQL, the real TypeScript backend and an Aegra HTTP fixture; live-model smoke separately connects to the existing development stack. Creators release test services/resources; do not reuse the daily development database.
+- Update the relevant current guide in `docs/` when operation, environment, public behavior or limits change. Update `README.md` and `docs/README.md` when entry points/navigation change. Update this file when stable conventions or responsibilities change. Dated validation retains its original conclusions. Completed design/implementation plans may be removed after their relevant contracts and constraints are consolidated in current guides.
 
-## 语言与提交
+## Language and commits
 
-- 文档可以使用中文；代码及注释、测试、配置中的自定义文本、界面文案和 Git 提交信息使用英文。
-- Git 提交标题使用 `type: short description`，例如 `feat: add experiment entry point`。类型按改动选择 `feat`、`fix`、`docs`、`refactor`、`test` 或 `chore`；描述具体改动，避免含糊的 `update`。
+- Use English for project documentation, code/comments, tests, custom configuration text, UI copy and Git commit messages.
+- Commit titles use `type: short description`, such as `feat: add experiment entry point`. Choose `feat`, `fix`, `docs`, `refactor`, `test` or `chore` as appropriate; describe the change specifically rather than using vague titles such as `update`.

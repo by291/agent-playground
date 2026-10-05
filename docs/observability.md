@@ -1,67 +1,76 @@
-# 可观测性
+# Observability
 
-## 当前范围
+[Documentation index](README.md) · [Local development](development.md)
 
-本版本提供三层调用链、Langfuse 本地查看、结构化日志，以及 HTTP/SSE 和 Aegra 的基础指标。基础设施通过 Compose 的 `observability` profile 启动，默认开发流程保持按需启用。
+## Current scope
 
-链路为：浏览器 `web.submit` → server HTTP span → `server.agent` → Python `agent.execute` → LangGraph 自动生成的模型、工具和节点 span。各层通过 OTLP 导出到 Collector，再由 Collector 发送到 Langfuse；指标由 Prometheus 收集，Grafana 展示。
+The application provides traces across its three layers, local Langfuse inspection, structured logs and basic HTTP/SSE/Aegra metrics. Compose's `observability` profile enables the supporting services on demand.
 
-## 跨队列传播
+The trace path is browser `web.submit` → server HTTP span → `server.agent` → Python `agent.execute` → LangGraph model/tool/node spans. Each layer exports OTLP to the Collector, which forwards traces to Langfuse; Prometheus collects metrics for Grafana.
 
-server 使用 LangGraph SDK 的 `onRequest` 将当前 W3C Trace Context 写入 HTTP header 和 `config.metadata.otel_trace_context`。Aegra 自身持久化运行配置，Redis worker 读取相同配置后调用 graph factory。
+## Queue propagation
 
-Python 使用 Aegra 官方支持的 context-manager factory，在实际执行期间恢复 OTel 上下文，并在退出时清理。模型和工具追踪复用 Aegra 已有的 OpenInference instrumentation。该接入不修改 Aegra 源码、队列或数据表。MCP 工具定义和模型初始化通过异步缓存复用，Aegra 继续为每次运行复制 graph 并注入 checkpointer。
+The server uses LangGraph SDK `onRequest` to write W3C Trace Context into HTTP headers and `config.metadata.otel_trace_context`. Aegra persists the run configuration, which Redis workers read when invoking the graph factory.
 
-读取 schema、checkpoint 或会话状态时，factory 通过 `runtime.execution_runtime` 识别非执行请求，不创建 `agent.execute` span。
+Python uses Aegra's supported context-manager factory to restore OTel context during execution and release it on exit. Model/tool tracing reuses Aegra's OpenInference instrumentation. This does not patch Aegra code, queues or tables. MCP definitions and model initialization use asynchronous caches; Aegra still copies the graph and injects its checkpointer per run.
 
-## 标识与生命周期
+For schema, checkpoint and conversation reads, the factory identifies non-execution requests through `runtime.execution_runtime` and does not create an `agent.execute` span.
 
-| 标识 | 含义 |
-| --- | --- |
-| `trace_id`、`span_id` | 遥测调用链及节点 |
-| `thread_id` / Langfuse session | 会话 |
-| `agui_run_id` | 一次提交或人工审核后的恢复提交 |
-| `aegra_run_id` | 底层执行 |
+## Identities and lifecycle
 
-HTTP 重试创建新的提交 trace，运行标识继续用于关联同一逻辑提交。人工审核暂停结束当前执行，恢复提交创建新 trace。浏览器断开只结束客户端和 SSE 观测，后台执行继续使用持久化的父上下文。
+| Identity                       | Meaning                                 |
+| ------------------------------ | --------------------------------------- |
+| `trace_id`, `span_id`          | Telemetry trace and node.               |
+| `thread_id` / Langfuse session | Conversation.                           |
+| `agui_run_id`                  | Submission or review-resume submission. |
+| `aegra_run_id`                 | Underlying execution.                   |
 
-server 的 `app.stream.outcome` 表示流连接结果，不能代替 Aegra 的持久化运行结果。`finished`、`interrupted`、`error` 和 `disconnected` 分开统计。HTTP response duration 仅测量响应建立时间，SSE duration 测量连接生命周期。
+HTTP retries create new submission traces, while run identities correlate the same logical submission. Review pauses end the current execution; resuming starts a new trace. Browser disconnect ends client/SSE observation, while background execution retains its persisted parent context.
 
-浏览器 `app.first_text_received_ms` 测量收到第一个非空文本 delta 的时间；它不包含 Markdown 渲染和文字动画的延迟。A2UI 处理错误记录到提交 span，渲染错误作为带 surface ID 的独立错误 span。
+Server `app.stream.outcome` describes the stream connection rather than the durable Aegra run. `finished`, `interrupted`, `error` and `disconnected` are separate outcomes. HTTP response duration measures response establishment; SSE duration measures the connection lifetime.
 
-## 本地启动
+Browser `app.first_text_received_ms` measures the first nonempty text delta, excluding Markdown rendering and animation delay. A2UI ingestion errors attach to the submission span; rendering errors use separate spans with a surface ID.
+
+## Local startup
 
 ```sh
+make setup
+# Set DEEPSEEK_API_KEY in the root .env.
+make infra-up
+# Stop managed apps before switching process modes.
+make dev-stop
 make dev-observability
 ```
 
-首次启动需要下载 Langfuse、ClickHouse、MinIO、Collector、Prometheus 和 Grafana 等镜像。Langfuse 使用独立的 PostgreSQL、Redis 和数据卷。
+Existing environments can skip setup; use [development](development.md) for configuration and restart instructions. `make infra-up` builds the Skill runtime and prepares sandbox images. Observability mode additionally enables its Compose profile.
 
-| 服务 | 地址 | 本地账户 |
-| --- | --- | --- |
-| Langfuse | http://127.0.0.1:3031 | `developer@example.com` / `playground-local-password` |
-| Grafana | http://127.0.0.1:3032 | `developer` / `playground-local-password` |
-| Prometheus | http://127.0.0.1:9091 | 无 |
-| Collector OTLP HTTP | http://127.0.0.1:4318 | 仅本机 |
+The first start downloads Langfuse, ClickHouse, MinIO, Collector, Prometheus and Grafana images. Langfuse uses separate PostgreSQL, Redis and data volumes.
 
-Langfuse 自动初始化 `Agent Playground` project。前端通过同源 `/telemetry/v1/traces` 转发遥测，浏览器不持有 Langfuse 密钥。前端 SDK 按启用开关动态加载。
+| Service             | Address               | Local account                                         |
+| ------------------- | --------------------- | ----------------------------------------------------- |
+| Langfuse            | http://127.0.0.1:3031 | `developer@example.com` / `playground-local-password` |
+| Grafana             | http://127.0.0.1:3032 | `developer` / `playground-local-password`             |
+| Prometheus          | http://127.0.0.1:9091 | None.                                                 |
+| Collector OTLP HTTP | http://127.0.0.1:4318 | Localhost only.                                       |
 
-Grafana 自动载入 `Agent Playground` 看板，展示采集目标健康状态、SSE 连接结果及 p95 耗时、Collector 导出队列和错误。`make dev-observability` 启动应用后才会产生对应指标；只有基础设施启动时，Aegra 采集目标可能显示为不可用。
+Langfuse initializes an `Agent Playground` project. Browser telemetry goes through same-origin `/telemetry/v1/traces`; the browser has no Langfuse keys. The frontend SDK loads dynamically when enabled.
 
-应用进程在后台运行，日志写入 `.dev/`。运行 `make dev-stop` 停止三个应用进程；观测基础设施可用 `make infra-down` 停止。
+Grafana loads the `Agent Playground` dashboard with target health, SSE outcomes/p95 duration and Collector queue/errors. Application startup is required to produce application metrics; with only infrastructure running, the Aegra scrape target may be unavailable.
 
-也可分别执行 `make observability-up`、`make agent-observability`、`make server-observability` 和 `make web-observability`。应用各自读取自己的 `.env`，这些命令通过进程环境设置本地观测入口。
+Application processes run in the background with logs in `.dev/`. `make dev-stop` stops the three applications; `make infra-down` stops infrastructure, including observability.
 
-手动配置时，Python 的 `OTEL_EXPORTER_OTLP_ENDPOINT` 需要完整 `/v1/traces` 路径，server 使用不带路径的 OTLP base URL，web 设置 `VITE_OBSERVABILITY_ENABLED=true`。修改 frontend 开关后需要重启 Vite；正式构建需在构建时配置该变量。
+Alternatively run `make observability-up`, `make agent-observability`, `make server-observability` and `make web-observability` separately. Each application reads its own `.env`; these commands supply local telemetry settings through process environment.
 
-## 部署边界
+For manual settings, Python `OTEL_EXPORTER_OTLP_ENDPOINT` includes `/v1/traces`; the server uses an OTLP base URL without that path. Set frontend `VITE_OBSERVABILITY_ENABLED=true`, restarting Vite after a change. Production builds require the flag at build time.
 
-Compose 提供本地开发配置和本地默认账户。部署时应替换账户、密钥和连接地址，并将 `/telemetry` 路由交给 server。指标抓取目标必须调整为部署环境的服务地址；本地配置中的 `host.docker.internal:2026` 用于宿主机运行的 Aegra。
+## Deployment boundaries
 
-应用使用 SDK 批量、有界异步导出；Collector 故障不会阻止提交和执行，队列满时可能丢弃遥测。运行数据仍以业务数据库为准。
+Compose contains development settings and default local accounts. Replace credentials and addresses for deployment and route `/telemetry` to the server. Scrape targets must use deployment service addresses; `host.docker.internal:2026` in local settings reaches host-run Aegra.
 
-当前尚未接入集中日志存储、主机/PostgreSQL/Redis exporter、最终运行状态同步及业务告警。日志可按 trace ID 查询终端输出；server 使用 Pino，Python 复用 Aegra 的 structlog。实际队列等待时间、首次可见文字时间和 MCP stdio 子进程内部 span 尚未单独测量，工具调用侧 span 已由 LangChain instrumentation 提供。
+SDK export is batched, bounded and asynchronous. Collector failure does not block submission/execution, but full queues can drop telemetry. The business database remains authoritative for run data.
 
-## 验证
+Centralized log storage, host/PostgreSQL/Redis exporters, final run-status synchronization and business alerts are not integrated. Inspect terminal logs by trace ID; the server uses Pino and Python uses Aegra's structlog. Actual queue wait, first visible text and internal MCP stdio-process spans are not measured separately; LangChain instrumentation covers tool-call spans.
 
-`make check` 包含上下文恢复、并发隔离、异常清理、浏览器 propagation、server 请求适配，以及真实 PostgreSQL/Redis worker 的断流测试。测试使用受控模型，不调用外部模型服务。Langfuse Compose 启动及实际入库需要单独验证，不能由单元测试结果推断。
+## Verification
+
+`make check` includes context restoration, concurrency isolation, exception cleanup, browser propagation, server request adaptation and disconnected-stream tests using real PostgreSQL/Redis workers. Models are controlled; external models are not called. Starting Langfuse and verifying actual ingestion requires separate checks and cannot be inferred from unit tests.

@@ -1,79 +1,102 @@
-# Workflow 代码与机制
+# Workflows and shared mechanisms
 
-## 一条业务流程如何运行
+[Documentation index](README.md) · [Architecture](architecture.md) · [Conversations and recovery](conversations.md)
+
+## Built-in examples
+
+| Tool                      | Start                                                                                                    | Review or result                                                                                                                |
+| ------------------------- | -------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `run_experiment_workflow` | Send **"Create an experiment plan for testing an agent workflow."**                                      | Edit the plan and choose **Approve plan** or **Reject**; decide each parallel plan before **Continue workflow**.                |
+| `run_sql_workflow`        | Choose **Review SQL**, or send **"Use run_sql_workflow to calculate monthly revenue from paid orders."** | Request SQL changes/explanations in chat. **Accept and submit** requires a passing check; **Abandon** ends without submission.  |
+| `run_report_workflow`     | Choose **Generate report** and send; specify `outcome="failed"` to test failure.                         | About 12 seconds of simulated progress; background continuation completes without an open page, and reopening restores results. |
+
+Welcome actions prepare editable messages; sending starts execution. Experiment plans show the current card, retaining earlier steps in tool history. Review results replace the editor in the original reply and survive reload.
+
+If initial SQL checking fails, the agent proposes one revision and rechecks before pausing. Changes increment the revision and require another check; explanations keep the revision/check. Each review is persisted independently, restoring the latest SQL, checks, discussion and decision. Multiple pending reviews require explicit decisions; the composer accepts feedback only for one unambiguous SQL conversational review.
+
+## Demonstration service boundaries
+
+`/sql-demo/generate` starts with `SELECT * FROM orders;` and demo schema `orders(id, customer_id, created_at, status, amount)`, then the model adapts it to the request. `/sql-demo/check` uses sqlglot to check a single SELECT, explicit columns and the demo schema. It does not execute SQL against PostgreSQL or establish semantics, query plans or performance.
+
+`/sql-demo/submit` rechecks accepted SQL and stores an idempotent receipt. Keys contain the conversation, workflow call and accepted revision. `/sql-demo/submissions/:id` recovers receipts after transport failure. The SQL revision model locally disables DeepSeek thinking for forced structured-output tool choice; parent chat configuration stays independent.
+
+The report API persists simulated jobs/callback offsets, progressing through queued, preparing, processing, finalizing and completed stages. Restart resumes delivery; `404` for a deleted task stops callbacks. These APIs demonstrate workflow mechanisms rather than production SQL execution or reporting.
+
+Root `SQL_DEMO_API_URL` and `REPORT_DEMO_API_URL` configure the demonstration APIs. `APP_API_URL` targets the TypeScript server; `WORKFLOW_API_TOKEN` must match `server/.env`. Defaults are in [development configuration](development.md#environment-ownership).
+
+## Workflow execution
 
 ```mermaid
 flowchart TD
-    A[用户需求] --> B[父 agent 选择业务 tool]
-    B --> C[Python LangGraph 业务图]
-    C --> D[业务 API / 检查 / 修改 agent]
-    D --> E[发布持久输出：A2UI + 回复与展示元数据]
+    A[User request] --> B[Parent agent selects business tool]
+    B --> C[Python LangGraph workflow]
+    C --> D[Business API / checks / revision agent]
+    D --> E[Publish durable A2UI and reply metadata]
     E --> F[workflow_review interrupt]
-    F --> G{用户操作}
-    G -->|对话反馈| H[AG-UI resume：当前审核身份与消息]
+    F --> G{User action}
+    G -->|Feedback| H[AG-UI resume with review identity and message]
     H --> D
-    G -->|接受| I[业务校验当前版本并提交]
-    G -->|放弃| J[结束且不提交]
-    I --> K[发布终态并返回父 agent]
+    G -->|Accept| I[Validate current revision and submit]
+    G -->|Abandon| J[End without submission]
+    I --> K[Publish terminal result and return to parent]
     J --> K
 ```
 
-workflow 的顺序、分支和业务状态由 Python/LangGraph 定义。通用机制处理审核、恢复和展示；SQL 和异步报告是业务示例。
+Python/LangGraph defines sequence, branches and business state. Shared mechanisms handle review, recovery and presentation; SQL and asynchronous reporting are business examples.
 
-## 代码职责
+## Code responsibilities
 
-| 代码                                     | 职责                                                                                |
-| ---------------------------------------- | ----------------------------------------------------------------------------------- |
-| `agent_playground/graph.py`              | 装配父 agent、模型、tools 和上下文管理。                                            |
-| `agent_playground/workflows/review.py`   | `WorkflowReview` 与 `wait_for_review()`：暂停、反馈/接受/放弃、身份和接受门槛校验。 |
-| `agent_playground/workflows/output.py`   | 先持久化、后发事件；发布官方 A2UI 消息与独立的回复/展示元数据。                     |
-| `agent_playground/workflows/sql/`        | SQL 获取、检查、修改、提交、回执、模型适配和 SQL 内容展示。                         |
-| `agent_playground/workflows/experiment/` | 实验计划步骤和原有表单审核，继续保持其业务交互。                                    |
-| `agent_playground/services/sql/`         | SQL 服务接口模型、路由与校验，保存提交而不执行 SQL。                                |
-| `agent_playground/services/report/`      | 报告服务请求、任务阶段和持久回调投递。                                           |
-| `agent_playground/db/`                   | 数据库契约和幂等持久化；不处理 HTTP 或审核文案。                                    |
-| `shared/workflow-review.ts`              | 跨层的对话审核契约与响应构造，不含 SQL、schema 或 SQL 检查字段。                    |
-| `shared/workflow-output.ts`              | 稳定回复 ID 与展示归属契约，不解析业务卡片。                                        |
-| `server/conversation/`                   | 当前 run 的准入、审核身份与持久输出校验、用户反馈归档、checkpoint 回复同步。        |
-| `server/agent/`                          | 官方 AG-UI/LangGraph adapter，resume 按 interrupt ID 定向传递。                     |
-| `web/.../conversation/`                  | 按通用审核路由反馈；通用决策面板；按展示元数据组织当前卡片和历史。                  |
-| `web/.../a2ui/`                          | 官方 A2UI processor 和业务组件；不决定业务能否提交。                                |
+| Code                                     | Responsibility                                                                                          |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `agent_playground/graph.py`              | Parent agent, model, tools and context management.                                                      |
+| `agent_playground/workflows/review.py`   | `WorkflowReview` / `wait_for_review()`: pause, feedback/accept/abandon, identity and acceptance checks. |
+| `agent_playground/workflows/output.py`   | Persist before events; publish official A2UI and independent reply/presentation metadata.               |
+| `agent_playground/workflows/sql/`        | SQL generation, checking, revisions, submission, receipts, model adaptation and content display.        |
+| `agent_playground/workflows/experiment/` | Experiment stages and editable form review.                                                             |
+| `agent_playground/services/sql/`         | API models/routes/checks; persist submissions without executing SQL.                                    |
+| `agent_playground/services/report/`      | Report requests, stages and durable callback delivery.                                                  |
+| `agent_playground/db/`                   | Database contracts and idempotent persistence, independent of HTTP/review copy.                         |
+| `shared/workflow-review.ts`              | Common review identities/responses without SQL, schema or check fields.                                 |
+| `shared/workflow-output.ts`              | Stable reply IDs and presentation ownership without parsing business cards.                             |
+| `server/conversation/`                   | Admission, review/output checks, feedback archiving and checkpoint reply synchronization.               |
+| `server/agent/`                          | Official AG-UI/LangGraph adapter and resume targeting by interrupt ID.                                  |
+| `web/src/features/conversation/`         | Common feedback routing, decision panels and current/historical card presentation.                      |
+| `web/src/features/a2ui/`                 | Official processor and business components; does not authorize business submission.                     |
 
-`services/` 按业务组织 API 服务实现，依赖 `config.py` 和 `db/`，不依赖 workflow 编排。SQL 接口模型由 `services/sql/models.py` 定义，workflow 的 HTTP client 和状态复用这些契约；审核状态与修改 agent 的输出仍在 `workflows/sql/models.py`。`http.py` 装配路由并管理报告 worker 生命周期。
+Services depend on `config.py` and `db/`, not workflow orchestration. SQL API models live in `services/sql/models.py`; workflow clients/state reuse them. Review state and revision-agent output remain in `workflows/sql/models.py`. `http.py` assembles routes and owns the report worker.
 
-## 三份数据各有一个事实来源
+## State, review identity and acceptance
 
-LangGraph checkpoint 保存业务状态、版本和等待中的 interrupt。应用的 `workflow_outputs` 保存已发布的展示与回复，先分配会话内 outputSeq 再发实时事件。`conversation_messages` 保存用户反馈和公共对话 transcript：服务端同步回复并按稳定 ID 去重，刷新与实时展示使用同一个回复身份。
+LangGraph checkpoints own business state, versions and pending interrupts. Application `workflow_outputs` owns published display/replies, assigning conversation `outputSeq` before sending events. `conversation_messages` owns user feedback and the public transcript; synchronization deduplicates stable reply IDs shared by realtime and recovered views.
 
-`workflow_review` 携带 workflow 调用 ID、内容 revision、交互 round 和已经持久化的 outputStepId。revision 在内容变化时递增；round 在每次发布/等待时递增。只解释时 revision 和检查结果可以不变，但旧按钮的 round 已经过期。
+`workflow_review` carries the call ID, content `revision`, interaction `round` and persisted `outputStepId`. Content changes increment revision; each publication/wait increments round. Explanations may preserve content/checks, but buttons from a previous round are stale.
 
-接受门槛由业务 graph 计算为 `canAccept`。服务端和前端用当前 interrupt 的门槛阻止不允许的动作，Python 恢复时再校验；实际提交仍由业务节点负责。用户不能通过响应覆盖业务门槛。
+The business graph computes `canAccept`. Server and frontend enforce the current interrupt's gate; Python validates again on resume. Business nodes own actual submission, and user responses cannot override acceptance eligibility.
 
-只有唯一一个对话审核等待时，composer 才把输入作为 feedback resume。多个审核或混合表单审核时先用显式决策面板选择，不自动猜测反馈目标。
+The composer sends feedback resume only for a single conversational review. Multiple reviews or mixed form reviews require explicit decisions rather than a guessed feedback target.
 
-## 输出与业务卡片分开
+## Outputs and business cards
 
-一个输出可以同时包含官方 A2UI `messages` 和应用 envelope 的 `workflow` 元数据。`workflow.reply` 是稳定 ID 与公共 assistant 内容；`workflow.presentation` 指定 surface ID、分组 ID，以及卡片跟随的回复 ID。这些字段不传给 A2UI processor。
+An output may contain official A2UI `messages` and application `workflow` metadata. `workflow.reply` contains a stable ID/public assistant content. `workflow.presentation` specifies surface ID, group ID and the reply anchoring that card. These fields do not go to the A2UI processor.
 
-同一个 group 的后续完整 surface 替换当前展示，先前 surface 留在原始 tool 的历史里。每轮发布使用独立 surface ID；reply ID 可把最新卡片锚定到用户反馈后的回复，而不会随着下一条无关消息移动。没有归属的输出保持可见。单次输出目前描述一个回复和一个分组 surface；其余 A2UI surface 使用普通 tool 归属。
+A later complete surface in the same group replaces its current presentation, retaining prior surfaces in the original tool's history. Each round uses an independent surface ID; reply ownership keeps the latest card beside the feedback reply, without moving it to an unrelated turn. Unowned output stays visible. One output currently describes one reply and one grouped surface; other A2UI surfaces use normal tool ownership.
 
-业务组件可以是 SQL、文案、配置或其他内容。会话归档不依赖组件类型、工具名称或其业务字段。回复从独立元数据读取，业务卡片不再提供归档字段。
+Business components can display SQL, writing, configuration or other content. Conversation archiving does not depend on component types, tool names or business fields. Reply metadata provides archiving rather than business cards.
 
-旧 SQL interrupt 和卡片格式不再支持，已有旧会话通过应用删除接口清理。持久层对同一步输出的 payload 使用严格相等比较；当前格式的重复发布仍复用原输出身份和序号。
+Old SQL interrupt/card formats are unsupported; remove old conversations through the application. Repeated output for the same step uses strict payload equality: identical current-format publication preserves identity/sequence, and conflicting content is rejected.
 
-## 接入另一种业务
+## Adding another business workflow
 
-1. 用自己的 state、API、检查/修改节点编写 LangGraph，并注册业务 tool；模型 prompt 与结构化输出适配留在业务内。
-2. 用现有 A2UI 组件发布业务内容，同时提供 `WorkflowOutputMetadata`。每轮采用稳定的 step ID、回复 ID 和独立 surface ID。
-3. 在独立等待节点调用 `wait_for_review(WorkflowReview(...))`。给出当前身份、canAccept、按钮文案和输入提示，把返回的 message/accept/abandon 路由到业务节点。
-4. 内容变更后更新 revision 并重新检查；提交 API 的幂等与未知结果恢复仍属于该业务。
+1. Implement a LangGraph with its own state, APIs, check/revision nodes and business tool. Keep model prompts and structured-output adaptation within that business.
+2. Publish content with A2UI and `WorkflowOutputMetadata`, using stable step/reply IDs and independent surface IDs per round.
+3. Call `wait_for_review(WorkflowReview(...))` in a separate wait node. Supply current identity, `canAccept`, action copy and input hints, routing message/accept/abandon to business nodes.
+4. Increment revision and recheck changed content. Business APIs own idempotency and unknown-outcome recovery.
 
-复用已有 A2UI 组件时无需改服务端或前端会话层。需要专门展示时只新增业务组件及 catalog 注册。实验计划的可编辑表单是另一种业务交互，不强制改成对话审核。
+Reusing components requires no server/frontend conversation changes. Add a component/catalog entry only for specialized display. Experiment's editable form remains a separate supported interaction.
 
-当前机制不负责通用 workflow DSL、任意业务动作解释、自动挑选多个审核的目标，也不代替业务检查。这些能力需要明确需求后再演进。
+The common mechanism does not implement a workflow DSL, arbitrary action interpretation, automatic selection among pending reviews or business validation.
 
-
-## 外部异步任务
+## External tasks
 
 ```mermaid
 sequenceDiagram
@@ -101,14 +124,23 @@ sequenceDiagram
     S-->>U: SSE invalidation when connected
 ```
 
-通用层保存任务最新状态、revision、业务 stage/message/progress 与历史。中间状态只更新展示，不唤醒 agent。终态由后台 worker 匹配当前 `workflow_external_wait`，通过现有 run 准入和恢复机制创建原生 Aegra continuation；用户页面是否打开不影响运行。提前到达的回调先持久化，等 checkpoint 就绪后处理。
+Tasks belong to a conversation, workflow call and step. The Python helper derives a stable task ID from that identity; registration requires an existing run in a conversation that has not been deleted. Repeated registration returns the same callback credential, while conflicting identity or labels are rejected.
 
-外部 API 每次回传完整状态快照。重复和旧 revision 被忽略；同 revision 内容冲突、终态回退被拒绝。callbackToken 仅用于该任务，公开快照不带它；注册使用 Python 与服务端各自环境中的同一内部 token。任务结果通过可信后台 resume 传递，普通用户审核接口不能伪造外部终态。
+The shared layer stores current task state, revision, business stage/message/progress and history. Intermediate updates affect display without invoking the agent. For terminal results, the worker matches `workflow_external_wait` and creates native Aegra continuation through existing admission/recovery. This works without an open browser. Early callbacks remain persisted until the checkpoint is ready.
 
-`workflows/external.py` 提供注册与独立等待节点；`shared/external-task.ts` 提供跨层状态和 interrupt 契约；`server/conversation/external-tasks.ts` 持久化更新与查询；`external-task-worker.ts` 负责后台续跑；`changes.ts` 负责数据库通知，`server/http/conversation-events.ts` 通过 PostgreSQL LISTEN 和 SSE 通知前端刷新。Query 仍然负责取数，session 负责协调较新快照，`ExternalTaskPanel` 展示通用进度与历史。`server/http/` 组织路由和 HTTP 校验，`app.ts` 只装配应用；业务持久化和续跑仍由 conversation 层负责。
+External APIs post complete snapshots. Duplicate/older revisions are ignored; same-revision conflicts and terminal regressions are rejected. Each callback token is task-specific and excluded from public snapshots. Registration uses the matching internal token from Python/server environment. Trusted backend resume supplies results; user review requests cannot fabricate external terminal states.
 
-通知在事务提交后可见；任务、run、消息和持久输出的更新会使快照失效。SSE 重连先发 ready，前端重新读取完整状态；通知丢失不影响持久结果。切换或关闭会话释放订阅连接。后台 worker 持有独立 Aegra client，单次请求限时 10 秒，停止时 abort 在途请求；这些是传输生命周期限制，不改变外部业务任务的耗时。后台 worker 由服务进程创建和释放，模拟报告回调 worker 由 Python lifespan 管理。
+| Endpoint                              | Credentials and payload                                                                                        |
+| ------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `POST /internal/external-tasks`       | `Authorization: Bearer <WORKFLOW_API_TOKEN>`; register stable identity before submitting to a trusted service. |
+| `POST /external-tasks/:taskId/events` | Task callback token; `{revision, status, stage, message, progress?, result?, error?}` snapshot.                |
 
-报告示例是独立业务：`workflows/report/` 提交、等待、发布，`services/report/` 产生五阶段回调，`db/report_jobs.py` 保存 job 身份和已投递 revision。模拟 job 使用稳定身份重复提交不重复创建；重启按已提交偏移继续。替换为其他 API 时，修改业务提交和结果解释即可复用任务状态、续跑及实时展示。
+Status is `queued`, `running`, `succeeded` or `failed`. Success requires an object result; failure requires an error. Same-revision conflicts or changes after terminal state return `409`. The server scans persistent tasks every second and admits continuation under the conversation lock, using bounded mapping recovery for unknown run creation.
 
-当前等待期间不接收同一会话的新用户 turn，没有主动取消或自动超时。外部 API 的 job 创建幂等仍由该 API 提供。Aegra run 创建结果未知时只做映射恢复；无法确认时保持 submission_unknown，不宣称跨系统 exactly-once。删除会话阻止后续 callback 和新 continuation，不撤销外部 API 已接受的 job。
+`workflows/external.py` supplies registration and a separate wait node. `shared/external-task.ts` defines cross-layer state/interrupt contracts. `server/conversation/external-tasks.ts` persists updates; `external-task-worker.ts` continues runs; `changes.ts` manages notifications; `server/http/conversation-events.ts` exposes PostgreSQL LISTEN invalidation through SSE. Query fetches snapshots, session coordinates updates and `ExternalTaskPanel` presents progress/history. HTTP modules own routes/validation; conversation owns persistence/continuation.
+
+Notifications become visible after commit. Task, run, message and output changes invalidate snapshots; SSE reconnect sends `ready` and refetches complete state. Lost notifications do not lose persisted results. Switching/closing releases subscriptions. The background worker owns an Aegra client with 10-second request deadlines and aborts requests on shutdown; these are transport limits, not external-job deadlines. The server process owns the continuation worker, and Python lifespan owns demo callback delivery.
+
+The report example submits, waits and publishes through `workflows/report/`. `services/report/` produces five callback stages, and `db/report_jobs.py` stores stable job identity/delivered revision. Idempotent submission does not duplicate jobs; restart continues the saved offset. Another API can reuse task persistence, continuation and display by replacing business submission/result interpretation.
+
+External wait currently blocks another user turn in the same conversation. Active cancellation and automatic task timeouts are not implemented. External APIs must provide idempotent job creation. Unknown Aegra creation uses mapping recovery rather than claiming cross-system exactly-once execution. Deleting a conversation prevents callbacks/new continuation without revoking jobs already accepted externally.
