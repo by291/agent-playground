@@ -82,7 +82,7 @@ async function savedHistory(
       });
     },
   );
-  await page.goto("/");
+  await page.goto("/c/first");
   await expect(page.getByRole("region", { name: "Messages" })).toContainText(
     "My saved discussion",
   );
@@ -138,16 +138,15 @@ test("clear history requires confirmation and resets conversation data while ret
       localStorage.getItem("agent-playground-preferences") ?? "{}",
     ) as { theme: string },
     width: localStorage.getItem("agent-playground-sidebar-width"),
-    current: JSON.parse(
-      localStorage.getItem("agent-playground-conversation") ?? "{}",
-    ) as { threadId: string },
+    current: localStorage.getItem("agent-playground-conversation"),
   }));
 
   expect(pointers.first).toBeNull();
   expect(pointers.second).toBeNull();
   expect(pointers.preferences.theme).toBe("dark");
   expect(pointers.width).toBe("336");
-  expect(pointers.current.threadId).not.toBe("first");
+  expect(pointers.current).toBeNull();
+  expect(new URL(page.url()).pathname).toBe("/");
   await page.reload();
   await expect(
     page.getByRole("heading", { name: "What would you like to work on?" }),

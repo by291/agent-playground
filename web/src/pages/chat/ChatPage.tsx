@@ -7,8 +7,13 @@ import {
 import { useConversationNavigation } from "./useConversationNavigation";
 
 export function ChatPage({ development }: { development: boolean }) {
-  const { conversation, openConversation, startNewConversation } =
-    useConversationNavigation();
+  const {
+    conversation,
+    conversationKey,
+    activateConversation,
+    openConversation,
+    startNewConversation,
+  } = useConversationNavigation();
   const history = useConversationHistory(
     openConversation,
     (threadId) => {
@@ -22,8 +27,9 @@ export function ChatPage({ development }: { development: boolean }) {
   return (
     <SettingsProvider onClearConversations={history.clear}>
       <ConversationProvider
-        key={conversation.threadId}
+        key={conversationKey}
         conversation={conversation}
+        onThreadCreated={activateConversation}
       >
         <ConversationWorkspace
           conversation={conversation}

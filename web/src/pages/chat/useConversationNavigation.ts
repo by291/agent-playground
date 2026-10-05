@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   loadConversation,
   newConversation,
@@ -11,23 +11,30 @@ type HistoryMode = "push" | "replace";
 function loadCurrentConversation() {
   const threadId = conversationIdFromPath(window.location.pathname);
 
-  return loadConversation(threadId ?? undefined);
+  return threadId ? loadConversation(threadId) : newConversation();
 }
 
 function rememberConversation(
   conversation: ReturnType<typeof loadConversation>,
 ) {
+  if (!conversation.threadId) {
+    return;
+  }
+
   try {
-    saveConversation(conversation);
+    saveConversation({ ...conversation, threadId: conversation.threadId });
   } catch {
     // URL navigation also works when browser storage is unavailable.
   }
 }
 
-function updateConversationUrl(threadId: string, mode: HistoryMode) {
+function updateConversationUrl(
+  threadId: string | undefined,
+  mode: HistoryMode,
+) {
   const url = new URL(window.location.href);
 
-  url.pathname = conversationPath(threadId);
+  url.pathname = threadId ? conversationPath(threadId) : "/";
 
   if (url.href === window.location.href) {
     return;
@@ -41,14 +48,18 @@ function updateConversationUrl(threadId: string, mode: HistoryMode) {
 }
 
 export function useConversationNavigation() {
-  const [conversation, setConversation] = useState(loadCurrentConversation);
+  const [navigation, setNavigation] = useState(() => ({
+    conversation: loadCurrentConversation(),
+    key: 0,
+  }));
+  const { conversation } = navigation;
 
   useEffect(() => {
     updateConversationUrl(conversation.threadId, "replace");
     // Hydration may already have updated this thread's pending submission.
-    const latest = conversation.fresh
-      ? conversation
-      : loadConversation(conversation.threadId);
+    const latest = conversation.threadId
+      ? loadConversation(conversation.threadId)
+      : conversation;
 
     rememberConversation(latest);
   }, [conversation]);
@@ -58,7 +69,10 @@ export function useConversationNavigation() {
       const next = loadCurrentConversation();
 
       rememberConversation(next);
-      setConversation(next);
+      setNavigation((previous) => ({
+        conversation: next,
+        key: previous.key + 1,
+      }));
     }
 
     window.addEventListener("popstate", restoreFromUrl);
@@ -75,7 +89,10 @@ export function useConversationNavigation() {
 
     updateConversationUrl(threadId, "push");
     rememberConversation(next);
-    setConversation(next);
+    setNavigation((previous) => ({
+      conversation: next,
+      key: previous.key + 1,
+    }));
   }
 
   function startNewConversation(mode: HistoryMode = "push") {
@@ -83,8 +100,26 @@ export function useConversationNavigation() {
 
     updateConversationUrl(next.threadId, mode);
     rememberConversation(next);
-    setConversation(next);
+    setNavigation((previous) => ({
+      conversation: next,
+      key: previous.key + 1,
+    }));
   }
 
-  return { conversation, openConversation, startNewConversation };
+  const activateConversation = useCallback((threadId: string) => {
+    updateConversationUrl(threadId, "replace");
+    // Promotion must keep the same mounted session, stream and selected files.
+    setNavigation((previous) => ({
+      ...previous,
+      conversation: { ...previous.conversation, threadId },
+    }));
+  }, []);
+
+  return {
+    conversation,
+    conversationKey: navigation.key,
+    activateConversation,
+    openConversation,
+    startNewConversation,
+  };
 }

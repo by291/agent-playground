@@ -43,11 +43,12 @@ type RefreshSnapshot = () => Promise<void>;
 
 export function createConversationSession(
   saved: ConversationReference,
-  agent = new HttpAgent({ url: "/agent", threadId: saved.threadId }),
+  agent = new HttpAgent({ url: "/agent", threadId: saved.threadId ?? "" }),
 ) {
   configureConversationAgent(agent);
 
   let connected = false;
+  let threadId = saved.threadId;
   let pending = saved.pending;
   let savedEmpty = saved.empty;
   let submittedRunId: string | undefined;
@@ -59,6 +60,8 @@ export function createConversationSession(
   let recoveringOutputs = false;
 
   const store = createStore<ConversationState>()(() => ({
+    threadId: threadId ?? null,
+    ensureThreadId,
     contextUsage: null,
     externalTasks: [],
     runs: [],
@@ -75,7 +78,7 @@ export function createConversationSession(
     reviewPlan,
     reviewWorkflow,
   }));
-  const submission = createSubmissionRunner(saved.threadId, agent, {
+  const submission = createSubmissionRunner(ensureThreadId, agent, {
     started() {
       streamInterrupts = undefined;
       awaitingCheckpoint = false;
@@ -280,10 +283,10 @@ export function createConversationSession(
       state.surfaces.length === 0 &&
       state.pendingInterrupts.length === 0;
 
-    if (savedEmpty !== empty || pendingConfirmed) {
+    if (threadId && (savedEmpty !== empty || pendingConfirmed)) {
       // Persist only the empty-page hint; history still comes from the server.
       saveConversation({
-        threadId: saved.threadId,
+        threadId,
         empty,
         ...(pending ? { pending } : {}),
       });
@@ -358,7 +361,7 @@ export function createConversationSession(
   function submit(input: PendingSubmission) {
     // Save before sending so a reload can retry exactly the same admission.
     saveConversation({
-      threadId: saved.threadId,
+      threadId: ensureThreadId(),
       pending: input,
       empty: false,
     });
@@ -366,6 +369,19 @@ export function createConversationSession(
     savedEmpty = false;
 
     return runSubmission(input);
+  }
+
+  function ensureThreadId() {
+    if (threadId) {
+      return threadId;
+    }
+
+    threadId = crypto.randomUUID();
+    agent.threadId = threadId;
+    saveConversation({ threadId, empty: true });
+    store.setState({ threadId });
+
+    return threadId;
   }
 
   function busy() {

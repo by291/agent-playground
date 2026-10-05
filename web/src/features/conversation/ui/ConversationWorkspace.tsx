@@ -31,7 +31,7 @@ export function ConversationWorkspace({
   development,
   history,
 }: {
-  conversation: { threadId: string };
+  conversation: { threadId?: string };
   onNewConversation: () => void;
   development: boolean;
   history?: ConversationHistory;
@@ -43,18 +43,19 @@ export function ConversationWorkspace({
   const [navigationOpen, setNavigationOpen] = useState(false);
   const navigation = useRef<HTMLDialogElement>(null);
   const empty = useConversation(isEmpty);
+  const threadId =
+    useConversation((state) => state.threadId) ?? conversation.threadId ?? null;
   const savedTitle = useConversation((state) => state.title);
   const status = useConversation((state) => state.runs.at(-1)?.status ?? null);
   const busy = useConversation(
     (state) => isRunning(state) || isRestoring(state),
   );
   const title =
-    history?.conversations.find(
-      (entry) => entry.threadId === conversation.threadId,
-    )?.title ??
+    history?.conversations.find((entry) => entry.threadId === threadId)
+      ?.title ??
     savedTitle ??
     (empty ? "New conversation" : "Current conversation");
-  const current = { threadId: conversation.threadId, title, status, busy };
+  const current = { threadId: threadId ?? "", title, status, busy };
   const showActivity = development && activityOpen;
 
   useEffect(() => {
@@ -207,16 +208,12 @@ export function ConversationWorkspace({
           >
             <ReplyPresentationProvider>
               <ChatPane onSelectPrompt={setPrompt} />
-              <Composer
-                prompt={prompt}
-                onPromptChange={setPrompt}
-                threadId={conversation.threadId}
-              />
+              <Composer prompt={prompt} onPromptChange={setPrompt} />
             </ReplyPresentationProvider>
           </main>
           {showActivity && (
             <ActivityPanel
-              threadId={conversation.threadId}
+              threadId={threadId}
               onClose={() => setActivityOpen(false)}
             />
           )}

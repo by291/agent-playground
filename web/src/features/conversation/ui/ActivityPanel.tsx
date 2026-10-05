@@ -12,7 +12,7 @@ export function ActivityPanel({
   threadId,
   onClose,
 }: {
-  threadId: string;
+  threadId: string | null;
   onClose: () => void;
 }) {
   const panelWidth = usePanelWidth({
@@ -215,7 +215,7 @@ export function ActivityPanel({
       <div className="shrink-0 border-t border-line bg-surface/70 px-4 py-3">
         <p className="text-[11px] text-muted">Thread ID</p>
         <code className="mt-1 block break-all font-mono text-[11px]/5 text-ink">
-          {threadId}
+          {threadId ?? "Not started"}
         </code>
         <p className="mt-2 text-xs/5 text-muted">
           Refreshing or switching conversations clears this log.

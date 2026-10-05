@@ -43,6 +43,7 @@ async def retrieve(
                     "page": document.metadata.get("page"),
                     "excerpt": document.page_content,
                     "distance": float(distance),
+                    "citation": f"[source](#knowledge-source-{document.id})",
                 }
                 for document, distance in matches
                 if document.id in visible
@@ -53,7 +54,7 @@ async def retrieve(
 
 @tool
 async def search_knowledge(query: str, runtime: ToolRuntime) -> ToolMessage:
-    """Search the shared uploaded knowledge documents. Return source names, pages and excerpts. Empty results mean no matching evidence in the current embedding index."""
+    """Search the shared uploaded knowledge documents. Return source names, pages, excerpts and citation links. Copy each source's citation link after the claim supported by that excerpt. Empty results mean no matching evidence in the current embedding index."""
     payload: dict[str, object] = {
         "kind": "knowledge_search_result",
         "query": query,

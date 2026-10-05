@@ -30,16 +30,21 @@ test("tool commentary and parameters open independently without changing the rep
     createElement(ToolProcess, { process: toolProcess(turn) }),
   );
   const user = userEvent.setup();
-  const summary = page.getByRole("button", { name: "Used 1 tool" });
+  const summary = page.getByRole("button", {
+    name: /Tool.*get_current_time.*Completed/,
+  });
 
   assert.equal(page.queryByText("I'll check that for you."), null);
   await user.click(summary);
   assert.ok(page.getByText("I'll check that for you."));
-  assert.equal(page.queryByText("get_current_time"), null);
+  assert.equal(
+    page.queryByText("get_current_time", { selector: "code" }),
+    null,
+  );
   await user.click(
     page.getByRole("button", { name: /Check the time\s*Completed/ }),
   );
-  assert.ok(page.getByText("get_current_time"));
+  assert.ok(page.getByText("get_current_time", { selector: "code" }));
   assert.ok(page.getByText("12:00 UTC"));
   await user.click(summary);
   assert.equal(page.queryByText("I'll check that for you."), null);

@@ -32,10 +32,10 @@ test("a tool reply uses one avatar, keeps commentary collapsed and renders the f
 
   assert.equal((markup.match(/data-slot="message-avatar"/g) ?? []).length, 1);
   assert.match(markup, /aria-expanded="false"/);
-  assert.match(markup, /Used 1 tool/);
+  assert.match(markup, /Completed/);
   assert.match(markup, /data-streamdown="strong"/);
   assert.doesNotMatch(markup, /I'll check that for you/);
-  assert.doesNotMatch(markup, /get_current_time/);
+  assert.match(markup, /get_current_time/);
 });
 
 test("tool-only waiting and failures retain their reply while cards remain outside the fold", () => {
@@ -73,7 +73,7 @@ test("tool-only waiting and failures retain their reply while cards remain outsi
     createElement(AssistantReply, { turn, animatedMessageId: null }),
   );
 
-  assert.match(failure, /Tool process failed/);
+  assert.match(failure, /Failed/);
   assert.match(failure, /aria-expanded="false"/);
 });
 

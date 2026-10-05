@@ -142,6 +142,10 @@ def test_index_retrieve_reindex_and_deleted_generation(
             hits = await retrieve("What is the return policy?", config, repository)
             assert hits[0]["documentId"] == document_id
             assert hits[0]["name"] == "policy.md"
+            assert (
+                hits[0]["citation"]
+                == f"[source](#knowledge-source-{hits[0]['chunkId']})"
+            )
             assert "30 days" in str(hits[0]["excerpt"])
             assert await retrieve("unrelated astronomy", config, repository) == []
             assert (

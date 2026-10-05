@@ -1,6 +1,9 @@
 import { z } from "zod";
 import { spawn, type ChildProcess } from "node:child_process";
-import { knowledgeSearchSchema } from "../../../shared/knowledge";
+import {
+  knowledgeCitationUrl,
+  knowledgeSearchSchema,
+} from "../../../shared/knowledge";
 import { createSkillTestStorage } from "../skill-storage";
 import type { StartedTestContainer } from "testcontainers";
 import { skillFileSchema } from "../../../shared/skill-files";
@@ -206,7 +209,13 @@ async function start() {
         id: randomUUID(),
         type: "ai",
         role: "assistant",
-        content: "The retrieved policy is available in the sources below.",
+        content:
+          result.sources
+            .map(
+              (source) =>
+                `A matching policy passage ${source.citation ?? `[source](${knowledgeCitationUrl(source.chunkId)})`}.`,
+            )
+            .join("\n\n") || "No matching policy passages were found.",
       },
     ];
 
@@ -259,7 +268,10 @@ async function start() {
           {
             id: "skill-fixture-call",
             name: "run_skill_script",
-            args: { skill_name: "csv-summary" },
+            args: {
+              skill_name: "csv-summary",
+              script_path: "scripts/summarize.py",
+            },
           },
         ],
       },

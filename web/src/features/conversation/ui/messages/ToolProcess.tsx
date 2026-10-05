@@ -5,6 +5,8 @@ import { CircleNotchIcon } from "@phosphor-icons/react/dist/csr/CircleNotch";
 import { ClockIcon } from "@phosphor-icons/react/dist/csr/Clock";
 import { WarningCircleIcon } from "@phosphor-icons/react/dist/csr/WarningCircle";
 import { WrenchIcon } from "@phosphor-icons/react/dist/csr/Wrench";
+import { StackIcon } from "@phosphor-icons/react/dist/csr/Stack";
+import { skillIdentity } from "../../model/skillExecution";
 import {
   Collapsible,
   CollapsibleContent,
@@ -28,7 +30,7 @@ const toolLabels: Record<string, string> = {
 
 function summary(steps: ToolStep[]) {
   if (steps.some((step) => step.status === "failed")) {
-    return "Tool process failed";
+    return "Failed";
   }
 
   if (steps.some((step) => step.status === "waiting")) {
@@ -40,14 +42,14 @@ function summary(steps: ToolStep[]) {
   }
 
   if (steps.some((step) => step.status === "running")) {
-    return "Using tools";
+    return "Running";
   }
 
   if (steps.some((step) => step.status === "unavailable")) {
-    return "Tool results unavailable";
+    return "Results unavailable";
   }
 
-  return `Used ${steps.length} ${steps.length === 1 ? "tool" : "tools"}`;
+  return "Completed";
 }
 
 function StatusIcon({ status }: { status: ToolStep["status"] }) {
@@ -86,6 +88,7 @@ function ToolDetails({ step }: { step: ToolStep }) {
   const label =
     toolLabels[step.call.function.name] ??
     step.call.function.name.replaceAll("_", " ");
+  const skill = skillIdentity(step);
   const statuses = {
     completed: "Completed",
     running: "Running",
@@ -99,14 +102,16 @@ function ToolDetails({ step }: { step: ToolStep }) {
     <Collapsible open={open} onOpenChange={setOpen}>
       <CollapsibleTrigger className="flex min-h-9 w-full cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm hover:bg-sidebar focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none">
         <StatusIcon status={step.status} />
-        <span className="min-w-0 flex-1 wrap-anywhere">{label}</span>
+        <span className="min-w-0 flex-1 wrap-anywhere">
+          {skill?.path ?? label}
+        </span>
         <span className="shrink-0 text-xs text-muted">
           {statuses[step.status]}
         </span>
         <CaretDownIcon
           aria-hidden="true"
           size={12}
-          className={open ? "rotate-180" : ""}
+          className={open ? "shrink-0 rotate-180" : "shrink-0"}
         />
       </CollapsibleTrigger>
       <CollapsibleContent className="space-y-3 px-2 pt-2 pb-3">
@@ -139,30 +144,46 @@ function ToolDetails({ step }: { step: ToolStep }) {
 export function ToolProcess({
   process,
   children,
+  skillName,
 }: {
   process: ReturnType<typeof toolProcess>;
   children?: ReactNode;
+  skillName?: string;
 }) {
   const [open, setOpen] = useState(false);
   const steps = process.flatMap((entry) => entry.calls);
   const failed = steps.some((step) => step.status === "failed");
   const error = steps.find((step) => step.result?.error)?.result?.error;
+  const name =
+    skillName ??
+    (steps.length === 1
+      ? steps[0]!.call.function.name
+      : `${steps.length} tools`);
+  let Icon = WrenchIcon;
+
+  if (failed) {
+    Icon = WarningCircleIcon;
+  } else if (skillName) {
+    Icon = StackIcon;
+  }
 
   return (
     <Collapsible open={open} onOpenChange={setOpen} className="w-full min-w-0">
       <CollapsibleTrigger
         className={`flex min-h-8 max-w-full cursor-pointer items-center gap-2 rounded-lg px-2 py-1 text-left text-sm hover:bg-sidebar focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none ${failed ? "text-red-700" : "text-muted"}`}
       >
-        {failed ? (
-          <WarningCircleIcon aria-hidden="true" size={16} />
-        ) : (
-          <WrenchIcon aria-hidden="true" size={16} />
-        )}
-        <span>{summary(steps)}</span>
+        <Icon aria-hidden="true" size={16} className="shrink-0" />
+        <span className="shrink-0 rounded border border-line px-1.5 py-0.5 text-[11px] font-medium">
+          {skillName ? "Skill" : "Tool"}
+        </span>
+        <span className="min-w-0 truncate font-medium text-ink" title={name}>
+          {name}
+        </span>
+        <span className="text-xs">{summary(steps)}</span>
         <CaretDownIcon
           aria-hidden="true"
           size={14}
-          className={open ? "rotate-180" : ""}
+          className={open ? "shrink-0 rotate-180" : "shrink-0"}
         />
       </CollapsibleTrigger>
       {error && (

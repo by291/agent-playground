@@ -11,12 +11,16 @@ export interface SavedConversation {
   empty?: boolean;
 }
 
-export interface ConversationReference extends SavedConversation {
+export interface ConversationReference extends Omit<
+  SavedConversation,
+  "threadId"
+> {
+  threadId?: string;
   fresh?: true;
 }
 
 export function newConversation(): ConversationReference {
-  return { threadId: crypto.randomUUID(), empty: true, fresh: true };
+  return { empty: true, fresh: true };
 }
 
 export function loadConversation(threadId?: string): ConversationReference {
@@ -59,7 +63,7 @@ export function saveConversation(conversation: SavedConversation): void {
   const value = JSON.stringify({ threadId, pending, empty });
   const previous = loadConversation();
 
-  if (previous.threadId !== threadId && !previous.fresh) {
+  if (previous.threadId && previous.threadId !== threadId && !previous.fresh) {
     // Preserve the pre-upgrade pointer before switching for the first time.
     localStorage.setItem(
       `${storageKey}:${previous.threadId}`,

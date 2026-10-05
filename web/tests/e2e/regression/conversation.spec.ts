@@ -1,4 +1,4 @@
-import { expect, test } from "../fixtures";
+import { capture, expect, test } from "../fixtures";
 import type { Page } from "@playwright/test";
 import { randomUUID } from "node:crypto";
 import {
@@ -6,6 +6,7 @@ import {
   startWorkflowReview,
   verifyFreshWelcome,
   verifyToolReply,
+  timePrompt,
 } from "../flows";
 
 test.beforeEach(async ({ page }) => {
@@ -16,9 +17,15 @@ test("fresh and restored empty conversations show the welcome page", async ({
   page,
 }) => {
   const externalAssets: string[] = [];
+  const threadRequests: string[] = [];
 
   page.on("request", (request) => {
+    const path = new URL(request.url()).pathname;
     const isFontAsset = ["font", "stylesheet"].includes(request.resourceType());
+
+    if (path === "/agent" || /^\/conversations\/[^/]+(?:\/|$)/.test(path)) {
+      threadRequests.push(path);
+    }
 
     if (
       isFontAsset &&
@@ -28,6 +35,19 @@ test("fresh and restored empty conversations show the welcome page", async ({
     }
   });
   await verifyFreshWelcome(page);
+  await page
+    .getByRole("button", { name: "New conversation", exact: true })
+    .click();
+  await page
+    .getByRole("textbox", { name: "Message" })
+    .fill("A draft I have not sent");
+  expect(new URL(page.url()).pathname).toBe("/");
+  expect(
+    await page.evaluate(() =>
+      localStorage.getItem("agent-playground-conversation"),
+    ),
+  ).toBeNull();
+  expect(threadRequests).toEqual([]);
   expect(externalAssets).toEqual([]);
   const interLoaded = await page.evaluate(async () => {
     const fonts = await document.fonts.load("400 16px Inter");
@@ -40,8 +60,36 @@ test("fresh and restored empty conversations show the welcome page", async ({
 
 test("tool replies expose details and restore without duplicating the answer", async ({
   page,
-}) => {
+}, testInfo) => {
+  const submissions: { threadId: string }[] = [];
+
+  page.on("request", (request) => {
+    if (
+      request.method() === "POST" &&
+      new URL(request.url()).pathname === "/agent"
+    ) {
+      submissions.push(request.postDataJSON() as { threadId: string });
+    }
+  });
   await verifyToolReply(page);
+  expect(submissions).toHaveLength(1);
+  const threadId = submissions[0]!.threadId;
+
+  await expect(page).toHaveURL(new RegExp(`/c/${threadId}$`));
+  await capture(page, testInfo, "tool-process-desktop.png");
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(
+    390,
+  );
+  await capture(page, testInfo, "tool-process-mobile.png");
+  await page.getByRole("textbox", { name: "Message" }).fill(timePrompt);
+  await page.getByRole("textbox", { name: "Message" }).press("Enter");
+  await expect(page.getByLabel("Assistant reply", { exact: true })).toHaveCount(
+    2,
+  );
+  await expect(page.getByRole("textbox", { name: "Message" })).toBeEnabled();
+  expect(submissions).toHaveLength(2);
+  expect(submissions[1]!.threadId).toBe(threadId);
 });
 
 test("a paused workflow restores its review and persists the edited approval", async ({

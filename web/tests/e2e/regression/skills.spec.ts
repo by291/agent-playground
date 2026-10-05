@@ -1,12 +1,12 @@
 import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
-import { expect, test } from "../fixtures";
+import { capture, expect, test } from "../fixtures";
 import { createCompletedConversation } from "../conversations";
 
 test("uploaded files go through the real backend and recovered tool outputs download from S3", async ({
   page,
   request,
-}) => {
+}, testInfo) => {
   await page.goto("/");
   await page.getByLabel("Choose files").setInputFiles({
     name: "orders.csv",
@@ -16,6 +16,17 @@ test("uploaded files go through the real backend and recovered tool outputs down
   await page
     .getByRole("textbox", { name: "Message" })
     .fill("Check the attached file.");
+  expect(new URL(page.url()).pathname).toBe("/");
+  expect(
+    await page.evaluate(() =>
+      localStorage.getItem("agent-playground-conversation"),
+    ),
+  ).toBeNull();
+  const submitted = page.waitForRequest(
+    (request) =>
+      request.method() === "POST" &&
+      new URL(request.url()).pathname === "/agent",
+  );
   const uploaded = page.waitForResponse(
     (response) =>
       response.url().endsWith("/files") &&
@@ -32,6 +43,10 @@ test("uploaded files go through the real backend and recovered tool outputs down
     name: string;
     size: number;
   };
+  const submission = (await submitted).postDataJSON() as { threadId: string };
+
+  expect(submission.threadId).toBe(input.threadId);
+  await expect(page).toHaveURL(new RegExp(`/c/${input.threadId}$`));
   const bytes = await request.get(
     `http://127.0.0.1:4300/conversations/${input.threadId}/files/${input.id}`,
   );
@@ -61,6 +76,17 @@ test("uploaded files go through the real backend and recovered tool outputs down
   expect(seeded.ok()).toBe(true);
   await page.goto(`/c/${threadId}`);
   await page.reload();
+  const skill = page.getByRole("button", {
+    name: /Skill.*csv-summary.*Completed/,
+  });
+
+  await expect(skill).toBeVisible();
+  await expect(page.getByRole("button", { name: /^Tool / })).toHaveCount(0);
+  await skill.click();
+  await expect(
+    page.getByRole("button", { name: /scripts\/summarize.py.*Completed/ }),
+  ).toBeVisible();
+  await capture(page, testInfo, "skill-execution.png");
   const link = page.getByRole("link", { name: /summary.json/ });
 
   await expect(link).toBeVisible();

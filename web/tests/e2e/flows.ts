@@ -23,7 +23,9 @@ export async function verifyFreshWelcome(page: Page) {
 export async function verifyToolReply(page: Page) {
   await page.getByRole("textbox", { name: "Message" }).fill(timePrompt);
   await page.getByRole("textbox", { name: "Message" }).press("Enter");
-  const tools = page.getByRole("button", { name: "Used 1 tool", exact: true });
+  const tools = page.getByRole("button", {
+    name: /Tool.*get_current_time.*Completed/,
+  });
   const reply = page.getByLabel("Assistant reply", { exact: true });
 
   await expect(tools).toBeVisible();
@@ -34,7 +36,7 @@ export async function verifyToolReply(page: Page) {
   await tools.click();
   await page.getByRole("button", { name: /Check the time/ }).click();
   await expect(
-    page.getByText("get_current_time", { exact: true }),
+    page.locator("code").filter({ hasText: /^get_current_time$/ }),
   ).toBeVisible();
   await page.reload();
   await expect(tools).toBeVisible();
@@ -75,7 +77,9 @@ export async function approveWorkflowReview(page: Page) {
     page.getByRole("heading", { name: title, exact: true }),
   ).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Used 1 tool", exact: true }),
+    page.getByRole("button", {
+      name: /Tool.*run_experiment_workflow.*Completed/,
+    }),
   ).toBeVisible();
   await expect(page.getByRole("button", { name: "Approve plan" })).toHaveCount(
     0,

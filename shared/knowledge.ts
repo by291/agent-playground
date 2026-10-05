@@ -27,9 +27,16 @@ export const knowledgeSearchSchema = z.object({
       page: z.number().int().positive().nullable(),
       excerpt: z.string(),
       distance: z.number().finite(),
+      citation: z.string().optional(),
     }),
   ),
 });
+export type KnowledgeSource = z.infer<
+  typeof knowledgeSearchSchema
+>["sources"][number];
+
+export const knowledgeCitationUrl = (chunkId: string) =>
+  `#knowledge-source-${chunkId}`;
 
 export const knowledgeFileUrl = (id: string) =>
   `/api/knowledge/documents/${encodeURIComponent(id)}/file`;

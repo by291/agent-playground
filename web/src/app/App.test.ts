@@ -11,7 +11,10 @@ vi.hoisted(() => {
   vi.stubEnv("DEV", false);
 });
 
-function renderInitialPage(saved: SavedConversation | null, pathname = "/") {
+function renderInitialPage(
+  saved: SavedConversation | null,
+  pathname = saved ? `/c/${saved.threadId}` : "/",
+) {
   vi.stubGlobal("window", {
     location: { pathname },
   });

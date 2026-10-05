@@ -110,10 +110,12 @@ test("SQL revisions and explanations survive reload and submit the accepted vers
     page.getByRole("button", { name: "Accept and submit" }),
   ).toHaveCount(0);
   await expect(
-    page.getByRole("button", { name: "Waiting for your review", exact: true }),
+    page.getByRole("button", {
+      name: /Tool.*run_sql_workflow.*Waiting for your review/,
+    }),
   ).toHaveCount(0);
   await expect(
-    page.getByRole("button", { name: "Used 1 tool", exact: true }),
+    page.getByRole("button", { name: /Tool.*run_sql_workflow.*Completed/ }),
   ).toBeVisible();
   await page.reload();
   await expect(page.getByLabel("SQL workflow")).toContainText("SQL submitted");

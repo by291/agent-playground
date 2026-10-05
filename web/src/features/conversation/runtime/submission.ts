@@ -9,7 +9,7 @@ interface SubmissionCallbacks {
 }
 
 export function createSubmissionRunner(
-  threadId: string,
+  getThreadId: () => string,
   agent: HttpAgent,
   callbacks: SubmissionCallbacks,
 ) {
@@ -31,7 +31,7 @@ export function createSubmissionRunner(
       }
 
       active = true;
-      observation = startSubmissionTrace(threadId, submission.runId);
+      observation = startSubmissionTrace(getThreadId(), submission.runId);
       const originalHeaders = agent.headers;
 
       agent.headers = { ...originalHeaders, ...observation.headers };

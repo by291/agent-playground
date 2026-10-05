@@ -23,12 +23,15 @@ const ConversationContext = createContext<ReturnType<
 export function ConversationProvider({
   conversation,
   children,
+  onThreadCreated,
 }: {
   conversation: ConversationReference;
   children: ReactNode;
+  onThreadCreated?: (threadId: string) => void;
 }) {
   const [session] = useState(() => createConversationSession(conversation));
   const client = useQueryClient();
+  const threadId = useStore(session.store, (state) => state.threadId);
   const snapshotEnabled = useStore(
     session.store,
     (state) => snapshotPolicy(state.lifecycle).enabled,
@@ -46,8 +49,8 @@ export function ConversationProvider({
     dataUpdatedAt,
     errorUpdatedAt,
   } = useQuery({
-    ...conversationQueryOptions(conversation.threadId, snapshotPolling),
-    enabled: snapshotEnabled,
+    ...conversationQueryOptions(threadId ?? "", snapshotPolling),
+    enabled: snapshotEnabled && threadId !== null,
   });
   const refresh = useCallback(async () => {
     await refetch({ throwOnError: true });
@@ -55,20 +58,24 @@ export function ConversationProvider({
 
   useEffect(() => session.connect(refresh), [session, refresh]);
   useEffect(() => {
-    if (!snapshotEnabled || typeof EventSource === "undefined") {
+    if (!threadId || !snapshotEnabled || typeof EventSource === "undefined") {
       return;
     }
 
-    return subscribeConversationChanges(conversation.threadId, () => {
+    return subscribeConversationChanges(threadId, () => {
       void client.invalidateQueries({
-        queryKey: ["conversation", conversation.threadId],
+        queryKey: ["conversation", threadId],
       });
     });
-  }, [client, conversation.threadId, snapshotEnabled]);
+  }, [client, threadId, snapshotEnabled]);
 
   useEffect(
     () =>
       session.store.subscribe((state, previous) => {
+        if (state.threadId && !previous.threadId) {
+          onThreadCreated?.(state.threadId);
+        }
+
         const accepted =
           state.lifecycle.execution === "streaming" &&
           previous.lifecycle.execution !== "streaming";
@@ -79,7 +86,7 @@ export function ConversationProvider({
           void client.invalidateQueries({ queryKey: conversationHistoryKey });
         }
       }),
-    [session, client],
+    [session, client, onThreadCreated],
   );
   useEffect(() => {
     // Each completed fetch is delivered once, even when Query preserves the same data object.

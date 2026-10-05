@@ -15,6 +15,8 @@ export interface Activity {
 }
 
 export interface ConversationState {
+  threadId: string | null;
+  ensureThreadId: () => string;
   title?: string | undefined;
   contextUsage: ContextUsage | null;
   externalTasks: ExternalTaskSnapshot[];

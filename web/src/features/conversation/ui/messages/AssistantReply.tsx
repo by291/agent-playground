@@ -5,7 +5,7 @@ import { hasMessageText } from "../../model/presentation";
 import { toolProcess, type ChatTurn } from "../../model/turns";
 import { KnowledgeSources } from "./KnowledgeSources";
 import { SkillFiles } from "./SkillFiles";
-import { ToolProcess } from "./ToolProcess";
+import { ExecutionProcess } from "./SkillProcess";
 import { ReasoningProcess } from "./ReasoningProcess";
 import { isRunActive } from "@shared/run-status";
 
@@ -79,19 +79,20 @@ export function AssistantReply({
         />
       )}
       {process.length > 0 && (
-        <ToolProcess process={process}>{processDetails}</ToolProcess>
+        <ExecutionProcess process={process}>{processDetails}</ExecutionProcess>
       )}
       <SkillFiles process={process} />
       {children}
-      {final.map((message) => (
-        <AssistantText
-          key={message.id}
-          message={message}
-          streaming={active && animatedMessageId === message.id}
-          onTextVisible={reportVisibleAnswer}
-        />
-      ))}
-      <KnowledgeSources process={process} />
+      <KnowledgeSources process={process}>
+        {final.map((message) => (
+          <AssistantText
+            key={message.id}
+            message={message}
+            streaming={active && animatedMessageId === message.id}
+            onTextVisible={reportVisibleAnswer}
+          />
+        ))}
+      </KnowledgeSources>
       {active && !reasoning.length && !toolsRunning && !final.length && (
         <ThinkingStatus
           label={process.length ? "Preparing reply" : "Thinking"}

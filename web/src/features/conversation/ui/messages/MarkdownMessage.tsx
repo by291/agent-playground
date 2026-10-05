@@ -18,6 +18,7 @@ import { code } from "@streamdown/code";
 import { compactStreamingText, segmentStreamingText } from "./streamingText";
 import { textReveal, usePacedText } from "./usePacedText";
 import { useReportReplyPresentation } from "../ReplyPresentation";
+import { knowledgeCitations, KnowledgeCitation } from "./knowledgeCitations";
 
 interface MarkdownProps {
   text: string;
@@ -30,6 +31,7 @@ interface MarkdownContentProps extends MarkdownProps {
 
 const lastBlockContext = createContext(-1);
 const markdownPlugins = { code };
+const citationPlugins = [knowledgeCitations];
 const fadeOptions = {
   animation: "fadeIn",
   duration: textReveal.fadeDurationMs,
@@ -50,6 +52,11 @@ function FadingSpan({
       ? { ...style, "--sd-delay": "0ms", animationFillMode: "backwards" }
       : undefined,
   );
+  const chunkId = node?.properties["data-knowledge-citation"];
+
+  if (typeof chunkId === "string") {
+    return <KnowledgeCitation chunkId={chunkId} />;
+  }
 
   return <span {...props} style={animationStyle ?? style} />;
 }
@@ -104,6 +111,7 @@ const MarkdownContent = memo(function MarkdownContent({
         plugins={markdownPlugins}
         codeBlockMaxHeight={480}
         components={components}
+        rehypePlugins={citationPlugins}
         BlockComponent={StreamingBlock}
         parseMarkdownIntoBlocksFn={parseBlocks}
       >

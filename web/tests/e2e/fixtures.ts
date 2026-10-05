@@ -29,6 +29,9 @@ export const test = base.extend<{ replyAnimation: boolean }>({
 
 export async function capture(page: Page, info: TestInfo, name: string) {
   if (process.env.E2E_CAPTURE === "1") {
-    await page.screenshot({ path: info.outputPath(name) });
+    await page.screenshot({
+      path: info.outputPath(name),
+      animations: "disabled",
+    });
   }
 }

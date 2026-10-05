@@ -27,9 +27,7 @@ import { useUserPreferences } from "@/lib/preferences";
 export function Composer({
   prompt,
   onPromptChange,
-  threadId,
 }: {
-  threadId?: string;
   prompt: string;
   onPromptChange: (prompt: string) => void;
 }) {
@@ -41,7 +39,7 @@ export function Composer({
 
   useEffect(() => {
     return () => upload.current?.abort();
-  }, [threadId]);
+  }, []);
 
   const { preferences } = useUserPreferences();
   const {
@@ -53,6 +51,7 @@ export function Composer({
     onSend,
   } = useConversation(useShallow(composerState));
   const presenting = useReplyPresentationBusy();
+  const ensureThreadId = useConversation((state) => state.ensureThreadId);
   const responding = running || presenting;
   const disabled =
     uploading ||
@@ -95,11 +94,12 @@ export function Composer({
       return;
     }
 
-    if (!threadId || upload.current) {
+    if (upload.current) {
       return;
     }
 
     const controller = new AbortController();
+    const threadId = ensureThreadId();
 
     upload.current = controller;
     setUploading(true);
@@ -171,45 +171,43 @@ export function Composer({
     <div className="shrink-0 bg-surface px-4 pt-3 pb-4 sm:px-8 sm:pb-5">
       <div className="conversation-layout conversation-column">
         <form onSubmit={submit}>
-          {threadId && (
-            <input
-              ref={picker}
-              type="file"
-              multiple
-              className="hidden"
-              aria-label="Choose files"
-              disabled={disabled}
-              onChange={(event) => {
-                const selected = Array.from(event.target.files ?? []);
+          <input
+            ref={picker}
+            type="file"
+            multiple
+            className="hidden"
+            aria-label="Choose files"
+            disabled={disabled}
+            onChange={(event) => {
+              const selected = Array.from(event.target.files ?? []);
 
-                event.target.value = "";
+              event.target.value = "";
 
-                if (
-                  files.length + selected.length > 4 ||
-                  selected.some(
-                    (file) =>
-                      file.size > maxSkillFileBytes ||
-                      !skillFilenameSchema.safeParse(file.name).success,
-                  )
-                ) {
-                  setUploadError(
-                    "Choose at most four files, up to 10 MiB each, with valid filenames.",
-                  );
+              if (
+                files.length + selected.length > 4 ||
+                selected.some(
+                  (file) =>
+                    file.size > maxSkillFileBytes ||
+                    !skillFilenameSchema.safeParse(file.name).success,
+                )
+              ) {
+                setUploadError(
+                  "Choose at most four files, up to 10 MiB each, with valid filenames.",
+                );
 
-                  return;
-                }
+                return;
+              }
 
-                setUploadError(null);
-                setFiles((previous) => [
-                  ...previous,
-                  ...selected.map((file) => ({
-                    id: crypto.randomUUID(),
-                    file,
-                  })),
-                ]);
-              }}
-            />
-          )}
+              setUploadError(null);
+              setFiles((previous) => [
+                ...previous,
+                ...selected.map((file) => ({
+                  id: crypto.randomUUID(),
+                  file,
+                })),
+              ]);
+            }}
+          />
           <InputGroup className="h-auto flex-col items-stretch gap-1 rounded-xl border-line bg-surface p-3 shadow-[0_3px_12px_rgba(32,36,44,0.04)] transition-colors duration-150 focus-within:border-accent sm:p-4">
             {files.length > 0 && (
               <div className="flex flex-wrap gap-2 px-1">
@@ -255,17 +253,15 @@ export function Composer({
               align="block-end"
               className="justify-between gap-3 px-1 pb-0"
             >
-              {threadId && (
-                <InputGroupButton
-                  type="button"
-                  size="icon-sm"
-                  aria-label="Attach files"
-                  disabled={disabled}
-                  onClick={() => picker.current?.click()}
-                >
-                  <PaperclipIcon size={18} aria-hidden="true" />
-                </InputGroupButton>
-              )}
+              <InputGroupButton
+                type="button"
+                size="icon-sm"
+                aria-label="Attach files"
+                disabled={disabled}
+                onClick={() => picker.current?.click()}
+              >
+                <PaperclipIcon size={18} aria-hidden="true" />
+              </InputGroupButton>
               <InputGroupText className="hidden min-w-0 truncate text-[11px] text-soft sm:block">
                 {preferences.sendShortcut === "enter"
                   ? "Enter to send · Shift + Enter for a new line"

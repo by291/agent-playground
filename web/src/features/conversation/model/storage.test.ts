@@ -1,10 +1,19 @@
 // @vitest-environment jsdom
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 import {
   forgetAllConversations,
   loadConversation,
+  newConversation,
   saveConversation,
 } from "./storage";
+
+test("empty conversation drafts have no thread identity", () => {
+  const allocate = vi.spyOn(crypto, "randomUUID");
+
+  expect(newConversation()).toEqual({ empty: true, fresh: true });
+  expect(newConversation().threadId).toBeUndefined();
+  expect(allocate).not.toHaveBeenCalled();
+});
 
 test("switching conversations keeps each unconfirmed submission recoverable", () => {
   const pending = {

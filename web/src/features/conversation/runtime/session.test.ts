@@ -321,7 +321,11 @@ function streamingAgent(threadId: string) {
     },
 
     finish(input: RunAgentInput) {
-      this.emit({ type: "RUN_FINISHED", threadId, runId: input.runId });
+      this.emit({
+        type: "RUN_FINISHED",
+        threadId: input.threadId,
+        runId: input.runId,
+      });
       controller.close();
     },
   };
@@ -431,7 +435,7 @@ test("activity bounds retained events without capping the received count and can
 
 test("a fresh conversation can submit before its first snapshot and syncs after the run", async () => {
   const conversation = newConversation();
-  const stream = streamingAgent(conversation.threadId);
+  const stream = streamingAgent("");
   const session = createConversationSession(conversation, stream.agent);
   let reads = 0;
   let savedSnapshot: ConversationSnapshot | null = null;
@@ -442,6 +446,9 @@ test("a fresh conversation can submit before its first snapshot and syncs after 
   });
 
   try {
+    assert.equal(session.store.getState().threadId, null);
+    await session.store.getState().send("   ");
+    assert.equal(session.store.getState().threadId, null);
     assert.equal(isRestoring(session.store.getState()), false);
     assert.equal(
       snapshotPolicy(session.store.getState().lifecycle).enabled,
@@ -450,6 +457,9 @@ test("a fresh conversation can submit before its first snapshot and syncs after 
     const completion = session.store.getState().send("Hello");
     const input = await stream.requested;
 
+    assert.match(input.threadId, /^[0-9a-f-]{36}$/);
+    assert.equal(session.store.getState().threadId, input.threadId);
+    assert.equal(session.store.getState().ensureThreadId(), input.threadId);
     assert.equal(input.messages[0]?.content, "Hello");
     assert.equal(reads, 0);
     assert.equal(
@@ -480,7 +490,7 @@ test("a fresh conversation can submit before its first snapshot and syncs after 
 });
 
 test("restoring an empty conversation still requires a snapshot before sending", async () => {
-  const conversation = newConversation();
+  const conversation = { threadId: "saved-empty-thread", empty: true };
 
   saveConversation(conversation);
   assert.deepEqual(
@@ -489,6 +499,9 @@ test("restoring an empty conversation still requires a snapshot before sending",
     "Only durable conversation fields are saved",
   );
   const restored = loadConversation();
+
+  assert.ok(restored.threadId);
+
   const stream = streamingAgent(restored.threadId);
   const session = createConversationSession(restored, stream.agent);
   const disconnect = connectSession(session, () => Promise.resolve(null));
