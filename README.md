@@ -1,9 +1,9 @@
 # Agent playground
 
-An evolving agent application for validating runtime capabilities and strengthening engineering foundations toward production use. A Python LangChain agent runs through Aegra; the Hono server adapts AG-UI and manages durable conversations; the React app provides chat, workflow review and A2UI rendering.
+An evolving agent application for validating runtime capabilities and strengthening engineering foundations toward production use. A Python LangChain agent runs through Aegra; the Hono server adapts AG-UI and manages durable conversations; the React and native Android clients provide chat, workflow review and A2UI rendering.
 
 ```text
-React web → Hono / AG-UI adapter → Aegra execution queue → Python agent
+React web / Android Compose → Hono / AG-UI adapter → Aegra execution queue → Python agent
                     ↘ Application PostgreSQL / S3          ↘ Docker Skills
 ```
 
@@ -23,6 +23,8 @@ Open <http://127.0.0.1:5173>. The agent, server and web app run in the backgroun
 make dev-stop
 make infra-down
 ```
+
+A native Jetpack Compose client is available in [`android/`](android/README.md). Open it in Android Studio and connect to the same TypeScript server on port 3000; its guide covers SDK requirements, emulator/device addresses and independent Android checks.
 
 ## Capabilities
 
@@ -44,6 +46,7 @@ Use the [documentation index](docs/README.md) to find setup, feature guides, arc
 | `agent_playground/`        | Python agent, workflows, demonstration APIs, Skills and knowledge indexing/retrieval. |
 | `server/`                  | AG-UI/HTTP adaptation, conversation lifecycle, persistence and shared S3 storage.     |
 | `web/`                     | React pages, conversation/knowledge UI and A2UI runtime/catalog.                      |
+| `android/`                 | Native Compose client, JVM protocol/session core and Android tests.                   |
 | `shared/`                  | TypeScript application contracts; protocol types come from official libraries.        |
 | `skills/`                  | Maintainer-published Skill bundles and their scripts/resources.                       |
 | `infra/`, `compose.yaml`   | Local infrastructure and Skill runtime image.                                         |
