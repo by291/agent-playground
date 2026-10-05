@@ -17,12 +17,28 @@ RAG_EMBEDDING_BASE_URL=https://your-provider.example/v1
 RAG_EMBEDDING_MODEL=your-embedding-model
 RAG_EMBEDDING_API_KEY=your-key
 RAG_EMBEDDING_BATCH_SIZE=10
+RAG_EMBEDDING_TPM=1000000
+RAG_EMBEDDING_RPM=24000
+RAG_EMBEDDING_MAX_RETRIES=5
+RAG_INDEX_TIMEOUT_SECONDS=600
+# Optional: use the same account scope across endpoint aliases.
+RAG_EMBEDDING_QUOTA_SCOPE=
 # Optional, only if your provider supports dimensions:
 RAG_EMBEDDING_DIMENSIONS=
 RAG_MAX_DISTANCE=0.55
 ```
 
-`RAG_MAX_DISTANCE` is the largest cosine distance accepted as evidence, between 0 and 2; lower values require closer matches. The adapter sends literal text to an OpenAI-compatible `/embeddings` endpoint, avoiding OpenAI-specific token-array inputs. Batch size affects request grouping, not chunking or index identity. The code default is 10; the repository's Qwen example sets 20. Match this setting and optional `dimensions` to the actual provider/model contract.
+`RAG_MAX_DISTANCE` is the largest cosine distance accepted as evidence, between 0 and 2; lower values require closer matches. The OpenAI SDK sends literal text to an OpenAI-compatible `/embeddings` endpoint, with float vectors. Batch size affects request grouping, not chunking or index identity. The code default is 10; the repository's Qwen example sets 20. Match this setting and optional `dimensions` to the actual provider/model contract.
+
+### Shared quotas and batch recovery
+
+Indexing and search share weighted request/token limits through the existing `REDIS_URL`. The maintained `limits` library uses Redis sliding-window counters, with second and minute budgets and 20% headroom. All application instances sharing an account/model must use the same Redis database and quota settings. Limits default to Qwen 3.7 embedding flash's published 1,000,000 TPM and 24,000 RPM; configure lower values when your provider or business space has a smaller quota. These are application budgets, not a measurement of all other applications using that provider account.
+
+Quota identity groups the endpoint and model across API keys and embedding dimensions. Set the same `RAG_EMBEDDING_QUOTA_SCOPE` across endpoint aliases to group them under one account; different models retain separate budgets. Quota settings and scope do not change index identity. Redis unavailability stops requests rather than bypassing admission.
+
+Each batch fits both the maximum text count and the conservative second-level token budget. The estimate uses UTF-8 bytes plus eight units per text, not an OpenAI tokenizer or the provider's exact token count. Provider-reported usage is logged separately. An individual fragment larger than this budget is rejected before sending with an actionable error; shorten it or check the quota configuration.
+
+HTTP 429 responses establish a shared cooldown. `Retry-After` seconds, HTTP dates and `retry-after-ms` are honored; absent valid hints, retries use exponential backoff with jitter. The SDK's internal retry loop is disabled so each attempt passes shared admission and generation checks. Transient connection failures and HTTP 408/409/5xx also retry the current batch. `RAG_EMBEDDING_MAX_RETRIES` defaults to five retries after the initial attempt and may be zero. Successful earlier batches stay in memory while that batch recovers. If the attempt ultimately fails or the process restarts, a new indexing attempt still recomputes the document; there is no persistent embedding cache or cross-attempt checkpoint.
 
 Restart the agent after changing embedding settings. Endpoint, model and dimension changes select a different index profile; use **Reindex** for existing documents. No substitute embeddings are generated when configuration is missing or the provider fails.
 
@@ -30,7 +46,7 @@ Restart the agent after changing embedding settings. Endpoint, model and dimensi
 
 Original bytes use the shared S3 client in the TypeScript server; PostgreSQL stores document/job state and pgvector chunks. Skills and knowledge share the configured bucket with separate object keys. Use [S3 configuration](development.md#s3-compatible-storage) for endpoints and credentials.
 
-The Python HTTP application runs the durable indexing worker. It downloads originals through the authenticated internal application route, extracts text with pypdf in an owned subprocess, splits with LangChain, calls embeddings and stages pgvector chunks. Each attempt has a two-minute deadline and a three-minute lease. Expired jobs are reclaimed after restart; only the current generation can publish a ready index. Failed jobs can be retried from the page. Incomplete uploads can resume with the same original file. Reindexing immediately hides the previous chunks.
+The Python HTTP application runs the durable indexing worker. It downloads originals through the authenticated internal application route, extracts text with pypdf in an owned subprocess, splits with LangChain, calls embeddings and stages pgvector chunks. `RAG_INDEX_TIMEOUT_SECONDS` bounds the whole attempt, including quota waits and retries, and defaults to ten minutes. Its three-minute lease is renewed during batch waits and every thirty seconds throughout downloading, extraction and persistence. Each dispatch rechecks ownership; deleted, expired or replaced generations stop sending new requests. A request already in flight may finish before cancellation is observed. Expired jobs are reclaimed after restart; only the current generation can publish a ready index. Failed jobs can be retried from the page. Incomplete uploads can resume with the same original file. Reindexing immediately hides the previous chunks.
 
 The visible states are `uploading`, `queued`, `indexing`, `ready` and `failed`. Only ready chunks for the current embedding profile are searchable. Text extraction uses an owned subprocess and LangChain splitting at 1,200 characters with 150 characters of overlap; PDF pages retain their source page number. Changing request batch size does not require reindexing.
 
@@ -66,4 +82,6 @@ Retrieval uses exact cosine search with up to five matches, without an approxima
 2. Check `RAG_EMBEDDING_BASE_URL`, model and API key in the root environment, independently of the chat model configuration.
 3. For provider `BadRequestError`, check the maximum texts per request and whether that model accepts `dimensions`. Leave the optional dimension setting empty unless supported.
 4. Inspect `.dev/agent.log` for the indexing error; verify server S3/internal-token settings if originals cannot be downloaded.
-5. Restart the agent after configuration changes, then use **Retry indexing** or **Reindex** as appropriate. Raising the retrieval-distance threshold cannot fix an indexing failure.
+5. For HTTP 429, compare `RAG_EMBEDDING_TPM`/`RPM` with your actual account or business-space limits, including their per-second equivalents. `Allocated quota exceeded` on Qwen indicates a token rate limit. Check Redis connectivity and other clients consuming the same provider quota. Wait for the cooldown before retrying.
+6. Batch logs include operation, batch index, text count, estimated and actual tokens, quota wait, latency, retry count, request ID and remaining-token headers when supplied. Failed documents show a quota-specific hint or a deadline hint. Logs do not include document/query text or credentials.
+7. Restart the agent after configuration changes, then use **Retry indexing** or **Reindex** as appropriate. Raising the retrieval-distance threshold cannot fix an indexing failure.

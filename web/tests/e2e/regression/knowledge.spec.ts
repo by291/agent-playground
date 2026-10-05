@@ -35,6 +35,7 @@ test("shared documents index through Python, retry failures and restore retrieve
     await expect(
       row.getByRole("button", { name: "Retry indexing" }),
     ).toBeVisible();
+    await expect(row).toContainText("Embedding token rate limit reached");
     await request.post("http://127.0.0.1:4300/__e2e/embedding-failure", {
       data: { enabled: false },
     });

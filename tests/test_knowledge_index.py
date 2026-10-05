@@ -27,7 +27,17 @@ from agent_playground.knowledge.worker import index_job
 
 
 @pytest.fixture
-def embedding_api() -> Iterator[str]:
+def embedding_requests() -> list[list[str]]:
+    return []
+
+
+@pytest.fixture(autouse=True)
+def embedding_environment(embedding_redis_url: str, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("REDIS_URL", embedding_redis_url)
+
+
+@pytest.fixture
+def embedding_api(embedding_requests: list[list[str]]) -> Iterator[str]:
     class Handler(BaseHTTPRequestHandler):
         def do_POST(self):
             assert self.path == "/v1/embeddings"
@@ -39,6 +49,28 @@ def embedding_api() -> Iterator[str]:
                 inputs = [inputs]
 
             assert all(isinstance(value, str) for value in inputs)
+            embedding_requests.append(inputs)
+
+            if request["model"] == "rate-limit-later-batch" and inputs[0] == "later-0":
+                attempts = sum(batch[0] == "later-0" for batch in embedding_requests)
+
+                if attempts <= 2:
+                    response = json.dumps(
+                        {
+                            "error": {
+                                "message": "Allocated quota exceeded",
+                                "type": "insufficient_quota",
+                            }
+                        }
+                    ).encode()
+                    self.send_response(429)
+                    self.send_header("Retry-After", "0.05")
+                    self.send_header("Content-Type", "application/json")
+                    self.send_header("Content-Length", str(len(response)))
+                    self.end_headers()
+                    self.wfile.write(response)
+
+                    return
 
             if request["model"].startswith("batch-limit-"):
                 limit = int(request["model"].removeprefix("batch-limit-"))
@@ -359,3 +391,130 @@ def test_pdf_chunks_preserve_real_text_and_page_numbers():
     assert [chunk.metadata["page"] for chunk in chunks] == [1, 2]
     assert chunks[0].page_content == "Returns within 30 days."
     assert chunks[1].page_content == "Keep the receipt."
+
+
+def test_rate_limited_batch_recovers_without_resending_successful_texts(
+    postgres_database_url: str,
+    embedding_api: str,
+    embedding_requests: list[list[str]],
+):
+    with psycopg.connect(postgres_database_url) as connection:
+        connection.execute(Path("server/drizzle/0009_knowledge.sql").read_bytes())
+
+    config = EmbeddingConfig(
+        embedding_api, "rate-limit-later-batch", "test-key", batch_size=2
+    )
+
+    async def run():
+        async with open_store(config, postgres_database_url) as (
+            _store,
+            embeddings,
+            _pool,
+        ):
+            vectors = await embeddings.aembed_documents(
+                ["first-0", "first-1", "later-0", "later-1"]
+            )
+
+            assert len(vectors) == 4
+
+    asyncio.run(run())
+
+    assert embedding_requests == [
+        ["first-0", "first-1"],
+        ["later-0", "later-1"],
+        ["later-0", "later-1"],
+        ["later-0", "later-1"],
+    ]
+
+
+def test_deleted_document_stops_embedding_after_its_source_download(
+    postgres_database_url: str,
+    embedding_api: str,
+    embedding_requests: list[list[str]],
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setenv("APP_DATABASE_URL", postgres_database_url)
+    data = b"Returns within 30 days."
+    document_id = str(uuid4())
+
+    with psycopg.connect(postgres_database_url) as connection:
+        connection.execute(Path("server/drizzle/0009_knowledge.sql").read_bytes())
+        connection.execute(
+            "INSERT INTO knowledge_documents (id,name,size,sha256,object_key,status) VALUES (%s,'policy.md',%s,%s,'test','queued')",
+            (document_id, len(data), hashlib.sha256(data).hexdigest()),
+        )
+
+    engine = create_engine(
+        postgres_database_url.replace("postgresql://", "postgresql+psycopg://", 1)
+    )
+    repository = KnowledgeRepository(engine)
+    job = repository.claim()
+    assert job is not None
+
+    def download(_request: httpx.Request):
+        with engine.begin() as connection:
+            connection.execute(
+                text("UPDATE knowledge_documents SET deleted_at=now(),generation=NULL")
+            )
+
+        return httpx.Response(200, content=data)
+
+    async def run():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(download)) as source:
+            assert not await index_job(
+                job,
+                repository,
+                EmbeddingConfig(embedding_api, "deleted", "test-key"),
+                source,
+            )
+
+    try:
+        asyncio.run(run())
+        assert embedding_requests == []
+    finally:
+        engine.dispose()
+
+
+def test_index_deadline_includes_slow_source_download(
+    postgres_database_url: str,
+    embedding_api: str,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setenv("APP_DATABASE_URL", postgres_database_url)
+    data = b"Returns within 30 days."
+
+    with psycopg.connect(postgres_database_url) as connection:
+        connection.execute(Path("server/drizzle/0009_knowledge.sql").read_bytes())
+        connection.execute(
+            "INSERT INTO knowledge_documents (id,name,size,sha256,object_key,status) VALUES (%s,'policy.md',%s,%s,'test','queued')",
+            (str(uuid4()), len(data), hashlib.sha256(data).hexdigest()),
+        )
+
+    engine = create_engine(
+        postgres_database_url.replace("postgresql://", "postgresql+psycopg://", 1)
+    )
+    repository = KnowledgeRepository(engine)
+    job = repository.claim()
+    assert job is not None
+
+    async def download(_request: httpx.Request):
+        await asyncio.sleep(2)
+
+        return httpx.Response(200, content=data)
+
+    async def run():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(download)) as source:
+            with pytest.raises(TimeoutError):
+                await index_job(
+                    job,
+                    repository,
+                    EmbeddingConfig(
+                        embedding_api, "deadline", "test-key", index_timeout=1
+                    ),
+                    source,
+                )
+
+    try:
+        asyncio.run(run())
+    finally:
+        engine.dispose()

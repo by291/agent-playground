@@ -8,6 +8,13 @@ import psycopg
 import pytest
 from psycopg import sql
 from testcontainers.community.postgres import PostgresContainer
+from testcontainers.community.redis import RedisContainer
+
+
+@pytest.fixture(scope="session")
+def embedding_redis_url() -> Iterator[str]:
+    with RedisContainer("redis:8-alpine") as redis:
+        yield f"redis://{redis.get_container_host_ip()}:{redis.get_exposed_port(6379)}/0"
 
 
 @pytest.fixture(scope="session")

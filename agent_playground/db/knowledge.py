@@ -79,6 +79,20 @@ class KnowledgeRepository:
                 {"id": job.id, "generation": job.generation},
             )
 
+    def renew(self, job: IndexJob) -> bool:
+        with self.engine.begin() as connection:
+            result = connection.execute(
+                text("""
+                UPDATE knowledge_documents SET lease_until = now() + interval '3 minutes'
+                WHERE id = :id AND generation = :generation AND deleted_at IS NULL
+                  AND status = 'indexing' AND lease_until > now()
+                RETURNING id
+            """),
+                {"id": job.id, "generation": job.generation},
+            )
+
+            return result.first() is not None
+
     def visible_ids(self, profile: str, ids: list[str]) -> set[str]:
         with self.engine.connect() as connection:
             rows = connection.execute(

@@ -9,10 +9,10 @@ from langchain.tools import ToolRuntime, tool
 from langchain_core.messages import ToolMessage
 
 from agent_playground.db.knowledge import KnowledgeRepository
+from agent_playground.knowledge.embeddings import validate_vectors
 from agent_playground.knowledge.store import (
     EmbeddingConfig,
     open_store,
-    validate_vectors,
 )
 
 
@@ -68,6 +68,10 @@ async def search_knowledge(query: str, runtime: ToolRuntime) -> ToolMessage:
         payload["sources"] = await retrieve(query, config, repository)
     except ValueError as error:
         payload["error"] = str(error)
+    except TimeoutError:
+        payload["error"] = (
+            "Knowledge search timed out while waiting for embeddings or retrieval. Wait before retrying and check provider quotas."
+        )
     except Exception as error:
         logging.getLogger(__name__).exception(
             "Knowledge retrieval failed: %s", type(error).__name__

@@ -7,12 +7,13 @@ import os
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 
-import httpx
-from langchain_openai import OpenAIEmbeddings
 from langchain_postgres import PGEngine, PGVectorStore
+from openai import AsyncOpenAI
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from agent_playground.db.connection import postgres_driver_url
+from agent_playground.knowledge.embeddings import EmbeddingService
+from agent_playground.knowledge.rate_limits import EmbeddingQuota
 
 
 @dataclass(frozen=True)
@@ -23,6 +24,22 @@ class EmbeddingConfig:
     dimensions: int | None = None
     max_distance: float = 0.55
     batch_size: int = 10
+    tokens_per_minute: int = 1_000_000
+    requests_per_minute: int = 24_000
+    max_retries: int = 5
+    index_timeout: int = 600
+    quota_scope: str = ""
+
+    @property
+    def batch_token_budget(self) -> int:
+        # Keep headroom for provider accounting and other account traffic.
+        return max(1, int(self.tokens_per_minute * 0.8 / 60))
+
+    @property
+    def quota_key(self) -> str:
+        identity = json.dumps([self.quota_scope or self.base_url, self.model])
+
+        return hashlib.sha256(identity.encode()).hexdigest()
 
     @classmethod
     def from_env(cls) -> "EmbeddingConfig":
@@ -37,16 +54,6 @@ class EmbeddingConfig:
         dimensions = os.getenv("RAG_EMBEDDING_DIMENSIONS", "")
         distance = float(os.getenv("RAG_MAX_DISTANCE", "0.55"))
 
-        try:
-            batch_size = int(os.getenv("RAG_EMBEDDING_BATCH_SIZE", "10"))
-        except ValueError as error:
-            raise ValueError(
-                "RAG_EMBEDDING_BATCH_SIZE must be a positive integer"
-            ) from error
-
-        if batch_size < 1:
-            raise ValueError("RAG_EMBEDDING_BATCH_SIZE must be a positive integer")
-
         if not math.isfinite(distance) or not 0 <= distance <= 2:
             raise ValueError("RAG_MAX_DISTANCE must be between 0 and 2")
 
@@ -58,7 +65,12 @@ class EmbeddingConfig:
             api_key,
             int(dimensions) if dimensions else None,
             distance,
-            batch_size,
+            integer_setting("RAG_EMBEDDING_BATCH_SIZE", 10),
+            integer_setting("RAG_EMBEDDING_TPM", 1_000_000),
+            integer_setting("RAG_EMBEDDING_RPM", 24_000),
+            integer_setting("RAG_EMBEDDING_MAX_RETRIES", 5, minimum=0),
+            integer_setting("RAG_INDEX_TIMEOUT_SECONDS", 600),
+            os.getenv("RAG_EMBEDDING_QUOTA_SCOPE", ""),
         )
 
     def profile(self, dimension: int) -> str:
@@ -69,21 +81,16 @@ class EmbeddingConfig:
         return f"{hashlib.sha256(identity.encode()).hexdigest()}:{dimension}"
 
 
-def validate_vectors(vectors: list[list[float]], count: int) -> int:
-    if len(vectors) != count or not vectors:
-        raise ValueError("Embedding API returned an unexpected number of vectors")
+def integer_setting(name: str, default: int, minimum: int = 1) -> int:
+    try:
+        value = int(os.getenv(name, str(default)))
+    except ValueError as error:
+        raise ValueError(f"{name} must be an integer of at least {minimum}") from error
 
-    dimension = len(vectors[0])
+    if value < minimum:
+        raise ValueError(f"{name} must be an integer of at least {minimum}")
 
-    if not dimension or any(
-        len(vector) != dimension
-        or not all(math.isfinite(value) for value in vector)
-        or not any(vector)
-        for vector in vectors
-    ):
-        raise ValueError("Embedding API returned invalid vectors")
-
-    return dimension
+    return value
 
 
 @asynccontextmanager
@@ -95,32 +102,28 @@ async def open_store(config: EmbeddingConfig, database_url: str | None = None):
     engine = PGEngine.from_engine(pool)
 
     try:
-        async with httpx.AsyncClient(timeout=30) as async_client:
-            with httpx.Client(timeout=30) as sync_client:
-                embeddings = OpenAIEmbeddings(
-                    api_key=config.api_key,
-                    base_url=config.base_url,
-                    model=config.model,
-                    dimensions=config.dimensions,
-                    check_embedding_ctx_length=False,
-                    chunk_size=config.batch_size,
-                    request_timeout=30,
-                    max_retries=1,
-                    http_client=sync_client,
-                    http_async_client=async_client,
-                )
-                store = await PGVectorStore.create(
-                    engine=engine,
-                    embedding_service=embeddings,
-                    table_name="knowledge_chunks",
-                    metadata_columns=[
-                        "document_id",
-                        "generation",
-                        "embedding_profile",
-                        "visible",
-                    ],
-                )
+        async with (
+            EmbeddingQuota(config) as quota,
+            AsyncOpenAI(
+                api_key=config.api_key,
+                base_url=config.base_url,
+                max_retries=0,
+                timeout=30,
+            ) as client,
+        ):
+            embeddings = EmbeddingService(config, client, quota)
+            store = await PGVectorStore.create(
+                engine=engine,
+                embedding_service=embeddings,
+                table_name="knowledge_chunks",
+                metadata_columns=[
+                    "document_id",
+                    "generation",
+                    "embedding_profile",
+                    "visible",
+                ],
+            )
 
-                yield store, embeddings, pool
+            yield store, embeddings, pool
     finally:
         await engine.close()

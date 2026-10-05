@@ -5,7 +5,7 @@ import {
   knowledgeSearchSchema,
 } from "../../../shared/knowledge";
 import { createSkillTestStorage } from "../skill-storage";
-import type { StartedTestContainer } from "testcontainers";
+import { GenericContainer, type StartedTestContainer } from "testcontainers";
 import { skillFileSchema } from "../../../shared/skill-files";
 import type { LangGraphPlatformMessage } from "@ag-ui/langgraph";
 import { serve } from "@hono/node-server";
@@ -26,6 +26,7 @@ import { scrollHistory } from "./scroll-history";
 let knowledgeProcess: ChildProcess | undefined;
 let stopKnowledgeCleanup: (() => Promise<void>) | undefined;
 let storage: StartedTestContainer | undefined;
+let redis: StartedTestContainer | undefined;
 let postgres: StartedPostgreSqlContainer | undefined;
 let database: typeof import("../../db/database") | undefined;
 let upstream: Server | undefined;
@@ -83,9 +84,16 @@ function stop() {
         try {
           await database?.db.$client.end();
         } finally {
-          await postgres?.stop();
-          (await import("../../storage/object-store")).closeObjectStore();
-          await storage?.stop();
+          try {
+            await postgres?.stop();
+          } finally {
+            try {
+              (await import("../../storage/object-store")).closeObjectStore();
+              await storage?.stop();
+            } finally {
+              await redis?.stop();
+            }
+          }
         }
       }
     }
@@ -96,6 +104,9 @@ function stop() {
 
 async function start() {
   storage = await createSkillTestStorage();
+  redis = await new GenericContainer("redis:8-alpine")
+    .withExposedPorts(6379)
+    .start();
   postgres = await new PostgreSqlContainer(
     "pgvector/pgvector:0.8.7-pg18",
   ).start();
@@ -151,9 +162,11 @@ async function start() {
   });
   harness.post("/__e2e/embeddings", async (context) => {
     if (embeddingFailure) {
+      context.header("Retry-After", "0.05");
+
       return context.json(
-        { error: { message: "Controlled embedding failure" } },
-        503,
+        { error: { message: "Allocated quota exceeded" } },
+        429,
       );
     }
 
@@ -399,10 +412,16 @@ async function start() {
         ...process.env,
         PYTHONPATH: root,
         APP_API_URL: "http://127.0.0.1:4300",
+        REDIS_URL: `redis://${redis.getHost()}:${redis.getMappedPort(6379)}/0`,
         RAG_EMBEDDING_BASE_URL: "http://127.0.0.1:4300/__e2e",
         RAG_EMBEDDING_MODEL: "controlled-model",
         RAG_EMBEDDING_API_KEY: "controlled-key",
         RAG_EMBEDDING_DIMENSIONS: "",
+        RAG_EMBEDDING_TPM: "1000000",
+        RAG_EMBEDDING_RPM: "24000",
+        RAG_EMBEDDING_MAX_RETRIES: "1",
+        RAG_INDEX_TIMEOUT_SECONDS: "600",
+        RAG_EMBEDDING_QUOTA_SCOPE: "",
       },
     },
   );
