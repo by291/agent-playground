@@ -67,6 +67,7 @@ fun AssistantTurnContent(
     api: PlaygroundApi,
     onDownload: (Download) -> Unit,
     onLink: (String) -> Unit,
+    processDetails: @Composable () -> Unit = {},
     children: @Composable () -> Unit = {},
 ) {
     val active = isActiveRun(turn.status)
@@ -95,7 +96,11 @@ fun AssistantTurnContent(
             ReasoningContent(turn, active, visibleAnswerPhase == reasoning.size, replyLink)
         }
         executionGroups(turn.toolCalls).forEach { group ->
-            ToolGroupContent(group)
+            ToolGroupContent(group) {
+                if (group.skill == null) {
+                    processDetails()
+                }
+            }
         }
         skillFiles(turn.toolCalls).forEach { file ->
             OutlinedButton(onClick = { onDownload(Download(api.filePath(file), file.name)) }) {

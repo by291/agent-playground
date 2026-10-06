@@ -86,7 +86,10 @@ internal fun ReasoningContent(
 }
 
 @Composable
-internal fun ToolGroupContent(group: ExecutionGroup) {
+internal fun ToolGroupContent(
+    group: ExecutionGroup,
+    processDetails: @Composable () -> Unit = {},
+) {
     val identity = group.steps.first().call.id
     var expanded by rememberSaveable(identity) { mutableStateOf(false) }
     val states = group.steps.map { it.status }.toSet()
@@ -166,6 +169,7 @@ internal fun ToolGroupContent(group: ExecutionGroup) {
         Reveal(expanded) {
             ProcessBody {
                 group.steps.forEach { step -> key(step.call.id) { ToolDetails(step) } }
+                processDetails()
             }
         }
     }

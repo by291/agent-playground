@@ -61,7 +61,7 @@ Motion is defined in `design/Motion.kt`: short feedback fades, disclosure expans
 
 Agent activity is a secondary full-screen page with native Back navigation. Chat observation continues while it is open, and returning preserves the reading position and draft. It shows event time/run groups, merged or individual streaming events, full SDK payloads and copy/clear controls. A rolling window retains up to 300 events and reports both received and retained counts; clearing affects the client log. Past events are not restored from server snapshots.
 
-Knowledge groups upload guidance and document status, with save/reindex/delete in each document's actions menu. Settings groups connection, appearance, keyboard and conversation data. Workflow results and review actions share the same card styles. Layouts remain scrollable with larger system text and constrain reading width on wide screens.
+Knowledge groups upload guidance and document status, with save/reindex/delete in each document's actions menu. Settings groups connection, appearance, keyboard and conversation data. Workflow results and review actions share the same card styles. The chat body shows the current workflow result; earlier cards remain under **Previous workflow steps** inside the original tool's collapsed execution details, matching the web client. Layouts remain scrollable with larger system text and constrain reading width on wide screens.
 
 ## Architecture
 

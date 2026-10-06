@@ -207,6 +207,14 @@ private fun ConversationTimeline(
             .groupBy { it.workflow!!.presentation!!.groupId }
             .values
             .map { it.last() }
+    val currentSurfaceIds = presentations.map { it.workflow!!.presentation!!.surfaceId }.toSet()
+    val presentationHistory =
+        state.outputs
+            .filter {
+                val presentation = it.workflow?.presentation
+                presentation != null && presentation.surfaceId !in currentSurfaceIds
+            }
+            .distinctBy { it.workflow!!.presentation!!.surfaceId }
     val owners = mutableMapOf<String, String>()
     for (output in state.outputs) {
         val presentation = output.workflow?.presentation ?: continue
@@ -346,6 +354,14 @@ private fun ConversationTimeline(
                 val tasks = state.externalTasks.filter { it.workflowCallId in callIds }
                 val legacyCards = legacy.current.filter { it.toolCallId in callIds }
                 val legacyHistory = legacy.history.filter { it.toolCallId in callIds }
+                // Earlier cards belong to the original tool process even when a later
+                // feedback reply owns the current presentation.
+                val previousSurfaces =
+                    (presentationHistory
+                            .filter { it.toolCallId in callIds }
+                            .map { it.workflow!!.presentation!!.surfaceId } +
+                            legacyHistory.map { it.id })
+                        .distinct()
                 val hasReviews = index == turns.lastIndex && visibleInterrupts.isNotEmpty()
                 if (
                     turn.messages.isNotEmpty() ||
@@ -357,17 +373,31 @@ private fun ConversationTimeline(
                 ) {
                     add(
                         TimelineEntry("reply:${turn.id}") {
-                            AssistantTurnContent(turn, api, onDownload, onLink) {
+                            AssistantTurnContent(
+                                turn,
+                                api,
+                                onDownload,
+                                onLink,
+                                processDetails = {
+                                    if (previousSurfaces.isNotEmpty()) {
+                                        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                            Text(
+                                                "Previous workflow steps",
+                                                style = MaterialTheme.typography.labelMedium,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            )
+                                            previousSurfaces.forEach {
+                                                WorkflowSurface(renderer, it)
+                                            }
+                                        }
+                                    }
+                                },
+                            ) {
                                 tasks.forEach { ExternalTaskPanel(it) }
                                 ownedCards.forEach {
-                                    WorkflowPresentation(it, state.outputs, renderer)
+                                    WorkflowPresentation(it, renderer)
                                 }
                                 legacyCards.forEach { WorkflowSurface(renderer, it.id) }
-                                if (legacyHistory.isNotEmpty()) {
-                                    Details("Earlier workflow results (${legacyHistory.size})") {
-                                        legacyHistory.forEach { WorkflowSurface(renderer, it.id) }
-                                    }
-                                }
                                 if (hasReviews) {
                                     reviews()
                                 }
@@ -381,7 +411,7 @@ private fun ConversationTimeline(
                 .forEach { output ->
                     add(
                         TimelineEntry("surface:${output.workflow!!.presentation!!.surfaceId}") {
-                            WorkflowPresentation(output, state.outputs, renderer)
+                            WorkflowPresentation(output, renderer)
                         }
                     )
                 }
@@ -565,25 +595,10 @@ private data class TimelineEntry(val id: String, val content: @Composable () -> 
 @Composable
 private fun WorkflowPresentation(
     current: WorkflowOutput,
-    outputs: List<WorkflowOutput>,
     renderer: WorkflowRenderer,
 ) {
     val presentation = current.workflow!!.presentation!!
     ChangingContent(presentation.surfaceId) { surface -> WorkflowSurface(renderer, surface) }
-    val older =
-        outputs
-            .filter {
-                val previous = it.workflow?.presentation
-                it.outputSeq < current.outputSeq &&
-                    previous?.groupId == presentation.groupId &&
-                    previous.surfaceId != presentation.surfaceId
-            }
-            .distinctBy { it.workflow!!.presentation!!.surfaceId }
-    if (older.isNotEmpty()) {
-        Details("Earlier workflow results (${older.size})") {
-            older.forEach { WorkflowSurface(renderer, it.workflow!!.presentation!!.surfaceId) }
-        }
-    }
 }
 
 @Composable
