@@ -32,6 +32,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.view.ViewCompat
+import com.agentplayground.app.design.ChangingContent
 import io.noties.markwon.AbstractMarkwonPlugin
 import io.noties.markwon.Markwon
 import io.noties.markwon.MarkwonConfiguration
@@ -240,13 +241,20 @@ private fun CopyAction(copy: String, label: String, settled: Boolean) {
         contentPadding = PaddingValues(horizontal = 12.dp),
         modifier = Modifier.heightIn(min = 48.dp),
     ) {
-        Icon(
-            if (copied) Icons.Outlined.Check else Icons.Outlined.ContentCopy,
-            null,
-            Modifier.size(16.dp),
-        )
-        Spacer(Modifier.width(6.dp))
-        Text(if (copied) "Copied" else label, style = MaterialTheme.typography.labelMedium)
+        ChangingContent(copied) { complete ->
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    if (complete) Icons.Outlined.Check else Icons.Outlined.ContentCopy,
+                    null,
+                    Modifier.size(16.dp),
+                )
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    if (complete) "Copied" else label,
+                    style = MaterialTheme.typography.labelMedium,
+                )
+            }
+        }
     }
 }
 

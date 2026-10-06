@@ -5,6 +5,9 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.animation.*
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -20,6 +23,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.agentplayground.app.data.AppPreferences
+import com.agentplayground.app.design.Motion
 import com.agentplayground.app.design.PlaygroundTheme
 import com.agentplayground.app.design.RevealNavigationDrawer
 import com.agentplayground.app.features.conversation.*
@@ -115,89 +119,115 @@ internal fun PlaygroundApp(application: PlaygroundApplication, preferences: AppP
     val scope = rememberCoroutineScope()
     val keyboard = LocalSoftwareKeyboardController.current
     BackHandler(enabled = drawer.isOpen) { scope.launch { drawer.close() } }
-    BoxWithConstraints(Modifier.fillMaxSize()) {
-        val expanded = maxWidth >= 840.dp
-        LaunchedEffect(expanded, destination) {
-            if (expanded || destination == "activity") {
-                drawer.close()
-            }
-        }
-        val openNavigation: (() -> Unit)? =
-            if (expanded) null
-            else {
-                {
-                    keyboard?.hide()
-                    scope.launch { drawer.open() }
+    CompositionLocalProvider(LocalContentColor provides MaterialTheme.colorScheme.onSurface) {
+        BoxWithConstraints(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface)) {
+            val expanded = maxWidth >= 840.dp
+            LaunchedEffect(expanded, destination) {
+                if (expanded || destination == "activity") {
+                    drawer.close()
                 }
             }
-        val navigate: (String) -> Unit = { route ->
-            scope.launch {
-                drawer.close()
+            val openNavigation: (() -> Unit)? =
+                if (expanded) null
+                else {
+                    {
+                        keyboard?.hide()
+                        scope.launch { drawer.open() }
+                    }
+                }
+            val navigate: (String) -> Unit = { route ->
                 destination = route
+                scope.launch { drawer.close() }
             }
-        }
-        val sidebar: @Composable () -> Unit = {
-            ConversationHistory(
-                chatState,
-                chat,
-                onSelect = { id ->
-                    if (id != chatState.session?.threadId) {
-                        chat.select(id)
-                    }
-                    navigate("chat")
-                },
-                modifier = Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding(),
-                destination = destination,
-                serverUrl = preferences.serverUrl,
-                onKnowledge = { navigate("knowledge") },
-                onSettings = { navigate("settings") },
-            )
-        }
-        val screen: @Composable () -> Unit = {
-            savedScreens.SaveableStateProvider("${preferences.serverUrl}:$destination") {
-                when (destination) {
-                    "activity" ->
-                        ActivityScreen(
-                            chatState.session,
-                            { destination = "chat" },
-                            chat::clearActivity,
-                        )
-                    "knowledge" -> KnowledgeScreen(knowledge, openNavigation)
-                    "settings" ->
-                        SettingsScreen(
-                            preferences,
-                            application.preferences,
-                            chat::clear,
-                            chatState.clearBlocked,
-                            chatState.error,
-                            openNavigation,
-                        )
-                    else ->
-                        ConversationScreen(chat, preferences, openNavigation) {
-                            destination = "activity"
+            val sidebar: @Composable () -> Unit = {
+                ConversationHistory(
+                    chatState,
+                    chat,
+                    onSelect = { id ->
+                        if (id != chatState.session?.threadId) {
+                            chat.select(id)
                         }
+                        navigate("chat")
+                    },
+                    modifier = Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding(),
+                    destination = destination,
+                    serverUrl = preferences.serverUrl,
+                    onKnowledge = { navigate("knowledge") },
+                    onSettings = { navigate("settings") },
+                )
+            }
+            val screen: @Composable (String) -> Unit = { route ->
+                savedScreens.SaveableStateProvider("${preferences.serverUrl}:$route") {
+                    when (route) {
+                        "activity" ->
+                            ActivityScreen(
+                                chatState.session,
+                                { destination = "chat" },
+                                chat::clearActivity,
+                            )
+                        "knowledge" -> KnowledgeScreen(knowledge, openNavigation)
+                        "settings" ->
+                            SettingsScreen(
+                                preferences,
+                                application.preferences,
+                                chat::clear,
+                                chatState.clearBlocked,
+                                chatState.error,
+                                openNavigation,
+                            )
+                        else ->
+                            ConversationScreen(chat, preferences, openNavigation) {
+                                keyboard?.hide()
+                                destination = "activity"
+                            }
+                    }
                 }
             }
-        }
-        when {
-            destination == "activity" -> screen()
-            expanded ->
-                Row(Modifier.fillMaxSize()) {
-                    Surface(
-                        Modifier.width(280.dp).fillMaxHeight(),
-                        color = MaterialTheme.colorScheme.surface,
-                    ) {
-                        sidebar()
+            AnimatedContent(
+                targetState = destination,
+                modifier = Modifier.fillMaxSize(),
+                transitionSpec = {
+                    when {
+                        targetState == "activity" ->
+                            (slideInHorizontally(tween(Motion.Page)) { it / 8 } +
+                                fadeIn(tween(Motion.Expand))) togetherWith
+                                (slideOutHorizontally(tween(Motion.Page)) { -it / 12 } +
+                                    fadeOut(tween(Motion.Exit)))
+                        initialState == "activity" ->
+                            (slideInHorizontally(tween(Motion.Page)) { -it / 12 } +
+                                fadeIn(tween(Motion.Expand))) togetherWith
+                                (slideOutHorizontally(tween(Motion.Page)) { it / 8 } +
+                                    fadeOut(tween(Motion.Exit)))
+                        !expanded && (drawer.isOpen || drawer.targetValue == DrawerValue.Open) ->
+                            EnterTransition.None togetherWith ExitTransition.None
+                        else ->
+                            fadeIn(tween(Motion.Feedback)) togetherWith
+                                fadeOut(tween(Motion.Feedback))
                     }
-                    VerticalDivider()
-                    Box(Modifier.weight(1f)) { screen() }
+                },
+                label = "workspace-page",
+            ) { route ->
+                when {
+                    route == "activity" -> screen(route)
+                    expanded ->
+                        Row(Modifier.fillMaxSize()) {
+                            Surface(
+                                Modifier.width(280.dp).fillMaxHeight(),
+                                color = MaterialTheme.colorScheme.surface,
+                            ) {
+                                sidebar()
+                            }
+                            VerticalDivider()
+                            Box(Modifier.weight(1f)) { screen(route) }
+                        }
+                    else ->
+                        RevealNavigationDrawer(
+                            drawerState = drawer,
+                            drawerContent = sidebar,
+                            content = { screen(route) },
+                        )
                 }
-            else ->
-                RevealNavigationDrawer(
-                    drawerState = drawer,
-                    drawerContent = sidebar,
-                    content = screen,
-                )
+            }
         }
     }
 }

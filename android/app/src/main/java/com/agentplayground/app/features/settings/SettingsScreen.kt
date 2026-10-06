@@ -134,16 +134,18 @@ fun SettingsScreen(
                     },
                     enabled = !pending && !conversationBusy,
                 ) {
-                    Text(
-                        if (pending) {
-                            "Connecting…"
-                        } else {
-                            "Connect and save"
-                        }
-                    )
+                    ChangingContent(pending) { connecting ->
+                        Text(
+                            if (connecting) {
+                                "Connecting…"
+                            } else {
+                                "Connect and save"
+                            }
+                        )
+                    }
                 }
-                status?.let { Text(it, color = MaterialTheme.colorScheme.primary) }
-                error?.let { ErrorNotice(it) }
+                RevealValue(status) { Text(it, color = MaterialTheme.colorScheme.primary) }
+                RevealValue(error) { ErrorNotice(it) }
             }
             SectionCard(Modifier.widthIn(max = 760.dp)) {
                 SectionHeading(
@@ -168,7 +170,7 @@ fun SettingsScreen(
                     Column(Modifier.weight(1f)) {
                         Text("Reply animation")
                         Text(
-                            "Animate movement to new replies",
+                            "Animate new messages and the jump to latest",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )

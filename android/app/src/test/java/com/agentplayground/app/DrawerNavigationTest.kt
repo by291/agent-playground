@@ -32,6 +32,22 @@ class DrawerNavigationTest {
     @get:Rule val compose = createComposeRule()
 
     @Test
+    fun `destination is installed before the drawer finishes closing`() {
+        fixture {
+            compose.onNodeWithContentDescription("Open conversation history").performClick()
+            compose.onNodeWithTag("navigation-settings").assertIsDisplayed()
+            compose.mainClock.autoAdvance = false
+            compose.onNodeWithTag("navigation-settings").performClick()
+            compose.mainClock.advanceTimeBy(32)
+            compose.onNodeWithTag("navigation-settings").assertIsSelected()
+            compose.onNodeWithText("Make it yours.").assertExists()
+            compose.mainClock.advanceTimeBy(600)
+            compose.onNodeWithText("Make it yours.").assertIsDisplayed()
+            compose.mainClock.autoAdvance = true
+        }
+    }
+
+    @Test
     fun `history pushes the entire chat page and tapping the exposed page restores it`() {
         fixture {
             val titleBefore = compose.onNodeWithTag("conversation-title").getUnclippedBoundsInRoot()

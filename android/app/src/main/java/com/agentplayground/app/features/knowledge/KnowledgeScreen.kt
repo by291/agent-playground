@@ -2,6 +2,7 @@ package com.agentplayground.app.features.knowledge
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -128,52 +129,55 @@ fun KnowledgeScreen(vm: KnowledgeViewModel, onOpenNavigation: (() -> Unit)? = nu
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
-                }
-            }
-            state.error?.let {
-                item {
-                    ErrorNotice(
-                        it,
-                        if (state.pendingUploads.isNotEmpty()) {
-                            vm::retryUploads
-                        } else {
-                            vm::reload
-                        },
-                    )
-                }
-            }
-            if (state.pendingUploads.isNotEmpty() && !state.busy) {
-                item {
-                    Column {
-                        Text("Pending uploads: ${state.pendingUploads.joinToString { it.name }}")
-                        Row {
-                            TextButton(onClick = vm::retryUploads) { Text("Retry uploads") }
-                            TextButton(onClick = vm::discardUploads) { Text("Discard selection") }
+                    RevealValue(state.error) { error ->
+                        ErrorNotice(
+                            error,
+                            if (state.pendingUploads.isNotEmpty()) {
+                                vm::retryUploads
+                            } else {
+                                vm::reload
+                            },
+                        )
+                    }
+                    Reveal(state.pendingUploads.isNotEmpty() && !state.busy) {
+                        Column {
+                            Text(
+                                "Pending uploads: ${state.pendingUploads.joinToString { it.name }}"
+                            )
+                            Row {
+                                TextButton(onClick = vm::retryUploads) { Text("Retry uploads") }
+                                TextButton(onClick = vm::discardUploads) {
+                                    Text("Discard selection")
+                                }
+                            }
+                        }
+                    }
+                    Reveal(state.loading || state.busy) {
+                        Column {
+                            LinearProgressIndicator(Modifier.fillMaxWidth())
+                            state.operation?.let { Text(it, Modifier.padding(top = 8.dp)) }
+                        }
+                    }
+                    Reveal(state.documents.isEmpty() && !state.loading) {
+                        SectionCard(Modifier.widthIn(max = 760.dp)) {
+                            SectionHeading(
+                                "No documents yet",
+                                "Upload a source to make it available to your agent.",
+                                Icons.Outlined.FolderOpen,
+                            )
                         }
                     }
                 }
             }
-            if (state.loading || state.busy) {
-                item {
-                    Column {
-                        LinearProgressIndicator(Modifier.fillMaxWidth())
-                        state.operation?.let { Text(it, Modifier.padding(top = 8.dp)) }
-                    }
-                }
-            }
-            if (state.documents.isEmpty() && !state.loading) {
-                item {
-                    SectionCard(Modifier.widthIn(max = 760.dp)) {
-                        SectionHeading(
-                            "No documents yet",
-                            "Upload a source to make it available to your agent.",
-                            Icons.Outlined.FolderOpen,
-                        )
-                    }
-                }
-            }
             items(state.documents, key = { it.id }) { document ->
-                SectionCard(Modifier.widthIn(max = 760.dp)) {
+                SectionCard(
+                    Modifier.widthIn(max = 760.dp)
+                        .animateItem(
+                            fadeInSpec = tween(Motion.Feedback),
+                            fadeOutSpec = tween(Motion.Exit),
+                            placementSpec = tween(Motion.Expand),
+                        )
+                ) {
                     var menu by remember { mutableStateOf(false) }
                     Row(
                         Modifier.fillMaxWidth(),
@@ -271,9 +275,9 @@ fun KnowledgeScreen(vm: KnowledgeViewModel, onOpenNavigation: (() -> Unit)? = nu
                         document.status.replaceFirstChar { it.uppercase() },
                         emphasis = document.status == "ready",
                     )
-                    document.error?.let {
+                    RevealValue(document.error) { error ->
                         Text(
-                            it,
+                            error,
                             color = MaterialTheme.colorScheme.error,
                             style = MaterialTheme.typography.bodySmall,
                         )

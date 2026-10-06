@@ -2,6 +2,8 @@ package com.agentplayground.app.features.workflow
 
 import androidx.a2ui.compose.runtime.*
 import androidx.a2ui.compose.ui.*
+import androidx.compose.animation.*
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.*
@@ -10,6 +12,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import com.agentplayground.app.design.Details
+import com.agentplayground.app.design.Motion
+import com.agentplayground.app.design.RevealValue
 import com.agentplayground.app.design.SectionCard
 import com.agentplayground.app.design.StatusTag
 
@@ -154,13 +158,15 @@ private object WorkflowSql : A2uiComponent {
                     )
                 }
             }
-            checked?.get(issues).orEmpty().forEach {
-                Text(it, color = MaterialTheme.colorScheme.error)
+            RevealValue(checked?.get(issues)?.takeIf { it.isNotEmpty() }) { currentIssues ->
+                Column {
+                    currentIssues.forEach { Text(it, color = MaterialTheme.colorScheme.error) }
+                }
             }
             Details("Original SQL") {
                 Text(properties[original].orEmpty(), fontFamily = FontFamily.Monospace)
             }
-            properties[receipt]?.let {
+            RevealValue(properties[receipt]) {
                 Text("Receipt: $it", style = MaterialTheme.typography.bodySmall)
             }
             Text(
@@ -174,13 +180,22 @@ private object WorkflowSql : A2uiComponent {
 
 @Composable
 fun RenderComponent(state: A2uiComponentState) {
-    when (state) {
-        is A2uiComponentState.Success -> A2uiComponent(state.component)
-        is A2uiComponentState.Error ->
-            Text(
-                "Workflow content unavailable: ${state.exception.message}",
-                color = MaterialTheme.colorScheme.error,
-            )
-        A2uiComponentState.Loading -> LinearProgressIndicator(Modifier.fillMaxWidth())
+    AnimatedContent(
+        targetState = state,
+        contentKey = { it::class },
+        transitionSpec = {
+            fadeIn(tween(Motion.Feedback)) togetherWith fadeOut(tween(Motion.Feedback))
+        },
+        label = "workflow-content",
+    ) { current ->
+        when (current) {
+            is A2uiComponentState.Success -> A2uiComponent(current.component)
+            is A2uiComponentState.Error ->
+                Text(
+                    "Workflow content unavailable: ${current.exception.message}",
+                    color = MaterialTheme.colorScheme.error,
+                )
+            A2uiComponentState.Loading -> LinearProgressIndicator(Modifier.fillMaxWidth())
+        }
     }
 }

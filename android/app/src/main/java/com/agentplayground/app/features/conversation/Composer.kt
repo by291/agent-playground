@@ -1,5 +1,7 @@
 package com.agentplayground.app.features.conversation
 
+import androidx.compose.animation.*
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -21,6 +23,7 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.agentplayground.app.data.AppPreferences
+import com.agentplayground.app.design.*
 import com.agentplayground.core.Review
 import com.agentplayground.core.externalWaitCallId
 
@@ -83,27 +86,36 @@ fun Composer(
                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
             ) {
                 Column(Modifier.padding(8.dp)) {
-                    if (state.attachments.isNotEmpty()) {
+                    AnimatedContent(
+                        targetState = state.attachments,
+                        contentKey = { files -> files.map { it.id } },
+                        transitionSpec = {
+                            fadeIn(tween(Motion.Feedback)) togetherWith fadeOut(tween(Motion.Exit))
+                        },
+                        label = "attachments",
+                    ) { attachments ->
                         FlowRow(
                             Modifier.padding(horizontal = 8.dp),
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
-                            state.attachments.forEach { file ->
-                                InputChip(
-                                    selected = false,
-                                    enabled = !state.uploading,
-                                    onClick = { vm.removeAttachment(file.id) },
-                                    label = {
-                                        Text(
-                                            file.name,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis,
-                                        )
-                                    },
-                                    trailingIcon = {
-                                        Icon(Icons.Outlined.Close, "Remove ${file.name}")
-                                    },
-                                )
+                            attachments.forEach { file ->
+                                key(file.id) {
+                                    InputChip(
+                                        selected = false,
+                                        enabled = !state.uploading,
+                                        onClick = { vm.removeAttachment(file.id) },
+                                        label = {
+                                            Text(
+                                                file.name,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                            )
+                                        },
+                                        trailingIcon = {
+                                            Icon(Icons.Outlined.Close, "Remove ${file.name}")
+                                        },
+                                    )
+                                }
                             }
                         }
                     }
@@ -123,6 +135,7 @@ fun Composer(
                         maxLines = 7,
                         modifier =
                             Modifier.fillMaxWidth()
+                                .animateContentSize(Motion.expansion())
                                 .heightIn(min = 52.dp)
                                 .padding(horizontal = 12.dp, vertical = 10.dp)
                                 .semantics { contentDescription = "Message" }
@@ -176,11 +189,13 @@ fun Composer(
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                             )
-                            metadata.usage?.let {
-                                Text(
-                                    " · ${if (it.usedTokens > 0 && it.usedTokens * 100L < it.contextWindow) "<1" else it.usedTokens * 100L / it.contextWindow.coerceAtLeast(1)}%",
-                                    style = MaterialTheme.typography.labelMedium,
-                                )
+                            Reveal(metadata.usage != null) {
+                                metadata.usage?.let {
+                                    Text(
+                                        " · ${if (it.usedTokens > 0 && it.usedTokens * 100L < it.contextWindow) "<1" else it.usedTokens * 100L / it.contextWindow.coerceAtLeast(1)}%",
+                                        style = MaterialTheme.typography.labelMedium,
+                                    )
+                                }
                             }
                         }
                         FilledIconButton(
@@ -193,14 +208,22 @@ fun Composer(
                                     contentColor = MaterialTheme.colorScheme.surface,
                                 ),
                         ) {
-                            if (state.uploading || session.busy) {
-                                CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
-                            } else {
-                                Icon(
-                                    Icons.Outlined.ArrowUpward,
-                                    "Send message",
-                                    Modifier.size(22.dp),
-                                )
+                            ChangingContent(
+                                state.uploading || session.busy,
+                                Modifier.size(22.dp),
+                            ) { busy ->
+                                if (busy) {
+                                    CircularProgressIndicator(
+                                        Modifier.size(20.dp),
+                                        strokeWidth = 2.dp,
+                                    )
+                                } else {
+                                    Icon(
+                                        Icons.Outlined.ArrowUpward,
+                                        "Send message",
+                                        Modifier.size(22.dp),
+                                    )
+                                }
                             }
                         }
                     }

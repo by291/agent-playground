@@ -1,10 +1,14 @@
 package com.agentplayground.app.design
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -126,8 +130,9 @@ private val typography =
 @Composable
 fun PlaygroundTheme(preference: String, content: @Composable () -> Unit) {
     val isDark = preference == "dark" || preference == "system" && isSystemInDarkTheme()
+    val darkness by animateFloatAsState(if (isDark) 1f else 0f, tween(Motion.Exit), label = "theme")
     MaterialTheme(
-        colorScheme = if (isDark) dark else light,
+        colorScheme = interpolatedColors(darkness),
         typography = typography,
         shapes =
             Shapes(
@@ -140,3 +145,47 @@ fun PlaygroundTheme(preference: String, content: @Composable () -> Unit) {
         content = content,
     )
 }
+
+private fun interpolatedColors(fraction: Float): ColorScheme =
+    light.copy(
+        primary = lerp(light.primary, dark.primary, fraction),
+        onPrimary = lerp(light.onPrimary, dark.onPrimary, fraction),
+        primaryContainer = lerp(light.primaryContainer, dark.primaryContainer, fraction),
+        onPrimaryContainer = lerp(light.onPrimaryContainer, dark.onPrimaryContainer, fraction),
+        secondary = lerp(light.secondary, dark.secondary, fraction),
+        onSecondary = lerp(light.onSecondary, dark.onSecondary, fraction),
+        secondaryContainer = lerp(light.secondaryContainer, dark.secondaryContainer, fraction),
+        onSecondaryContainer =
+            lerp(light.onSecondaryContainer, dark.onSecondaryContainer, fraction),
+        tertiary = lerp(light.tertiary, dark.tertiary, fraction),
+        onTertiary = lerp(light.onTertiary, dark.onTertiary, fraction),
+        tertiaryContainer = lerp(light.tertiaryContainer, dark.tertiaryContainer, fraction),
+        onTertiaryContainer = lerp(light.onTertiaryContainer, dark.onTertiaryContainer, fraction),
+        background = lerp(light.background, dark.background, fraction),
+        onBackground = lerp(light.onBackground, dark.onBackground, fraction),
+        surface = lerp(light.surface, dark.surface, fraction),
+        onSurface = lerp(light.onSurface, dark.onSurface, fraction),
+        surfaceVariant = lerp(light.surfaceVariant, dark.surfaceVariant, fraction),
+        onSurfaceVariant = lerp(light.onSurfaceVariant, dark.onSurfaceVariant, fraction),
+        surfaceTint = lerp(light.surfaceTint, dark.surfaceTint, fraction),
+        surfaceDim = lerp(light.surfaceDim, dark.surfaceDim, fraction),
+        surfaceBright = lerp(light.surfaceBright, dark.surfaceBright, fraction),
+        surfaceContainerLowest =
+            lerp(light.surfaceContainerLowest, dark.surfaceContainerLowest, fraction),
+        surfaceContainerLow = lerp(light.surfaceContainerLow, dark.surfaceContainerLow, fraction),
+        surfaceContainer = lerp(light.surfaceContainer, dark.surfaceContainer, fraction),
+        surfaceContainerHigh =
+            lerp(light.surfaceContainerHigh, dark.surfaceContainerHigh, fraction),
+        surfaceContainerHighest =
+            lerp(light.surfaceContainerHighest, dark.surfaceContainerHighest, fraction),
+        outline = lerp(light.outline, dark.outline, fraction),
+        outlineVariant = lerp(light.outlineVariant, dark.outlineVariant, fraction),
+        error = lerp(light.error, dark.error, fraction),
+        onError = lerp(light.onError, dark.onError, fraction),
+        errorContainer = lerp(light.errorContainer, dark.errorContainer, fraction),
+        onErrorContainer = lerp(light.onErrorContainer, dark.onErrorContainer, fraction),
+        inverseSurface = lerp(light.inverseSurface, dark.inverseSurface, fraction),
+        inverseOnSurface = lerp(light.inverseOnSurface, dark.inverseOnSurface, fraction),
+        inversePrimary = lerp(light.inversePrimary, dark.inversePrimary, fraction),
+        scrim = lerp(light.scrim, dark.scrim, fraction),
+    )

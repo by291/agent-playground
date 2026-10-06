@@ -2,6 +2,8 @@ package com.agentplayground.app.features.conversation
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.*
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -401,39 +403,56 @@ private fun ConversationTimeline(
             if (turns.isEmpty() && visibleInterrupts.isNotEmpty()) {
                 add(TimelineEntry("reviews") { reviews() })
             }
-            if (state.loading) {
-                add(TimelineEntry("loading") { LinearProgressIndicator(Modifier.fillMaxWidth()) })
+            if (isEmpty()) {
+                add(TimelineEntry("status") {})
             }
-            state.missingOutputSequence?.let { sequence ->
-                add(
-                    TimelineEntry("missing-output") {
-                        Text(
-                            "Recovering missing workflow output $sequence…",
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                )
-            }
-            listOfNotNull(issue, state.error, state.outputError, renderer.error)
-                .distinct()
-                .forEachIndexed { index, error ->
-                    add(TimelineEntry("error:$index") { ErrorNotice(error, onRecover) })
+        }
+    val noticeErrors =
+        listOfNotNull(issue, state.error, state.outputError, renderer.error).distinct()
+    val hasNotices =
+        state.loading ||
+            state.busy ||
+            state.missingOutputSequence != null ||
+            noticeErrors.isNotEmpty()
+    val notices: @Composable () -> Unit = {
+        Reveal(hasNotices) {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Reveal(state.loading) { LinearProgressIndicator(Modifier.fillMaxWidth()) }
+                RevealValue(state.missingOutputSequence) { sequence ->
+                    Text(
+                        "Recovering missing workflow output $sequence…",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
-            if (state.busy) {
-                add(
-                    TimelineEntry("progress") {
-                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                val errors =
+                    listOfNotNull(issue, state.error, state.outputError, renderer.error).distinct()
+                RevealValue(errors.takeIf { it.isNotEmpty() }) { visibleErrors ->
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        visibleErrors.forEach { ErrorNotice(it, onRecover) }
+                    }
+                }
+                Reveal(state.busy) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                        ChangingContent(state.streaming) { streaming ->
                             Text(
-                                if (state.streaming) "Agent is responding…"
+                                if (streaming) "Agent is responding…"
                                 else "Recovering agent progress…",
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
                     }
-                )
+                }
             }
         }
+    }
+
+    val entrances = remember(state.threadId) { TimelineEntrances() }
+    val entranceKeys =
+        entries.map { it.id }.toSet() +
+            state.interrupts.map { "review:${it.id}" } +
+            state.externalTasks.map { "task:${it.taskId}" }
+    entrances.observe(entranceKeys, state.loading)
     // A reversed list starts at the newest content and also anchors tall, growing
     // replies by their bottom edge. Following is suspended when the reader scrolls.
     LaunchedEffect(list) {
@@ -471,40 +490,71 @@ private fun ConversationTimeline(
                 }
             }
         }
-    Box(modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
-        LazyColumn(
-            Modifier.fillMaxSize()
-                .widthIn(max = 808.dp)
-                .testTag("conversation-timeline")
-                .nestedScroll(scrollConnection),
-            state = list,
-            reverseLayout = !empty,
-            contentPadding =
-                PaddingValues(horizontal = 24.dp, vertical = if (compactHeight) 12.dp else 28.dp),
-            verticalArrangement = Arrangement.spacedBy(24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            items(if (empty) entries else entries.asReversed(), key = { it.id }) { entry ->
-                Column(
-                    Modifier.widthIn(max = 760.dp).fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(16.dp),
-                ) {
-                    entry.content()
+    CompositionLocalProvider(
+        LocalTimelineEntrances provides entrances,
+        LocalReplyAnimation provides preferences.replyAnimation,
+    ) {
+        Box(modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+            LazyColumn(
+                Modifier.fillMaxSize()
+                    .widthIn(max = 808.dp)
+                    .testTag("conversation-timeline")
+                    .nestedScroll(scrollConnection),
+                state = list,
+                reverseLayout = !empty,
+                contentPadding =
+                    PaddingValues(
+                        horizontal = 24.dp,
+                        vertical = if (compactHeight) 12.dp else 28.dp,
+                    ),
+                verticalArrangement = Arrangement.spacedBy(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                items(if (empty) entries else entries.asReversed(), key = { it.id }) { entry ->
+                    val admitted = remember(entry.id) { entrances.consume(entry.id) }
+                    EntryAppearance(
+                        animate = admitted && preferences.replyAnimation,
+                        modifier =
+                            Modifier.animateItem(
+                                fadeInSpec = null,
+                                fadeOutSpec =
+                                    if (preferences.replyAnimation) tween(Motion.Exit) else null,
+                                placementSpec = null,
+                            ),
+                    ) {
+                        Column(
+                            Modifier.widthIn(max = 760.dp).fillMaxWidth(),
+                            verticalArrangement = Arrangement.spacedBy(16.dp),
+                        ) {
+                            entry.content()
+                            if (entry.id == entries.last().id) {
+                                notices()
+                            }
+                        }
+                    }
                 }
             }
-        }
-        if (!empty && !atBottom) {
-            FilledTonalIconButton(
-                onClick = {
-                    following = true
-                    scope.launch {
-                        if (preferences.replyAnimation) list.animateScrollToItem(0)
-                        else list.scrollToItem(0)
-                    }
-                },
-                modifier = Modifier.align(Alignment.BottomCenter).padding(12.dp).size(48.dp),
+            AnimatedVisibility(
+                visible = !empty && !atBottom,
+                modifier = Modifier.align(Alignment.BottomCenter).padding(12.dp),
+                enter =
+                    fadeIn(tween(Motion.Feedback)) +
+                        scaleIn(tween(Motion.Feedback), initialScale = 0.9f),
+                exit =
+                    fadeOut(tween(Motion.Exit)) + scaleOut(tween(Motion.Exit), targetScale = 0.9f),
             ) {
-                Icon(Icons.Outlined.ArrowDownward, "Jump to latest message")
+                FilledTonalIconButton(
+                    onClick = {
+                        following = true
+                        scope.launch {
+                            if (preferences.replyAnimation) list.animateScrollToItem(0)
+                            else list.scrollToItem(0)
+                        }
+                    },
+                    modifier = Modifier.size(48.dp),
+                ) {
+                    Icon(Icons.Outlined.ArrowDownward, "Jump to latest message")
+                }
             }
         }
     }
@@ -519,7 +569,7 @@ private fun WorkflowPresentation(
     renderer: WorkflowRenderer,
 ) {
     val presentation = current.workflow!!.presentation!!
-    WorkflowSurface(renderer, presentation.surfaceId)
+    ChangingContent(presentation.surfaceId) { surface -> WorkflowSurface(renderer, surface) }
     val older =
         outputs
             .filter {

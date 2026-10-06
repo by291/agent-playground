@@ -35,6 +35,7 @@ class ConversationScrollTest {
     fun `opening and switching a long conversation shows its latest turn`() {
         fixture { vm ->
             compose.onNodeWithText("Latest A").assertIsDisplayed()
+            compose.onNodeWithContentDescription("Jump to latest message").assertDoesNotExist()
             compose.onNodeWithTag("conversation-timeline").performScrollToIndex(12)
             vm.select("b")
             await {

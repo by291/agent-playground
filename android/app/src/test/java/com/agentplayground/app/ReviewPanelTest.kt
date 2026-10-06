@@ -6,8 +6,10 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import com.agentplayground.app.features.conversation.ExternalTaskPanel
 import com.agentplayground.app.features.conversation.PlanReviewPanel
 import com.agentplayground.app.features.conversation.ReviewPanel
 import com.agentplayground.core.*
@@ -25,6 +27,50 @@ import org.robolectric.annotation.GraphicsMode
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class ReviewPanelTest {
     @get:Rule val compose = createComposeRule()
+
+    @Test
+    fun `task progress interpolates server updates while the reported percentage is immediate`() {
+        var task by
+            mutableStateOf(
+                ExternalTask(
+                    "task",
+                    "call",
+                    "Report",
+                    1,
+                    "running",
+                    "processing",
+                    "Working",
+                    10.0,
+                    history = emptyList(),
+                )
+            )
+        compose.mainClock.autoAdvance = false
+        compose.setContent { MaterialTheme { ExternalTaskPanel(task) } }
+        val progress =
+            compose.onNode(SemanticsMatcher.keyIsDefined(SemanticsProperties.ProgressBarRangeInfo))
+        compose.onNodeWithText("10%").assertIsDisplayed()
+        compose.runOnIdle {
+            task = task.copy(progress = 80.0)
+            androidx.compose.runtime.snapshots.Snapshot.sendApplyNotifications()
+        }
+        compose.mainClock.advanceTimeBy(96)
+        compose.onNodeWithText("80%").assertExists()
+        val during =
+            progress.fetchSemanticsNode().config[SemanticsProperties.ProgressBarRangeInfo].current
+        assertTrue(during > 0.1f && during < 0.8f)
+        compose.mainClock.advanceTimeBy(400)
+        assertEquals(
+            0.8f,
+            progress.fetchSemanticsNode().config[SemanticsProperties.ProgressBarRangeInfo].current,
+            0.001f,
+        )
+        compose.runOnIdle {
+            task = task.copy(progress = null)
+            androidx.compose.runtime.snapshots.Snapshot.sendApplyNotifications()
+        }
+        compose.mainClock.advanceTimeBy(300)
+        progress.assertDoesNotExist()
+    }
 
     @Test
     fun `edited plan is passed to the specific review decision`() {

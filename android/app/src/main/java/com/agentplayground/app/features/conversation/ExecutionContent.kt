@@ -1,5 +1,6 @@
 package com.agentplayground.app.features.conversation
 
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -24,6 +25,7 @@ import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import com.agentplayground.app.R
+import com.agentplayground.app.design.*
 import com.agentplayground.core.*
 import com.agui.core.types.*
 import kotlinx.serialization.json.Json
@@ -50,24 +52,28 @@ internal fun ReasoningContent(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            if (thinking) {
-                ProcessSpinner()
-            } else {
-                Icon(
-                    Icons.Outlined.Psychology,
-                    null,
-                    Modifier.size(18.dp),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            ChangingContent(thinking, Modifier.size(18.dp)) { isThinking ->
+                if (isThinking) {
+                    ProcessSpinner()
+                } else {
+                    Icon(
+                        Icons.Outlined.Psychology,
+                        null,
+                        Modifier.size(18.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+            ChangingContent(thinking) { isThinking ->
+                Text(
+                    if (isThinking) "Thinking" else "Reasoning",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            Text(
-                if (thinking) "Thinking" else "Reasoning",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
             DisclosureChevron(open)
         }
-        if (open) {
+        Reveal(open) {
             ProcessBody(Modifier.testTag("reasoning-content-${turn.id}")) {
                 turn.messages
                     .filter { isReasoning(it) && !it.content.isNullOrBlank() }
@@ -105,29 +111,32 @@ internal fun ToolGroupContent(group: ExecutionGroup) {
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            when {
-                ToolStatus.Running in states -> ProcessSpinner()
-                status == ToolStatus.Failed ->
-                    Icon(
-                        Icons.Outlined.ErrorOutline,
-                        null,
-                        Modifier.size(18.dp),
-                        tint = colors.error,
-                    )
-                group.skill != null ->
-                    Icon(
-                        painterResource(R.drawable.ic_agent_mark),
-                        null,
-                        Modifier.size(18.dp),
-                        tint = colors.onSurfaceVariant,
-                    )
-                else ->
-                    Icon(
-                        Icons.Outlined.Build,
-                        null,
-                        Modifier.size(18.dp),
-                        tint = colors.onSurfaceVariant,
-                    )
+            ChangingContent(status to (ToolStatus.Running in states), Modifier.size(18.dp)) {
+                (currentStatus, running) ->
+                when {
+                    running -> ProcessSpinner()
+                    currentStatus == ToolStatus.Failed ->
+                        Icon(
+                            Icons.Outlined.ErrorOutline,
+                            null,
+                            Modifier.size(18.dp),
+                            tint = colors.error,
+                        )
+                    group.skill != null ->
+                        Icon(
+                            painterResource(R.drawable.ic_agent_mark),
+                            null,
+                            Modifier.size(18.dp),
+                            tint = colors.onSurfaceVariant,
+                        )
+                    else ->
+                        Icon(
+                            Icons.Outlined.Build,
+                            null,
+                            Modifier.size(18.dp),
+                            tint = colors.onSurfaceVariant,
+                        )
+                }
             }
             Surface(
                 shape = MaterialTheme.shapes.extraSmall,
@@ -148,18 +157,13 @@ internal fun ToolGroupContent(group: ExecutionGroup) {
                 itemVerticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(name, style = MaterialTheme.typography.labelLarge)
-                Text(
-                    statusLabel(status),
-                    style = MaterialTheme.typography.bodySmall,
-                    color =
-                        if (status == ToolStatus.Failed) colors.error else colors.onSurfaceVariant,
-                )
+                ExecutionStatus(status)
             }
             DisclosureChevron(expanded)
         }
         // Failures remain visible even when diagnostic payloads are folded away.
-        error?.let { ExecutionError(it) }
-        if (expanded) {
+        RevealValue(error) { ExecutionError(it) }
+        Reveal(expanded) {
             ProcessBody {
                 group.steps.forEach { step -> key(step.call.id) { ToolDetails(step) } }
             }
@@ -183,15 +187,10 @@ private fun ToolDetails(step: ToolStep) {
                 Modifier.weight(1f),
                 style = MaterialTheme.typography.bodyMedium,
             )
-            Text(
-                statusLabel(step.status),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.widthIn(max = 100.dp),
-            )
+            ExecutionStatus(step.status, Modifier.widthIn(max = 100.dp))
             DisclosureChevron(expanded)
         }
-        if (expanded) {
+        Reveal(expanded) {
             Column(
                 Modifier.fillMaxWidth().padding(start = 8.dp, end = 8.dp, bottom = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -248,16 +247,6 @@ private fun ProcessBody(
 }
 
 @Composable
-private fun DisclosureChevron(expanded: Boolean) {
-    Icon(
-        if (expanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
-        null,
-        Modifier.size(16.dp),
-        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-    )
-}
-
-@Composable
 private fun ProcessSpinner() {
     CircularProgressIndicator(
         Modifier.size(16.dp),
@@ -268,24 +257,40 @@ private fun ProcessSpinner() {
 
 @Composable
 private fun ToolStatusIcon(status: ToolStatus) {
-    val icon: ImageVector =
-        when (status) {
-            ToolStatus.Completed -> Icons.Outlined.Check
-            ToolStatus.Paused,
-            ToolStatus.Waiting -> Icons.Outlined.Schedule
-            else -> Icons.Outlined.ErrorOutline
+    ChangingContent(status, Modifier.size(16.dp)) { current ->
+        val icon: ImageVector =
+            when (current) {
+                ToolStatus.Completed -> Icons.Outlined.Check
+                ToolStatus.Paused,
+                ToolStatus.Waiting -> Icons.Outlined.Schedule
+                else -> Icons.Outlined.ErrorOutline
+            }
+        if (current == ToolStatus.Running) {
+            ProcessSpinner()
+        } else {
+            Icon(
+                icon,
+                null,
+                Modifier.size(16.dp),
+                tint =
+                    if (current == ToolStatus.Failed) MaterialTheme.colorScheme.error
+                    else MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
-    if (status == ToolStatus.Running) {
-        ProcessSpinner()
-    } else {
-        Icon(
-            icon,
-            null,
-            Modifier.size(16.dp),
-            tint =
-                if (status == ToolStatus.Failed) MaterialTheme.colorScheme.error
-                else MaterialTheme.colorScheme.onSurfaceVariant,
+    }
+}
+
+@Composable
+private fun ExecutionStatus(status: ToolStatus, modifier: Modifier = Modifier) {
+    val color by
+        animateColorAsState(
+            if (status == ToolStatus.Failed) MaterialTheme.colorScheme.error
+            else MaterialTheme.colorScheme.onSurfaceVariant,
+            Motion.feedback(),
+            label = "execution-status",
         )
+    ChangingContent(status, modifier) { current ->
+        Text(statusLabel(current), style = MaterialTheme.typography.bodySmall, color = color)
     }
 }
 

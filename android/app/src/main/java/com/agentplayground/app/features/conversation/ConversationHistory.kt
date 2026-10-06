@@ -1,5 +1,7 @@
 package com.agentplayground.app.features.conversation
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -118,9 +120,14 @@ fun ConversationHistory(
                         modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
                         shape = MaterialTheme.shapes.small,
                         color =
-                            if (destination == "knowledge")
-                                MaterialTheme.colorScheme.secondaryContainer
-                            else androidx.compose.ui.graphics.Color.Transparent,
+                            animateColorAsState(
+                                    if (destination == "knowledge")
+                                        MaterialTheme.colorScheme.secondaryContainer
+                                    else androidx.compose.ui.graphics.Color.Transparent,
+                                    Motion.feedback(),
+                                    label = "knowledge-selection",
+                                )
+                                .value,
                     ) {
                         Row(
                             Modifier.fillMaxWidth()
@@ -161,7 +168,7 @@ fun ConversationHistory(
                         }
                     }
                     state.historyError?.let { ErrorNotice(it, vm::refreshHistory) }
-                    if (state.historyLoading) {
+                    Reveal(state.historyLoading) {
                         LinearProgressIndicator(Modifier.fillMaxWidth())
                     }
                 }
@@ -173,14 +180,29 @@ fun ConversationHistory(
                 val hasActions =
                     state.history.any { it.threadId == row.threadId } ||
                         (current?.threadId == row.threadId && currentHasContent)
+                val selection by
+                    animateColorAsState(
+                        if (selected) MaterialTheme.colorScheme.secondaryContainer
+                        else androidx.compose.ui.graphics.Color.Transparent,
+                        Motion.feedback(),
+                        label = "history-selection",
+                    )
+                val iconTint by
+                    animateColorAsState(
+                        if (selected) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                        Motion.feedback(),
+                        label = "history-icon",
+                    )
                 Surface(
+                    modifier =
+                        Modifier.animateItem(
+                            fadeInSpec = tween(Motion.Feedback),
+                            fadeOutSpec = tween(Motion.Exit),
+                            placementSpec = tween(Motion.Expand),
+                        ),
                     shape = MaterialTheme.shapes.small,
-                    color =
-                        if (selected) {
-                            MaterialTheme.colorScheme.secondaryContainer
-                        } else {
-                            androidx.compose.ui.graphics.Color.Transparent
-                        },
+                    color = selection,
                 ) {
                     Row(
                         Modifier.fillMaxWidth(),
@@ -190,9 +212,7 @@ fun ConversationHistory(
                             Icons.Outlined.ChatBubbleOutline,
                             null,
                             Modifier.padding(start = 12.dp).size(18.dp),
-                            tint =
-                                if (selected) MaterialTheme.colorScheme.primary
-                                else MaterialTheme.colorScheme.onSurfaceVariant,
+                            tint = iconTint,
                         )
                         Column(
                             Modifier.weight(1f)
@@ -363,8 +383,13 @@ private fun WorkspaceFooter(serverUrl: String, settingsSelected: Boolean, onSett
             }
             Surface(
                 color =
-                    if (settingsSelected) MaterialTheme.colorScheme.secondaryContainer
-                    else androidx.compose.ui.graphics.Color.Transparent,
+                    animateColorAsState(
+                            if (settingsSelected) MaterialTheme.colorScheme.secondaryContainer
+                            else androidx.compose.ui.graphics.Color.Transparent,
+                            Motion.feedback(),
+                            label = "settings-selection",
+                        )
+                        .value,
                 shape = MaterialTheme.shapes.small,
             ) {
                 IconButton(

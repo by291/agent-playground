@@ -1,9 +1,9 @@
 package com.agentplayground.app.design
 
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.selection.SelectionContainer
-import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -40,11 +40,7 @@ fun Details(title: String, content: @Composable ColumnScope.() -> Unit) {
                 ),
             contentPadding = PaddingValues(horizontal = 0.dp),
         ) {
-            Icon(
-                if (expanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
-                null,
-                Modifier.size(18.dp),
-            )
+            DisclosureChevron(expanded, 18.dp)
             Spacer(Modifier.width(6.dp))
             Text(
                 if (expanded) {
@@ -54,7 +50,7 @@ fun Details(title: String, content: @Composable ColumnScope.() -> Unit) {
                 }
             )
         }
-        if (expanded) {
+        Reveal(expanded) {
             SelectionContainer { Column(Modifier.fillMaxWidth().padding(8.dp), content = content) }
         }
     }
@@ -150,20 +146,29 @@ fun IconTile(icon: ImageVector, modifier: Modifier = Modifier) {
 
 @Composable
 fun StatusTag(label: String, emphasis: Boolean = false) {
-    Surface(
-        shape = MaterialTheme.shapes.extraSmall,
-        color =
+    val background by
+        animateColorAsState(
             if (emphasis) MaterialTheme.colorScheme.primaryContainer
             else MaterialTheme.colorScheme.surfaceVariant,
-    ) {
-        Text(
-            label,
-            Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-            style = MaterialTheme.typography.labelMedium,
-            color =
-                if (emphasis) MaterialTheme.colorScheme.onPrimaryContainer
-                else MaterialTheme.colorScheme.onSurfaceVariant,
+            Motion.feedback(),
+            label = "status-background",
         )
+    val foreground by
+        animateColorAsState(
+            if (emphasis) MaterialTheme.colorScheme.onPrimaryContainer
+            else MaterialTheme.colorScheme.onSurfaceVariant,
+            Motion.feedback(),
+            label = "status-foreground",
+        )
+    Surface(shape = MaterialTheme.shapes.extraSmall, color = background) {
+        ChangingContent(label) { current ->
+            Text(
+                current,
+                Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                style = MaterialTheme.typography.labelMedium,
+                color = foreground,
+            )
+        }
     }
 }
 

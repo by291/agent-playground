@@ -1,5 +1,8 @@
 package com.agentplayground.app.features.conversation
 
+import androidx.compose.animation.*
+import androidx.compose.animation.core.MutableTransitionState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.selection.SelectionContainer
@@ -16,6 +19,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.agentplayground.app.design.*
 import com.agentplayground.app.files.Download
 import com.agentplayground.core.*
 
@@ -28,6 +32,25 @@ fun SourcesSheet(
     onDownload: (Download) -> Unit,
     onDismiss: () -> Unit,
 ) {
+    val windowWidth =
+        with(LocalDensity.current) { LocalWindowInfo.current.containerSize.width.toDp() }
+    val fullScreen = windowWidth < 600.dp
+    val visibility = remember { MutableTransitionState(false).apply { targetState = true } }
+    var closing by remember { mutableStateOf(false) }
+    var forward by remember { mutableStateOf(true) }
+    val dismiss: () -> Unit = {
+        if (fullScreen) {
+            closing = true
+            visibility.targetState = false
+        } else {
+            onDismiss()
+        }
+    }
+    LaunchedEffect(closing, visibility.isIdle) {
+        if (closing && visibility.isIdle && !visibility.currentState) {
+            onDismiss()
+        }
+    }
     val documents = sources.documents.values.toList()
     var selection by
         remember(selectedChunkId) {
@@ -47,7 +70,9 @@ fun SourcesSheet(
                     Modifier.weight(1f),
                     style = MaterialTheme.typography.titleLarge,
                 )
-                IconButton(onClick = onDismiss) { Icon(Icons.Outlined.Close, "Close sources") }
+                IconButton(onClick = dismiss, enabled = !closing) {
+                    Icon(Icons.Outlined.Close, "Close sources")
+                }
             }
             sources.errors.forEach { Text(it, color = MaterialTheme.colorScheme.error) }
             if (source == null) {
@@ -82,7 +107,10 @@ fun SourcesSheet(
                     horizontalArrangement = Arrangement.SpaceBetween,
                 ) {
                     TextButton(
-                        onClick = { selection = passages[passageIndex - 1].chunkId },
+                        onClick = {
+                            forward = false
+                            selection = passages[passageIndex - 1].chunkId
+                        },
                         enabled = passageIndex > 0,
                     ) {
                         Text("Previous excerpt")
@@ -92,7 +120,10 @@ fun SourcesSheet(
                         style = MaterialTheme.typography.labelMedium,
                     )
                     TextButton(
-                        onClick = { selection = passages[passageIndex + 1].chunkId },
+                        onClick = {
+                            forward = true
+                            selection = passages[passageIndex + 1].chunkId
+                        },
                         enabled = passageIndex < passages.lastIndex,
                     ) {
                         Text("Next excerpt")
@@ -102,13 +133,30 @@ fun SourcesSheet(
                     "Source ${source.number}${source.page?.let { " · Page $it" }.orEmpty()}",
                     style = MaterialTheme.typography.labelLarge,
                 )
-                key(source.chunkId) {
-                    SelectionContainer(
-                        Modifier.weight(1f)
-                            .testTag("source-excerpt")
-                            .verticalScroll(rememberScrollState())
-                    ) {
-                        Text(source.excerpt, style = MaterialTheme.typography.bodyLarge)
+                AnimatedContent(
+                    targetState = source,
+                    contentKey = { it.chunkId },
+                    modifier = Modifier.weight(1f),
+                    transitionSpec = {
+                        (fadeIn(tween(Motion.Feedback)) +
+                            slideInHorizontally(tween(Motion.Feedback)) {
+                                if (forward) it / 24 else -it / 24
+                            }) togetherWith
+                            (fadeOut(tween(Motion.Feedback)) +
+                                slideOutHorizontally(tween(Motion.Feedback)) {
+                                    if (forward) -it / 24 else it / 24
+                                })
+                    },
+                    label = "source-passage",
+                ) { passage ->
+                    key(passage.chunkId) {
+                        SelectionContainer(
+                            Modifier.fillMaxSize()
+                                .testTag("source-excerpt")
+                                .verticalScroll(rememberScrollState())
+                        ) {
+                            Text(passage.excerpt, style = MaterialTheme.typography.bodyLarge)
+                        }
                     }
                 }
                 OutlinedButton(
@@ -122,18 +170,28 @@ fun SourcesSheet(
             }
         }
     }
-    val windowWidth =
-        with(LocalDensity.current) { LocalWindowInfo.current.containerSize.width.toDp() }
-    if (windowWidth < 600.dp) {
+    if (fullScreen) {
         Dialog(
-            onDismissRequest = onDismiss,
+            onDismissRequest = dismiss,
             properties = DialogProperties(usePlatformDefaultWidth = false),
         ) {
-            Surface(
-                Modifier.fillMaxSize().systemBarsPadding(),
-                color = MaterialTheme.colorScheme.surface,
+            AnimatedVisibility(
+                visibleState = visibility,
+                enter =
+                    slideInHorizontally(tween(Motion.Page)) { it / 8 } +
+                        fadeIn(tween(Motion.Expand)),
+                exit =
+                    slideOutHorizontally(tween(Motion.Page)) { it / 8 } +
+                        fadeOut(tween(Motion.Exit)),
             ) {
-                content()
+                BackPreview(enabled = !closing, onBack = dismiss) { backModifier ->
+                    Surface(
+                        backModifier.fillMaxSize().systemBarsPadding(),
+                        color = MaterialTheme.colorScheme.surface,
+                    ) {
+                        content()
+                    }
+                }
             }
         }
     } else {

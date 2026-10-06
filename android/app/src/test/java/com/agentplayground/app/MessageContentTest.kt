@@ -7,16 +7,19 @@ import android.text.style.ClickableSpan
 import android.text.style.ForegroundColorSpan
 import android.widget.TextView
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.unit.dp
 import androidx.core.graphics.ColorUtils
+import com.agentplayground.app.design.Details
 import com.agentplayground.app.design.PlaygroundTheme
 import com.agentplayground.app.features.conversation.*
 import com.agentplayground.app.files.Download
@@ -36,6 +39,39 @@ import org.robolectric.annotation.GraphicsMode
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class MessageContentTest {
     @get:Rule val compose = createComposeRule()
+
+    @Test
+    fun `disclosure expands gradually and a rapid reversal ends fully collapsed`() {
+        compose.mainClock.autoAdvance = false
+        compose.setContent {
+            PlaygroundTheme("light") {
+                Column(Modifier.testTag("fold-container")) {
+                    Details("Payload") {
+                        androidx.compose.material3.Text("Payload body", Modifier.height(200.dp))
+                    }
+                }
+            }
+        }
+        compose.onNodeWithText("Payload").performClick()
+        compose.mainClock.advanceTimeBy(80)
+        val during =
+            compose.onNodeWithTag("fold-container").getUnclippedBoundsInRoot().let {
+                it.bottom - it.top
+            }
+        compose.mainClock.advanceTimeBy(300)
+        val expanded =
+            compose.onNodeWithTag("fold-container").getUnclippedBoundsInRoot().let {
+                it.bottom - it.top
+            }
+        assertTrue("Expansion should have an intermediate height", during < expanded)
+        compose.onNodeWithText("Hide Payload").performClick()
+        compose.mainClock.advanceTimeBy(64)
+        compose.onNodeWithText("Payload").performClick()
+        compose.mainClock.advanceTimeBy(64)
+        compose.onNodeWithText("Hide Payload").performClick()
+        compose.mainClock.advanceTimeBy(500)
+        compose.onNodeWithText("Payload body").assertDoesNotExist()
+    }
 
     @Test
     fun `CommonMark code and tables copy parsed content without markdown punctuation`() {
