@@ -18,6 +18,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextOverflow
@@ -37,11 +38,13 @@ import kotlinx.serialization.json.*
 fun ConversationScreen(
     vm: ConversationViewModel,
     preferences: AppPreferences,
+    bottomNavigation: @Composable () -> Unit = {},
     onActivity: () -> Unit = {},
 ) {
     val state by vm.state.collectAsStateWithLifecycle()
     val drawer = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
+    val keyboard = LocalSoftwareKeyboardController.current
     BackHandler(enabled = drawer.isOpen) {
         scope.launch { drawer.close() }
     }
@@ -76,6 +79,11 @@ fun ConversationScreen(
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val expanded = maxWidth >= 840.dp
         val compactHeight = maxHeight < 600.dp
+        LaunchedEffect(expanded) {
+            if (expanded && drawer.isOpen) {
+                drawer.close()
+            }
+        }
         val onSelect: (String?) -> Unit = { id ->
             vm.select(id)
             scope.launch { drawer.close() }
@@ -124,7 +132,12 @@ fun ConversationScreen(
                             },
                             navigationIcon = {
                                 if (!expanded) {
-                                    IconButton(onClick = { scope.launch { drawer.open() } }) {
+                                    IconButton(
+                                        onClick = {
+                                            keyboard?.hide()
+                                            scope.launch { drawer.open() }
+                                        }
+                                    ) {
                                         Icon(Icons.Outlined.Menu, "Open conversation history")
                                     }
                                 }
@@ -163,7 +176,10 @@ fun ConversationScreen(
                         )
                     },
                     bottomBar = {
-                        Composer(state, vm, preferences) { filePicker.launch(arrayOf("*/*")) }
+                        Column {
+                            Composer(state, vm, preferences) { filePicker.launch(arrayOf("*/*")) }
+                            bottomNavigation()
+                        }
                     },
                 ) { padding ->
                     val session = state.session
@@ -199,17 +215,15 @@ fun ConversationScreen(
         if (expanded) {
             body()
         } else {
-            ModalNavigationDrawer(
+            RevealNavigationDrawer(
                 drawerState = drawer,
                 drawerContent = {
-                    ModalDrawerSheet(drawerContainerColor = MaterialTheme.colorScheme.background) {
-                        ConversationHistory(
-                            state,
-                            vm,
-                            onSelect,
-                            Modifier.width(300.dp).fillMaxHeight(),
-                        )
-                    }
+                    ConversationHistory(
+                        state,
+                        vm,
+                        onSelect,
+                        Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding(),
+                    )
                 },
                 content = body,
             )

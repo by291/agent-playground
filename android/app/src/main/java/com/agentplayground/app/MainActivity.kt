@@ -17,6 +17,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowCompat
@@ -114,52 +115,13 @@ internal fun PlaygroundApp(application: PlaygroundApplication, preferences: AppP
             knowledge.setVisible(false)
         }
     }
+    val windowWidth =
+        with(LocalDensity.current) { LocalWindowInfo.current.containerSize.width.toDp() }
+    val pushesChat = destination == "chat" && windowWidth < 840.dp
     Scaffold(
         bottomBar = {
-            if (
-                destination != "activity" && WindowInsets.ime.getBottom(LocalDensity.current) == 0
-            ) {
-                Surface(color = MaterialTheme.colorScheme.surface) {
-                    Column {
-                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                        Row(
-                            Modifier.fillMaxWidth()
-                                .navigationBarsPadding()
-                                .padding(horizontal = 20.dp, vertical = 6.dp)
-                        ) {
-                            listOf(
-                                    Triple("chat", "Chat", Icons.Outlined.ChatBubbleOutline),
-                                    Triple("knowledge", "Knowledge", Icons.Outlined.FolderOpen),
-                                    Triple("settings", "Settings", Icons.Outlined.Settings),
-                                )
-                                .forEach { (route, label, icon) ->
-                                    val selected = destination == route
-                                    val color =
-                                        if (selected) MaterialTheme.colorScheme.primary
-                                        else MaterialTheme.colorScheme.onSurfaceVariant
-                                    Column(
-                                        Modifier.weight(1f)
-                                            .selectable(
-                                                selected,
-                                                role = Role.Tab,
-                                                onClick = { destination = route },
-                                            )
-                                            .padding(vertical = 8.dp)
-                                            .heightIn(min = 48.dp),
-                                        horizontalAlignment = Alignment.CenterHorizontally,
-                                        verticalArrangement = Arrangement.spacedBy(4.dp),
-                                    ) {
-                                        Icon(icon, null, Modifier.size(22.dp), tint = color)
-                                        Text(
-                                            label,
-                                            style = MaterialTheme.typography.labelMedium,
-                                            color = color,
-                                        )
-                                    }
-                                }
-                        }
-                    }
-                }
+            if (!pushesChat && destination != "activity") {
+                PrimaryNavigation(destination) { destination = it }
             }
         },
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
@@ -182,8 +144,62 @@ internal fun PlaygroundApp(application: PlaygroundApplication, preferences: AppP
                             chatState.clearBlocked,
                             chatState.error,
                         )
-                    else -> ConversationScreen(chat, preferences) { destination = "activity" }
+                    else ->
+                        ConversationScreen(
+                            chat,
+                            preferences,
+                            bottomNavigation = {
+                                if (pushesChat) {
+                                    PrimaryNavigation(destination) { destination = it }
+                                }
+                            },
+                            onActivity = { destination = "activity" },
+                        )
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PrimaryNavigation(destination: String, onNavigate: (String) -> Unit) {
+    if (WindowInsets.ime.getBottom(LocalDensity.current) != 0) {
+        return
+    }
+    Surface(color = MaterialTheme.colorScheme.surface) {
+        Column {
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            Row(
+                Modifier.fillMaxWidth()
+                    .navigationBarsPadding()
+                    .padding(horizontal = 20.dp, vertical = 6.dp)
+            ) {
+                listOf(
+                        Triple("chat", "Chat", Icons.Outlined.ChatBubbleOutline),
+                        Triple("knowledge", "Knowledge", Icons.Outlined.FolderOpen),
+                        Triple("settings", "Settings", Icons.Outlined.Settings),
+                    )
+                    .forEach { (route, label, icon) ->
+                        val selected = destination == route
+                        val color =
+                            if (selected) MaterialTheme.colorScheme.primary
+                            else MaterialTheme.colorScheme.onSurfaceVariant
+                        Column(
+                            Modifier.weight(1f)
+                                .selectable(
+                                    selected,
+                                    role = Role.Tab,
+                                    onClick = { onNavigate(route) },
+                                )
+                                .padding(vertical = 8.dp)
+                                .heightIn(min = 48.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                        ) {
+                            Icon(icon, null, Modifier.size(22.dp), tint = color)
+                            Text(label, style = MaterialTheme.typography.labelMedium, color = color)
+                        }
+                    }
             }
         }
     }
