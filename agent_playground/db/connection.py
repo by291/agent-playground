@@ -1,4 +1,4 @@
-"""Connect to the application database and create Python-owned storage."""
+"""Own the shared engine; prepare Python-owned tables explicitly at startup."""
 
 import os
 from functools import lru_cache
@@ -6,8 +6,12 @@ from functools import lru_cache
 from sqlalchemy import create_engine
 from sqlalchemy.engine import Engine
 
-from agent_playground.db.report_jobs import report_jobs
-from agent_playground.db.schema import sql_demo_submissions, workflow_outputs
+from agent_playground.db.schema import (
+    metadata,
+    report_jobs,
+    sql_demo_submissions,
+    workflow_outputs,
+)
 
 
 def postgres_driver_url(database_url: str) -> str:
@@ -24,16 +28,26 @@ def app_engine() -> Engine:
     if not database_url:
         raise RuntimeError("APP_DATABASE_URL is required for application storage")
 
-    engine = create_engine(
+    return create_engine(
         postgres_driver_url(database_url), connect_args={"connect_timeout": 5}
     )
 
-    report_jobs.create(engine, checkfirst=True)
-    workflow_outputs.create(engine, checkfirst=True)
-    sql_demo_submissions.create(engine, checkfirst=True)
-
-    return engine
-
 
 def prepare_app_store() -> None:
-    app_engine()
+    try:
+        metadata.create_all(
+            app_engine(), tables=[report_jobs, workflow_outputs, sql_demo_submissions]
+        )
+    except Exception:
+        close_app_store()
+        raise
+
+
+def close_app_store() -> None:
+    if not app_engine.cache_info().currsize:
+        return
+
+    try:
+        app_engine().dispose()
+    finally:
+        app_engine.cache_clear()

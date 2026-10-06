@@ -14,6 +14,7 @@ from uuid import uuid4
 import httpx
 import psycopg
 import pytest
+from aegra_api.utils.event_loop import selector_loop_factory
 from pypdf import PdfWriter
 from pypdf.generic import DecodedStreamObject, DictionaryObject, NameObject
 from sqlalchemy import create_engine, text
@@ -317,7 +318,7 @@ def test_index_retrieve_reindex_and_deleted_generation(
                 )
 
     try:
-        asyncio.run(run())
+        asyncio.run(run(), loop_factory=selector_loop_factory)
     finally:
         engine.dispose()
 
@@ -369,7 +370,7 @@ def test_embedding_requests_respect_provider_batch_limits(
                 [1.0, 0.1] if index % 2 == 0 else [0.1, 1.0] for index in range(45)
             ]
 
-    asyncio.run(run())
+    asyncio.run(run(), loop_factory=selector_loop_factory)
 
 
 def test_pdf_chunks_preserve_real_text_and_page_numbers():
@@ -426,7 +427,7 @@ def test_rate_limited_batch_recovers_without_resending_successful_texts(
 
             assert len(vectors) == 4
 
-    asyncio.run(run())
+    asyncio.run(run(), loop_factory=selector_loop_factory)
 
     assert embedding_requests == [
         ["first-0", "first-1"],
@@ -478,7 +479,7 @@ def test_deleted_document_stops_embedding_after_its_source_download(
             )
 
     try:
-        asyncio.run(run())
+        asyncio.run(run(), loop_factory=selector_loop_factory)
         assert embedding_requests == []
     finally:
         engine.dispose()
@@ -524,6 +525,6 @@ def test_index_deadline_includes_slow_source_download(
                 )
 
     try:
-        asyncio.run(run())
+        asyncio.run(run(), loop_factory=selector_loop_factory)
     finally:
         engine.dispose()

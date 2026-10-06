@@ -69,6 +69,8 @@ Compose contains development settings and default local accounts. Replace creden
 
 SDK export is batched, bounded and asynchronous. Collector failure does not block submission/execution, but full queues can drop telemetry. The business database remains authoritative for run data.
 
+The TypeScript server owns one shutdown sequence for both application resources and telemetry. SIGINT/SIGTERM first stop live transports and workers, close shared notification subscriptions, then release object storage and PostgreSQL. Trace and metric providers flush last so cleanup work is included. Telemetry bootstrap does not send another termination signal.
+
 Centralized log storage, host/PostgreSQL/Redis exporters, final run-status synchronization and business alerts are not integrated. Inspect terminal logs by trace ID; the server uses Pino and Python uses Aegra's structlog. Actual queue wait, first visible text and internal MCP stdio-process spans are not measured separately; LangChain instrumentation covers tool-call spans.
 
 ## Verification

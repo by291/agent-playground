@@ -40,6 +40,10 @@ The server uses the official `@ag-ui/langgraph` adapter to create native Aegra r
 
 AG-UI and A2UI protocol schemas remain owned by the official libraries. SQL workflows reuse API response models from `services/sql/models.py`; their revision output and business state remain in `workflows/sql/models.py`. `http.py` registers services and owns the report and knowledge worker lifecycles.
 
+Python table declarations share `db/schema.py`; obtaining an engine does not create tables. The HTTP lifespan explicitly prepares Python-owned tables before starting workers, drains those workers on shutdown, then disposes and clears the cached engine. `db/async_operations.py` waits for worker database threads to finish before propagating cancellation; cancelled startup also drains schema preparation and releases the engine. Repositories depend on schema and connections, without initialization-time circular imports.
+
+The server entry owns termination signals and drains HTTP connections, background workers, shared conversation subscriptions, object storage and the database before flushing telemetry. Telemetry bootstrap exposes an awaitable shutdown rather than installing another process termination handler. Database pool background errors are logged; the pool discards failed idle connections and acquires replacements as needed.
+
 ## State and storage
 
 | State                                                 | Source of truth                                           |
@@ -62,6 +66,8 @@ Admission checks the newest run under the conversation lock. An identical submis
 The server synchronizes the latest run before reading a snapshot. Completed and interrupted checkpoints have a durable synchronization marker, including interrupts; later reads use saved messages and outputs without re-fetching that checkpoint. Message IDs are inserted in a batch with explicit checkpoint order.
 
 If run creation was accepted upstream but its mapping is unconfirmed, recovery examines only the newest native Aegra run for the thread. It never blindly creates another execution or walks historical runs. A mapping that cannot be confirmed stays `submission_unknown` until later recovery or manual reconciliation.
+
+The native SDK client disables automatic retries, including the initial run-creation POST. A transport failure may follow an accepted creation, so subsequent snapshot recovery establishes the mapping instead of allowing an SDK retry to start another execution.
 
 In the web app, TanStack Query owns fetching/caching; the conversation session owns reconciliation and SDK/A2UI resources. Each completed fetch is delivered once. Active local submission/stream state is preserved while a snapshot still lacks a confirmed upstream mapping. Idle conversations and healthy streams do not poll; temporary polling handles recovery. See [frontend architecture](frontend-architecture.md#state-and-resources).
 

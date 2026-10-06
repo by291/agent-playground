@@ -43,7 +43,7 @@ web/
 
 There is one conversation feature, including its chat UI. `pages/chat` is its route entry. The component workspace owns development-only editor state and examples; shared A2UI processing stays in the A2UI feature.
 
-The knowledge feature owns shared-document management. Citation presentation belongs to conversation messages because it uses that reply's archived search results; both use `shared/knowledge.ts` rather than importing the other feature's private modules.
+The knowledge feature owns shared-document management. `useKnowledgeDocuments` owns Query reads, TanStack mutations, retry identity and request cancellation; `KnowledgeWorkspace` composes the page, and `DocumentRow` presents each document. Citation presentation belongs to conversation messages because it uses that reply's archived search results; both use `shared/knowledge.ts` rather than importing the other feature's private modules.
 
 ## Dependencies
 
@@ -72,7 +72,9 @@ Protocol types and parsing remain owned by the official AG-UI and A2UI libraries
 
 The store is scoped to one conversation. SDK messages and snapshots enter the same session projection; Query does not implement reconciliation. `ConversationProvider` delivers only completed fetches after mount, so old cached data cannot decide whether to retry a saved submission.
 
-The session creates its SDK subscription and A2UI runtime when connected and releases both on disconnect. Detaching the browser stream does not cancel the server-owned run. The gallery releases preview resources when replacing a valid preview, resetting or unmounting.
+`model/session-projections.ts` contains pure external-task and A2UI projections. The session owns applying those results, admission identity and lifecycle changes. Optional browser pointers and empty hints tolerate storage failures. The per-thread pending journal must be saved before submission; failure is reported without sending or discarding the user's input.
+
+The session creates its SDK subscription and A2UI runtime when connected and releases both on disconnect. Cleanup first detaches SDK processing and then aborts its HTTP transport in the same synchronous step; the installed SDK's detached event transform alone does not close the underlying response reader. Closing the browser connection does not cancel the server-owned run. The gallery releases preview resources when replacing a valid preview, resetting or unmounting.
 
 ### Lifecycle
 
@@ -94,7 +96,7 @@ The root route starts with an unallocated draft. The session allocates its threa
 
 `app/config.ts` validates browser environment flags with Zod. `app/providers.tsx` creates the app's QueryClient. `PageBoundary` reports page rendering failures and presents a reload action. Individual A2UI rendering failures retain their surface-level boundary.
 
-The development gallery import is guarded directly by Vite's compile-time `import.meta.env.DEV`. Keep that static guard when changing routing; a parsed runtime configuration object cannot provide the same elimination guarantee. The production build fails if emitted chunks include `pages/dev` or Monaco modules. Components and Activity controls are development-only; `/dev/a2ui-components` is unavailable in production.
+The development gallery and Activity panel imports are guarded directly by Vite's compile-time `import.meta.env.DEV`; SDK event collection uses the same guard. Keep those static guards when changing routing; a parsed runtime configuration object cannot provide the same elimination guarantee. The production build fails if emitted chunks include `pages/dev`, Monaco or Activity implementation modules. Components and Activity controls are development-only; `/dev/a2ui-components` is unavailable in production.
 
 `app/providers.tsx` also mounts the shared preferences provider from `lib/preferences.tsx`. It validates browser-local preferences, applies theme changes and releases its system-appearance listener. `components/SettingsControl.tsx` provides shared settings triggers and owns Radix Dialog settings and AlertDialog destructive confirmations. `ChatPage` mounts `SettingsProvider` outside the keyed conversation provider so settings stay open when clearing history switches conversations. Conversation UI reads the shared preference hook without depending on another feature.
 
@@ -103,6 +105,8 @@ The development gallery import is guarded directly by Vite's compile-time `impor
 `styles/theme.css` is the shared token source. shadcn variables reference the same semantic colors instead of repeating palette values. Global base/motion rules and feature-specific CSS are separate. The editor/gallery CSS loads with its development page. Shared app-header branding lives in `components/AppBrand.tsx`.
 
 `styles/motion.css` defines shared feedback, content, panel and exit durations (120/180/220/140 ms). Dialog, AlertDialog, DropdownMenu, Popover, Select, Tooltip and Sheet share CSS entrance/exit animations. Sheet direction follows its edge. Motion handles collapsible height, list layout and retained exits through `components/ui/motion.tsx`. Motion-retained exiting content becomes inert and hidden from assistive technology immediately. Reduced-motion preferences disable CSS movement and set Motion durations to zero. Streaming text pacing remains independent; completed history messages do not replay submission animations.
+
+Streaming text pacing uses the shared `hooks/use-media-query` subscription for reduced-motion changes. The installed Motion hook caches its initial preference, so it does not replace this live subscription.
 
 Select menu spacing uses Radix's `sideOffset` (4 px by default). Keep persistent positioning offsets out of animation transforms so the final animated frame and resting menu bounds agree, including when collision handling flips the menu above its trigger.
 

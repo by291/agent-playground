@@ -1,5 +1,4 @@
-import { useEffect, useRef, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useRef, useState } from "react";
 import { ArrowLeftIcon } from "@phosphor-icons/react/dist/csr/ArrowLeft";
 import { UploadSimpleIcon } from "@phosphor-icons/react/dist/csr/UploadSimple";
 import { Button } from "@/components/ui/button";
@@ -14,7 +13,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import {
   Empty,
@@ -22,132 +20,42 @@ import {
   EmptyHeader,
   EmptyTitle,
 } from "@/components/ui/empty";
-import {
-  Item,
-  ItemContent,
-  ItemDescription,
-  ItemTitle,
-} from "@/components/ui/item";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
-import { maxKnowledgeBytes, type KnowledgeDocument } from "@shared/knowledge";
-import { knowledgeRequest, listKnowledge } from "./api";
+import type { KnowledgeDocument } from "@shared/knowledge";
 import { TextEncodingDialog } from "./TextEncodingDialog";
-import { DocumentActions } from "./DocumentActions";
+import { DocumentRow } from "./DocumentRow";
+import { useKnowledgeDocuments } from "./useKnowledgeDocuments";
 import { AnimatePresence } from "motion/react";
-import { AnimatedLi } from "@/components/ui/motion";
-
-const queryKey = ["knowledge", "documents"];
 
 export function KnowledgeWorkspace() {
-  const client = useQueryClient();
+  const {
+    documents,
+    operation,
+    busy,
+    inFlight,
+    error,
+    clearError,
+    retryUpload,
+    selectFile,
+    upload,
+    reindex,
+    remove,
+  } = useKnowledgeDocuments();
   const input = useRef<HTMLInputElement>(null);
   const uploadButton = useRef<HTMLButtonElement>(null);
   const actionOpener = useRef<HTMLButtonElement | null>(null);
-  const controller = useRef<AbortController | null>(null);
-  const pending = useRef<{ id: string; file: File } | null>(null);
   const resumeId = useRef<string | null>(null);
-  const [operation, setOperation] = useState<{
-    kind: "upload" | "reindex" | "delete";
-    id: string;
-  } | null>(null);
-  const busy = operation !== null;
   const [deleting, setDeleting] = useState<KnowledgeDocument | null>(null);
   const [encodingDocument, setEncodingDocument] =
     useState<KnowledgeDocument | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [retryUpload, setRetryUpload] = useState(false);
-  const documents = useQuery({
-    queryKey,
-    queryFn: ({ signal }) => listKnowledge(signal),
-    refetchInterval: (query) =>
-      query.state.data?.some((document) =>
-        ["uploading", "queued", "indexing"].includes(document.status),
-      )
-        ? 2000
-        : false,
-  });
-
-  useEffect(() => () => controller.current?.abort(), []);
-
-  async function perform(
-    path: string,
-    init: RequestInit,
-    nextOperation: NonNullable<typeof operation>,
-  ) {
-    if (controller.current) {
-      return;
-    }
-
-    const request = new AbortController();
-
-    controller.current = request;
-    setOperation(nextOperation);
-    setError(null);
-
-    try {
-      await knowledgeRequest(path, { ...init, signal: request.signal });
-      await client.invalidateQueries({ queryKey });
-
-      return true;
-    } catch (error) {
-      if (request.signal.aborted) {
-        return;
-      }
-
-      setError(
-        error instanceof Error ? error.message : "Document request failed",
-      );
-      await client.invalidateQueries({ queryKey });
-
-      return false;
-    } finally {
-      controller.current = null;
-
-      if (!request.signal.aborted) {
-        setOperation(null);
-      }
-    }
-  }
-
-  async function upload() {
-    const document = pending.current;
-
-    if (!document) {
-      return;
-    }
-
-    const uploaded = await perform(
-      "",
-      {
-        method: "POST",
-        body: document.file,
-        headers: {
-          "X-Filename": encodeURIComponent(document.file.name),
-          "X-Document-Id": document.id,
-        },
-      },
-      { kind: "upload", id: document.id },
-    );
-
-    if (uploaded) {
-      pending.current = null;
-      setRetryUpload(false);
-    } else if (uploaded === false) {
-      setRetryUpload(true);
-    }
-  }
 
   async function deleteDocument() {
     if (!deleting) {
       return;
     }
 
-    const removed = await perform(
-      `/${deleting.id}`,
-      { method: "DELETE" },
-      { kind: "delete", id: deleting.id },
-    );
+    const removed = await remove(deleting.id);
 
     if (removed) {
       setDeleting(null);
@@ -208,6 +116,7 @@ export function KnowledgeWorkspace() {
             type="file"
             accept=".txt,.md,.pdf"
             aria-label="Document file"
+            disabled={busy}
             className="hidden"
             onChange={(event) => {
               const file = event.target.files?.[0];
@@ -218,23 +127,7 @@ export function KnowledgeWorkspace() {
                 return;
               }
 
-              if (
-                !file.size ||
-                file.size > maxKnowledgeBytes ||
-                !/\.(txt|md|pdf)$/i.test(file.name)
-              ) {
-                setError(
-                  "Use a nonempty TXT, Markdown or PDF file up to 10 MiB",
-                );
-
-                return;
-              }
-
-              pending.current = {
-                id: resumeId.current ?? crypto.randomUUID(),
-                file,
-              };
-              void upload();
+              selectFile(file, resumeId.current);
             }}
           />
         </div>
@@ -284,104 +177,31 @@ export function KnowledgeWorkspace() {
           )}
           <ul className="relative divide-y divide-line">
             <AnimatePresence initial={false}>
-              {documents.data?.map((document) => {
-                const rowOperation =
-                  operation?.id === document.id ? operation.kind : null;
-                let status: string = document.status;
-
-                if (rowOperation === "delete") {
-                  status = "Deleting…";
-                } else if (rowOperation === "reindex") {
-                  status = "Queuing index…";
-                }
-
-                const active =
-                  rowOperation !== null ||
-                  document.status === "queued" ||
-                  document.status === "indexing";
-
-                return (
-                  <AnimatedLi
-                    key={document.id}
-                    layout="position"
-                    className="overflow-hidden"
-                    exit={{
-                      opacity: 0,
-                      height: 0,
-                    }}
-                  >
-                    <Item className="gap-4 rounded-none border-0 p-5">
-                      <ItemContent className="min-w-0 grow basis-56">
-                        <ItemTitle className="block w-full truncate">
-                          {document.name}
-                        </ItemTitle>
-                        <div className="flex items-center gap-2">
-                          <ItemDescription className="text-xs">
-                            {Math.ceil(document.size / 1024)} KB
-                          </ItemDescription>
-                          <Badge
-                            key={status}
-                            variant={
-                              document.status === "failed"
-                                ? "destructive"
-                                : "secondary"
-                            }
-                            className="motion-content-enter capitalize"
-                            role="status"
-                          >
-                            {active && (
-                              <Spinner
-                                className="size-3"
-                                aria-hidden="true"
-                                role="presentation"
-                              />
-                            )}
-                            {status}
-                          </Badge>
-                        </div>
-                        {document.error && (
-                          <Alert variant="destructive" className="mt-1">
-                            <AlertDescription>
-                              {document.error}
-                            </AlertDescription>
-                          </Alert>
-                        )}
-                        {document.status === "uploading" && (
-                          <p className="mt-2 text-xs text-muted">
-                            Upload incomplete. Resume with the same file, or
-                            delete this entry.
-                          </p>
-                        )}
-                      </ItemContent>
-                      <DocumentActions
-                        document={document}
-                        busy={busy}
-                        onResume={() => {
-                          resumeId.current = document.id;
-                          input.current?.click();
-                        }}
-                        onReindex={() =>
-                          void perform(
-                            `/${document.id}/reindex`,
-                            { method: "POST" },
-                            { kind: "reindex", id: document.id },
-                          )
-                        }
-                        onEncoding={(opener) => {
-                          actionOpener.current = opener;
-                          setError(null);
-                          setEncodingDocument(document);
-                        }}
-                        onDelete={(opener) => {
-                          actionOpener.current = opener;
-                          setError(null);
-                          setDeleting(document);
-                        }}
-                      />
-                    </Item>
-                  </AnimatedLi>
-                );
-              })}
+              {documents.data?.map((document) => (
+                <DocumentRow
+                  key={document.id}
+                  document={document}
+                  operation={
+                    operation?.id === document.id ? operation.kind : null
+                  }
+                  busy={busy}
+                  onResume={() => {
+                    resumeId.current = document.id;
+                    input.current?.click();
+                  }}
+                  onReindex={() => void reindex(document.id)}
+                  onEncoding={(opener) => {
+                    actionOpener.current = opener;
+                    clearError();
+                    setEncodingDocument(document);
+                  }}
+                  onDelete={(opener) => {
+                    actionOpener.current = opener;
+                    clearError();
+                    setDeleting(document);
+                  }}
+                />
+              ))}
             </AnimatePresence>
           </ul>
         </Card>
@@ -395,34 +215,27 @@ export function KnowledgeWorkspace() {
           onCloseAutoFocus={restoreActionFocus}
           onClose={() => {
             setEncodingDocument(null);
-            setError(null);
+            clearError();
           }}
           onReindex={(textEncoding) =>
-            perform(
-              `/${encodingDocument.id}/reindex`,
-              {
-                method: "POST",
-                headers: { "X-Text-Encoding": textEncoding ?? "auto" },
-              },
-              { kind: "reindex", id: encodingDocument.id },
-            )
+            reindex(encodingDocument.id, textEncoding)
           }
         />
       )}
       <AlertDialog
         open={deleting !== null}
         onOpenChange={(open) => {
-          if (open || controller.current) {
+          if (open || inFlight()) {
             return;
           }
 
           setDeleting(null);
-          setError(null);
+          clearError();
         }}
       >
         <AlertDialogContent
           onEscapeKeyDown={(event) => {
-            if (controller.current) {
+            if (inFlight()) {
               event.preventDefault();
             }
           }}

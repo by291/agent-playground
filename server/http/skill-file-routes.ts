@@ -1,4 +1,3 @@
-import { timingSafeEqual } from "node:crypto";
 import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { HTTPException } from "hono/http-exception";
@@ -10,6 +9,7 @@ import {
 import { SubmissionError } from "../conversation/errors";
 import { readSkillFile, storeSkillFile } from "../conversation/skill-files";
 import { logger } from "../observability/logger";
+import { workflowAuth } from "./workflow-auth";
 
 export const skillFileRoutes = new Hono();
 const threadSchema = z.string().min(1).max(256);
@@ -29,22 +29,14 @@ skillFileRoutes.onError((error, context) => {
   return context.json({ error: "File storage is unavailable" }, 503);
 });
 
-skillFileRoutes.use("/internal/*", async (context, next) => {
-  const expected = Buffer.from(process.env.WORKFLOW_API_TOKEN ?? "");
-  const supplied = Buffer.from(
-    context.req.header("Authorization")?.replace(/^Bearer /, "") ?? "",
-  );
-
-  if (
-    !expected.length ||
-    expected.length !== supplied.length ||
-    !timingSafeEqual(expected, supplied)
-  ) {
-    return context.json({ error: "Invalid workflow credential" }, 401);
-  }
-
-  await next();
-});
+skillFileRoutes.use(
+  "/internal/skill-files",
+  workflowAuth("Invalid workflow credential"),
+);
+skillFileRoutes.use(
+  "/internal/skill-files/*",
+  workflowAuth("Invalid workflow credential"),
+);
 
 skillFileRoutes.post(
   "/conversations/:threadId/files",

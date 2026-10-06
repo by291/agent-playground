@@ -1,16 +1,12 @@
 import { randomUUID } from "node:crypto";
-import { eq, isNull } from "drizzle-orm";
 import { RunAgentInputSchema } from "@ag-ui/client";
 import { db } from "../db/database";
-import { externalTasks } from "../db/external-task-schema";
-import { conversationRuns, conversations } from "../db/schema";
 import { aegraUrl, prepareAegraRequest } from "../agent/client";
 import { Client } from "@langchain/langgraph-sdk";
 import {
   isExternalTaskTerminal,
   parseExternalWait,
 } from "../../shared/external-task";
-import { isRunFinished } from "../../shared/run-status";
 import {
   admitRun,
   claimPrepared,
@@ -20,6 +16,7 @@ import {
 import { synchronizeConversation } from "./checkpoint-sync";
 import { notifyConversation } from "./changes";
 import { logger } from "../observability/logger";
+import { scanExternalTasks } from "./external-task-scan";
 
 // Background requests own their deadline and abort signal independently of live streams.
 function createWorkerClient(signal?: AbortSignal) {
@@ -49,30 +46,18 @@ export async function processExternalTasks(
   client: Client = continuationClient,
   signal?: AbortSignal,
 ) {
-  const tasks = await db
-    .select({ task: externalTasks, continuation: conversationRuns })
-    .from(externalTasks)
-    .innerJoin(
-      conversations,
-      eq(externalTasks.threadId, conversations.threadId),
-    )
-    .leftJoin(
-      conversationRuns,
-      eq(externalTasks.continuationRunId, conversationRuns.aguiRunId),
-    )
-    .where(isNull(conversations.deletedAt));
+  const synchronizedThreads = new Set<string>();
 
-  for (const { task, continuation } of tasks) {
+  for await (const { task, continuation } of scanExternalTasks()) {
     if (signal?.aborted) {
       break;
     }
 
-    if (continuation?.checkpointSynced && isRunFinished(continuation.status)) {
-      continue;
-    }
-
     try {
-      await synchronizeConversation(task.threadId, client);
+      if (!synchronizedThreads.has(task.threadId)) {
+        await synchronizeConversation(task.threadId, client);
+        synchronizedThreads.add(task.threadId);
+      }
 
       if (!isExternalTaskTerminal(task.status)) {
         continue;

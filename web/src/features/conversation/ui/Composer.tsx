@@ -50,12 +50,24 @@ export function Composer({
 }) {
   const [files, setFiles] = useState<{ id: string; file: File }[]>([]);
   const [uploading, setUploading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const picker = useRef<HTMLInputElement>(null);
   const upload = useRef<AbortController | null>(null);
+  const mounted = useRef(true);
+  const currentPrompt = useRef(prompt);
 
   useEffect(() => {
-    return () => upload.current?.abort();
+    currentPrompt.current = prompt;
+  }, [prompt]);
+
+  useEffect(() => {
+    mounted.current = true;
+
+    return () => {
+      mounted.current = false;
+      upload.current?.abort();
+    };
   }, []);
 
   const { preferences } = useUserPreferences();
@@ -71,6 +83,7 @@ export function Composer({
   const ensureThreadId = useConversation((state) => state.ensureThreadId);
   const responding = running || presenting;
   const disabled =
+    submitting ||
     uploading ||
     responding ||
     recovering ||
@@ -82,6 +95,8 @@ export function Composer({
 
   if (uploading) {
     sendLabel = "Uploading files";
+  } else if (submitting && !responding) {
+    sendLabel = "Sending message";
   } else if (recovering) {
     sendLabel = "Restoring conversation";
   } else if (waitingForExternalTask && !running) {
@@ -104,29 +119,29 @@ export function Composer({
 
     const message = prompt;
 
-    if (!files.length) {
-      onPromptChange("");
-      void onSend(message);
-
-      return;
-    }
-
     if (upload.current) {
       return;
     }
 
     const controller = new AbortController();
-    const threadId = ensureThreadId();
 
     upload.current = controller;
-    setUploading(true);
+    setSubmitting(true);
+    setUploading(files.length > 0);
     setUploadError(null);
-    void Promise.allSettled(
-      files.map(({ id, file }) =>
-        uploadFile(threadId, id, file, controller.signal),
-      ),
-    )
-      .then((results) => {
+
+    const submittedFileIds = new Set(files.map(({ id }) => id));
+
+    async function send() {
+      let content = message;
+
+      if (files.length) {
+        const threadId = ensureThreadId();
+        const results = await Promise.allSettled(
+          files.map(({ id, file }) =>
+            uploadFile(threadId, id, file, controller.signal),
+          ),
+        );
         const uploaded = results.map((result) => {
           if (result.status === "rejected") {
             throw result.reason;
@@ -143,10 +158,30 @@ export function Composer({
           (file) => `${JSON.stringify(file.name)} — File ID: ${file.id}`,
         );
 
-        onPromptChange("");
-        setFiles([]);
-        void onSend(`${message}\n\nUploaded files:\n${references.join("\n")}`);
-      })
+        content = `${message}\n\nUploaded files:\n${references.join("\n")}`;
+      }
+
+      await onSend(content, () => {
+        if (!mounted.current || controller.signal.aborted) {
+          return;
+        }
+
+        // Admission may arrive after a parent replaces the draft; keep the newer text.
+        if (currentPrompt.current === message) {
+          onPromptChange("");
+        }
+
+        setFiles((previous) =>
+          previous.filter(({ id }) => !submittedFileIds.has(id)),
+        );
+        setUploading(false);
+        setSubmitting(false);
+        setUploadError(null);
+        upload.current = null;
+      });
+    }
+
+    void send()
       .catch((error: unknown) => {
         if (!controller.signal.aborted) {
           setUploadError(
@@ -162,6 +197,7 @@ export function Composer({
 
           if (!controller.signal.aborted) {
             setUploading(false);
+            setSubmitting(false);
           }
         }
       });

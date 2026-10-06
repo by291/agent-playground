@@ -1,5 +1,6 @@
 import { beforeEach, describe, test, vi } from "vitest";
 import assert from "node:assert/strict";
+import { createServer } from "node:http";
 import { trace, SpanStatusCode } from "@opentelemetry/api";
 import {
   WebTracerProvider,
@@ -330,6 +331,166 @@ function streamingAgent(threadId: string) {
     },
   };
 }
+
+test("disconnect aborts the live HTTP transport after detaching SDK processing", async () => {
+  let transportClosed = false;
+  let signal: AbortSignal | null | undefined;
+  const server = createServer((request, response) => {
+    let body = "";
+
+    request.on("data", (chunk: Buffer) => {
+      body += chunk.toString();
+    });
+    request.on("end", () => {
+      const input = RunAgentInputSchema.parse(JSON.parse(body));
+
+      response.writeHead(200, { "Content-Type": "text/event-stream" });
+      response.write(
+        `data: ${JSON.stringify({ type: "RUN_STARTED", threadId: input.threadId, runId: input.runId })}\n\n`,
+      );
+    });
+    response.on("close", () => {
+      transportClosed = true;
+    });
+  });
+
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+
+  assert.ok(address && typeof address !== "string");
+  const agent = new HttpAgent({
+    threadId: "transport-release",
+    url: `http://127.0.0.1:${address.port}/agent`,
+    fetch: (url, init) => {
+      signal = init.signal;
+
+      return fetch(url, init);
+    },
+  });
+  const session = createConversationSession(
+    { threadId: agent.threadId, fresh: true, empty: true },
+    agent,
+  );
+  const disconnect = connectSession(session, () => Promise.resolve(null));
+  const completion = session.store.getState().send("Start a long run");
+
+  try {
+    await waitFor(
+      () => session.store.getState().lifecycle.execution === "streaming",
+    );
+    disconnect();
+    assert.equal(agent.isRunning, false);
+    assert.equal(signal?.aborted, true);
+    await waitFor(() => transportClosed);
+    await completion;
+    assert.equal(session.store.getState().issues.run, null);
+  } finally {
+    disconnect();
+    agent.abortRun();
+    await completion;
+    server.closeAllConnections();
+    await new Promise<void>((resolve, reject) =>
+      server.close((error) => (error ? reject(error) : resolve())),
+    );
+  }
+});
+
+test("confirmed admission is reported while the model stream remains open", async () => {
+  const stream = streamingAgent("accepted-draft");
+  const session = createConversationSession(
+    { threadId: "accepted-draft", fresh: true, empty: true },
+    stream.agent,
+  );
+  const disconnect = connectSession(session, () => Promise.resolve(null));
+  const admitted = vi.fn();
+  let completed = false;
+  const completion = session.store
+    .getState()
+    .send("Keep until admitted", admitted)
+    .then(() => {
+      completed = true;
+    });
+  const input = await stream.requested;
+
+  assert.equal(admitted.mock.calls.length, 0);
+  stream.emit({
+    type: "RUN_STARTED",
+    threadId: input.threadId,
+    runId: input.runId,
+  });
+  await waitFor(() => admitted.mock.calls.length === 1);
+  assert.equal(completed, false);
+  assert.equal(isRunning(session.store.getState()), true);
+  stream.finish(input);
+  await completion;
+  assert.equal(admitted.mock.calls.length, 1);
+  disconnect();
+});
+
+test("production streams retain no diagnostic event payloads", async () => {
+  vi.stubEnv("DEV", false);
+  const stream = streamingAgent("production-events");
+  const session = createConversationSession(
+    { threadId: "production-events", fresh: true, empty: true },
+    stream.agent,
+  );
+  const disconnect = connectSession(session, () => Promise.resolve(null));
+  const completion = session.store.getState().send("Production run");
+  const input = await stream.requested;
+
+  stream.emit({
+    type: "RUN_STARTED",
+    threadId: input.threadId,
+    runId: input.runId,
+  });
+  stream.emit({
+    type: "STATE_SNAPSHOT",
+    snapshot: { diagnostic: "large private payload" },
+  });
+  stream.finish(input);
+  await completion;
+  assert.deepEqual(session.store.getState().activity, []);
+  assert.equal(session.store.getState().activityReceived, 0);
+  disconnect();
+});
+
+test("oversized workflow feedback rejects explicitly without sending or replacing messages", async () => {
+  const stream = streamingAgent("oversized-feedback");
+  const session = createConversationSession(
+    { threadId: "oversized-feedback" },
+    stream.agent,
+  );
+  const paused = snapshot("review-run", "interrupted");
+
+  paused.interrupts = [
+    InterruptSchema.parse({
+      id: "review",
+      reason: "Review feedback",
+      metadata: {
+        langgraph: {
+          raw: {
+            kind: "workflow_review",
+            workflowCallId: "workflow",
+            revision: 1,
+            round: 1,
+            outputStepId: "review:1",
+            canAccept: true,
+          },
+        },
+      },
+    }),
+  ];
+  const disconnect = connectSession(session, () => Promise.resolve(paused));
+
+  session.receiveSnapshot(paused);
+  await assert.rejects(
+    () => session.store.getState().send("x".repeat(10001)),
+    /10,000/,
+  );
+  assert.equal(stream.requests, 0);
+  assert.deepEqual(session.store.getState().messages, paused.messages);
+  disconnect();
+});
 
 async function waitFor(predicate: () => boolean) {
   const deadline = Date.now() + 1000;
@@ -827,7 +988,10 @@ test("a rejected submission unlocks an existing conversation without discarding 
 
   try {
     session.receiveSnapshot(previous);
-    await session.store.getState().send("Keep this pending input");
+    await assert.rejects(
+      () => session.store.getState().send("Keep this pending input"),
+      /admission/i,
+    );
 
     assert.equal(agent.isRunning, false);
     assert.equal(isRunning(session.store.getState()), false);
@@ -840,9 +1004,7 @@ test("a rejected submission unlocks an existing conversation without discarding 
       session.store.getState().messages.at(-1)?.content,
       "Keep this pending input",
     );
-    const saved = JSON.parse(
-      localStorage.getItem("agent-playground-conversation") ?? "null",
-    ) as SavedConversation;
+    const saved = loadConversation("rejected-thread");
 
     assert.equal(saved.pending?.runId, inputs[0]?.runId);
     assert.equal(saved.empty, false);
@@ -853,8 +1015,199 @@ test("a rejected submission unlocks an existing conversation without discarding 
     session.receiveSnapshot(previous);
     assert.equal(isRunning(session.store.getState()), false);
     assert.equal(inputs.length, 1);
-    await session.store.getState().send("Another attempt");
+    await assert.rejects(
+      () => session.store.getState().send("Another attempt"),
+      /original submission/i,
+    );
+    assert.equal(inputs.length, 1);
+    assert.equal(
+      loadConversation("rejected-thread").pending?.runId,
+      inputs[0]?.runId,
+    );
+    await assert.rejects(
+      () => session.store.getState().send("Keep this pending input"),
+      /admission/i,
+    );
     assert.equal(inputs.length, 2);
+    assert.deepEqual(inputs[1], inputs[0]);
+  } finally {
+    disconnect();
+  }
+});
+
+test.each(["dispatching", "submission_unknown"] as const)(
+  "a lost admission response reconciles %s without a second SDK submission",
+  async (status) => {
+    const inputs: RunAgentInput[] = [];
+    const accepted = vi.fn();
+    const agent = new HttpAgent({
+      threadId: "lost-response",
+      url: "/agent",
+      fetch: (_url, init) => {
+        inputs.push(RunAgentInputSchema.parse(JSON.parse(init.body as string)));
+
+        return Promise.reject(new TypeError("Response was lost"));
+      },
+    });
+    const session = createConversationSession(
+      { threadId: "lost-response", fresh: true },
+      agent,
+    );
+    const disconnect = connectSession(session, () =>
+      Promise.resolve(snapshot(inputs[0]!.runId, status)),
+    );
+
+    try {
+      await assert.rejects(
+        () =>
+          session.store.getState().send("Preserve this operation", accepted),
+        /lost/,
+      );
+      await delay(0);
+      await session.store.getState().send("Preserve this operation", accepted);
+      assert.equal(inputs.length, 1);
+      assert.equal(accepted.mock.calls.length, 0);
+      assert.equal(
+        snapshotPolicy(session.store.getState().lifecycle).polling,
+        true,
+      );
+    } finally {
+      disconnect();
+    }
+  },
+);
+
+test("a definite oversized rejection permits edited input after absent admission is reconciled", async () => {
+  const inputs: RunAgentInput[] = [];
+  const agent = new HttpAgent({
+    threadId: "rejected-size",
+    url: "/agent",
+    fetch: (_url, init) => {
+      const input = RunAgentInputSchema.parse(JSON.parse(init.body as string));
+
+      inputs.push(input);
+
+      if (inputs.length === 1) {
+        return Promise.resolve(
+          Response.json(
+            { error: "Request body is too large" },
+            { status: 413 },
+          ),
+        );
+      }
+
+      return Promise.resolve(
+        new Response(
+          ["RUN_STARTED", "RUN_FINISHED"]
+            .map(
+              (type) =>
+                `data: ${JSON.stringify({ type, threadId: input.threadId, runId: input.runId })}\n\n`,
+            )
+            .join(""),
+          { headers: { "Content-Type": "text/event-stream" } },
+        ),
+      );
+    },
+  });
+  const session = createConversationSession(
+    { threadId: "rejected-size", fresh: true },
+    agent,
+  );
+  const disconnect = connectSession(session, () => Promise.resolve(null));
+
+  try {
+    await assert.rejects(
+      () => session.store.getState().send("Too large"),
+      /413/,
+    );
+    await delay(0);
+    await session.store.getState().send("Smaller input");
+    assert.equal(inputs.length, 2);
+    assert.notEqual(inputs[0]?.runId, inputs[1]?.runId);
+    assert.equal(inputs[1]?.messages.at(-1)?.content, "Smaller input");
+  } finally {
+    disconnect();
+  }
+});
+
+test("a definite stale-review rejection permits the current review after recovery", async () => {
+  const inputs: RunAgentInput[] = [];
+  const agent = new HttpAgent({
+    threadId: "rejected-review",
+    url: "/agent",
+    fetch: (_url, init) => {
+      const input = RunAgentInputSchema.parse(JSON.parse(init.body as string));
+
+      inputs.push(input);
+
+      if (inputs.length === 1) {
+        return Promise.resolve(
+          Response.json({ error: "Workflow review is stale" }, { status: 409 }),
+        );
+      }
+
+      return Promise.resolve(
+        new Response(
+          ["RUN_STARTED", "RUN_FINISHED"]
+            .map(
+              (type) =>
+                `data: ${JSON.stringify({ type, threadId: input.threadId, runId: input.runId })}\n\n`,
+            )
+            .join(""),
+          { headers: { "Content-Type": "text/event-stream" } },
+        ),
+      );
+    },
+  });
+  const session = createConversationSession(
+    { threadId: "rejected-review" },
+    agent,
+  );
+  const paused = snapshot("initial", "interrupted");
+  const review = (revision: number) =>
+    InterruptSchema.parse({
+      id: "review",
+      reason: "Review output",
+      metadata: {
+        langgraph: {
+          raw: {
+            kind: "workflow_review",
+            workflowCallId: "call",
+            revision,
+            round: 1,
+            outputStepId: "output",
+            canAccept: true,
+          },
+        },
+      },
+    });
+
+  paused.interrupts = [review(1)];
+  const current = { ...paused, interrupts: [review(2)] };
+  const disconnect = connectSession(session, () => Promise.resolve(current));
+
+  try {
+    session.receiveSnapshot(paused);
+    await assert.rejects(
+      () =>
+        session.store
+          .getState()
+          .reviewWorkflow(
+            parseWorkflowReview(paused.interrupts[0]!)!,
+            "accept",
+          ),
+      /409/,
+    );
+    await delay(0);
+    await session.store
+      .getState()
+      .reviewWorkflow(parseWorkflowReview(current.interrupts[0]!)!, "accept");
+    assert.equal(inputs.length, 2);
+    assert.notEqual(inputs[0]?.runId, inputs[1]?.runId);
+    assert.equal(
+      (inputs[1]?.resume?.[0]?.payload as { revision: number }).revision,
+      2,
+    );
   } finally {
     disconnect();
   }
@@ -1066,6 +1419,14 @@ test.each([false, true])(
       session.receiveSnapshot(snapshot(input.runId, "running"));
       assert.equal(session.store.getState().issues.run, null);
     } finally {
+      if (!started) {
+        stream.emit({
+          type: "RUN_STARTED",
+          threadId: input.threadId,
+          runId: input.runId,
+        });
+      }
+
       stream.finish(input);
       await completion;
       disconnect();

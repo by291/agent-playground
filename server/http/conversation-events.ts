@@ -1,15 +1,18 @@
-import pg from "pg";
 import type { Context } from "hono";
 import { streamSSE } from "hono/streaming";
+import { subscribeConversationChanges } from "../conversation/change-subscription";
 
 export function streamConversationChanges(context: Context, threadId: string) {
   context.header("Cache-Control", "no-cache, no-transform");
   context.header("X-Accel-Buffering", "no");
 
   return streamSSE(context, async (stream) => {
-    const client = new pg.Client({
-      connectionString: process.env.APP_DATABASE_URL,
-    });
+    const signal = context.req.raw.signal;
+
+    if (signal.aborted) {
+      return;
+    }
+
     let heartbeat: ReturnType<typeof setInterval> | undefined;
     let pending = Promise.resolve();
     let close!: () => void;
@@ -18,28 +21,31 @@ export function streamConversationChanges(context: Context, threadId: string) {
     });
 
     stream.onAbort(close);
-    client.on("error", close);
-    client.on("notification", (notification) => {
-      if (notification.payload === threadId) {
-        pending = pending
-          .then(() => stream.writeSSE({ event: "changed", data: "{}" }))
-          .catch(close);
-      }
+    signal.addEventListener("abort", close, { once: true });
+
+    function enqueue(event: string) {
+      pending = pending
+        .then(() => stream.writeSSE({ event, data: "{}" }))
+        .catch(close);
+    }
+
+    // A failed shared listener closes these streams. EventSource reconnects and
+    // the next ready event makes clients refetch changes missed while offline.
+    const unsubscribe = subscribeConversationChanges(threadId, {
+      ready() {
+        enqueue("ready");
+        heartbeat = setInterval(() => enqueue("heartbeat"), 15000);
+      },
+      changed: () => enqueue("changed"),
+      close,
     });
 
     try {
-      await client.connect();
-      await client.query("LISTEN conversation_changed");
-      await stream.writeSSE({ event: "ready", data: "{}" });
-      heartbeat = setInterval(() => {
-        pending = pending
-          .then(() => stream.writeSSE({ event: "heartbeat", data: "{}" }))
-          .catch(close);
-      }, 15000);
       await closed;
     } finally {
+      signal.removeEventListener("abort", close);
       clearInterval(heartbeat);
-      await client.end();
+      unsubscribe();
     }
   });
 }

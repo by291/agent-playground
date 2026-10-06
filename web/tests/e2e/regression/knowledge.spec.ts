@@ -1,7 +1,10 @@
 import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import type { Locator, Page } from "@playwright/test";
-import { knowledgeSearchSchema } from "../../../../shared/knowledge";
+import {
+  knowledgeDocumentSchema,
+  knowledgeSearchSchema,
+} from "../../../../shared/knowledge";
 import { capture, expect, test } from "../fixtures";
 import { createCompletedConversation } from "../conversations";
 
@@ -370,21 +373,31 @@ test("an encoding choice recovers ambiguous text, persists after reload and pres
     await capture(page, testInfo, "knowledge-encoding-mobile.png");
     await dialog.getByRole("button", { name: "Cancel" }).click();
     await expect(actions).toBeFocused();
-    await selectDocumentAction(page, row, "Reindex");
-    await expect(row.getByRole("status")).toHaveText("ready");
-    const documents = await request.get(
-      "http://127.0.0.1:4300/api/knowledge/documents",
+    const acceptedReindex = page.waitForResponse(
+      (response) =>
+        response.request().method() === "POST" &&
+        new URL(response.url()).pathname ===
+          `/api/knowledge/documents/${documentId}/reindex`,
     );
 
-    expect(await documents.json()).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          id: documentId,
-          textEncoding: "gbk",
-          status: "ready",
-        }),
-      ]),
-    );
+    await selectDocumentAction(page, row, "Reindex");
+    expect((await acceptedReindex).ok()).toBe(true);
+
+    // The row already displayed ready before this request. Check completion of
+    // the accepted reindex in persistence before consulting its cached UI state.
+    await expect
+      .poll(async () => {
+        const documents = await request.get(
+          "http://127.0.0.1:4300/api/knowledge/documents",
+        );
+
+        return knowledgeDocumentSchema
+          .array()
+          .parse(await documents.json())
+          .find((document) => document.id === documentId);
+      })
+      .toMatchObject({ textEncoding: "gbk", status: "ready" });
+    await expect(row.getByRole("status")).toHaveText("ready");
   } finally {
     if (documentId) {
       await request.delete(

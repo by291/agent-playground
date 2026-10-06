@@ -1,4 +1,5 @@
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useState } from "react";
+import { useMediaQuery } from "@/hooks/use-media-query";
 import { useUserPreferences } from "@/lib/preferences";
 
 // Adapted from assistant-ui's TextStreamAnimator (MIT); see usePacedText.LICENSE.txt.
@@ -109,27 +110,10 @@ class TextStreamAnimator {
   };
 }
 
-const reducedMotionQuery = "(prefers-reduced-motion: reduce)";
-
-function subscribeReducedMotion(onChange: () => void) {
-  const media = window.matchMedia?.(reducedMotionQuery);
-
-  media?.addEventListener("change", onChange);
-
-  return () => media?.removeEventListener("change", onChange);
-}
-
-function reducedMotion() {
-  return window.matchMedia?.(reducedMotionQuery).matches ?? false;
-}
-
 export function usePacedText(text: string, streaming: boolean) {
   const { preferences } = useUserPreferences();
-  const reduceMotion = useSyncExternalStore(
-    subscribeReducedMotion,
-    reducedMotion,
-    () => false,
-  );
+  // The shared query tracks live changes; Motion's installed hook snapshots the setting.
+  const reduceMotion = useMediaQuery("(prefers-reduced-motion: reduce)");
   const [hasStreamed, setHasStreamed] = useState(streaming);
   const [frame, setFrame] = useState<{
     text: string;

@@ -55,7 +55,9 @@ export function WorkflowReviewPanel({
                     <div className="flex flex-wrap gap-2">
                       <Button
                         disabled={running || !review.canAccept}
-                        onClick={() => void onReview(review, "accept")}
+                        onClick={() =>
+                          void onReview(review, "accept").catch(() => undefined)
+                        }
                       >
                         {running && <Spinner aria-hidden="true" />}
                         {review.acceptLabel}
@@ -63,7 +65,11 @@ export function WorkflowReviewPanel({
                       <Button
                         variant="outline"
                         disabled={running}
-                        onClick={() => void onReview(review, "abandon")}
+                        onClick={() =>
+                          void onReview(review, "abandon").catch(
+                            () => undefined,
+                          )
+                        }
                       >
                         Abandon
                       </Button>

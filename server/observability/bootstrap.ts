@@ -15,6 +15,8 @@ import { OTLPMetricExporter } from "@opentelemetry/exporter-metrics-otlp-http";
 import { metrics } from "@opentelemetry/api";
 
 const endpoint = process.env.OTEL_EXPORTER_OTLP_ENDPOINT;
+let shutdownProviders: (() => Promise<void>) | undefined;
+let shutdown: Promise<void> | undefined;
 
 if (endpoint) {
   const resource = resourceFromAttributes({
@@ -62,12 +64,23 @@ if (endpoint) {
 
   metrics.setGlobalMeterProvider(meterProvider);
 
-  for (const signal of ["SIGTERM", "SIGINT"] as const) {
-    process.once(signal, () => {
-      void Promise.allSettled([
-        provider.shutdown(),
-        meterProvider.shutdown(),
-      ]).finally(() => process.kill(process.pid, signal));
-    });
-  }
+  shutdownProviders = async () => {
+    const results = await Promise.allSettled([
+      provider.shutdown(),
+      meterProvider.shutdown(),
+    ]);
+    const failures = results.flatMap((result) =>
+      result.status === "rejected" ? [result.reason as unknown] : [],
+    );
+
+    if (failures.length) {
+      throw new AggregateError(failures, "Telemetry shutdown failed");
+    }
+  };
+}
+
+export function shutdownTelemetry(): Promise<void> {
+  shutdown ??= shutdownProviders?.() ?? Promise.resolve();
+
+  return shutdown;
 }

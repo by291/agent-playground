@@ -1,8 +1,6 @@
 import { EventType, type BaseEvent } from "@ag-ui/client";
 import type { Activity } from "./state";
 
-export const activityLimit = 500;
-
 export interface ActivityStream {
   content: string;
   streamId: string;

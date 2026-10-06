@@ -18,6 +18,8 @@ export class ReviewLangGraphAgent extends LangGraphAgent {
       return super.buildCommandResumeFromAgui(entries, context);
     }
 
+    // The official adapter maps a single response to its sentinel/payload value.
+    // Workflow review resumes need that value keyed by the original interrupt ID.
     return Object.fromEntries(
       entries.map((entry) => [
         entry.interruptId,

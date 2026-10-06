@@ -6,6 +6,7 @@ import logging
 import httpx
 
 from agent_playground.config import app_api_url
+from agent_playground.db.async_operations import run_database_operation
 from agent_playground.db.report_jobs import (
     mark_report_event_delivered,
     stop_report_job,
@@ -16,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 
 async def deliver_report_events(client: httpx.AsyncClient) -> None:
-    events = await asyncio.to_thread(pending_report_events)
+    events = await run_database_operation(pending_report_events)
 
     for job, event in events:
         try:
@@ -26,11 +27,13 @@ async def deliver_report_events(client: httpx.AsyncClient) -> None:
                 json=event.model_dump(exclude_none=True),
             )
             if response.status_code == 404:
-                await asyncio.to_thread(stop_report_job, job.id, FINAL_REVISION)
+                await run_database_operation(stop_report_job, job.id, FINAL_REVISION)
                 continue
 
             response.raise_for_status()
-            await asyncio.to_thread(mark_report_event_delivered, job.id, event.revision)
+            await run_database_operation(
+                mark_report_event_delivered, job.id, event.revision
+            )
         except httpx.HTTPError:
             logger.warning("Report event delivery will be retried for job %s", job.id)
 

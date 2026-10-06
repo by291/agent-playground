@@ -61,4 +61,6 @@ export const aegraUrl = process.env.AEGRA_URL ?? "http://127.0.0.1:2026";
 export const aegra = new Client({
   apiUrl: aegraUrl,
   onRequest: prepareAegraRequest,
+  // A lost creation response may follow a committed run; recovery reconciles its ID.
+  callerOptions: { maxRetries: 0 },
 });

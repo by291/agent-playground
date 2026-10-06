@@ -7,7 +7,44 @@ import {
   SimpleSpanProcessor,
 } from "@opentelemetry/sdk-trace-node";
 import { W3CTraceContextPropagator } from "@opentelemetry/core";
-import { prepareAegraRequest } from "./client";
+import { overrideFetchImplementation } from "@langchain/langgraph-sdk";
+import { aegra, prepareAegraRequest } from "./client";
+
+test("a run accepted before its response disconnects is submitted only once", async () => {
+  const requests: { method: string | undefined; pathname: string }[] = [];
+
+  overrideFetchImplementation((url: string, init: RequestInit) => {
+    requests.push({ method: init.method, pathname: new URL(url).pathname });
+
+    if (requests.length === 1) {
+      // The upstream write committed, but the response headers never arrived.
+      return Promise.reject(
+        new Error("Socket disconnected after upstream acceptance"),
+      );
+    }
+
+    return Promise.resolve(
+      new Response("event: end\ndata: {}\n\n", {
+        headers: { "Content-Type": "text/event-stream" },
+      }),
+    );
+  });
+
+  try {
+    await assert.rejects(async () => {
+      for await (const event of aegra.runs.stream("thread", "agent", {
+        input: { messages: [{ role: "user", content: "Create report" }] },
+      })) {
+        assert.ok(event);
+      }
+    }, /Socket disconnected/);
+    assert.deepEqual(requests, [
+      { method: "POST", pathname: "/threads/thread/runs/stream" },
+    ]);
+  } finally {
+    overrideFetchImplementation(globalThis.fetch);
+  }
+});
 
 test("continuation sends only the newest user turn and never restores compacted state", () => {
   const init = prepareAegraRequest(

@@ -2,6 +2,7 @@
 import { expect, test, vi } from "vitest";
 import {
   forgetAllConversations,
+  forgetConversation,
   loadConversation,
   newConversation,
   saveConversation,
@@ -71,4 +72,63 @@ test("clearing conversation pointers preserves preferences and other browser dat
   );
   expect(localStorage.getItem("agent-playground-sidebar-width")).toBe("336");
   expect(localStorage.getItem("other-app-data")).toBe("keep");
+});
+
+test("optional pointers and deletion do not throw when browser storage is unavailable", () => {
+  vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+    throw new DOMException("Storage unavailable", "SecurityError");
+  });
+  vi.spyOn(Storage.prototype, "removeItem").mockImplementation(() => {
+    throw new DOMException("Storage unavailable", "SecurityError");
+  });
+
+  expect(() =>
+    saveConversation({ threadId: "thread", empty: true }),
+  ).not.toThrow();
+  expect(() => forgetConversation("thread")).not.toThrow();
+});
+
+test("pending admission remains recoverable even when the optional current pointer cannot be saved", () => {
+  const original = Storage.prototype.setItem.bind(localStorage);
+
+  vi.spyOn(Storage.prototype, "setItem").mockImplementation((key, value) => {
+    if (key === "agent-playground-conversation") {
+      throw new DOMException("Quota exceeded", "QuotaExceededError");
+    }
+
+    original(key, value);
+  });
+  const pending = {
+    runId: "pending-run",
+    messageId: "pending-message",
+    messages: [
+      {
+        id: "pending-message",
+        role: "user" as const,
+        content: "Keep this request",
+      },
+    ],
+    state: {},
+  };
+
+  expect(() => saveConversation({ threadId: "thread", pending })).not.toThrow();
+  expect(loadConversation("thread").pending).toEqual(pending);
+});
+
+test("pending admission fails explicitly when its durable journal cannot be saved", () => {
+  vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+    throw new DOMException("Quota exceeded", "QuotaExceededError");
+  });
+
+  expect(() =>
+    saveConversation({
+      threadId: "thread",
+      pending: {
+        runId: "run",
+        messageId: "message",
+        messages: [],
+        state: {},
+      },
+    }),
+  ).toThrow();
 });

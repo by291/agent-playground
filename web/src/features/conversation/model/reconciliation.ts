@@ -15,7 +15,9 @@ export function reconcileSnapshot(
   local: LocalRun,
 ) {
   const latest = snapshot?.runs.at(-1);
-  const serverRunning = latest ? isRunActive(latest.status) : false;
+  const serverRunning = latest
+    ? isRunActive(latest.status) || latest.status === "submission_unknown"
+    : false;
   const locallyRunning = local.submitting || local.streaming;
 
   // An older fetch must not replace a new stream or unlock its composer.
@@ -68,6 +70,62 @@ export function pendingRecovery(
   const saved = snapshot?.runs.find((run) => run.runId === pending.runId);
 
   return !saved || saved.status === "prepared" ? "retry" : "confirmed";
+}
+
+export function pendingRetry(
+  snapshot: ConversationSnapshot | null | undefined,
+  pending: PendingSubmission,
+  candidate: PendingSubmission,
+) {
+  if (
+    snapshot === undefined ||
+    pendingRecovery(snapshot, pending) !== "retry"
+  ) {
+    return "reconcile";
+  }
+
+  // A missing response permits replay of the saved operation, not a new operation
+  // with edited input. Resume payloads also preserve the original review decision.
+  const sameInput =
+    candidate === pending ||
+    JSON.stringify({
+      messages: pending.messages,
+      state: pending.state,
+      resume: pending.resume,
+    }) ===
+      JSON.stringify({
+        messages: candidate.messages,
+        state: candidate.state,
+        resume: candidate.resume,
+      });
+
+  return sameInput ? "retry" : "changed";
+}
+
+export function rejectedAdmission(
+  snapshot: ConversationSnapshot | null,
+  pending: PendingSubmission,
+  error: unknown,
+) {
+  // These responses reject input before admission. A snapshot must also confirm
+  // that this operation has no saved run before edited input can replace it.
+  const status =
+    error instanceof Error && "status" in error ? error.status : undefined;
+
+  return (
+    typeof status === "number" &&
+    [400, 404, 409, 413].includes(status) &&
+    !snapshot?.runs.some((run) => run.runId === pending.runId)
+  );
+}
+
+export function confirmedAdmission(
+  snapshot: ConversationSnapshot | null,
+  runId: string,
+) {
+  const run = snapshot?.runs.find((item) => item.runId === runId);
+
+  return !!run && (run.status === "running" || isRunFinished(run.status));
 }
 
 function mergeCheckpointAndStream(

@@ -162,6 +162,8 @@ test("document deletion requires confirmation, blocks pending dismissal and pres
 
 test("reindex feedback belongs to its document while the upload action keeps its label", async () => {
   let completeIndex: ((response: Response) => void) | undefined;
+  let completeRefresh: ((response: Response) => void) | undefined;
+  let listRequests = 0;
 
   vi.stubGlobal(
     "fetch",
@@ -169,6 +171,14 @@ test("reindex feedback belongs to its document while the upload action keeps its
       if (init?.method === "POST") {
         return new Promise<Response>((resolve) => {
           completeIndex = resolve;
+        });
+      }
+
+      listRequests += 1;
+
+      if (listRequests > 1) {
+        return new Promise<Response>((resolve) => {
+          completeRefresh = resolve;
         });
       }
 
@@ -187,7 +197,12 @@ test("reindex feedback belongs to its document while the upload action keeps its
   expect(view.getByRole("button", { name: "Upload document" })).toBeDisabled();
   expect(view.queryByText("Uploading…")).toBeNull();
   completeIndex?.(Response.json({}));
+  await waitFor(() => expect(completeRefresh).toBeDefined());
+  expect(view.getByRole("status")).toHaveTextContent("Queuing index…");
+  expect(actions).toBeDisabled();
+  completeRefresh?.(Response.json([{ ...documentFixture, status: "queued" }]));
   await waitFor(() => expect(actions).toBeEnabled());
+  expect(view.getByRole("status")).toHaveTextContent("queued");
   view.unmount();
   client.clear();
 });
@@ -240,5 +255,41 @@ test("failed uploads keep their file and stable identity for a retry", async () 
     ).not.toBeInTheDocument(),
   );
   view.unmount();
+  client.clear();
+});
+
+test("unmount aborts the owned document upload without invalidating another workspace", async () => {
+  let uploadSignal: AbortSignal | undefined;
+  const requests: string[] = [];
+
+  vi.stubGlobal("fetch", (url: string, init?: RequestInit) => {
+    requests.push(url);
+
+    if (init?.method !== "POST") {
+      return Promise.resolve(Response.json([]));
+    }
+
+    uploadSignal = init.signal!;
+
+    return new Promise<Response>((_resolve, reject) => {
+      uploadSignal!.addEventListener("abort", () =>
+        reject(new DOMException("Aborted", "AbortError")),
+      );
+    });
+  });
+  const { client, view } = renderWorkspace();
+
+  await view.findByText("Upload a file to build your shared knowledge base.");
+  fireEvent.change(view.getByLabelText("Document file"), {
+    target: { files: [new File(["policy"], "policy.md")] },
+  });
+  await waitFor(() => expect(uploadSignal).toBeDefined());
+  expect(uploadSignal!.aborted).toBe(false);
+  const beforeUnmount = requests.length;
+
+  view.unmount();
+  expect(uploadSignal!.aborted).toBe(true);
+  await Promise.resolve();
+  expect(requests).toHaveLength(beforeUnmount);
   client.clear();
 });

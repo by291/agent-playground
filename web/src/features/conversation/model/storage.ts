@@ -26,9 +26,24 @@ export function newConversation(): ConversationReference {
 export function loadConversation(threadId?: string): ConversationReference {
   try {
     const current = localStorage.getItem(storageKey);
+    let lookupThreadId = threadId;
+
+    if (!lookupThreadId && current) {
+      const pointer: unknown = JSON.parse(current);
+
+      if (
+        pointer &&
+        typeof pointer === "object" &&
+        "threadId" in pointer &&
+        typeof pointer.threadId === "string"
+      ) {
+        lookupThreadId = pointer.threadId;
+      }
+    }
+
     const saved: unknown = JSON.parse(
-      (threadId
-        ? (localStorage.getItem(`${storageKey}:${threadId}`) ?? current)
+      (lookupThreadId
+        ? (localStorage.getItem(`${storageKey}:${lookupThreadId}`) ?? current)
         : current) ?? "null",
     );
 
@@ -63,23 +78,47 @@ export function saveConversation(conversation: SavedConversation): void {
   const value = JSON.stringify({ threadId, pending, empty });
   const previous = loadConversation();
 
-  if (previous.threadId && previous.threadId !== threadId && !previous.fresh) {
-    // Preserve the pre-upgrade pointer before switching for the first time.
-    localStorage.setItem(
-      `${storageKey}:${previous.threadId}`,
-      JSON.stringify(previous),
-    );
+  try {
+    localStorage.setItem(`${storageKey}:${threadId}`, value);
+  } catch (error) {
+    if (pending) {
+      // Never send a new operation without the identity needed to reconcile it.
+      throw new Error(
+        "Cannot save this submission in browser storage. Allow storage or free space, then retry.",
+        { cause: error },
+      );
+    }
   }
 
-  localStorage.setItem(`${storageKey}:${threadId}`, value);
-  localStorage.setItem(storageKey, value);
+  try {
+    if (
+      previous.threadId &&
+      previous.threadId !== threadId &&
+      !previous.fresh
+    ) {
+      // Preserve legacy journals before replacing their only current pointer.
+      localStorage.setItem(
+        `${storageKey}:${previous.threadId}`,
+        JSON.stringify(previous),
+      );
+    }
+
+    // The current pointer is optional; the per-thread record owns the journal.
+    localStorage.setItem(storageKey, JSON.stringify({ threadId, empty }));
+  } catch {
+    // Navigation and restoration do not depend on this convenience pointer.
+  }
 }
 
 export function forgetConversation(threadId: string): void {
-  localStorage.removeItem(`${storageKey}:${threadId}`);
+  try {
+    localStorage.removeItem(`${storageKey}:${threadId}`);
 
-  if (loadConversation().threadId === threadId) {
-    localStorage.removeItem(storageKey);
+    if (loadConversation().threadId === threadId) {
+      localStorage.removeItem(storageKey);
+    }
+  } catch {
+    // Server deletion is authoritative even if local caches cannot be cleared.
   }
 }
 

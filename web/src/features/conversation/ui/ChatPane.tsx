@@ -121,7 +121,10 @@ export function ChatPane({
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 sm:px-8">
           <div className="conversation-layout conversation-column flex min-h-full flex-col">
             <Welcome
-              onSelect={onSelectPrompt ?? ((prompt) => void onSend(prompt))}
+              onSelect={
+                onSelectPrompt ??
+                ((prompt) => void onSend(prompt).catch(() => undefined))
+              }
             />
             {recoveryIssue && <RecoveryNotice issue={recoveryIssue} />}
           </div>

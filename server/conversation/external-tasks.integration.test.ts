@@ -308,6 +308,68 @@ test("a completed external task resumes and archives a workflow with no browser"
   assert.equal(snapshot?.interrupts.length, 0);
 });
 
+test("continuation scans exclude settled history but retain unsynchronized and pending tasks", async () => {
+  const settled = await register();
+  const pending = await register();
+  const unsynchronized = await register();
+
+  for (const task of [settled, unsynchronized]) {
+    await database.db
+      .update(schema.conversationRuns)
+      .set({
+        status: "completed",
+        checkpointSynced: task === settled,
+      })
+      .where(eq(schema.conversationRuns.aguiRunId, task.request.runId));
+    const { externalTasks } = await import("../db/external-task-schema");
+
+    await database.db
+      .update(externalTasks)
+      .set({ continuationRunId: task.request.runId })
+      .where(eq(externalTasks.taskId, task.taskId));
+  }
+
+  const { scanExternalTasks } = await import("./external-task-scan");
+  const found: string[] = [];
+
+  for await (const { task } of scanExternalTasks()) {
+    found.push(task.taskId);
+  }
+
+  assert.deepEqual(
+    found.sort(),
+    [pending.taskId, unsynchronized.taskId].sort(),
+  );
+});
+
+test("continuation scans visit every active page without starving later tasks", async () => {
+  const registered = await register();
+  const { externalTasks } = await import("../db/external-task-schema");
+  const [original] = await database.db
+    .select()
+    .from(externalTasks)
+    .where(eq(externalTasks.taskId, registered.taskId));
+
+  assert.ok(original);
+  const additional = Array.from({ length: 101 }, (_, index) => ({
+    ...original,
+    taskId: randomUUID(),
+    stepId: `step-${index}`,
+  }));
+
+  await database.db.insert(externalTasks).values(additional);
+  const { scanExternalTasks } = await import("./external-task-scan");
+  const found: string[] = [];
+
+  for await (const { task } of scanExternalTasks()) {
+    found.push(task.taskId);
+  }
+
+  assert.equal(found.length, 102);
+  assert.equal(new Set(found).size, 102);
+  assert.ok(found.includes(registered.taskId));
+});
+
 test("users cannot submit an external task result through the review endpoint", async () => {
   const task = await register();
   const response = await app.request("/agent", {
@@ -444,9 +506,25 @@ test("external failures also resume the workflow with a terminal result", async 
   assert.equal(creations.get(task.threadId), 1);
 });
 
-test("server shutdown releases an open notification subscription and its worker resources", async () => {
+test("telemetry-enabled server shutdown releases its subscription and exports work before exit", async () => {
   const task = await register();
   const probe = createServer();
+  const exports: string[] = [];
+  const collector = createServer((request, response) => {
+    request.resume();
+    request.on("end", () => {
+      exports.push(request.url ?? "");
+      response.writeHead(200);
+      response.end("{}");
+    });
+  });
+
+  await new Promise<void>((resolve) =>
+    collector.listen(0, "127.0.0.1", resolve),
+  );
+  const collectorAddress = collector.address();
+
+  assert.ok(collectorAddress && typeof collectorAddress !== "string");
 
   await new Promise<void>((resolve) => probe.listen(0, "127.0.0.1", resolve));
   const address = probe.address();
@@ -455,11 +533,27 @@ test("server shutdown releases an open notification subscription and its worker 
   const port = address.port;
 
   await new Promise<void>((resolve) => probe.close(() => resolve()));
-  const child = spawn(process.execPath, ["--import", "tsx", "server.ts"], {
-    cwd: fileURLToPath(new URL("../", import.meta.url)),
-    env: { ...process.env, SERVER_PORT: String(port) },
-    stdio: ["ignore", "pipe", "pipe"],
-  });
+  const child = spawn(
+    process.execPath,
+    [
+      "--import",
+      "tsx",
+      "--import",
+      "./tests/signal-control.ts",
+      "--import",
+      "./observability/bootstrap.ts",
+      "server.ts",
+    ],
+    {
+      cwd: fileURLToPath(new URL("../", import.meta.url)),
+      env: {
+        ...process.env,
+        SERVER_PORT: String(port),
+        OTEL_EXPORTER_OTLP_ENDPOINT: `http://127.0.0.1:${collectorAddress.port}`,
+      },
+      stdio: ["ignore", "pipe", "pipe", "ipc"],
+    },
+  );
   const exited = new Promise<number | null>((resolve) =>
     child.once("exit", resolve),
   );
@@ -469,10 +563,10 @@ test("server shutdown releases an open notification subscription and its worker 
   child.on("error", (error) => {
     processError = error;
   });
-  child.stdout.on("data", (chunk: Buffer) => {
+  child.stdout!.on("data", (chunk: Buffer) => {
     output += chunk.toString();
   });
-  child.stderr.on("data", (chunk: Buffer) => {
+  child.stderr!.on("data", (chunk: Buffer) => {
     output += chunk.toString();
   });
   const delay = (milliseconds: number) =>
@@ -501,13 +595,22 @@ test("server shutdown releases an open notification subscription and its worker 
     const first = await reader.read();
 
     assert.match(new TextDecoder().decode(first.value), /event: ready/);
-    child.kill("SIGTERM");
+    const observed = await fetch(`http://127.0.0.1:${port}/agent`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "{}",
+    });
+
+    assert.equal(observed.status, 400);
+    child.send("shutdown-test");
     const outcome = await Promise.race([
       exited,
       delay(2000).then(() => "timeout"),
     ]);
 
     assert.equal(outcome, 0, output);
+    assert.ok(exports.includes("/v1/traces"), output);
+    assert.ok(exports.includes("/v1/metrics"), output);
     // Shutdown already closed the live transport, so cancellation may reject.
     await reader.cancel().catch(() => undefined);
   } finally {
@@ -519,6 +622,8 @@ test("server shutdown releases an open notification subscription and its worker 
       child.kill("SIGKILL");
       await exited;
     }
+
+    await new Promise<void>((resolve) => collector.close(() => resolve()));
   }
 });
 

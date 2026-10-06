@@ -5,7 +5,7 @@ import asyncio
 import httpx
 import pytest
 
-from agent_playground.db.connection import app_engine
+from agent_playground.db.connection import app_engine, prepare_app_store
 from agent_playground.http import app
 from agent_playground.services.sql.validation import check_sql
 
@@ -18,6 +18,28 @@ def test_sql_checks_reject_wildcards_unknown_columns_and_mutations():
     assert not check_sql("SELECT FROM").passed
     assert check_sql("SELECT id, amount FROM orders").passed
     assert check_sql("SELECT COUNT(*) AS total FROM orders").passed
+
+
+def test_sql_parser_complexity_is_a_failed_check():
+    sql = "SELECT " + "(" * 200 + "amount" + ")" * 200 + " FROM orders"
+    checked = check_sql(sql)
+
+    assert not checked.passed
+    assert any("complex" in issue.lower() for issue in checked.issues)
+
+    async def run():
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://demo"
+        ) as client:
+            response = await client.post("/sql-demo/check", json={"sql": sql})
+            assert response.status_code == 200
+            assert not response.json()["passed"]
+            submitted = await client.post(
+                "/sql-demo/submit", json={"id": "complex", "sql": sql}
+            )
+            assert submitted.status_code == 422
+
+    asyncio.run(run())
 
 
 def test_http_generation_validation_and_idempotent_receipts(
@@ -58,6 +80,7 @@ def test_http_generation_validation_and_idempotent_receipts(
 
     monkeypatch.setenv("APP_DATABASE_URL", postgres_database_url)
     app_engine.cache_clear()
+    prepare_app_store()
 
     try:
         asyncio.run(run())

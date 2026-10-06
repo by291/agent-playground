@@ -47,6 +47,13 @@ def check_sql(sql: str) -> SqlCheck:
                 )
 
         qualify(query, dialect="postgres", schema=ORDERS_SCHEMA)
+    except RecursionError:
+        return SqlCheck(
+            passed=False,
+            issues=[
+                "The query is too complex to validate. Simplify nested expressions."
+            ],
+        )
     except (ParseError, OptimizeError) as error:
         return SqlCheck(passed=False, issues=[str(error)])
 

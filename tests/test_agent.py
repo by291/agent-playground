@@ -7,6 +7,7 @@ from typing import Any, cast, override
 from uuid import uuid4
 
 import pytest
+from aegra_api.utils.event_loop import selector_loop_factory
 from langchain_core.callbacks.manager import AsyncCallbackManagerForLLMRun
 from langchain_core.language_models.fake_chat_models import FakeMessagesListChatModel
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
@@ -367,7 +368,7 @@ def test_postgres_checkpoint_survives_graph_recreation(postgres_database_url: st
 
         assert user_turns == ["First turn", "Second turn"]
 
-    asyncio.run(check(postgres_database_url))
+    asyncio.run(check(postgres_database_url), loop_factory=selector_loop_factory)
 
 
 @pytest.mark.parametrize("exit_code", [0, 7])

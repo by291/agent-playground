@@ -117,11 +117,12 @@ test("uploads preserve bytes, reject cross-conversation reads and disappear afte
     1,
   );
   await cleanupDeletedSkillFiles();
-  assert.equal(
-    (await database.db.select().from(skillFiles).where(eq(skillFiles.id, id)))
-      .length,
-    0,
-  );
+  const [tombstone] = await database.db
+    .select()
+    .from(skillFiles)
+    .where(eq(skillFiles.id, id));
+
+  assert.ok(tombstone!.objectDeletedAt);
   const objects = await s3.send(
     new ListObjectsV2Command({
       Bucket: "skill-tests",
@@ -227,6 +228,130 @@ test("failed S3 upload is unreadable and can be retried with the same file ID", 
   );
 });
 
+test("failed first attachments retain retry identity without appearing in history before admission", async () => {
+  const threadId = randomUUID();
+  const id = randomUUID();
+  const request = () =>
+    app.request(`/conversations/${threadId}/files`, {
+      method: "POST",
+      headers: { "X-Filename": "first.txt", "X-File-Id": id },
+      body: "recoverable attachment",
+    });
+  const failure = vi
+    .spyOn(S3Client.prototype, "send")
+    .mockRejectedValueOnce(new Error("Storage offline"));
+
+  try {
+    assert.equal((await request()).status, 503);
+  } finally {
+    failure.mockRestore();
+  }
+
+  const history = async () => {
+    const response = await app.request("/conversations");
+
+    return (await response.json()) as {
+      conversations: { threadId: string; title: string }[];
+    };
+  };
+
+  assert.equal(
+    (await history()).conversations.some((row) => row.threadId === threadId),
+    false,
+  );
+  assert.equal((await request()).status, 201);
+  assert.equal(
+    (await history()).conversations.some((row) => row.threadId === threadId),
+    false,
+  );
+  const { admitRun } = await import("./run-store");
+  const message = {
+    id: randomUUID(),
+    role: "user" as const,
+    content: "Read the attachment",
+  };
+  const requestInput = {
+    threadId,
+    runId: randomUUID(),
+    messages: [message],
+    tools: [],
+    context: [],
+    state: {},
+  };
+
+  await admitRun({
+    threadId,
+    runId: requestInput.runId,
+    messageId: message.id,
+    request: requestInput,
+    userMessage: message,
+    isResume: false,
+  });
+  assert.equal(
+    (await history()).conversations.find((row) => row.threadId === threadId)
+      ?.title,
+    "Read the attachment",
+  );
+});
+
+test("cleanup finds an upload that commits after its timeout and the first deletion pass", async () => {
+  const threadId = randomUUID();
+  const id = randomUUID();
+  const store = await import("../storage/object-store");
+  const originalPut = store.putObject;
+  let commitRemoteUpload!: () => Promise<void>;
+  const timeout = vi
+    .spyOn(store, "putObject")
+    .mockImplementationOnce((key, data) => {
+      // The caller sees a timeout while the accepted remote PUT remains in flight.
+      commitRemoteUpload = () => originalPut(key, data);
+
+      return Promise.reject(new Error("Remote PUT response timed out"));
+    });
+
+  try {
+    const response = await app.request(`/conversations/${threadId}/files`, {
+      method: "POST",
+      headers: { "X-Filename": "late.txt", "X-File-Id": id },
+      body: "late remote commit",
+    });
+
+    assert.equal(response.status, 503);
+  } finally {
+    timeout.mockRestore();
+  }
+
+  const { skillFiles } = await import("../db/skill-file-schema");
+  const [metadata] = await database.db
+    .select()
+    .from(skillFiles)
+    .where(eq(skillFiles.id, id));
+  const { deleteConversation } = await import("./management");
+  const { cleanupDeletedSkillFiles } = await import("./skill-file-cleanup");
+
+  await deleteConversation(threadId);
+  await cleanupDeletedSkillFiles();
+  await commitRemoteUpload();
+  const lateObject = await s3.send(
+    new ListObjectsV2Command({
+      Bucket: "skill-tests",
+      Prefix: metadata!.objectKey,
+    }),
+  );
+
+  assert.equal(lateObject.KeyCount, 1);
+  await cleanupDeletedSkillFiles();
+  const cleaned = await s3.send(
+    new ListObjectsV2Command({
+      Bucket: "skill-tests",
+      Prefix: metadata!.objectKey,
+    }),
+  );
+
+  assert.equal(cleaned.KeyCount, 0);
+  assert.equal((await upload(threadId)).response.status, 404);
+});
+
 test("empty file downloads preserve zero bytes", async () => {
   const threadId = randomUUID();
   const { id, response } = await upload(threadId, "empty.txt", "");
@@ -273,15 +398,12 @@ test("one denied S3 deletion does not block other objects", async () => {
     interceptor.mockRestore();
   }
 
-  assert.equal(
-    (
-      await database.db
-        .select()
-        .from(skillFiles)
-        .where(eq(skillFiles.id, allowed!.id))
-    ).length,
-    0,
-  );
+  const [removed] = await database.db
+    .select()
+    .from(skillFiles)
+    .where(eq(skillFiles.id, allowed!.id));
+
+  assert.ok(removed!.objectDeletedAt);
   const [remaining] = await database.db
     .select()
     .from(skillFiles)

@@ -247,6 +247,18 @@ test("pagination reaches old conversations once even when timestamps tie", async
       createdAt: timestamp,
     })),
   );
+  await database.db.insert(schema.conversationMessages).values(
+    Array.from({ length: 65 }, (_, index) => ({
+      threadId: `page-${String(index).padStart(3, "0")}`,
+      messageId: `page-message-${index}`,
+      submitSeq: 1,
+      message: {
+        id: `page-message-${index}`,
+        role: "user" as const,
+        content: "Saved legacy discussion",
+      },
+    })),
+  );
   await database.db.execute(sql`
     UPDATE conversations SET updated_at = ${timestamp} WHERE thread_id LIKE 'page-%'
   `);

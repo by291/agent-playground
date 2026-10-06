@@ -19,6 +19,7 @@ export const skillFiles = pgTable(
     objectKey: text("object_key").notNull(),
     sha256: text("sha256").notNull(),
     ready: boolean("ready").notNull().default(false),
+    objectDeletedAt: timestamp("object_deleted_at", { withTimezone: true }),
     cleanupAttemptedAt: timestamp("cleanup_attempted_at", {
       withTimezone: true,
     }),

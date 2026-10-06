@@ -69,10 +69,11 @@ def worker(tmp_path: Path) -> Iterator[tuple[str, list[Span]]]:
         daemon=True,
     ).start()
     config = tmp_path / "aegra.json"
+    graph_path = Path(
+        os.path.relpath(ROOT / "tests/fixtures/trace_agent.py", config.parent)
+    ).as_posix()
 
-    config.write_text(
-        json.dumps({"graphs": {"agent": f"{ROOT}/tests/fixtures/trace_agent.py:graph"}})
-    )
+    config.write_text(json.dumps({"graphs": {"agent": f"{graph_path}:graph"}}))
     log_path = tmp_path / "aegra.log"
 
     try:
@@ -116,6 +117,8 @@ def worker(tmp_path: Path) -> Iterator[tuple[str, list[Span]]]:
                     "-m",
                     "uvicorn",
                     "aegra_api.main:app",
+                    "--loop",
+                    "aegra_api.utils.event_loop:selector_loop_factory",
                     "--host",
                     "127.0.0.1",
                     "--port",

@@ -20,3 +20,10 @@ class ReportEvent(BaseModel):
     progress: int
     result: dict[str, Any] | None = None
     error: str | None = None
+
+
+class ReportJobStatus(BaseModel):
+    job_id: str = Field(alias="jobId")
+    status: Literal["queued"] = "queued"
+    task: str
+    outcome: Literal["succeeded", "failed"]

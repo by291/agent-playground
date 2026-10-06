@@ -1,4 +1,3 @@
-import { timingSafeEqual } from "node:crypto";
 import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import {
@@ -10,26 +9,15 @@ import {
   registerExternalTask,
   updateExternalTask,
 } from "../conversation/external-tasks";
+import { workflowAuth } from "./workflow-auth";
 
 export const externalTaskRoutes = new Hono();
 
 externalTaskRoutes.post(
   "/internal/external-tasks",
+  workflowAuth("Invalid workflow credential"),
   bodyLimit({ maxSize: 16384 }),
   async (context) => {
-    const expected = Buffer.from(process.env.WORKFLOW_API_TOKEN ?? "");
-    const supplied = Buffer.from(
-      context.req.header("Authorization")?.replace(/^Bearer /, "") ?? "",
-    );
-
-    if (
-      !expected.length ||
-      expected.length !== supplied.length ||
-      !timingSafeEqual(expected, supplied)
-    ) {
-      return context.json({ error: "Invalid workflow credential" }, 401);
-    }
-
     const parsed = externalTaskRegistrationSchema.safeParse(
       await context.req.json().catch(() => null),
     );

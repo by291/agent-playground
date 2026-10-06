@@ -8,6 +8,8 @@ import { logger } from "./observability/logger";
 
 import { startSkillFileCleanup } from "./conversation/skill-file-cleanup.js";
 import { closeObjectStore } from "./storage/object-store.js";
+import { shutdownTelemetry } from "./observability/bootstrap.js";
+import { closeConversationChanges } from "./conversation/change-subscription.js";
 
 const port = Number(process.env.SERVER_PORT ?? 3000);
 
@@ -39,14 +41,43 @@ async function shutdown() {
   });
 
   server.closeAllConnections();
-  await Promise.all([
+  const failures: unknown[] = [];
+  const stopped = await Promise.allSettled([
     workerStopped,
     serverClosed,
     stopFileCleanup(),
     stopKnowledgeCleanup(),
+    closeConversationChanges(),
   ]);
-  closeObjectStore();
-  await db.$client.end();
+
+  for (const result of stopped) {
+    if (result.status === "rejected") {
+      failures.push(result.reason);
+    }
+  }
+
+  try {
+    closeObjectStore();
+  } catch (error) {
+    failures.push(error);
+  }
+
+  try {
+    await db.$client.end();
+  } catch (error) {
+    failures.push(error);
+  }
+
+  // Export the work produced while draining every application resource.
+  try {
+    await shutdownTelemetry();
+  } catch (error) {
+    failures.push(error);
+  }
+
+  if (failures.length) {
+    throw new AggregateError(failures, "Server resources could not be closed");
+  }
 }
 
 for (const signal of ["SIGINT", "SIGTERM"] as const) {

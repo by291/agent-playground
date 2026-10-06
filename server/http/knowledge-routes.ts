@@ -1,4 +1,3 @@
-import { timingSafeEqual } from "node:crypto";
 import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { HTTPException } from "hono/http-exception";
@@ -12,6 +11,7 @@ import {
   uploadDocument,
 } from "../knowledge/documents";
 import { logger } from "../observability/logger";
+import { workflowAuth } from "./workflow-auth";
 
 export const knowledgeRoutes = new Hono();
 
@@ -29,22 +29,10 @@ knowledgeRoutes.onError((error, context) => {
   return context.json({ error: "Document storage is unavailable" }, 503);
 });
 
-knowledgeRoutes.use("/internal/knowledge/*", async (context, next) => {
-  const expected = Buffer.from(process.env.WORKFLOW_API_TOKEN ?? "");
-  const supplied = Buffer.from(
-    context.req.header("Authorization")?.replace(/^Bearer /, "") ?? "",
-  );
-
-  if (
-    !expected.length ||
-    expected.length !== supplied.length ||
-    !timingSafeEqual(expected, supplied)
-  ) {
-    return context.json({ error: "Invalid application credential" }, 401);
-  }
-
-  await next();
-});
+knowledgeRoutes.use(
+  "/internal/knowledge/*",
+  workflowAuth("Invalid application credential"),
+);
 
 knowledgeRoutes.get("/api/knowledge/documents", async (context) =>
   context.json(await listDocuments()),

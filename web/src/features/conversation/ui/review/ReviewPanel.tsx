@@ -77,7 +77,8 @@ export function ReviewPanel({
         .filter(Boolean),
     }));
 
-    void onReview(responses);
+    // The session displays submission errors; retain the review edits for retry.
+    void onReview(responses).catch(() => undefined);
   }
 
   function choose(index: number, decision: "approve" | "reject") {

@@ -345,7 +345,8 @@ test("reduced-motion preferences show live output immediately and release the sc
   let matches = false;
   const media = new EventTarget();
 
-  vi.stubGlobal("matchMedia", () => Object.assign(media, { matches }));
+  Object.defineProperty(media, "matches", { get: () => matches });
+  vi.stubGlobal("matchMedia", () => media);
   const text = "Read this without delay. ".repeat(30).trim();
   const page = render(
     createElement(MarkdownMessage, { text, streaming: true }),

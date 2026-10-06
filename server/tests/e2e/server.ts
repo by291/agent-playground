@@ -84,6 +84,9 @@ function stop() {
         await closeServer(upstream);
       } finally {
         try {
+          await (
+            await import("../../conversation/change-subscription")
+          ).closeConversationChanges();
           await database?.db.$client.end();
         } finally {
           try {

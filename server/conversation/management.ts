@@ -1,7 +1,11 @@
-import { and, asc, desc, eq, isNull, lt, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, exists, isNull, lt, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "../db/database";
-import { conversationRuns, conversations } from "../db/schema";
+import {
+  conversationMessages,
+  conversationRuns,
+  conversations,
+} from "../db/schema";
 import { isRunActive, type RunStatus } from "../../shared/run-status";
 import { SubmissionError } from "./errors";
 
@@ -45,6 +49,11 @@ export async function listConversations(
     .where(eq(conversationRuns.threadId, conversations.threadId))
     .orderBy(desc(conversationRuns.submitSeq))
     .limit(1);
+  // Upload intents reserve identities before admission; legacy messages need no run row.
+  const savedMessages = db
+    .select({ id: conversationMessages.messageId })
+    .from(conversationMessages)
+    .where(eq(conversationMessages.threadId, conversations.threadId));
   const rows = await db
     .select({
       threadId: conversations.threadId,
@@ -54,7 +63,9 @@ export async function listConversations(
       status: sql<RunStatus | null>`(${latestStatus})`,
     })
     .from(conversations)
-    .where(and(isNull(conversations.deletedAt), boundary))
+    .where(
+      and(isNull(conversations.deletedAt), exists(savedMessages), boundary),
+    )
     .orderBy(desc(conversations.updatedAt), desc(conversations.threadId))
     .limit(pageSize + 1);
   const page = rows.slice(0, pageSize);

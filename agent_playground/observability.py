@@ -1,6 +1,6 @@
 """Restore the server's persisted trace context around one graph execution."""
 
-from collections.abc import Iterator
+from collections.abc import Generator
 from contextlib import contextmanager
 
 from langchain_core.runnables import RunnableConfig
@@ -13,7 +13,7 @@ _tracer = trace.get_tracer("agent-playground")
 
 
 @contextmanager
-def execution_trace(config: RunnableConfig) -> Iterator[None]:
+def execution_trace(config: RunnableConfig) -> Generator[None]:
     metadata = config.get("metadata", {})
     raw_carrier = metadata.get("otel_trace_context")
     carrier: dict[str, str] = (

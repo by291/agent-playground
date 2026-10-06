@@ -1,0 +1,1 @@
+ALTER TABLE "skill_files" ADD COLUMN "object_deleted_at" timestamp with time zone;

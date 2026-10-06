@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import assert from "node:assert/strict";
-import { createElement, useState } from "react";
+import { createElement, useState, type ReactNode } from "react";
 import { expect, onTestFinished, test, vi } from "vitest";
 import { act, fireEvent, render, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -10,6 +10,23 @@ import { Composer } from "./Composer";
 import { newConversation, type ConversationReference } from "../model/storage";
 
 const threadId = "attachment-test-thread";
+
+function acceptedResponse(init: RequestInit | undefined) {
+  const input = JSON.parse(init?.body as string) as {
+    threadId: string;
+    runId: string;
+  };
+  const events = ["RUN_STARTED", "RUN_FINISHED"]
+    .map(
+      (type) =>
+        `data: ${JSON.stringify({ type, ...input, messages: undefined, state: undefined, tools: undefined, context: undefined })}\n\n`,
+    )
+    .join("");
+
+  return new Response(events, {
+    headers: { "Content-Type": "text/event-stream" },
+  });
+}
 
 function Draft() {
   const [prompt, setPrompt] = useState("");
@@ -23,6 +40,7 @@ function Draft() {
 function page(
   conversation: ConversationReference = { threadId, empty: true, fresh: true },
   onThreadCreated?: (threadId: string) => void,
+  draft: ReactNode = createElement(Draft),
 ) {
   const client = new QueryClient();
 
@@ -35,7 +53,7 @@ function page(
       createElement(ConversationProvider, {
         conversation,
         ...(onThreadCreated ? { onThreadCreated } : {}),
-        children: createElement(Draft),
+        children: draft,
       }),
     ),
   );
@@ -74,9 +92,7 @@ test("a draft allocates its thread only on send and retries uploads with the sam
     if (url === "/agent") {
       submitted = JSON.parse(init?.body as string) as typeof submitted;
 
-      return Promise.resolve(
-        new Response("", { headers: { "Content-Type": "text/event-stream" } }),
-      );
+      return Promise.resolve(acceptedResponse(init));
     }
 
     return Promise.resolve(new Response(null, { status: 404 }));
@@ -173,9 +189,7 @@ test("successful attachment upload includes its file ID in the submitted user me
     if (url === "/agent") {
       submitted = JSON.parse(init?.body as string) as typeof submitted;
 
-      return Promise.resolve(
-        new Response("", { headers: { "Content-Type": "text/event-stream" } }),
-      );
+      return Promise.resolve(acceptedResponse(init));
     }
 
     return Promise.resolve(new Response(null, { status: 404 }));
@@ -248,3 +262,323 @@ test("a failed upload keeps sibling uploads owned until unmount aborts them", as
   view.unmount();
   assert.equal(signals[1]!.aborted, true);
 });
+
+test("a failed submission journal retains the prompt and uploaded attachment for retry", async () => {
+  const requests: string[] = [];
+
+  vi.stubGlobal("fetch", (url: string, init?: RequestInit) => {
+    requests.push(url);
+
+    if (url === "/agent-info") {
+      return Promise.resolve(Response.json({ model: "test-model" }));
+    }
+
+    return Promise.resolve(
+      Response.json(
+        {
+          id: new Headers(init?.headers).get("X-File-Id"),
+          threadId,
+          name: "orders.csv",
+          size: 9,
+        },
+        { status: 201 },
+      ),
+    );
+  });
+  vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+    throw new DOMException("Quota exceeded", "QuotaExceededError");
+  });
+  const view = page();
+
+  fireEvent.change(view.getByLabelText("Choose files"), {
+    target: { files: [new File(["amount\n20"], "orders.csv")] },
+  });
+  fireEvent.change(view.getByRole("textbox", { name: "Message" }), {
+    target: { value: "Keep this draft" },
+  });
+  fireEvent.click(view.getByRole("button", { name: "Send message" }));
+  await waitFor(() =>
+    expect(view.getByRole("alert")).toHaveTextContent(
+      "Cannot save this submission",
+    ),
+  );
+  expect(view.getByRole("textbox", { name: "Message" })).toHaveValue(
+    "Keep this draft",
+  );
+  expect(view.getByText("orders.csv")).toBeInTheDocument();
+  expect(requests).not.toContain("/agent");
+});
+
+test("a rejected admission retains the draft and displays the failure", async () => {
+  vi.stubGlobal("fetch", (url: string) =>
+    Promise.resolve(
+      url === "/agent-info"
+        ? Response.json({ model: "test-model" })
+        : Response.json({ error: "Admission rejected" }, { status: 400 }),
+    ),
+  );
+  const view = page();
+
+  fireEvent.change(view.getByRole("textbox", { name: "Message" }), {
+    target: { value: "Keep rejected input" },
+  });
+  fireEvent.click(view.getByRole("button", { name: "Send message" }));
+  await waitFor(() =>
+    expect(view.getByRole("alert")).toHaveTextContent(/400|Admission rejected/),
+  );
+  expect(view.getByRole("textbox", { name: "Message" })).toHaveValue(
+    "Keep rejected input",
+  );
+});
+
+test.each([false, true])(
+  "confirmed admission clears only the submitted draft while streaming (new draft: %s)",
+  async (replaceDraft) => {
+    let stream!: ReadableStreamDefaultController<Uint8Array>;
+    let input: { threadId: string; runId: string } | undefined;
+
+    vi.stubGlobal("fetch", (url: string, init?: RequestInit) => {
+      if (url === "/agent-info") {
+        return Promise.resolve(Response.json({ model: "test-model" }));
+      }
+
+      if (url === "/agent") {
+        input = JSON.parse(init!.body as string) as typeof input;
+
+        return Promise.resolve(
+          new Response(
+            new ReadableStream<Uint8Array>({
+              start(controller) {
+                stream = controller;
+              },
+            }),
+            {
+              headers: { "Content-Type": "text/event-stream" },
+            },
+          ),
+        );
+      }
+
+      return Promise.resolve(new Response(null, { status: 404 }));
+    });
+
+    function ExternalDraft() {
+      const [prompt, setPrompt] = useState("");
+
+      return createElement(
+        "div",
+        null,
+        createElement(
+          "button",
+          { onClick: () => setPrompt("A newer draft") },
+          "Replace draft",
+        ),
+        createElement(Composer, { prompt, onPromptChange: setPrompt }),
+      );
+    }
+
+    const view = page(undefined, undefined, createElement(ExternalDraft));
+
+    fireEvent.change(view.getByRole("textbox", { name: "Message" }), {
+      target: { value: "Wait for admission" },
+    });
+    fireEvent.click(view.getByRole("button", { name: "Send message" }));
+    await waitFor(() => expect(input).toBeDefined());
+    expect(view.getByRole("textbox", { name: "Message" })).toHaveValue(
+      "Wait for admission",
+    );
+
+    if (replaceDraft) {
+      fireEvent.click(view.getByRole("button", { name: "Replace draft" }));
+    }
+
+    await act(async () => {
+      stream.enqueue(
+        new TextEncoder().encode(
+          `data: ${JSON.stringify({ type: "RUN_STARTED", ...input })}\n\n`,
+        ),
+      );
+      await Promise.resolve();
+    });
+    await waitFor(() =>
+      expect(view.getByRole("textbox", { name: "Message" })).toHaveValue(
+        replaceDraft ? "A newer draft" : "",
+      ),
+    );
+    expect(
+      view.getByRole("button", { name: "Agent is responding" }),
+    ).toBeDisabled();
+    await act(async () => {
+      stream.enqueue(
+        new TextEncoder().encode(
+          `data: ${JSON.stringify({ type: "RUN_FINISHED", ...input })}\n\n`,
+        ),
+      );
+      stream.close();
+      await Promise.resolve();
+    });
+  },
+);
+
+test("attachment references count toward the workflow feedback limit and leave the draft intact", async () => {
+  const requests: string[] = [];
+  const feedback = "x".repeat(9980);
+
+  vi.stubGlobal("fetch", (url: string, init?: RequestInit) => {
+    requests.push(url);
+
+    if (url === "/agent-info") {
+      return Promise.resolve(Response.json({ model: "test-model" }));
+    }
+
+    if (url.endsWith("/files")) {
+      return Promise.resolve(
+        Response.json(
+          {
+            id: new Headers(init?.headers).get("X-File-Id"),
+            threadId,
+            name: "orders.csv",
+            size: 9,
+          },
+          { status: 201 },
+        ),
+      );
+    }
+
+    return Promise.resolve(
+      Response.json({
+        messages: [],
+        outputs: [],
+        runs: [{ runId: "initial", status: "interrupted" }],
+        interrupts: [
+          {
+            id: "review",
+            reason: "Review output",
+            metadata: {
+              langgraph: {
+                raw: {
+                  kind: "workflow_review",
+                  workflowCallId: "call",
+                  revision: 1,
+                  round: 1,
+                  outputStepId: "output",
+                  canAccept: true,
+                },
+              },
+            },
+          },
+        ],
+      }),
+    );
+  });
+  const view = page({ threadId });
+
+  await waitFor(() =>
+    expect(view.getByRole("textbox", { name: "Message" })).toBeEnabled(),
+  );
+  fireEvent.change(view.getByLabelText("Choose files"), {
+    target: { files: [new File(["amount\n20"], "orders.csv")] },
+  });
+  fireEvent.change(view.getByRole("textbox", { name: "Message" }), {
+    target: { value: feedback },
+  });
+  fireEvent.click(view.getByRole("button", { name: "Send message" }));
+  await waitFor(() =>
+    expect(view.getByRole("alert")).toHaveTextContent(
+      /10,000 characters, including attachment references/,
+    ),
+  );
+  expect(view.getByRole("textbox", { name: "Message" })).toHaveValue(feedback);
+  expect(view.getByText("orders.csv")).toBeInTheDocument();
+  expect(requests).not.toContain("/agent");
+});
+
+test.each(["running", "completed", "submission_unknown"] as const)(
+  "lost admission response keeps the draft until recovery confirms admission (%s)",
+  async (status) => {
+    let input:
+      | {
+          threadId: string;
+          runId: string;
+          messages: { id: string; role: string; content: string }[];
+        }
+      | undefined;
+    let resolveSnapshot: ((response: Response) => void) | undefined;
+    let submissions = 0;
+
+    vi.stubGlobal("fetch", (url: string, init?: RequestInit) => {
+      if (url === "/agent-info") {
+        return Promise.resolve(Response.json({ model: "test-model" }));
+      }
+
+      if (url.endsWith("/files")) {
+        return Promise.resolve(
+          Response.json(
+            {
+              id: new Headers(init?.headers).get("X-File-Id"),
+              threadId,
+              name: "orders.csv",
+              size: 9,
+            },
+            { status: 201 },
+          ),
+        );
+      }
+
+      if (url === "/agent") {
+        submissions += 1;
+        input = JSON.parse(init!.body as string) as typeof input;
+
+        return Promise.reject(new TypeError("Admission response was lost"));
+      }
+
+      return new Promise<Response>((resolve) => {
+        resolveSnapshot = resolve;
+      });
+    });
+    const view = page();
+
+    fireEvent.change(view.getByLabelText("Choose files"), {
+      target: { files: [new File(["amount\n20"], "orders.csv")] },
+    });
+    fireEvent.change(view.getByRole("textbox", { name: "Message" }), {
+      target: { value: "Keep until confirmed" },
+    });
+    fireEvent.click(view.getByRole("button", { name: "Send message" }));
+    await waitFor(() =>
+      expect(view.getByRole("alert")).toHaveTextContent(/response was lost/),
+    );
+    expect(view.getByRole("textbox", { name: "Message" })).toHaveValue(
+      "Keep until confirmed",
+    );
+    await waitFor(() => expect(resolveSnapshot).toBeDefined());
+    await act(async () => {
+      resolveSnapshot!(
+        Response.json({
+          messages: input!.messages,
+          outputs: [],
+          interrupts: [],
+          runs: [{ runId: input!.runId, status }],
+        }),
+      );
+      await Promise.resolve();
+    });
+
+    if (status === "submission_unknown") {
+      expect(view.getByRole("textbox", { name: "Message" })).toHaveValue(
+        "Keep until confirmed",
+      );
+      expect(view.getByText("orders.csv")).toBeInTheDocument();
+    } else {
+      await waitFor(() =>
+        expect(view.getByRole("textbox", { name: "Message" })).toHaveValue(""),
+      );
+      await waitFor(() =>
+        expect(view.queryByText("orders.csv")).not.toBeInTheDocument(),
+      );
+      expect(view.queryByRole("alert")).not.toBeInTheDocument();
+    }
+
+    expect(submissions).toBe(1);
+  },
+);

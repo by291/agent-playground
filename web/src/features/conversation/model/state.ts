@@ -33,7 +33,7 @@ export interface ConversationState {
     snapshot: string | null;
     output: string | null;
   };
-  send: (content: string) => Promise<void>;
+  send: (content: string, onAccepted?: () => void) => Promise<void>;
   clearActivity: () => void;
   reviewPlan: (responses: PlanReviewResponse[]) => Promise<void>;
   reviewWorkflow: (

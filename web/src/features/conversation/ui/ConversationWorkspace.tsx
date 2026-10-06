@@ -7,6 +7,8 @@ import {
   useEffectEvent,
   useRef,
   useState,
+  lazy,
+  Suspense,
   type CSSProperties,
 } from "react";
 import { usePanelRef } from "react-resizable-panels";
@@ -27,7 +29,6 @@ import { Button } from "@/components/ui/button";
 import { ChatPane } from "@/features/conversation/ui/ChatPane";
 import { Composer } from "@/features/conversation/ui/Composer";
 import { useConversation } from "@/features/conversation/ConversationProvider";
-import { ActivityPanel } from "@/features/conversation/ui/ActivityPanel";
 import { ConversationActionsProvider } from "./ConversationActions";
 import { Sidebar } from "@/features/conversation/ui/Sidebar";
 import { isEmpty, isRunning, isRestoring } from "../model/selectors";
@@ -35,6 +36,11 @@ import { ReplyPresentationProvider } from "./ReplyPresentation";
 import type { ConversationHistory } from "../model/useConversationHistory";
 
 const collapsedStorageKey = "agent-playground-sidebar-collapsed";
+const ActivityPanel = import.meta.env.DEV
+  ? lazy(async () => ({
+      default: (await import("./ActivityPanel")).ActivityPanel,
+    }))
+  : null;
 
 function loadSidebarCollapsed() {
   try {
@@ -168,7 +174,7 @@ function WorkspaceLayout({
     savedTitle ??
     (empty ? "New conversation" : "Current conversation");
   const current = { threadId: threadId ?? "", title, status, busy };
-  const showActivity = development && activityOpen;
+  const showActivity = import.meta.env.DEV && development && activityOpen;
   const sidebarMinimum = isMobile ? 0 : 64;
   const desktopSidebarWidth = open ? sidebarSize.size : 64;
   const sidebarWidth = isMobile ? 0 : desktopSidebarWidth;
@@ -278,7 +284,7 @@ function WorkspaceLayout({
             </div>
 
             <div className="flex shrink-0 items-center gap-1.5 sm:gap-3">
-              {development && (
+              {import.meta.env.DEV && development && (
                 <>
                   <Tooltip>
                     <TooltipTrigger asChild>
@@ -362,7 +368,7 @@ function WorkspaceLayout({
               </main>
             </ResizablePanel>
             {dockedActivity && <ResizableHandle aria-label="Activity width" />}
-            {development && (
+            {import.meta.env.DEV && development && ActivityPanel && (
               <ResizablePanel
                 id="activity-panel"
                 panelRef={activityPanel}
@@ -378,7 +384,12 @@ function WorkspaceLayout({
                   inert={!showActivity}
                   aria-hidden={!showActivity}
                 >
-                  <ActivityPanel threadId={threadId} onClose={closeActivity} />
+                  <Suspense fallback={null}>
+                    <ActivityPanel
+                      threadId={threadId}
+                      onClose={closeActivity}
+                    />
+                  </Suspense>
                 </div>
               </ResizablePanel>
             )}

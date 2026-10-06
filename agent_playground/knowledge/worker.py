@@ -10,6 +10,7 @@ from uuid import uuid4
 import httpx
 
 from agent_playground.config import app_api_url
+from agent_playground.db.async_operations import run_database_operation
 from agent_playground.db.knowledge import IndexJob, KnowledgeRepository, publish_index
 from agent_playground.knowledge.documents import extract_document
 from agent_playground.knowledge.embeddings import validate_vectors
@@ -32,7 +33,7 @@ async def index_job(
     source_client: httpx.AsyncClient,
 ) -> bool:
     async def check_ownership() -> None:
-        if not await asyncio.to_thread(repository.renew, job):
+        if not await run_database_operation(repository.renew, job):
             raise SupersededIndexJob
 
     async def keep_lease() -> None:
@@ -135,8 +136,8 @@ async def run_knowledge_worker() -> None:
     async with httpx.AsyncClient(timeout=30) as client:
         while True:
             try:
-                repository = await asyncio.to_thread(KnowledgeRepository)
-                job = await asyncio.to_thread(repository.claim)
+                repository = await run_database_operation(KnowledgeRepository)
+                job = await run_database_operation(repository.claim)
 
                 if job:
                     try:
@@ -145,7 +146,7 @@ async def run_knowledge_worker() -> None:
                         )
                     except Exception as error:
                         message = indexing_error_message(error)
-                        await asyncio.to_thread(repository.fail, job, message)
+                        await run_database_operation(repository.fail, job, message)
                         logger.exception(
                             "Knowledge indexing failed for %s: %s",
                             job.id,

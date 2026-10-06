@@ -1,7 +1,8 @@
 """Workflow output DDL and the shared conversation table contracts.
 
-Python owns workflow_outputs and sql_demo_submissions. The TypeScript server
-owns conversations and conversation_runs; their columns here support queries.
+Python owns workflow_outputs, sql_demo_submissions and report_demo_jobs.
+The TypeScript server owns conversations and conversation_runs; their columns
+here support queries.
 """
 
 from sqlalchemy import (
@@ -58,6 +59,19 @@ sql_demo_submissions = Table(
     metadata,
     Column("id", String, primary_key=True),
     Column("sql", Text, nullable=False),
+    Column(
+        "created_at", DateTime(timezone=True), nullable=False, server_default=func.now()
+    ),
+)
+
+report_jobs = Table(
+    "report_demo_jobs",
+    metadata,
+    Column("id", String, primary_key=True),
+    Column("task", Text, nullable=False),
+    Column("callback_token", String, nullable=False),
+    Column("outcome", String, nullable=False),
+    Column("delivered_revision", Integer, nullable=False, server_default="0"),
     Column(
         "created_at", DateTime(timezone=True), nullable=False, server_default=func.now()
     ),

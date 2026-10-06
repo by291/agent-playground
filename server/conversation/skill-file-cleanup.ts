@@ -1,11 +1,37 @@
-import { and, eq, isNotNull, sql } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import { db } from "../db/database";
 import { conversations } from "../db/schema";
 import { skillFiles } from "../db/skill-file-schema";
 import { logger } from "../observability/logger";
-import { deleteObject } from "../storage/object-store";
+import { deleteObject, listObjects } from "../storage/object-store";
+
+let continuationToken: string | undefined;
 
 export async function cleanupDeletedSkillFiles(signal?: AbortSignal) {
+  const failures: unknown[] = [];
+
+  try {
+    // A timed-out PUT may commit after deletion. Retained intents make it discoverable.
+    const page = await listObjects("skill-files/", continuationToken, signal);
+
+    continuationToken = page.continuationToken;
+
+    if (page.keys.length) {
+      await db
+        .update(skillFiles)
+        .set({ objectDeletedAt: null })
+        .where(
+          and(
+            inArray(skillFiles.objectKey, page.keys),
+            sql`EXISTS (SELECT 1 FROM conversations WHERE thread_id = ${skillFiles.threadId} AND deleted_at IS NOT NULL)`,
+          ),
+        );
+    }
+  } catch (error) {
+    continuationToken = undefined;
+    failures.push(error);
+  }
+
   const candidates = await db
     .select({ id: skillFiles.id })
     .from(skillFiles)
@@ -16,12 +42,12 @@ export async function cleanupDeletedSkillFiles(signal?: AbortSignal) {
         isNotNull(conversations.deletedAt),
       ),
     )
+    .where(isNull(skillFiles.objectDeletedAt))
     .orderBy(
       sql`${skillFiles.cleanupAttemptedAt} ASC NULLS FIRST`,
       skillFiles.id,
     )
     .limit(50);
-  const failures: unknown[] = [];
 
   for (const candidate of candidates) {
     if (signal?.aborted) {
@@ -41,7 +67,12 @@ export async function cleanupDeletedSkillFiles(signal?: AbortSignal) {
               isNotNull(conversations.deletedAt),
             ),
           )
-          .where(eq(skillFiles.id, candidate.id))
+          .where(
+            and(
+              eq(skillFiles.id, candidate.id),
+              isNull(skillFiles.objectDeletedAt),
+            ),
+          )
           .for("update");
 
         if (!row) {
@@ -49,7 +80,11 @@ export async function cleanupDeletedSkillFiles(signal?: AbortSignal) {
         }
 
         await deleteObject(row.file.objectKey, signal);
-        await tx.delete(skillFiles).where(eq(skillFiles.id, row.file.id));
+        // Keep the object key so a remote upload that finishes later can be deleted again.
+        await tx
+          .update(skillFiles)
+          .set({ objectDeletedAt: new Date(), cleanupAttemptedAt: new Date() })
+          .where(eq(skillFiles.id, row.file.id));
       });
     } catch (error) {
       failures.push(error);

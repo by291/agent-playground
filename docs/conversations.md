@@ -8,6 +8,10 @@
 
 A conversation appears in history only after its first message is admitted. Its initial title comes from that message, limited to 100 Unicode characters. Welcome suggestions prepare an editable draft; only sending starts the run. Switching conversations resets unsent drafts and unsubmitted review edits.
 
+Attachment upload intents can reserve server-side storage before message admission; those reservations do not appear in history. Previously archived message-only conversations remain visible even when they have no run record.
+
+The composer retains text and selected attachments until admission is confirmed. Upload, validation and critical local-journal failures leave the input available for correction or retry. SQL review feedback over 10,000 characters reports a validation error and preserves the draft.
+
 ## History and management
 
 The sidebar orders conversations by their latest submission, loads older pages at the end and provides explicit retry, rename and delete actions. Opening a saved row restores its transcript, tool process, outputs, pending review and external tasks. Copy `/c/<threadId>` to open a saved discussion in another browser with access to the same server. Refresh, Back and Forward restore the addressed conversation; `/` continues to mean a blank draft. A production web server must serve the SPA entry point for `/c/*`.
@@ -27,9 +31,13 @@ Deletion hides the conversation and prevents new submissions/recovery, retaining
 
 Switching conversations detaches the local stream while the Aegra run continues. Local storage keeps unconfirmed submission identity and empty hints by thread, allowing admission recovery without resending. The list refreshes on accepted runs, recovery, focus and explicit refresh rather than continuously polling.
 
+Retries preserve the original operation identity while admission is uncertain. A definite `400`, `404`, `409` or `413` rejection can release that identity after a fresh snapshot confirms that the run was not admitted, allowing edited input or a current review response. A network error or `5xx` response requires reconciliation before another operation can replace it.
+
 Each conversation has its own Zustand store. Components subscribe to the fields they display, while `HttpAgent` manages the AG-UI stream. TanStack Query fetches and caches server snapshots by thread ID and refreshes after a run ends or the page regains focus. Newly created conversations accept input immediately and enable snapshot fetching after their first submission settles; restored conversations wait for an initial snapshot before accepting input. Two-second polling is enabled only for recovery while the page is focused: unfinished or unknown server runs without a live local stream, failed snapshot requests, a finished local run not yet present in the snapshot, or missing saved A2UI output. Idle conversations and healthy local streams do not poll. Saved conversations subscribe to `/conversations/:threadId/events`; PostgreSQL notifications invalidate their snapshot. SSE reconnect sends `ready` and fetches the full persisted state, and switching conversations closes the previous subscription. Snapshot requests are cancellable. The gateway health indicator refreshes every 30 seconds. The browser persists the thread pointer, an unconfirmed submission and an empty-conversation hint. A new or known empty conversation renders its welcome page immediately on reload; other conversations show a message skeleton while history recovers.
 
 If upstream run creation is unconfirmed, the server checks only the newest Aegra run on the thread. An unconfirmed mapping becomes `submission_unknown`; the UI does not blindly resend. Later recovery can establish that mapping, but a persistently unknown submission needs manual reconciliation. Upstream/database failures return `503`; invalid input and admission conflicts return `400` or `409`.
+
+The SDK does not automatically repeat run-creation requests after a transport error. PostgreSQL change notifications use one shared listener per server process; each stream receives only its conversation's changes. Connection loss closes affected streams, and their normal reconnect/refetch behavior restores saved state.
 
 Snapshots recover saved results rather than every historical AG-UI event. Current output format and legacy compatibility are described in [architecture](architecture.md#a2ui-output-and-presentation).
 

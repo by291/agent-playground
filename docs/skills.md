@@ -47,7 +47,7 @@ Scripts receive current-conversation file IDs through `input_files`, at `/worksp
 
 Internal transfers use `WORKFLOW_API_TOKEN` and `APP_API_URL`. Inputs are checked against conversation ownership; outputs must also belong to an existing run. S3 settings are shared with knowledge documents; see [storage configuration](development.md#s3-compatible-storage). S3 credentials are not sent to the browser or scripts.
 
-Deleting a conversation immediately revokes file downloads. The server attempts S3 cleanup every 30 seconds; failures retain metadata for later passes or restart. Shared knowledge documents have their own lifecycle and survive conversation deletion.
+Deleting a conversation immediately revokes file downloads. The server attempts S3 cleanup every 30 seconds; failures retain metadata for later passes or restart. Successful cleanup retains a metadata tombstone and scans one `skill-files/` object-list page per pass, so uploads that finish remotely after a timeout can be found and deleted again. S3 credentials require list, get, put and delete permissions for these objects. Shared knowledge documents have their own lifecycle and survive conversation deletion.
 
 ## Execution environment and lifecycle
 
