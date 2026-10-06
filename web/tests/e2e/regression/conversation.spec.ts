@@ -149,8 +149,15 @@ test.describe("animated streaming", () => {
     await expect(reply.locator('[data-streamdown="code-block"]')).toBeVisible();
     await expect(reply.locator("code span[style]").first()).toBeVisible();
     await reply.getByTitle("Copy code").click();
+
+    // Native Windows clipboard reads normalize line feeds to CRLF.
     await expect
-      .poll(() => page.evaluate(() => navigator.clipboard.readText()))
+      .poll(async () =>
+        (await page.evaluate(() => navigator.clipboard.readText())).replace(
+          /\r\n/g,
+          "\n",
+        ),
+      )
       .toBe("int main(void) {\n  return 0;\n}\n");
   });
 });

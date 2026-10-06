@@ -13,24 +13,6 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  windows-development:
-    name: Windows development tools
-    runs-on: windows-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v7
-      - uses: pnpm/setup@v3
-        with:
-          runtime: node@26
-          cache: true
-          require-lockfile: true
-      - name: Install GNU Make
-        run: choco install make --no-progress --yes
-      - name: Check environment setup, commands and process cleanup
-        run: node --test scripts/*.test.mjs
-      - name: Check native server migration paths
-        run: pnpm --filter agent-playground-server exec vitest run --project unit db/database.test.ts
-
   android:
     name: Android
     runs-on: ubuntu-latest
@@ -49,7 +31,17 @@ jobs:
           packages: "platform-tools platforms;android-37.1 build-tools;36.0.0"
       - uses: gradle/actions/setup-gradle@v6
         with:
-          cache-provider: basic
+          cache-provider: external
+      - name: Cache Gradle dependencies and build outputs
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('android/**/*.gradle.kts', 'android/gradle.properties', 'android/gradle/libs.versions.toml', 'android/gradle/wrapper/gradle-wrapper.properties') }}-${{ github.sha }}
+          restore-keys: |
+            gradle-${{ runner.os }}-${{ hashFiles('android/**/*.gradle.kts', 'android/gradle.properties', 'android/gradle/libs.versions.toml', 'android/gradle/wrapper/gradle-wrapper.properties') }}-
+            gradle-${{ runner.os }}-
       - name: Check formatting, lint, tests and builds
         run: ./gradlew qualityCheck --no-daemon --console=plain
       - uses: actions/upload-artifact@v5
@@ -64,8 +56,12 @@ jobs:
           retention-days: 14
 
   python:
-    name: Python
-    runs-on: ubuntu-latest
+    name: Python (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
@@ -76,13 +72,25 @@ jobs:
       - run: uv python install 3.12
       - run: uv sync --locked --python 3.12
       - run: uv run pyrefly check
+        if: runner.os == 'Linux'
       - run: uv run ruff check .
+        if: runner.os == 'Linux'
       - run: uv run ruff format --check .
-      - run: uv run pytest
+        if: runner.os == 'Linux'
+      - name: Run Python tests including container integration
+        if: runner.os == 'Linux'
+        run: uv run pytest
+      - name: Run Python tests without container services
+        if: runner.os == 'Windows'
+        run: uv run pytest -m "not integration"
 
   server:
-    name: Server
-    runs-on: ubuntu-latest
+    name: Server (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
@@ -93,12 +101,21 @@ jobs:
           require-lockfile: true
       - run: pnpm --filter agent-playground-server check
       - run: pnpm --filter agent-playground-server lint
-      - run: pnpm --filter agent-playground-server test
+      - run: pnpm --filter agent-playground-server test:unit
+      - run: pnpm --filter agent-playground-server test:integration
+        if: runner.os == 'Linux'
+      - name: Install GNU Make
+        if: runner.os == 'Windows'
+        run: choco install make --no-progress --yes
       - run: pnpm test:dev
 
   web:
-    name: Web
-    runs-on: ubuntu-latest
+    name: Web (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
@@ -108,6 +125,7 @@ jobs:
           cache: true
           require-lockfile: true
       - run: pnpm format:check
+        if: runner.os == 'Linux'
       - run: pnpm --filter agent-playground-web check
       - run: pnpm --filter agent-playground-web lint
       - run: pnpm --filter agent-playground-web test

@@ -91,6 +91,11 @@ class ServerConnectionGateTest {
         granted = false
         compose.activityRule.scenario.moveToState(Lifecycle.State.RESUMED)
 
+        // Host resolution runs on IO, outside Compose's idle tracking.
+        compose.waitUntil {
+            compose.onAllNodesWithText("Open app permissions").fetchSemanticsNodes().size == 1
+        }
+
         compose.onNodeWithText("Connected workspace").assertDoesNotExist()
         compose.onNodeWithText("Open app permissions").assertIsDisplayed()
     }

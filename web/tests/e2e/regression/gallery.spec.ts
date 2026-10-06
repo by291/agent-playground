@@ -50,9 +50,10 @@ test.describe("Select positioning during motion", () => {
       });
 
       await expect(trigger).toBeVisible();
-      await page.evaluate(() => {
-        // Give the browser clock enough room to inspect the final animation frame.
-        document.documentElement.style.setProperty("--motion-panel", "2s");
+      await page.addStyleTag({
+        // Pause from creation so runner delays cannot consume the animation.
+        content:
+          '[data-slot="select-content"][data-state="open"] { animation-play-state: paused !important; }',
       });
 
       if (side === "top") {
@@ -67,6 +68,10 @@ test.describe("Select positioning during motion", () => {
       const menu = page.getByRole("listbox");
 
       await expect(menu).toHaveAttribute("data-side", side);
+      // Radix suppresses the entrance animation until Popper has placed the menu.
+      await expect
+        .poll(() => menu.evaluate((element) => element.getAnimations().length))
+        .toBe(1);
       const shift = await menu.evaluate((element) => {
         const animation = element.getAnimations()[0];
 

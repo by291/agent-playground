@@ -36,15 +36,25 @@ def test_catalog_discovers_metadata_and_reads_only_published_files(tmp_path: Pat
             catalog.read("example", path)
 
 
-def test_catalog_rejects_symlinks_and_invalid_metadata(tmp_path: Path):
+def test_catalog_rejects_symlinks(tmp_path: Path):
     make_catalog(tmp_path)
     root = tmp_path / "skills/example"
-    (root / "references").symlink_to(tmp_path, target_is_directory=True)
+
+    try:
+        (root / "references").symlink_to(tmp_path, target_is_directory=True)
+    except OSError as error:
+        if getattr(error, "winerror", None) == 1314:
+            pytest.skip("Windows requires symlink privileges or Developer Mode")
+
+        raise
 
     with pytest.raises(ValueError, match="symlink"):
         SkillCatalog(tmp_path / "skills")
 
-    (root / "references").unlink()
+
+def test_catalog_rejects_invalid_metadata(tmp_path: Path):
+    make_catalog(tmp_path)
+    root = tmp_path / "skills/example"
     (root / "SKILL.md").write_text("---\nname: wrong\ndescription: test\n---\n")
 
     with pytest.raises(ValueError, match="directory"):

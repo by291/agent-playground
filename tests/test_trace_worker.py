@@ -27,6 +27,7 @@ from testcontainers.community.postgres import PostgresContainer
 from testcontainers.core.container import DockerContainer
 
 ROOT = Path(__file__).resolve().parents[1]
+pytestmark = pytest.mark.integration
 
 
 def free_port() -> int:

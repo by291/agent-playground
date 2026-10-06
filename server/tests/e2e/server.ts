@@ -1,5 +1,7 @@
 import { z } from "zod";
 import { spawn, type ChildProcess } from "node:child_process";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   knowledgeCitationUrl,
   knowledgeSearchSchema,
@@ -388,16 +390,24 @@ async function start() {
     hostname: "127.0.0.1",
     port: 4300,
   }) as Server;
-  const root = new URL("../../..", import.meta.url).pathname;
+
+  const root = fileURLToPath(new URL("../../..", import.meta.url));
+  const python =
+    process.platform === "win32"
+      ? join(root, ".venv", "Scripts", "python.exe")
+      : join(root, ".venv", "bin", "python");
 
   knowledgeProcess = spawn(
-    `${root}/.venv/bin/python`,
+    python,
     [
       "-m",
       "uvicorn",
       "knowledge_server:app",
+      // Match Aegra's psycopg-compatible loop when bypassing its CLI.
+      "--loop",
+      "aegra_api.utils.event_loop:selector_loop_factory",
       "--app-dir",
-      `${root}/tests`,
+      join(root, "tests"),
       "--host",
       "127.0.0.1",
       "--port",

@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, beforeEach, test } from "vitest";
+import { afterAll, beforeAll, beforeEach, test, vi } from "vitest";
 import assert from "node:assert/strict";
 import {
   createServer,
@@ -463,8 +463,12 @@ test("server shutdown releases an open notification subscription and its worker 
   const exited = new Promise<number | null>((resolve) =>
     child.once("exit", resolve),
   );
+  let processError: Error | undefined;
   let output = "";
 
+  child.on("error", (error) => {
+    processError = error;
+  });
   child.stdout.on("data", (chunk: Buffer) => {
     output += chunk.toString();
   });
@@ -475,15 +479,21 @@ test("server shutdown releases an open notification subscription and its worker 
     new Promise<void>((resolve) => setTimeout(resolve, milliseconds));
 
   try {
-    for (
-      let attempt = 0;
-      attempt < 100 && !output.includes("AG-UI server listening");
-      attempt += 1
-    ) {
-      await delay(20);
-    }
+    await vi.waitUntil(
+      () => {
+        if (processError) {
+          throw processError;
+        }
 
-    assert.match(output, /AG-UI server listening/);
+        const terminated = child.exitCode !== null || child.signalCode !== null;
+
+        assert.equal(terminated, false, output);
+
+        return output.includes("AG-UI server listening");
+      },
+      { timeout: 15_000, interval: 20 },
+    );
+
     const stream = await fetch(
       `http://127.0.0.1:${port}/conversations/${task.threadId}/events`,
     );
@@ -501,7 +511,11 @@ test("server shutdown releases an open notification subscription and its worker 
     // Shutdown already closed the live transport, so cancellation may reject.
     await reader.cancel().catch(() => undefined);
   } finally {
-    if (child.exitCode === null && child.signalCode === null) {
+    if (
+      child.pid !== undefined &&
+      child.exitCode === null &&
+      child.signalCode === null
+    ) {
       child.kill("SIGKILL");
       await exited;
     }

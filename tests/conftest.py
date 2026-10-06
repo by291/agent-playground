@@ -11,6 +11,17 @@ from testcontainers.community.postgres import PostgresContainer
 from testcontainers.community.redis import RedisContainer
 
 
+def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
+    # Fixture closures include indirect/autouse dependencies on container services.
+    container_fixtures = {"postgres_container", "embedding_redis_url"}
+
+    for item in items:
+        if isinstance(item, pytest.Function) and container_fixtures.intersection(
+            item.fixturenames
+        ):
+            item.add_marker(pytest.mark.integration)
+
+
 @pytest.fixture(scope="session")
 def embedding_redis_url() -> Iterator[str]:
     with RedisContainer("redis:8-alpine") as redis:

@@ -143,7 +143,9 @@ pnpm test:coverage
 
 Repeat the shuffled run with another seed if shared state changed. Unit/watch server commands exclude Docker integration tests. Coverage uses V8 and writes HTML/LCOV under `server/coverage/` and `web/coverage/`. Browser commands, reports, CI behavior and fixture ownership are documented in the [browser guide](../web/tests/e2e/README.md).
 
-GitHub Actions runs Python, server, web and browser jobs for pull requests and pushes to `main`, cancelling superseded runs. Formatting and strict code conventions are defined in [AGENTS.md](../AGENTS.md) and the checked-in tool configuration.
+GitHub Actions runs Python, server and web tests on both Linux and Windows for pull requests and pushes to `main`, cancelling superseded runs. Windows runs Python tests with `uv run pytest -m "not integration"`, server unit tests, development-tool tests and the web tests/build. Python tests using container fixtures are marked `integration`; tests that create their own containers declare the marker explicitly. A symlink-specific test skips only when the Windows account lacks symlink privileges; metadata validation still runs independently.
+
+Linux additionally runs all Python/server container integration tests, full browser E2E, static formatting checks and Android verification. The PostgreSQL/Redis/S3 images require a Linux Docker daemon; the hosted Windows jobs do not provision one. Native Windows browser E2E remains available locally with Docker Desktop in Linux-container mode. Formatting and strict code conventions are defined in [AGENTS.md](../AGENTS.md) and the checked-in tool configuration.
 
 ## Troubleshooting
 

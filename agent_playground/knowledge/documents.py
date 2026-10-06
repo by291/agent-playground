@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import subprocess
 import sys
 from contextlib import suppress
 from io import BytesIO
@@ -56,18 +57,30 @@ def split_document(name: str, data: bytes) -> list[Document]:
 
 
 async def extract_document(name: str, data: bytes) -> list[Document]:
-    process = await asyncio.create_subprocess_exec(
-        sys.executable,
-        "-m",
-        "agent_playground.knowledge.documents",
-        name,
-        stdin=asyncio.subprocess.PIPE,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
+    # Windows' database-compatible Selector loop cannot manage asyncio subprocesses.
+    starting = asyncio.create_task(
+        asyncio.to_thread(
+            lambda: subprocess.Popen(
+                [sys.executable, "-m", "agent_playground.knowledge.documents", name],
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                creationflags=subprocess.CREATE_NO_WINDOW
+                if sys.platform == "win32"
+                else 0,
+            ),
+        )
     )
+    communication: asyncio.Task[tuple[bytes, bytes]] | None = None
 
     try:
-        output, _stderr = await process.communicate(data)
+        process = await asyncio.shield(starting)
+        communication = asyncio.create_task(
+            asyncio.to_thread(process.communicate, data)
+        )
+
+        # Keep pipe draining alive so cancellation can kill and reap the child.
+        output, _stderr = await asyncio.shield(communication)
 
         if process.returncode != 0:
             raise ValueError("Document extraction failed; check the document format")
@@ -79,12 +92,18 @@ async def extract_document(name: str, data: bytes) -> list[Document]:
 
         return [Document.model_validate(document) for document in result["documents"]]
     finally:
-        if process.returncode is None:
+        # Creation may still be running in a thread when the caller cancels.
+        process = await starting
+
+        if process.poll() is None:
             with suppress(ProcessLookupError):
                 process.kill()
 
         # Drain pipes after cancellation so a full output pipe cannot stall reaping.
-        await process.communicate()
+        if communication is None:
+            await asyncio.to_thread(process.communicate)
+        else:
+            await communication
 
 
 if __name__ == "__main__":
