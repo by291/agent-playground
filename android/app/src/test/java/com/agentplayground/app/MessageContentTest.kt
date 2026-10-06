@@ -289,6 +289,60 @@ class MessageContentTest {
     }
 
     @Test
+    fun `multiple ordinary tools reveal individual calls beneath one collapsed summary`() {
+        val turn =
+            conversationTurns(
+                    listOf(
+                        UserMessage("user", "Calculate twice"),
+                        AssistantMessage(
+                            "caller",
+                            toolCalls =
+                                listOf(
+                                    ToolCall(
+                                        "one",
+                                        FunctionCall("calculate_sum", "{\"a\":1,\"b\":1}"),
+                                    ),
+                                    ToolCall(
+                                        "two",
+                                        FunctionCall("calculate_sum", "{\"a\":1,\"b\":3}"),
+                                    ),
+                                ),
+                        ),
+                        ToolMessage("one-result", "2", "one"),
+                        ToolMessage("two-result", "4", "two"),
+                    ),
+                    listOf(RunRecord("run", "user", "completed")),
+                )
+                .single()
+        PlaygroundApi("http://localhost/").use { api ->
+            compose.setContent {
+                PlaygroundTheme("light") { AssistantTurnContent(turn, api, {}, {}) }
+            }
+            compose.onNodeWithText("2 tools").assertIsDisplayed()
+            compose.onNodeWithTag("tool-group-two").assertDoesNotExist()
+            compose.onNodeWithTag("tool-step-one").assertDoesNotExist()
+            compose.onNodeWithTag("tool-step-two").assertDoesNotExist()
+
+            compose.onNodeWithTag("tool-group-one").performClick()
+            compose.onNodeWithTag("tool-step-one").assertIsDisplayed()
+            compose.onNodeWithTag("tool-step-two").assertIsDisplayed()
+            compose.onNodeWithText("Parameters").assertDoesNotExist()
+            compose.onNodeWithTag("tool-step-one").performClick()
+            compose.onAllNodesWithText("Parameters").assertCountEquals(1)
+            compose.onNodeWithText("2").assertIsDisplayed()
+            compose.onNodeWithText("4").assertDoesNotExist()
+
+            compose.onNodeWithTag("tool-step-two").performClick()
+            compose.onAllNodesWithText("Parameters").assertCountEquals(2)
+            compose.onNodeWithText("4").assertIsDisplayed()
+            compose.onNodeWithTag("tool-step-one").performClick()
+            compose.onAllNodesWithText("Parameters").assertCountEquals(1)
+            compose.onNodeWithText("2").assertDoesNotExist()
+            compose.onNodeWithText("4").assertIsDisplayed()
+        }
+    }
+
+    @Test
     fun `tool disclosure keeps user expansion while a skill adds calls and exposes failures`() {
         val completed =
             ToolStep(

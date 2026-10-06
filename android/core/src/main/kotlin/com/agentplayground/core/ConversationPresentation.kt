@@ -158,7 +158,7 @@ fun executionGroups(steps: List<ToolStep>): List<ExecutionGroup> {
     val groups = mutableListOf<ExecutionGroup>()
     for (step in steps) {
         val skill = skillIdentity(step)
-        val index = if (skill == null) -1 else groups.indexOfFirst { it.skill?.name == skill.name }
+        val index = groups.indexOfFirst { it.skill?.name == skill?.name }
         if (index < 0) {
             groups.add(ExecutionGroup(skill, listOf(step)))
         } else {

@@ -78,6 +78,59 @@ class ConversationPresentationTest {
     }
 
     @Test
+    fun `ordinary tools share one group across assistant messages within their own turn`() {
+        val turns =
+            conversationTurns(
+                listOf(
+                    UserMessage("first", "Calculate and search"),
+                    caller(call("sum-one", "calculate_sum"), call("sum-two", "calculate_sum")),
+                    ToolMessage("one-result", "2", "sum-one"),
+                    ToolMessage("two-result", "4", "sum-two"),
+                    AssistantMessage("follow-up", toolCalls = listOf(call("search"))),
+                    ToolMessage("search-result", "Found", "search"),
+                    UserMessage("second", "Search again"),
+                    AssistantMessage("next", toolCalls = listOf(call("next-search"))),
+                ),
+                emptyList(),
+            )
+        val group = executionGroups(turns.first().toolCalls).single()
+        assertNull(group.skill)
+        assertEquals(listOf("sum-one", "sum-two", "search"), group.steps.map { it.call.id })
+        assertEquals(listOf("2", "4", "Found"), group.steps.map { it.result?.content })
+        assertEquals(
+            listOf("next-search"),
+            executionGroups(turns.last().toolCalls).single().steps.map { it.call.id },
+        )
+    }
+
+    @Test
+    fun `ordinary tools remain grouped separately from each named skill`() {
+        val steps =
+            listOf(
+                    call("search"),
+                    call("reports-load", "load_skill", """{"skill_name":"reports"}"""),
+                    call("sum", "calculate_sum"),
+                    call("review-load", "load_skill", """{"skill_name":"review"}"""),
+                    call("reports-run", "run_skill_script", """{"skill_name":"reports"}"""),
+                )
+                .map { ToolStep(it, null, ToolStatus.Running) }
+        val groups = executionGroups(steps)
+        assertEquals(3, groups.size)
+        assertEquals(
+            listOf("search", "sum"),
+            groups.single { it.skill == null }.steps.map { it.call.id },
+        )
+        assertEquals(
+            listOf("reports-load", "reports-run"),
+            groups.single { it.skill?.name == "reports" }.steps.map { it.call.id },
+        )
+        assertEquals(
+            listOf("review-load"),
+            groups.single { it.skill?.name == "review" }.steps.map { it.call.id },
+        )
+    }
+
+    @Test
     fun `skill groups retain paths and output files deduplicate by file identity`() {
         val load = call("load", "load_skill", """{"skill_name":"reports"}""")
         val script =
