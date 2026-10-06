@@ -36,21 +36,27 @@ class KnowledgeUploadTest {
         Fixture().use { fixture ->
             fixture.server.enqueue(unavailable())
             fixture.server.enqueue(MockResponse().setBody("[]"))
+
             fixture.vm.upload(listOf(fixture.uri))
             await { !fixture.vm.state.value.busy }
 
             val retained = fixture.vm.state.value.pendingUploads.single()
+
             assertNotNull(fixture.vm.state.value.error)
+
             fixture.server.enqueue(MockResponse().setBody(document(retained.id, "queued")))
             fixture.server.enqueue(MockResponse().setBody("[]"))
+
             fixture.vm.retryUploads()
             await { !fixture.vm.state.value.busy }
 
             assertNull(fixture.vm.state.value.error)
             assertTrue(fixture.vm.state.value.pendingUploads.isEmpty())
+
             val first = fixture.request()
             assertEquals("GET", fixture.request().method)
             val second = fixture.request()
+
             assertEquals(retained.id, first.getHeader("X-Document-Id"))
             assertEquals(first.getHeader("X-Document-Id"), second.getHeader("X-Document-Id"))
             assertEquals("Hello", second.body.readUtf8())
@@ -61,10 +67,13 @@ class KnowledgeUploadTest {
     fun `ambiguous upload failure refreshes server documents and preserves retry selection`() {
         Fixture().use { fixture ->
             fixture.server.enqueue(unavailable())
+
             fixture.vm.upload(listOf(fixture.uri))
             await { fixture.server.requestCount > 0 }
+
             val upload = fixture.request()
             val id = requireNotNull(upload.getHeader("X-Document-Id"))
+
             fixture.server.enqueue(MockResponse().setBody("[${document(id, "uploading")}]"))
             await { !fixture.vm.state.value.busy }
 
@@ -81,6 +90,7 @@ class KnowledgeUploadTest {
     fun `unsupported knowledge file is rejected before upload`() {
         Fixture(name = "notes.png").use { fixture ->
             fixture.server.enqueue(MockResponse().setBody("[]"))
+
             fixture.vm.upload(listOf(fixture.uri))
             await { !fixture.vm.state.value.busy }
 
@@ -94,6 +104,7 @@ class KnowledgeUploadTest {
     fun `known empty knowledge file is rejected before upload`() {
         Fixture(size = 0L, content = byteArrayOf()).use { fixture ->
             fixture.server.enqueue(MockResponse().setBody("[]"))
+
             fixture.vm.upload(listOf(fixture.uri))
             await { !fixture.vm.state.value.busy }
 
@@ -107,6 +118,7 @@ class KnowledgeUploadTest {
     fun `unknown size empty knowledge file is rejected after bounded read`() {
         Fixture(size = null, content = byteArrayOf()).use { fixture ->
             fixture.server.enqueue(MockResponse().setBody("[]"))
+
             fixture.vm.upload(listOf(fixture.uri))
             await { !fixture.vm.state.value.busy }
 
@@ -118,23 +130,29 @@ class KnowledgeUploadTest {
     @Test
     fun `server unfinished upload resumes its original identity after picker recreation`() {
         val controller = Robolectric.buildActivity(ComponentActivity::class.java).setup()
+
         try {
             Fixture(store = controller.get().viewModelStore).use { fixture ->
                 fixture.server.enqueue(
                     MockResponse().setBody("[${document("original-id", "uploading")}]")
                 )
+
                 fixture.vm.reload()
                 await { fixture.vm.state.value.documents.isNotEmpty() }
+
                 assertTrue(fixture.vm.state.value.pendingUploads.isEmpty())
                 assertTrue(fixture.vm.beginResume("original-id"))
 
                 controller.configurationChange()
                 val restored = ViewModelProvider(controller.get())[KnowledgeViewModel::class.java]
+
                 assertEquals("original-id", restored.state.value.resumeDocument?.id)
+
                 fixture.server.enqueue(MockResponse().setBody(document("original-id", "queued")))
                 fixture.server.enqueue(
                     MockResponse().setBody("[${document("original-id", "queued")}]")
                 )
+
                 restored.resumeUpload(fixture.uri)
                 await { !restored.state.value.busy }
 
@@ -143,6 +161,7 @@ class KnowledgeUploadTest {
                 assertTrue(restored.state.value.pendingUploads.isEmpty())
                 assertEquals("GET", fixture.request().method)
                 val upload = fixture.request()
+
                 assertEquals("original-id", upload.getHeader("X-Document-Id"))
                 assertEquals("Hello", upload.body.readUtf8())
                 assertEquals("queued", restored.state.value.documents.single().status)
@@ -158,9 +177,12 @@ class KnowledgeUploadTest {
             fixture.server.enqueue(
                 MockResponse().setBody("[${document("original-id", "uploading")}]")
             )
+
             fixture.vm.reload()
             await { fixture.vm.state.value.documents.isNotEmpty() }
+
             assertTrue(fixture.vm.beginResume("original-id"))
+
             fixture.vm.resumeUpload(fixture.uri)
             await { !fixture.vm.state.value.busy }
 
@@ -177,9 +199,12 @@ class KnowledgeUploadTest {
             fixture.server.enqueue(
                 MockResponse().setBody("[${document("original-id", "uploading")}]")
             )
+
             fixture.vm.reload()
             await { fixture.vm.state.value.documents.isNotEmpty() }
+
             assertTrue(fixture.vm.beginResume("original-id"))
+
             fixture.vm.resumeUpload(null)
 
             assertNull(fixture.vm.state.value.resumeDocument)
@@ -194,10 +219,12 @@ class KnowledgeUploadTest {
         Fixture(size = null).use { fixture ->
             fixture.server.enqueue(unavailable())
             fixture.server.enqueue(MockResponse().setBody("[]"))
+
             fixture.vm.upload(listOf(fixture.uri))
             await { !fixture.vm.state.value.busy }
 
             val upload = fixture.request()
+
             assertEquals("POST", upload.method)
             assertEquals("Hello", upload.body.readUtf8())
             assertEquals(
@@ -226,6 +253,7 @@ class KnowledgeUploadTest {
             fixture.server.enqueue(
                 MockResponse().setResponseCode(500).setBody("{\"error\":\"List unavailable\"}")
             )
+
             fixture.vm.upload(listOf(fixture.uri))
             await { !fixture.vm.state.value.busy }
 
@@ -243,6 +271,7 @@ class KnowledgeUploadTest {
             fixture.server.enqueue(
                 MockResponse().setBody("[${document("original-id", "indexing")}]")
             )
+
             fixture.vm.reindex("original-id")
             await { !fixture.vm.state.value.busy }
 
@@ -265,10 +294,12 @@ class KnowledgeUploadTest {
 
     private fun await(condition: () -> Boolean) {
         val deadline = System.nanoTime() + 10_000_000_000L
+
         while (!condition() && System.nanoTime() < deadline) {
             Shadows.shadowOf(Looper.getMainLooper()).idle()
             Thread.sleep(5)
         }
+
         assertTrue("Operation did not finish", condition())
     }
 
@@ -284,7 +315,9 @@ class KnowledgeUploadTest {
 
         init {
             server.start()
+
             val resolver = RuntimeEnvironment.getApplication().contentResolver
+
             ShadowContentResolver.registerProviderInternal(
                 "upload-fixture",
                 MetadataProvider(name, size),
@@ -292,7 +325,9 @@ class KnowledgeUploadTest {
             Shadows.shadowOf(resolver).registerInputStreamSupplier(uri) {
                 ByteArrayInputStream(content)
             }
+
             val api = PlaygroundApi(server.url("/").toString())
+
             vm =
                 ViewModelProvider(
                     store,

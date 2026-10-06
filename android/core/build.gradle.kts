@@ -15,6 +15,7 @@ lint {
 
 kotlin {
     jvmToolchain(21)
+
     compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17) }
 }
 
@@ -29,6 +30,7 @@ dependencies {
     api(libs.coroutines)
     implementation(libs.okhttp)
     implementation(libs.okhttp.sse)
+
     testImplementation(libs.junit)
     testImplementation(libs.coroutines.test)
     testImplementation(libs.mockwebserver)

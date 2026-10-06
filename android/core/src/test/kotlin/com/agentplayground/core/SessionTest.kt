@@ -16,15 +16,18 @@ class SessionTest {
         val api = ControlledApi()
         val session =
             ConversationSession(api, persistence, backgroundScope, SavedConversation("thread"))
+
         session.restore()
         session.editDraft("Hello")
         session.send("Hello")
         session.send("Duplicate")
         runCurrent()
+
         assertEquals(1, api.inputs.size)
         assertEquals(persistence.saved!!.pending!!.input, api.inputs.single())
         assertEquals("Hello", session.state.value.messages.single().content)
         assertTrue(session.state.value.busy)
+
         session.close()
     }
 
@@ -34,10 +37,12 @@ class SessionTest {
         val api = ControlledApi()
         val session =
             ConversationSession(api, persistence, backgroundScope, SavedConversation("thread"))
+
         session.restore()
         session.editDraft("Hello")
         session.send("Hello")
         runCurrent()
+
         assertTrue(api.inputs.isEmpty())
         assertEquals("Hello", session.state.value.draft)
         assertFalse(session.state.value.busy)
@@ -63,10 +68,13 @@ class SessionTest {
                 backgroundScope,
                 SavedConversation("thread", pending = pending, empty = false),
             )
+
         session.restore()
         runCurrent()
+
         assertTrue(api.inputs.isEmpty())
         assertTrue(session.state.value.busy)
+
         session.close()
     }
 
@@ -81,10 +89,13 @@ class SessionTest {
             MemoryPersistence(SavedConversation("thread", pending = pending, empty = false))
         val api = ControlledApi()
         val session = ConversationSession(api, persistence, backgroundScope, persistence.saved!!)
+
         session.restore()
         runCurrent()
+
         assertEquals("original", api.inputs.single().runId)
         assertEquals("message", api.inputs.single().messages.single().id)
+
         session.close()
     }
 
@@ -98,11 +109,13 @@ class SessionTest {
                 backgroundScope,
                 SavedConversation("thread"),
             )
+
         session.restore()
         session.send("Hello")
         runCurrent()
         api.events.emit(TextMessageStartEvent("reply"))
         runCurrent()
+
         val snapshotGate = CompletableDeferred<Unit>()
         api.beforeSnapshot = { snapshotGate.await() }
         val refresh = backgroundScope.launch { session.refresh() }
@@ -111,7 +124,9 @@ class SessionTest {
         runCurrent()
         snapshotGate.complete(Unit)
         runCurrent()
+
         assertEquals("New text", session.state.value.messages.find { it.id == "reply" }?.content)
+
         refresh.cancel()
         session.close()
     }
@@ -124,15 +139,20 @@ class SessionTest {
         val api = ControlledApi()
         val session =
             ConversationSession(api, persistence, backgroundScope, SavedConversation("thread"))
+
         session.restore()
         val sending = backgroundScope.launch { session.send("First") }
         runCurrent()
         session.refresh()
+
         assertTrue(session.state.value.busy)
+
         session.send("Second")
         gate.complete(Unit)
         runCurrent()
+
         assertEquals(1, api.inputs.size)
+
         sending.cancel()
         session.close()
     }
@@ -147,21 +167,28 @@ class SessionTest {
                 backgroundScope,
                 SavedConversation("thread"),
             )
+
         session.restore()
         session.send("Hello")
         runCurrent()
+
         val input = api.inputs.single()
         api.events.emit(RunFinishedEvent("thread", input.runId))
         runCurrent()
+
         api.snapshot =
             emptySnapshot.copy(
                 messages = input.messages,
                 runs = listOf(RunRecord(input.runId, input.messages.single().id, "completed")),
             )
         session.refresh()
+
         assertTrue(session.state.value.busy)
+
         session.send("Next")
+
         assertEquals(1, api.inputs.size)
+
         session.close()
     }
 
@@ -173,12 +200,16 @@ class SessionTest {
         val api = ControlledApi()
         val session =
             ConversationSession(api, persistence, backgroundScope, SavedConversation("thread"))
+
         val sending = backgroundScope.launch { session.send("Hello") }
         runCurrent()
+
         session.close()
         gate.complete(Unit)
         runCurrent()
+
         assertTrue(api.inputs.isEmpty())
+
         sending.cancel()
     }
 
@@ -194,6 +225,7 @@ class SessionTest {
                             """{"langgraph":{"raw":{"kind":"experiment_plan_review","title":"Original","steps":["Original step"]}}}"""
                         ),
                 )
+
             val api =
                 ControlledApi().apply {
                     snapshot =
@@ -206,21 +238,29 @@ class SessionTest {
                     backgroundScope,
                     SavedConversation("thread"),
                 )
+
             session.restore()
             session.review("first", "approve", PlanDraft("Edited", listOf("Edited step")))
             runCurrent()
+
             assertTrue(api.inputs.isEmpty())
             assertEquals("approve", session.state.value.planDecisions["first"])
+
             session.review("second", "reject", PlanDraft("Original", listOf("Original step")))
             runCurrent()
+
             assertTrue(api.inputs.isEmpty())
+
             session.submitPlanReviews()
             session.submitPlanReviews()
             runCurrent()
+
             val responses = api.inputs.single().resume!!
+
             assertEquals("approve", responses[0].payload!!.jsonObject.string("decision"))
             assertEquals("Edited", responses[0].payload!!.jsonObject.string("title"))
             assertEquals("reject", responses[1].payload!!.jsonObject.string("decision"))
+
             session.close()
         }
 
@@ -235,6 +275,7 @@ class SessionTest {
                         """{"langgraph":{"raw":{"kind":"experiment_plan_review","title":"Original","steps":["Step"]}}}"""
                     ),
             )
+
         val wait =
             Interrupt(
                 "wait",
@@ -253,11 +294,14 @@ class SessionTest {
                 backgroundScope,
                 SavedConversation("thread"),
             )
+
         session.restore()
         session.review("plan", "approve")
         runCurrent()
+
         assertEquals("plan", api.inputs.single().resume!!.single().interruptId)
         assertTrue(session.state.value.planDecisions.isEmpty())
+
         session.close()
     }
 
@@ -293,13 +337,18 @@ class SessionTest {
                 backgroundScope,
                 SavedConversation("thread"),
             )
+
         session.restore()
         session.review("first", "approve")
         session.review("second", "reject")
+
         assertTrue(api.inputs.isEmpty())
+
         session.submitPlanReviews()
         runCurrent()
+
         assertEquals(listOf("first", "second"), api.inputs.single().resume!!.map { it.interruptId })
+
         session.close()
     }
 
@@ -314,6 +363,7 @@ class SessionTest {
                         """{"langgraph":{"raw":{"kind":"experiment_plan_review","title":"Plan","steps":["Step"]}}}"""
                     ),
             )
+
         val api =
             ControlledApi().apply {
                 snapshot =
@@ -326,12 +376,17 @@ class SessionTest {
                 backgroundScope,
                 SavedConversation("thread"),
             )
+
         session.restore()
         session.review("replaced", "approve", planInterruptIds = setOf("pending"))
+
         assertTrue(api.inputs.isEmpty())
+
         session.review("pending", "approve", planInterruptIds = setOf("pending"))
         runCurrent()
+
         assertEquals("pending", api.inputs.single().resume!!.single().interruptId)
+
         session.close()
     }
 
@@ -368,8 +423,10 @@ class SessionTest {
                 backgroundScope,
                 SavedConversation("thread", empty = false),
             )
+
         session.restore()
         val state = session.state.value
+
         assertTrue(state.busy)
         assertEquals(1, state.missingOutputSequence)
         assertNull(state.executionStatus)
@@ -381,6 +438,7 @@ class SessionTest {
                 .single()
                 .status,
         )
+
         session.close()
     }
 
@@ -394,15 +452,20 @@ class SessionTest {
                 backgroundScope,
                 SavedConversation("thread"),
             )
+
         session.restore()
         session.send("Execute")
         runCurrent()
+
         assertEquals("running", session.state.value.executionStatus)
+
         api.events.emit(RunErrorEvent("Agent failed"))
         runCurrent()
+
         assertEquals("failed", session.state.value.executionStatus)
         assertTrue(session.state.value.busy)
         assertFalse(session.state.value.streaming)
+
         session.close()
     }
 
@@ -429,9 +492,12 @@ class SessionTest {
                 backgroundScope,
                 SavedConversation("thread"),
             )
+
         session.restore()
+
         assertTrue(session.state.value.busy)
         assertEquals(1, session.state.value.missingOutputSequence)
+
         api.snapshot =
             emptySnapshot.copy(
                 outputs =
@@ -449,7 +515,9 @@ class SessionTest {
                     )
             )
         session.refresh()
+
         assertFalse(session.state.value.busy)
+
         session.close()
     }
 
@@ -461,14 +529,18 @@ class SessionTest {
         val api = ControlledApi()
         val session =
             ConversationSession(api, persistence, backgroundScope, SavedConversation("thread"))
+
         session.editDraft("Hello")
         val sending = backgroundScope.launch { session.send("Hello") }
         runCurrent()
+
         val saving = backgroundScope.launch { session.saveDraft() }
         runCurrent()
         gate.complete(Unit)
         runCurrent()
+
         assertEquals(api.inputs.single(), persistence.saved!!.pending!!.input)
+
         sending.cancel()
         saving.cancel()
         session.close()
@@ -485,19 +557,26 @@ class SessionTest {
                     backgroundScope,
                     SavedConversation("thread"),
                 )
+
             session.send("Hello")
             runCurrent()
+
             assertEquals(1, api.events.subscriptionCount.value)
+
             val input = api.inputs.single()
             session.stopObserving()
             runCurrent()
+
             assertEquals(0, api.events.subscriptionCount.value)
+
             api.snapshot =
                 emptySnapshot.copy(runs = listOf(RunRecord(input.runId, null, "running")))
             session.observe()
             runCurrent()
+
             assertEquals(1, api.inputs.size)
             assertTrue(session.state.value.busy)
+
             session.close()
         }
 
@@ -511,6 +590,7 @@ class SessionTest {
                 backgroundScope,
                 SavedConversation("thread"),
             )
+
         session.send("Hello")
         runCurrent()
         api.events.emit(ReasoningMessageStartEvent("reason"))
@@ -518,8 +598,10 @@ class SessionTest {
         api.events.emit(TextMessageStartEvent("answer"))
         api.events.emit(TextMessageContentEvent("answer", "Done."))
         runCurrent()
+
         assertTrue(isReasoning(session.state.value.messages.find { it.id == "reason" }!!))
         assertEquals("Done.", session.state.value.messages.find { it.id == "answer" }!!.content)
+
         session.close()
     }
 
@@ -533,8 +615,10 @@ class SessionTest {
                 backgroundScope,
                 SavedConversation("thread"),
             )
+
         session.send("Hello")
         runCurrent()
+
         val input = api.inputs.single()
         api.snapshot =
             emptySnapshot.copy(
@@ -557,15 +641,23 @@ class SessionTest {
         runCurrent()
         first.complete(Unit)
         runCurrent()
+
         assertTrue(session.state.value.busy)
+
         session.send("Dropped before fix")
+
         assertEquals(1, api.inputs.size)
+
         final.complete(Unit)
         runCurrent()
+
         assertFalse(session.state.value.busy)
+
         session.send("Next")
         runCurrent()
+
         assertEquals(2, api.inputs.size)
+
         refresh.cancel()
         session.close()
     }
@@ -581,6 +673,7 @@ class SessionTest {
                         """{"langgraph":{"raw":{"kind":"experiment_plan_review","title":"Original","steps":["Original step"]}}}"""
                     ),
             )
+
         val api =
             ControlledApi().apply {
                 snapshot = emptySnapshot.copy(interrupts = listOf(plan("first"), plan("second")))
@@ -592,22 +685,31 @@ class SessionTest {
                 backgroundScope,
                 SavedConversation("thread"),
             )
+
         session.restore()
         session.review("first", "approve")
         session.editPlan("first", PlanDraft("Latest", listOf("New step")))
+
         assertFalse(session.state.value.planDecisions.containsKey("first"))
+
         session.review("second", "approve")
         runCurrent()
+
         assertTrue(api.inputs.isEmpty())
+
         session.review("first", "approve")
         runCurrent()
+
         assertTrue(api.inputs.isEmpty())
+
         session.submitPlanReviews()
         runCurrent()
+
         assertEquals(
             "Latest",
             api.inputs.single().resume!!.first().payload!!.jsonObject.string("title"),
         )
+
         session.close()
     }
 
@@ -633,15 +735,18 @@ class SessionTest {
                 SavedConversation("thread"),
                 now = { now },
             )
+
         session.restore()
         session.review("first", "approve")
         now = java.time.Instant.parse("2030-01-01T00:00:02Z")
         session.review("second", "approve")
         session.submitPlanReviews()
         runCurrent()
+
         assertTrue(api.inputs.isEmpty())
         assertTrue(session.state.value.planDecisions.isEmpty())
         assertNotNull(session.state.value.error)
+
         session.close()
     }
 
@@ -656,6 +761,7 @@ class SessionTest {
                 backgroundScope,
                 SavedConversation("thread"),
             )
+
         session.restore()
         session.review(
             "single",
@@ -663,9 +769,12 @@ class SessionTest {
             PlanDraft("  Edited  ", listOf("  First  ", "", "  ", "Second ")),
         )
         runCurrent()
+
         val payload = api.inputs.single().resume!!.single().payload!!.jsonObject
+
         assertEquals("Edited", payload.string("title"))
         assertEquals(protocolJson.parseToJsonElement("[\"First\",\"Second\"]"), payload["steps"])
+
         session.close()
     }
 
@@ -684,9 +793,11 @@ class SessionTest {
                 backgroundScope,
                 SavedConversation("thread"),
             )
+
         session.restore()
         session.review("first", "approve")
         session.review("second", "reject")
+
         api.snapshot =
             emptySnapshot.copy(
                 interrupts = listOf(first, second.copy(expiresAt = "2031-01-01T00:00:00Z"))
@@ -694,8 +805,10 @@ class SessionTest {
         session.refresh()
         session.submitPlanReviews()
         runCurrent()
+
         assertTrue(api.inputs.isEmpty())
         assertTrue(session.state.value.planDecisions.isEmpty())
+
         session.close()
     }
 
@@ -711,23 +824,29 @@ class SessionTest {
         val persistence = MemoryPersistence()
         val session =
             ConversationSession(api, persistence, backgroundScope, SavedConversation("thread"))
+
         session.restore()
         session.review("first", "approve")
         session.review("second", "reject")
+
         val gate = CompletableDeferred<Unit>()
         persistence.beforeWrite = { gate.await() }
         val submitting = backgroundScope.launch { session.submitPlanReviews() }
         runCurrent()
         session.editPlan("first", PlanDraft("Ignored", listOf("Ignored")))
         session.submitPlanReviews()
+
         assertEquals("Plan", session.state.value.planDrafts["first"]?.title)
+
         gate.complete(Unit)
         runCurrent()
+
         assertEquals(1, api.inputs.size)
         assertEquals(
             "Plan",
             api.inputs.single().resume!!.first().payload!!.jsonObject.string("title"),
         )
+
         submitting.cancel()
         session.close()
     }
@@ -745,32 +864,43 @@ class SessionTest {
                     SavedConversation("thread"),
                     now = { instant },
                 )
+
             session.send("Hello")
             runCurrent()
+
             val run = api.inputs.single().runId
             val started = session.state.value.activity.single()
+
             assertTrue(started.event is RunStartedEvent)
             assertEquals(run, started.runId)
             assertEquals(instant.toEpochMilli(), started.receivedAt)
+
             repeat(301) {
                 api.events.emit(TextMessageContentEvent("reply", "Delta $it"))
                 runCurrent()
             }
+
             assertEquals(302L, session.state.value.receivedEventCount)
             assertEquals(300, session.state.value.activity.size)
+
             val previous = session.state.value.activity.last().sequence
             session.clearActivity()
+
             assertTrue(session.state.value.activity.isEmpty())
             assertEquals(0L, session.state.value.receivedEventCount)
+
             val event = TextMessageContentEvent("reply", "x".repeat(5_000))
             api.events.emit(event)
             runCurrent()
+
             val retained = session.state.value.activity.single()
+
             assertEquals(event, retained.event)
             assertEquals(run, retained.runId)
             assertEquals(previous + 1, retained.sequence)
             assertEquals(1L, session.state.value.receivedEventCount)
             assertTrue(session.state.value.busy)
+
             session.close()
         }
 
@@ -802,9 +932,11 @@ class SessionTest {
 
         override suspend fun write(value: SavedConversation?) {
             beforeWrite()
+
             if (failWrite) {
                 error("Disk full")
             }
+
             saved = value
         }
     }
@@ -818,6 +950,7 @@ class SessionTest {
 
         override suspend fun snapshot(threadId: String): ConversationSnapshot? {
             beforeSnapshot()
+
             return snapshot
         }
 

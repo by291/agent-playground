@@ -71,6 +71,7 @@ fun Markdown(
                     .tableEvenRowBackgroundColor(colors.surfaceContainerLow.toArgb())
                     .tableOddRowBackgroundColor(colors.surface.toArgb())
                     .build()
+
             Markwon.builder(context)
                 .usePlugin(TablePlugin.create(tableTheme))
                 .usePlugin(StrikethroughPlugin.create())
@@ -108,20 +109,27 @@ fun Markdown(
                 )
                 .build()
         }
+
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         blocks.forEachIndexed { index, block ->
             when (block) {
                 is FencedCodeBlock ->
                     CodeBlock(block.literal, block.info, dark, settled, onTextVisible)
+
                 is IndentedCodeBlock -> CodeBlock(block.literal, null, dark, settled, onTextVisible)
                 is TableBlock -> MarkdownTable(block, renderer, settled, onTextVisible)
+
                 else ->
                     Column(Modifier.fillMaxWidth()) {
                         val rendered =
                             remember(renderer, block) { renderMarkdownBlock(renderer, block) }
                         val modifier =
-                            if (block is Heading && index > 0) Modifier.padding(top = 10.dp)
-                            else Modifier
+                            if (block is Heading && index > 0) {
+                                Modifier.padding(top = 10.dp)
+                            } else {
+                                Modifier
+                            }
+
                         if (block is BlockQuote) {
                             Surface(
                                 shape = RoundedCornerShape(8.dp),
@@ -145,6 +153,7 @@ fun Markdown(
                                 subdued = subdued,
                             )
                         }
+
                         // Nested blocks stay with Markwon so list numbering and quote structure
                         // survive.
                         markdownCopyTargets(block).forEach { target ->
@@ -172,6 +181,7 @@ private fun MarkdownText(
     subdued: Boolean = false,
 ) {
     val colors = MaterialTheme.colorScheme
+
     AndroidView(
         factory = { context ->
             TextView(context).apply {
@@ -190,6 +200,7 @@ private fun MarkdownText(
             view.gravity = gravity
             ViewCompat.setAccessibilityHeading(view, heading)
             renderer.setParsedMarkdown(view, rendered)
+
             if (hasVisibleMarkdown(rendered)) {
                 onTextVisible?.invoke()
             }
@@ -221,15 +232,18 @@ private fun BlockHeader(label: String, copy: String, action: String, settled: Bo
 private fun CopyAction(copy: String, label: String, settled: Boolean) {
     val context = LocalContext.current
     var copied by remember(copy) { mutableStateOf(false) }
+
     LaunchedEffect(copied) {
         if (copied) {
             delay(1800)
             copied = false
         }
     }
+
     TextButton(
         onClick = {
             val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+
             clipboard.setPrimaryClip(ClipData.newPlainText("Assistant reply", copy))
             copied = true
         },
@@ -268,6 +282,7 @@ private fun CodeBlock(
 ) {
     val colors = MaterialTheme.colorScheme
     val highlighted = remember(code, info, dark) { highlightCode(info, code.trimEnd('\n'), dark) }
+
     Surface(
         shape = RoundedCornerShape(12.dp),
         color = colors.surfaceContainerLow,
@@ -283,6 +298,7 @@ private fun CodeBlock(
             )
             BoxWithConstraints(Modifier.fillMaxWidth()) {
                 val minimumWidth = maxWidth
+
                 Box(
                     Modifier.horizontalScroll(rememberScrollState()).testTag("markdown-code-scroll")
                 ) {
@@ -301,6 +317,7 @@ private fun CodeBlock(
                         update = { view ->
                             view.setTextColor(colors.onSurface.toArgb())
                             view.text = highlighted
+
                             if (code.isNotBlank()) {
                                 onTextVisible?.invoke()
                             }
@@ -326,9 +343,11 @@ private fun MarkdownTable(
             rows.map { row -> row.map { renderMarkdownCell(renderer, it) } }
         }
     val columns = rows.maxOfOrNull { it.size } ?: return
+
     if (columns == 0) {
         return
     }
+
     Surface(
         shape = RoundedCornerShape(12.dp),
         color = colors.surface,
@@ -340,6 +359,7 @@ private fun MarkdownTable(
             BoxWithConstraints(Modifier.fillMaxWidth()) {
                 val cellWidth = (maxWidth / columns).coerceAtLeast(140.dp)
                 val cellWidthPx = with(LocalDensity.current) { cellWidth.toPx() }
+
                 Column(
                     Modifier.horizontalScroll(rememberScrollState())
                         .testTag("markdown-table-scroll")
@@ -353,10 +373,12 @@ private fun MarkdownTable(
                                 index % 2 == 0 -> colors.surfaceContainerLow.copy(alpha = 0.6f)
                                 else -> colors.surface
                             }
+
                         Row(
                             Modifier.fillMaxWidth().background(background).drawBehind {
                                 for (column in 1 until columns) {
                                     val x = cellWidthPx * column
+
                                     drawLine(
                                         colors.outlineVariant,
                                         Offset(x, 0f),
@@ -373,6 +395,7 @@ private fun MarkdownTable(
                                         TableCell.Alignment.RIGHT -> Gravity.END
                                         else -> Gravity.START
                                     }
+
                                 MarkdownText(
                                     rendered[index][column],
                                     renderer,
@@ -385,6 +408,7 @@ private fun MarkdownTable(
                                 )
                             }
                         }
+
                         if (index < rows.lastIndex) {
                             HorizontalDivider(color = colors.outlineVariant)
                         }

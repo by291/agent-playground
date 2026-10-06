@@ -13,15 +13,20 @@ class TransportTest {
     fun `rename accepts the title response without list metadata`() = runBlocking {
         val server = MockWebServer()
         server.start()
+
         PlaygroundApi(server.url("/").toString()).use { api ->
             try {
                 server.enqueue(
                     MockResponse().setBody("""{"threadId":"thread","title":"Smoke test"}""")
                 )
+
                 val renamed = api.rename("thread", "  Smoke test  ")
+
                 assertEquals("thread", renamed.threadId)
                 assertEquals("Smoke test", renamed.title)
+
                 val request = server.takeRequest(2, TimeUnit.SECONDS)!!
+
                 assertEquals("PATCH", request.method)
                 assertEquals("/conversations/thread", request.path)
                 assertEquals("""{"title":"Smoke test"}""", request.body.readUtf8())
@@ -35,17 +40,21 @@ class TransportTest {
     fun `HTTP adapter encodes Unicode filename and uploads raw bytes`() = runBlocking {
         val server = MockWebServer()
         server.start()
+
         PlaygroundApi(server.url("/").toString()).use { api ->
             try {
                 server.enqueue(
                     MockResponse()
                         .setBody("""{"id":"file","threadId":"thread","name":"报告 1.txt","size":3}""")
                 )
+
                 assertEquals(
                     "报告 1.txt",
                     api.uploadFile("thread", "file", "报告 1.txt", byteArrayOf(1, 2, 3)).name,
                 )
+
                 val request = server.takeRequest(2, TimeUnit.SECONDS)!!
+
                 assertEquals("/conversations/thread/files", request.path)
                 assertEquals("%E6%8A%A5%E5%91%8A%201.txt", request.getHeader("X-Filename"))
                 assertArrayEquals(byteArrayOf(1, 2, 3), request.body.readByteArray())
@@ -60,6 +69,7 @@ class TransportTest {
         runBlocking {
             val server = MockWebServer()
             server.start()
+
             PlaygroundApi(server.url("/").toString()).use { api ->
                 try {
                     server.enqueue(
@@ -71,16 +81,20 @@ class TransportTest {
                                     "data: {\"type\":\"RUN_FINISHED\",\"threadId\":\"thread\",\"runId\":\"original\"}\n\n"
                             )
                     )
+
                     val events =
                         api.run(
                                 newSubmission("thread", "original", UserMessage("message", "Hello"))
                             )
                             .toList()
+
                     assertEquals("你好", (events[1] as TextMessageContentEvent).delta)
                     assertTrue(events.last() is RunFinishedEvent)
+
                     val request = server.takeRequest(2, TimeUnit.SECONDS)!!
                     val input =
                         protocolJson.decodeFromString<RunAgentInput>(request.body.readUtf8())
+
                     assertEquals("original", input.runId)
                     assertEquals(1, input.messages.size)
                 } finally {
@@ -93,15 +107,18 @@ class TransportTest {
     fun `snapshot 404 is absence while server rejection preserves its message`() = runBlocking {
         val server = MockWebServer()
         server.start()
+
         PlaygroundApi(server.url("/").toString()).use { api ->
             try {
                 server.enqueue(MockResponse().setResponseCode(404))
                 assertNull(api.snapshot("missing"))
+
                 server.enqueue(
                     MockResponse()
                         .setResponseCode(409)
                         .setBody("""{"error":"Conversation is running"}""")
                 )
+
                 try {
                     api.deleteConversation("thread")
                     fail("Expected conflict")

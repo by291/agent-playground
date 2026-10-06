@@ -44,31 +44,40 @@ class ReviewPanelTest {
                     history = emptyList(),
                 )
             )
+
         compose.mainClock.autoAdvance = false
         compose.setContent { MaterialTheme { ExternalTaskPanel(task) } }
+
         val progress =
             compose.onNode(SemanticsMatcher.keyIsDefined(SemanticsProperties.ProgressBarRangeInfo))
+
         compose.onNodeWithText("10%").assertIsDisplayed()
+
         compose.runOnIdle {
             task = task.copy(progress = 80.0)
             androidx.compose.runtime.snapshots.Snapshot.sendApplyNotifications()
         }
         compose.mainClock.advanceTimeBy(96)
+
         compose.onNodeWithText("80%").assertExists()
         val during =
             progress.fetchSemanticsNode().config[SemanticsProperties.ProgressBarRangeInfo].current
         assertTrue(during > 0.1f && during < 0.8f)
+
         compose.mainClock.advanceTimeBy(400)
+
         assertEquals(
             0.8f,
             progress.fetchSemanticsNode().config[SemanticsProperties.ProgressBarRangeInfo].current,
             0.001f,
         )
+
         compose.runOnIdle {
             task = task.copy(progress = null)
             androidx.compose.runtime.snapshots.Snapshot.sendApplyNotifications()
         }
         compose.mainClock.advanceTimeBy(300)
+
         progress.assertDoesNotExist()
     }
 
@@ -85,8 +94,10 @@ class ReviewPanelTest {
             )
         var submitted: PlanDraft? = null
         var submittedId: String? = null
+
         compose.setContent {
             var draft by remember { mutableStateOf<PlanDraft?>(null) }
+
             MaterialTheme {
                 ReviewPanel(interrupt, false, null, draft, { _, value -> draft = value }) {
                     id,
@@ -97,9 +108,11 @@ class ReviewPanelTest {
                 }
             }
         }
+
         compose.onNodeWithText("Plan title").performTextReplacement("Edited title")
         compose.onNodeWithText("Original step").performTextReplacement("First step\nSecond step")
         compose.onNodeWithText("Approve").performClick()
+
         assertEquals("plan", submittedId)
         assertEquals(PlanDraft("Edited title", listOf("First step", "Second step")), submitted)
     }
@@ -118,9 +131,11 @@ class ReviewPanelTest {
                 )
             }
         var continued = 0
+
         compose.setContent {
             var decisions by remember { mutableStateOf(emptyMap<String, String>()) }
             var drafts by remember { mutableStateOf(emptyMap<String, PlanDraft>()) }
+
             MaterialTheme {
                 Column(Modifier.verticalScroll(rememberScrollState())) {
                     PlanReviewPanel(
@@ -141,18 +156,24 @@ class ReviewPanelTest {
                 }
             }
         }
+
         compose.onNodeWithText("Continue workflow").assertIsNotEnabled()
+
         compose.onAllNodesWithText("Approve plan")[0].performScrollTo().performClick()
         compose.onAllNodesWithText("Reject")[1].performScrollTo().performClick()
+
         assertEquals(0, continued)
         compose.onNodeWithText("Continue workflow").assertIsEnabled()
+
         compose
             .onAllNodesWithText("Plan title")[0]
             .performScrollTo()
             .performTextReplacement("Edited")
         compose.onNodeWithText("Continue workflow").assertIsNotEnabled()
+
         compose.onAllNodesWithText("Approve plan")[0].performScrollTo().performClick()
         compose.onNodeWithText("Continue workflow").performScrollTo().performClick()
+
         assertEquals(1, continued)
     }
 
@@ -167,19 +188,24 @@ class ReviewPanelTest {
                         """{"langgraph":{"raw":{"kind":"experiment_plan_review","title":"Plan","steps":["Step"]}}}"""
                     ),
             )
+
         compose.setContent {
             var draft by remember { mutableStateOf<PlanDraft?>(null) }
+
             MaterialTheme {
                 ReviewPanel(interrupt, false, null, draft, { _, value -> draft = value }) { _, _, _
                     ->
                 }
             }
         }
+
         compose.onNodeWithText("Steps (one per line)").performTextReplacement("First\n\n  \nSecond")
         compose.onNodeWithText("Approve").assertIsEnabled()
+
         compose.onNodeWithText("Plan title").performTextReplacement(" ")
         compose.onNodeWithText("Enter a title to approve this plan.").assertExists()
         compose.onNodeWithText("Approve").assertIsNotEnabled()
+
         compose.onNodeWithText("Steps (one per line)").performTextReplacement(" ")
         compose.onNodeWithText("Enter at least one step to approve this plan.").assertExists()
         compose.onNodeWithText("Reject").assertIsEnabled()

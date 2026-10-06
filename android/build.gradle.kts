@@ -21,6 +21,7 @@ spotless {
 tasks.register("qualityCheck") {
     group = "verification"
     description = "Checks formatting, lint, tests and debug/release builds."
+
     dependsOn(
         "spotlessCheck",
         ":core:lint",

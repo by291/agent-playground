@@ -34,6 +34,7 @@ class WorkflowRendererTest {
             ]}}
         ]"""
             )
+
         compose.setContent {
             MaterialTheme {
                 val renderer =
@@ -41,12 +42,14 @@ class WorkflowRendererTest {
                         "thread",
                         listOf(WorkflowOutput("output", 1, messages)),
                     )
+
                 WorkflowSurface(renderer, "experiment")
             }
         }
         compose.waitUntil(10_000) {
             compose.onAllNodesWithText("Validation passed").fetchSemanticsNodes().isNotEmpty()
         }
+
         compose.onNodeWithText("Experiment result").assertIsDisplayed()
         compose.onNodeWithText("Validation passed").assertIsDisplayed()
     }
@@ -62,6 +65,7 @@ class WorkflowRendererTest {
             ]}}
         ]"""
             )
+
         compose.setContent {
             MaterialTheme {
                 val renderer =
@@ -69,12 +73,14 @@ class WorkflowRendererTest {
                         "thread",
                         listOf(WorkflowOutput("output", 1, messages)),
                     )
+
                 WorkflowSurface(renderer, "sql")
             }
         }
         compose.waitUntil(10_000) {
             compose.onAllNodesWithText("Receipt: receipt-1").fetchSemanticsNodes().isNotEmpty()
         }
+
         compose.onNodeWithText("Version 2 · SQL submitted").assertIsDisplayed()
         compose.onNodeWithText("SELECT id FROM orders;").assertIsDisplayed()
     }

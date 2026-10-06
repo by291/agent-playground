@@ -35,10 +35,12 @@ class ServerConnectionGateTest {
                     result.await()
                 },
             )
+
         fixture(access)
 
         compose.waitUntil { requests == 1 }
         compose.onNodeWithText("Connected workspace").assertDoesNotExist()
+
         compose.runOnIdle { result.complete(true) }
         compose.onNodeWithText("Connected workspace").assertIsDisplayed()
     }
@@ -55,13 +57,16 @@ class ServerConnectionGateTest {
                     false
                 },
             )
+
         fixture(access)
 
         compose.onNodeWithText("Open app permissions").assertIsDisplayed()
         compose.onNodeWithText("Connected workspace").assertDoesNotExist()
         compose.onNodeWithText("Clear all conversations").assertDoesNotExist()
+
         compose.onNodeWithText("Connect and save").performClick()
         compose.waitUntil { requests == 2 }
+
         compose.onNodeWithText("Connect and save").assertIsEnabled()
         compose.onNodeWithText("Open app permissions").assertIsDisplayed()
         compose.runOnIdle { assertEquals(2, requests) }
@@ -69,6 +74,7 @@ class ServerConnectionGateTest {
 
     private fun fixture(access: ServerNetworkAccess) {
         val application = RuntimeEnvironment.getApplication() as PlaygroundApplication
+
         compose.setContent {
             PlaygroundTheme("light") {
                 ServerConnectionGate(application, AppPreferences(), access) {

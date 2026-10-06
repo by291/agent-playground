@@ -15,8 +15,10 @@ fun activityRows(entries: List<ActivityEntry>, merge: Boolean): List<ActivityRow
     if (!merge) {
         return entries.map { ActivityRow(it, listOf(it)) }
     }
+
     val rows = mutableListOf<ActivityRow>()
     val streams = mutableMapOf<Pair<String?, String>, Int>()
+
     for (entry in entries) {
         val event = entry.event
         val key =
@@ -32,10 +34,12 @@ fun activityRows(entries: List<ActivityEntry>, merge: Boolean): List<ActivityRow
                 is ToolCallEndEvent -> "arguments:${event.toolCallId}"
                 else -> null
             }
+
         if (key == null) {
             rows += ActivityRow(entry, listOf(entry))
             continue
         }
+
         val identity = entry.runId to key
         val delta =
             when (event) {
@@ -53,6 +57,7 @@ fun activityRows(entries: List<ActivityEntry>, merge: Boolean): List<ActivityRow
                 event is ReasoningMessageStartEvent ||
                 event is ToolCallStartEvent
         val index = streams[identity]
+
         if (index == null || started) {
             streams[identity] = rows.size
             rows +=
@@ -63,6 +68,7 @@ fun activityRows(entries: List<ActivityEntry>, merge: Boolean): List<ActivityRow
                 row.events.first().event is TextMessageStartEvent ||
                     row.events.first().event is ReasoningMessageStartEvent ||
                     row.events.first().event is ToolCallStartEvent
+
             rows[index] =
                 row.copy(
                     events = row.events + entry,
@@ -70,19 +76,25 @@ fun activityRows(entries: List<ActivityEntry>, merge: Boolean): List<ActivityRow
                     status =
                         if (ended) {
                             if (beginsWithStart) "Complete" else "End received"
-                        } else row.status,
+                        } else {
+                            row.status
+                        },
                 )
         }
     }
+
     val settled =
         entries
             .filter { it.event is RunFinishedEvent || it.event is RunErrorEvent }
             .map { it.runId }
             .toSet()
+
     return rows.map { row ->
-        if (row.status == "Receiving" && row.entry.runId in settled)
+        if (row.status == "Receiving" && row.entry.runId in settled) {
             row.copy(status = "End not received")
-        else row
+        } else {
+            row
+        }
     }
 }
 
@@ -93,9 +105,11 @@ fun activityExport(state: SessionState, exportedAt: Long): String =
             put("received", state.receivedEventCount)
             put("retained", state.activity.size)
             put("source", "Decoded AG-UI SDK events")
+
             state.runs.lastOrNull()?.let {
                 put("latestRun", protocolJson.encodeToJsonElement(RunRecord.serializer(), it))
             }
+
             put(
                 "clientIssues",
                 buildJsonObject {
@@ -104,6 +118,7 @@ fun activityExport(state: SessionState, exportedAt: Long): String =
                     state.missingOutputSequence?.let { put("missingOutputSequence", it) }
                 },
             )
+
             put(
                 "events",
                 JsonArray(

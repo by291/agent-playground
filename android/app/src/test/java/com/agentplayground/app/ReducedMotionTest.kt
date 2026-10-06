@@ -33,11 +33,15 @@ class ReducedMotionTest {
     fun `system zero duration reaches disclosure final states without a timed transition`() {
         compose.mainClock.autoAdvance = false
         compose.setContent { PlaygroundTheme("light") { Details("Details") { Text("Body") } } }
+
         compose.onNodeWithText("Details").performClick()
         compose.mainClock.advanceTimeBy(48)
+
         compose.onNodeWithText("Body").assertIsDisplayed()
+
         compose.onNodeWithText("Hide Details").performClick()
         compose.mainClock.advanceTimeBy(48)
+
         compose.onNodeWithText("Body").assertDoesNotExist()
     }
 }

@@ -41,6 +41,7 @@ private object ReasoningMessageAdapter : KSerializer<Message> {
     override fun deserialize(decoder: Decoder): Message {
         val jsonDecoder = decoder as JsonDecoder
         val fields = jsonDecoder.decodeJsonElement().jsonObject.toMutableMap()
+
         fields.remove("role")
         fields["name"] = JsonPrimitive(REASONING_NAME)
 

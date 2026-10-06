@@ -36,11 +36,13 @@ class ConversationScrollTest {
         fixture { vm ->
             compose.onNodeWithText("Latest A").assertIsDisplayed()
             compose.onNodeWithContentDescription("Jump to latest message").assertDoesNotExist()
+
             compose.onNodeWithTag("conversation-timeline").performScrollToIndex(12)
             vm.select("b")
             await {
                 vm.state.value.session?.threadId == "b" && vm.state.value.session?.loading == false
             }
+
             compose.onNodeWithText("Latest B").assertIsDisplayed()
         }
     }
@@ -54,6 +56,7 @@ class ConversationScrollTest {
                 .assertIsDisplayed()
                 .performClick()
             compose.waitForIdle()
+
             compose.onNodeWithText("Latest A").assertIsDisplayed()
         }
     }
@@ -64,6 +67,7 @@ class ConversationScrollTest {
                 object : Dispatcher() {
                     override fun dispatch(request: RecordedRequest): MockResponse {
                         val id = request.path?.removePrefix("/conversations/")
+
                         return when {
                             request.path == "/agent-info" ->
                                 MockResponse().setBody("{\"model\":\"fixture\"}")
@@ -75,8 +79,11 @@ class ConversationScrollTest {
                                         listOf<Message>(
                                             UserMessage(
                                                 "$id-user-$index",
-                                                if (index == 19) "Latest ${id!!.uppercase()}"
-                                                else "Earlier $id $index",
+                                                if (index == 19) {
+                                                    "Latest ${id!!.uppercase()}"
+                                                } else {
+                                                    "Earlier $id $index"
+                                                },
                                             ),
                                             AssistantMessage(
                                                 "$id-answer-$index",
@@ -84,6 +91,7 @@ class ConversationScrollTest {
                                             ),
                                         )
                                     }
+
                                 MockResponse()
                                     .setBody(
                                         protocolJson.encodeToString(
@@ -103,12 +111,15 @@ class ConversationScrollTest {
                     }
                 }
             server.start()
+
             val context = RuntimeEnvironment.getApplication()
             val journal = PreferenceStore(context).conversations(server.url("/").toString())
+
             runBlocking {
                 journal.write(SavedConversation("a", empty = false))
                 journal.select("a")
             }
+
             val store = ViewModelStore()
             val vm =
                 ViewModelProvider(
@@ -126,6 +137,7 @@ class ConversationScrollTest {
                                 as T
                     },
                 )[ConversationViewModel::class.java]
+
             try {
                 compose.setContent {
                     PlaygroundTheme("light") {
@@ -133,6 +145,7 @@ class ConversationScrollTest {
                     }
                 }
                 await { vm.state.value.session?.loading == false }
+
                 check(vm)
             } finally {
                 vm.setVisible(false)
@@ -146,6 +159,7 @@ class ConversationScrollTest {
             Shadows.shadowOf(Looper.getMainLooper()).idle()
             condition()
         }
+
         compose.waitForIdle()
     }
 }

@@ -73,6 +73,7 @@ private object WorkflowText : A2uiComponent {
     private val text = A2uiProperty.dynamicString("text", required = true)
     private val role =
         A2uiProperty.stringEnum("role", listOf("eyebrow", "title", "body", "step"), required = true)
+
     override val name = "WorkflowText"
     override val description = "Workflow text"
     override val properties = listOf(text, role)
@@ -89,6 +90,7 @@ private object WorkflowText : A2uiComponent {
                 "eyebrow" -> MaterialTheme.typography.labelMedium
                 else -> MaterialTheme.typography.bodyMedium
             }
+
         Text(
             properties.bind(text).orEmpty(),
             modifier,
@@ -119,6 +121,7 @@ private object WorkflowSql : A2uiComponent {
     private val issues = A2uiProperty.stringList("issues", required = true)
     private val check = A2uiProperty.nested("check", listOf(passed, issues), required = true)
     private val receipt = A2uiProperty.string("receiptId")
+
     override val name = "WorkflowSql"
     override val description = "Checked SQL with revision and demo submission state"
     override val properties = listOf(call, sql, original, revision, round, status, check, receipt)
@@ -140,6 +143,7 @@ private object WorkflowSql : A2uiComponent {
                         "Changes required"
                     }
             }
+
         SectionCard(modifier) {
             Text("SQL review", style = MaterialTheme.typography.titleMedium)
             StatusTag(
@@ -190,11 +194,13 @@ fun RenderComponent(state: A2uiComponentState) {
     ) { current ->
         when (current) {
             is A2uiComponentState.Success -> A2uiComponent(current.component)
+
             is A2uiComponentState.Error ->
                 Text(
                     "Workflow content unavailable: ${current.exception.message}",
                     color = MaterialTheme.colorScheme.error,
                 )
+
             A2uiComponentState.Loading -> LinearProgressIndicator(Modifier.fillMaxWidth())
         }
     }

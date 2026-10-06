@@ -82,6 +82,7 @@ class LocalNetworkAccessTest {
                         requestPermission = { error("This server is on the internet") },
                         resolveHost = { listOf(InetAddress.getByName(address)) },
                     )
+
                 assertTrue(internet.request("https://server.example/"))
             }
         }

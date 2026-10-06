@@ -41,11 +41,14 @@ internal fun ReasoningContent(
     val automaticOpen = active && phase.startsWith("reasoning-")
     var savedPhase by rememberSaveable(turn.id) { mutableStateOf(phase) }
     var open by rememberSaveable(turn.id) { mutableStateOf(automaticOpen) }
+
     if (savedPhase != phase) {
         savedPhase = phase
         open = automaticOpen
     }
+
     val thinking = active && turn.messages.lastOrNull()?.let(::isReasoning) == true
+
     Column(Modifier.fillMaxWidth()) {
         Row(
             Modifier.disclosure(open) { open = !open },
@@ -92,6 +95,7 @@ internal fun ToolGroupContent(
 ) {
     val identity = group.steps.first().call.id
     var expanded by rememberSaveable(identity) { mutableStateOf(false) }
+
     val states = group.steps.map { it.status }.toSet()
     val status =
         when {
@@ -104,10 +108,14 @@ internal fun ToolGroupContent(
         }
     val name =
         group.skill?.name
-            ?: if (group.steps.size == 1) group.steps.first().call.function.name
-            else "${group.steps.size} tools"
+            ?: if (group.steps.size == 1) {
+                group.steps.first().call.function.name
+            } else {
+                "${group.steps.size} tools"
+            }
     val error = group.steps.firstNotNullOfOrNull { it.result?.error?.takeIf(String::isNotBlank) }
     val colors = MaterialTheme.colorScheme
+
     Column(Modifier.fillMaxWidth()) {
         Row(
             Modifier.disclosure(expanded) { expanded = !expanded }.testTag("tool-group-$identity"),
@@ -125,6 +133,7 @@ internal fun ToolGroupContent(
                             Modifier.size(18.dp),
                             tint = colors.error,
                         )
+
                     group.skill != null ->
                         Icon(
                             painterResource(R.drawable.ic_agent_mark),
@@ -132,6 +141,7 @@ internal fun ToolGroupContent(
                             Modifier.size(18.dp),
                             tint = colors.onSurfaceVariant,
                         )
+
                     else ->
                         Icon(
                             Icons.Outlined.Build,
@@ -178,6 +188,7 @@ internal fun ToolGroupContent(
 @Composable
 private fun ToolDetails(step: ToolStep) {
     var expanded by rememberSaveable(step.call.id) { mutableStateOf(false) }
+
     Column(Modifier.fillMaxWidth()) {
         Row(
             Modifier.disclosure(expanded) { expanded = !expanded }
@@ -239,6 +250,7 @@ private fun ProcessBody(
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val line = MaterialTheme.colorScheme.outlineVariant
+
     Column(
         modifier
             .fillMaxWidth()
@@ -269,6 +281,7 @@ private fun ToolStatusIcon(status: ToolStatus) {
                 ToolStatus.Waiting -> Icons.Outlined.Schedule
                 else -> Icons.Outlined.ErrorOutline
             }
+
         if (current == ToolStatus.Running) {
             ProcessSpinner()
         } else {
@@ -277,8 +290,11 @@ private fun ToolStatusIcon(status: ToolStatus) {
                 null,
                 Modifier.size(16.dp),
                 tint =
-                    if (current == ToolStatus.Failed) MaterialTheme.colorScheme.error
-                    else MaterialTheme.colorScheme.onSurfaceVariant,
+                    if (current == ToolStatus.Failed) {
+                        MaterialTheme.colorScheme.error
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
             )
         }
     }
@@ -288,11 +304,15 @@ private fun ToolStatusIcon(status: ToolStatus) {
 private fun ExecutionStatus(status: ToolStatus, modifier: Modifier = Modifier) {
     val color by
         animateColorAsState(
-            if (status == ToolStatus.Failed) MaterialTheme.colorScheme.error
-            else MaterialTheme.colorScheme.onSurfaceVariant,
+            if (status == ToolStatus.Failed) {
+                MaterialTheme.colorScheme.error
+            } else {
+                MaterialTheme.colorScheme.onSurfaceVariant
+            },
             Motion.feedback(),
             label = "execution-status",
         )
+
     ChangingContent(status, modifier) { current ->
         Text(statusLabel(current), style = MaterialTheme.typography.bodySmall, color = color)
     }
@@ -340,6 +360,7 @@ private fun ExecutionError(message: String) {
 @Composable
 internal fun ToolResultContent(message: ToolMessage) {
     message.error?.takeIf(String::isNotBlank)?.let { ExecutionError(it) }
+
     if (message.content.isNotEmpty()) {
         PayloadPanel("Result", message.content)
     }
@@ -359,6 +380,7 @@ private fun PayloadPanel(label: String, value: String) {
                 }
                 .getOrDefault(value)
         }
+
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Text(
             label,

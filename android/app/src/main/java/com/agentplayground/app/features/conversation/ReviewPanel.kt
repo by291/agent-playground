@@ -29,6 +29,7 @@ fun PlanReviewPanel(
             reviews.all { review ->
                 val draft = drafts[review.interrupt.id] ?: PlanDraft(review.title, review.steps)
                 val decision = decisions[review.interrupt.id]
+
                 review.kind == "experiment_plan_review" &&
                     !review.expired &&
                     (decision == "reject" || (decision == "approve" && draft.canApprove))
@@ -79,6 +80,7 @@ private fun ReviewContent(
     multiple: Boolean,
 ) {
     val review = Review.from(interrupt)
+
     if (review == null) {
         val raw =
             (interrupt.metadata as? kotlinx.serialization.json.JsonObject)?.get("langgraph")
@@ -86,6 +88,7 @@ private fun ReviewContent(
         val external =
             (raw?.get("raw") as? kotlinx.serialization.json.JsonObject)?.string("kind") ==
                 "workflow_external_wait"
+
         Text(
             if (external) {
                 "Waiting for an external task. You can return later."
@@ -95,6 +98,7 @@ private fun ReviewContent(
             },
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+
         return
     }
 
@@ -106,6 +110,7 @@ private fun ReviewContent(
         SectionCard {
             StatusTag("Your review", emphasis = true)
             Text(review.title, style = MaterialTheme.typography.titleMedium)
+
             if (review.kind == "experiment_plan_review") {
                 OutlinedTextField(
                     title,
@@ -145,6 +150,7 @@ private fun ReviewContent(
             } else {
                 review.steps.forEachIndexed { index, step -> Text("${index + 1}. $step") }
             }
+
             RevealValue(review.blockedReason) {
                 Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
@@ -218,6 +224,7 @@ private fun ReviewContent(
                     }
                 }
             }
+
             if (review.kind == "workflow_review") {
                 Text(
                     "Use the message field to ask questions or request changes.",
@@ -237,6 +244,7 @@ fun ExternalTaskPanel(task: ExternalTask) {
             ChangingContent(task.message) { Text(it) }
             RevealValue(task.progress) { progress ->
                 val displayed by reportedProgress((progress / 100).toFloat())
+
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     LinearProgressIndicator(
                         progress = { displayed },

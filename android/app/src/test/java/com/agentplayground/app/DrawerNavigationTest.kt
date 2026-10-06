@@ -36,11 +36,14 @@ class DrawerNavigationTest {
         fixture {
             compose.onNodeWithContentDescription("Open conversation history").performClick()
             compose.onNodeWithTag("navigation-settings").assertIsDisplayed()
+
             compose.mainClock.autoAdvance = false
             compose.onNodeWithTag("navigation-settings").performClick()
             compose.mainClock.advanceTimeBy(32)
+
             compose.onNodeWithTag("navigation-settings").assertIsSelected()
             compose.onNodeWithText("Make it yours.").assertExists()
+
             compose.mainClock.advanceTimeBy(600)
             compose.onNodeWithText("Make it yours.").assertIsDisplayed()
             compose.mainClock.autoAdvance = true
@@ -53,16 +56,22 @@ class DrawerNavigationTest {
             val titleBefore = compose.onNodeWithTag("conversation-title").getUnclippedBoundsInRoot()
             val composerBefore =
                 compose.onNodeWithContentDescription("Message").getUnclippedBoundsInRoot()
+
             compose.onNodeWithText("Settings").assertIsNotDisplayed()
+
             compose.onNodeWithContentDescription("Open conversation history").performClick()
+
             val titleOpen = compose.onNodeWithTag("conversation-title").getUnclippedBoundsInRoot()
             val composerOpen =
                 compose.onNodeWithContentDescription("Message").getUnclippedBoundsInRoot()
             val displacement = titleOpen.left.value - titleBefore.left.value
+
             assertTrue("Chat should slide away to reveal history", displacement > 240f)
             assertEquals(displacement, composerOpen.left.value - composerBefore.left.value, 1f)
             compose.onNodeWithText("Workspace").assertIsDisplayed()
+
             compose.onRoot().performTouchInput { click(Offset(width - 12f, height / 2f)) }
+
             compose.onNodeWithTag("conversation-title").assertIsDisplayed()
             assertEquals(
                 titleBefore.left,
@@ -76,6 +85,7 @@ class DrawerNavigationTest {
     fun `drawer navigation remains reachable in a short landscape window`() {
         fixture(compact = true) {
             compose.onNodeWithContentDescription("Open conversation history").performClick()
+
             compose.onNodeWithText("New conversation").assertIsDisplayed()
             compose.onNodeWithTag("navigation-knowledge").assertIsDisplayed()
             compose.onNodeWithTag("navigation-settings").assertIsDisplayed().performClick()
@@ -87,21 +97,27 @@ class DrawerNavigationTest {
     fun `drawer destinations stay reachable across pages and returning keeps the chat draft`() {
         fixture {
             compose.onNodeWithContentDescription("Open conversation history").performClick()
+
             val knowledge = compose.onNodeWithTag("navigation-knowledge").getUnclippedBoundsInRoot()
             val current = compose.onNodeWithTag("history-fixture").getUnclippedBoundsInRoot()
             val settings = compose.onNodeWithTag("navigation-settings").getUnclippedBoundsInRoot()
+
             assertTrue("Knowledge belongs above conversations", knowledge.top < current.top)
             assertTrue("Settings belongs in the workspace footer", settings.top > current.bottom)
             compose.onNodeWithText("Chat").assertDoesNotExist()
+
             compose.onNodeWithTag("navigation-settings").performClick()
             compose.onNodeWithText("Make it yours.").assertIsDisplayed()
             compose.onNodeWithContentDescription("Open navigation menu").performClick()
             compose.onNodeWithTag("navigation-settings").assertIsSelected()
+
             compose.onNodeWithText("Knowledge").performClick()
             compose.onNodeWithText("Your shared library.").assertIsDisplayed()
             compose.onNodeWithContentDescription("Open navigation menu").performClick()
             compose.onNodeWithTag("navigation-knowledge").assertIsSelected()
+
             compose.onNodeWithTag("history-fixture").performClick()
+
             compose.onNodeWithTag("conversation-title").assertTextEquals("Drawer fixture")
             compose.onNodeWithContentDescription("Message").assertTextContains("Preserved draft")
             compose.onNodeWithText("Settings").assertIsNotDisplayed()
@@ -115,6 +131,7 @@ class DrawerNavigationTest {
             compose.onNodeWithTag("navigation-knowledge").performClick()
             compose.onNodeWithContentDescription("Open navigation menu").performClick()
             compose.onNodeWithTag("history-fixture").assertIsDisplayed().performClick()
+
             compose.onNodeWithTag("conversation-title").assertTextEquals("New conversation")
             compose.onNodeWithContentDescription("Message").assertTextContains("Preserved draft")
         }
@@ -126,6 +143,7 @@ class DrawerNavigationTest {
             compose.onNodeWithContentDescription("Open conversation history").performClick()
             compose.onRoot().performTouchInput { swipeLeft() }
             compose.onNodeWithTag("conversation-title").assertIsDisplayed()
+
             compose.onNodeWithContentDescription("Open conversation history").performClick()
             compose.onNodeWithText("Other conversation").performClick()
             await {
@@ -138,6 +156,7 @@ class DrawerNavigationTest {
                     ?.firstOrNull()
                     ?.text == "Other conversation"
             }
+
             compose.onNodeWithTag("conversation-title").assertIsDisplayed()
             compose.onNodeWithText("Workspace").assertIsNotDisplayed()
         }
@@ -153,9 +172,11 @@ class DrawerNavigationTest {
                             "/conversations" ->
                                 MockResponse()
                                     .setBody(
-                                        if (empty) """{"conversations":[]}"""
-                                        else
+                                        if (empty) {
+                                            """{"conversations":[]}"""
+                                        } else {
                                             """{"conversations":[{"threadId":"fixture","title":"Drawer fixture","createdAt":"now","updatedAt":"now"},{"threadId":"other","title":"Other conversation","createdAt":"now","updatedAt":"now"}]}"""
+                                        }
                                     )
                             "/conversations/fixture",
                             "/conversations/other" ->
@@ -167,9 +188,11 @@ class DrawerNavigationTest {
                                             protocolJson.encodeToString(
                                                 ConversationSnapshot.serializer(),
                                                 ConversationSnapshot(
-                                                    if (request.path!!.endsWith("other"))
+                                                    if (request.path!!.endsWith("other")) {
                                                         "Other conversation"
-                                                    else "Drawer fixture",
+                                                    } else {
+                                                        "Drawer fixture"
+                                                    },
                                                     listOf(
                                                         UserMessage("user", "Question"),
                                                         AssistantMessage("answer", "Answer"),
@@ -185,16 +208,19 @@ class DrawerNavigationTest {
                         }
                 }
             server.start()
+
             val application = RuntimeEnvironment.getApplication() as PlaygroundApplication
             val preferences =
                 AppPreferences(serverUrl = server.url("/").toString(), replyAnimation = false)
             val journal = application.preferences.conversations(preferences.serverUrl)
+
             runBlocking {
                 journal.write(
                     SavedConversation("fixture", draft = "Preserved draft", empty = empty)
                 )
                 journal.select("fixture")
             }
+
             compose.setContent {
                 PlaygroundTheme("light") {
                     if (compact) {
@@ -206,6 +232,7 @@ class DrawerNavigationTest {
                     }
                 }
             }
+
             await {
                 compose
                     .onAllNodesWithTag("conversation-title")
@@ -216,6 +243,7 @@ class DrawerNavigationTest {
                     ?.firstOrNull()
                     ?.text == if (empty) "New conversation" else "Drawer fixture"
             }
+
             check()
         }
     }
@@ -225,6 +253,7 @@ class DrawerNavigationTest {
             Shadows.shadowOf(Looper.getMainLooper()).idle()
             condition()
         }
+
         compose.waitForIdle()
     }
 }

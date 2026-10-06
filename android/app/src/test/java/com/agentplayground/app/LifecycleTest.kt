@@ -21,16 +21,21 @@ class LifecycleTest {
         val graph = ViewModelProvider(controller.get())[ServerGraph::class.java]
         val child =
             ViewModelProvider(graph.owner("http://localhost:3000/"))[ResourceModel::class.java]
+
         controller.configurationChange()
+
         val restored = ViewModelProvider(controller.get())[ServerGraph::class.java]
+
         assertSame(graph, restored)
         assertSame(
             child,
             ViewModelProvider(restored.owner("http://localhost:3000/"))[ResourceModel::class.java],
         )
         assertFalse(child.released)
+
         restored.owner("https://other.example/")
         assertTrue(child.released)
+
         controller.pause().stop().destroy()
     }
 
@@ -38,8 +43,10 @@ class LifecycleTest {
     fun `pending save target survives saved state serialization`() {
         val pending = Download("/conversations/thread/files/file", "report.pdf")
         val scope = androidx.compose.runtime.saveable.SaverScope { true }
+
         with(DownloadSaver) {
             val saved = with(scope) { save(pending) }!!
+
             assertEquals(pending, restore(saved))
         }
     }

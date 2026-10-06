@@ -20,27 +20,33 @@ import org.commonmark.parser.Parser
 internal fun renderMarkdownCell(renderer: Markwon, cell: TableCell): Spanned {
     val result = SpannableStringBuilder()
     var child = cell.firstChild
+
     while (child != null) {
         result.append(renderer.render(child))
         child = child.next
     }
+
     return SpannedString(result)
 }
 
 internal fun markdownTableRows(table: TableBlock): List<List<TableCell>> {
     val rows = mutableListOf<List<TableCell>>()
+
     table.accept(
         object : AbstractVisitor() {
             override fun visit(node: CustomNode) {
                 if (node is TableRow) {
                     val cells = mutableListOf<TableCell>()
                     var cell = node.firstChild
+
                     while (cell != null) {
                         if (cell is TableCell) {
                             cells.add(cell)
                         }
+
                         cell = cell.next
                     }
+
                     rows.add(cells)
                 } else {
                     visitChildren(node)
@@ -48,6 +54,7 @@ internal fun markdownTableRows(table: TableBlock): List<List<TableCell>> {
             }
         }
     )
+
     return rows
 }
 
@@ -60,6 +67,7 @@ internal fun markdownBlocks(content: String): List<Node> {
             .parse(content)
     val blocks = mutableListOf<Node>()
     var child = document.firstChild
+
     while (child != null) {
         blocks.add(child)
         child = child.next
@@ -70,17 +78,21 @@ internal fun markdownBlocks(content: String): List<Node> {
 
 internal fun markdownCopyTargets(node: Node): List<Node> {
     val targets = mutableListOf<Node>()
+
     fun collect(current: Node) {
         if (copyableMarkdown(current) != null) {
             targets.add(current)
             return
         }
+
         var child = current.firstChild
+
         while (child != null) {
             collect(child)
             child = child.next
         }
     }
+
     collect(node)
 
     return targets
@@ -92,16 +104,19 @@ internal fun copyableMarkdown(node: Node): String? =
         is IndentedCodeBlock -> node.literal
         is TableBlock -> {
             val rows = mutableListOf<String>()
+
             node.accept(
                 object : AbstractVisitor() {
                     override fun visit(customBlock: CustomNode) {
                         if (customBlock is TableRow) {
                             val cells = mutableListOf<String>()
                             var cell = customBlock.firstChild
+
                             while (cell != null) {
                                 cells.add(plainMarkdown(cell).replace("\t", " ").replace("\n", " "))
                                 cell = cell.next
                             }
+
                             rows.add(cells.joinToString("\t"))
                         } else {
                             visitChildren(customBlock)
@@ -109,13 +124,16 @@ internal fun copyableMarkdown(node: Node): String? =
                     }
                 }
             )
+
             rows.joinToString("\n")
         }
+
         else -> null
     }
 
 private fun plainMarkdown(node: Node): String {
     val text = StringBuilder()
+
     node.accept(
         object : AbstractVisitor() {
             override fun visit(node: org.commonmark.node.Text) {
@@ -168,6 +186,7 @@ internal fun highlightCode(info: String?, code: String, dark: Boolean): CharSequ
                     .theme(codeSyntaxTheme(dark))
                     .build()
                     .getHighlights()
+
             highlights.filterIsInstance<ColorHighlight>().forEach { range ->
                 if (
                     range.location.start >= 0 &&
@@ -182,6 +201,7 @@ internal fun highlightCode(info: String?, code: String, dark: Boolean): CharSequ
                     )
                 }
             }
+
             result
         }
         .getOrDefault(code)
@@ -189,6 +209,7 @@ internal fun highlightCode(info: String?, code: String, dark: Boolean): CharSequ
 
 internal fun renderMarkdownBlock(renderer: Markwon, block: Node): Spanned {
     val parsed = renderer.render(block)
+
     // Table rows draw through spans on non-breaking spaces; retain their placeholders.
     return if (block is TableBlock) parsed else SpannedString(parsed.trimEnd('\n'))
 }

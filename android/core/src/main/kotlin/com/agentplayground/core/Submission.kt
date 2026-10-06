@@ -82,6 +82,7 @@ data class Review(val interrupt: Interrupt, val raw: JsonObject) {
                     ) {
                         return null
                     }
+
                     if (
                         action == "message" &&
                             (message.isNullOrBlank() ||
@@ -96,18 +97,21 @@ data class Review(val interrupt: Interrupt, val raw: JsonObject) {
                         put("workflowCallId", raw.getValue("workflowCallId"))
                         put("revision", raw.getValue("revision"))
                         put("round", raw.getValue("round"))
+
                         if (action == "message") {
                             put("message", message!!.trim())
                             put("messageId", messageId)
                         }
                     }
                 }
+
                 "experiment_plan_review" -> {
                     if (action !in setOf("approve", "reject")) {
                         return null
                     }
 
                     val replacement = (plan ?: PlanDraft(title, steps)).normalized()
+
                     if (action == "approve" && !replacement.canApprove) {
                         return null
                     }
@@ -118,6 +122,7 @@ data class Review(val interrupt: Interrupt, val raw: JsonObject) {
                         put("steps", JsonArray(replacement.steps.map(::JsonPrimitive)))
                     }
                 }
+
                 else -> return null
             }
 
@@ -162,6 +167,7 @@ fun externalWaitCallId(interrupt: Interrupt): String? {
     val metadata = interrupt.metadata as? JsonObject
     val langgraph = metadata?.get("langgraph") as? JsonObject
     val raw = langgraph?.get("raw") as? JsonObject
+
     return raw?.takeIf { it.string("kind") == "workflow_external_wait" }?.string("workflowCallId")
 }
 
@@ -176,5 +182,6 @@ fun validateFile(name: String, size: Long) {
     ) {
         "Use a filename without separators or control characters (up to 200 characters)."
     }
+
     require(size in 0..MAX_FILE_BYTES) { "Each file must be at most 10 MiB." }
 }

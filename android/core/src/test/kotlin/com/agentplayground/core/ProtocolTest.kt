@@ -10,6 +10,7 @@ class ProtocolTest {
     fun `normal submission sends only newest user message and no model history`() {
         val input = newSubmission("thread", "run", UserMessage("user", "Hello"))
         val wire = protocolJson.encodeToJsonElement(RunAgentInput.serializer(), input).jsonObject
+
         assertEquals(
             listOf("user"),
             wire.getValue("messages").jsonArray.map {
@@ -32,9 +33,12 @@ class ProtocolTest {
                     ),
             )
         val review = Review.from(interrupt)!!
+
         assertNull(review.respond("accept"))
+
         val entry = review.respond("message", "Explain", "user")!!
         val payload = entry.payload!!.jsonObject
+
         assertEquals(3, payload.getValue("revision").jsonPrimitive.int)
         assertEquals(2, payload.getValue("round").jsonPrimitive.int)
         assertEquals("user", payload.getValue("messageId").jsonPrimitive.content)
@@ -50,6 +54,7 @@ class ProtocolTest {
         val buffer = OutputBuffer()
         val first = WorkflowOutput("one", 1, JsonArray(emptyList()))
         val second = WorkflowOutput("two", 2, JsonArray(emptyList()))
+
         assertTrue(buffer.ingest(listOf(second)).ready.isEmpty())
         assertEquals(1, buffer.missingSequence)
         assertEquals(listOf(first, second), buffer.ingest(listOf(first)).ready)
@@ -68,7 +73,9 @@ class ProtocolTest {
                 outputs = emptyList(),
                 runs = emptyList(),
             )
+
         val result = reconcile(snapshot, pending, listOf(UserMessage("user", "Hello")))
+
         assertEquals("Hello", result.messages.single().content)
         assertFalse(result.confirmed)
         assertTrue(result.needsRecovery)
@@ -85,6 +92,7 @@ class ProtocolTest {
                 outputs = emptyList(),
                 runs = listOf(RunRecord("run", "user", "running")),
             )
+
         assertEquals(RecoveryDecision.Observe, recoveryDecision(snapshot, pending))
         assertEquals(RecoveryDecision.Retry, recoveryDecision(null, pending))
     }
@@ -100,6 +108,7 @@ class ProtocolTest {
                 outputs = emptyList(),
                 runs = listOf(RunRecord("run", "user", "prepared")),
             )
+
         assertEquals(RecoveryDecision.Retry, recoveryDecision(snapshot, pending))
     }
 
@@ -114,6 +123,7 @@ class ProtocolTest {
                 outputs = emptyList(),
                 runs = listOf(RunRecord("run", "user", "running")),
             )
+
         assertEquals(
             "Old and new",
             reconcile(snapshot, pending, listOf(AssistantMessage("reply", "Old and new")))
@@ -126,9 +136,11 @@ class ProtocolTest {
     @Test
     fun `Unicode names accepted while paths and excessive files rejected`() {
         validateFile("报告.pdf", 10 * 1024 * 1024L)
+
         listOf("../file", "a/b", "a\\b", "\u0000file", ".").forEach { name ->
             assertThrows(IllegalArgumentException::class.java) { validateFile(name, 1) }
         }
+
         assertThrows(IllegalArgumentException::class.java) {
             validateFile("large.pdf", 10 * 1024 * 1024L + 1)
         }

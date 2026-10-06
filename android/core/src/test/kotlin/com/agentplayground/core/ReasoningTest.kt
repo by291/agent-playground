@@ -15,6 +15,7 @@ class ReasoningTest {
             "interrupts":[],"outputs":[],"runs":[]
         }"""
             )
+
         assertTrue(isReasoning(snapshot.messages[0]))
         assertEquals("Compare the constraints.", snapshot.messages[0].content)
         assertFalse(isReasoning(snapshot.messages[1]))
@@ -26,6 +27,7 @@ class ReasoningTest {
             protocolJson.decodeFromString<BaseEvent>(
                 """{"type":"MESSAGES_SNAPSHOT","messages":[{"id":"reason","role":"reasoning","content":"Compare."},{"id":"answer","role":"assistant","content":"Done."}]}"""
             ) as MessagesSnapshotEvent
+
         assertTrue(isReasoning(event.messages[0]))
         assertEquals("Done.", event.messages[1].content)
     }

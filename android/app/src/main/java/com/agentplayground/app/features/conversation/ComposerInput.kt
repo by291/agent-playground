@@ -8,6 +8,7 @@ data class ModelContext(val model: String?, val usage: ContextUsage?)
 
 fun modelContext(currentModel: String?, reported: ContextUsage?): ModelContext {
     val model = currentModel ?: reported?.model
+
     return ModelContext(model, reported?.takeIf { it.model == model })
 }
 

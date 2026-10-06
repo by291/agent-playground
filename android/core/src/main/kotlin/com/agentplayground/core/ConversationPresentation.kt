@@ -76,6 +76,7 @@ fun conversationTurns(
     val turns = mutableListOf<Draft>()
     val callOwners = mutableMapOf<String, Draft>()
     var current: Draft? = null
+
     for (message in messages) {
         if (message is UserMessage) {
             val turn = Draft(message.id, message)
@@ -90,7 +91,9 @@ fun conversationTurns(
                     }
             val owner =
                 if (message is ToolMessage) callOwners[message.toolCallId] ?: latest else latest
+
             owner.messages.add(message)
+
             if (message is AssistantMessage) {
                 message.toolCalls.orEmpty().forEach { callOwners[it.id] = latest }
             }
@@ -99,10 +102,12 @@ fun conversationTurns(
 
     val byUser = turns.associateBy { it.id }
     var owner: Draft? = null
+
     for (run in runs) {
         owner = run.messageId?.let(byUser::get) ?: owner
         owner?.status = run.status
     }
+
     if (owner == null && turns.isNotEmpty() && runs.isNotEmpty()) {
         turns.last().status = runs.last().status
     }
@@ -120,18 +125,28 @@ fun conversationTurns(
                     val status =
                         when {
                             result != null ->
-                                if (!result.error.isNullOrEmpty()) ToolStatus.Failed
-                                else ToolStatus.Completed
+                                if (!result.error.isNullOrEmpty()) {
+                                    ToolStatus.Failed
+                                } else {
+                                    ToolStatus.Completed
+                                }
+
                             turn.status == "interrupted" ->
-                                if (call.id in externalWaitCallIds) ToolStatus.Waiting
-                                else ToolStatus.Paused
+                                if (call.id in externalWaitCallIds) {
+                                    ToolStatus.Waiting
+                                } else {
+                                    ToolStatus.Paused
+                                }
+
                             turn.status == "failed" -> ToolStatus.Failed
                             isActiveRun(turn.status) -> ToolStatus.Running
                             else -> ToolStatus.Unavailable
                         }
+
                     ToolStep(call, result, status)
                 }
             }
+
         ConversationTurn(
             turn.id,
             turn.user,
@@ -147,6 +162,7 @@ fun skillIdentity(step: ToolStep): SkillIdentity? {
     if (step.call.function.name !in skillTools) {
         return null
     }
+
     val arguments = jsonObject(step.call.function.arguments)
     val name = arguments?.string("skill_name")?.takeIf { it.isNotBlank() } ?: "Loading…"
     val path = arguments?.string("script_path") ?: arguments?.string("path")
@@ -156,9 +172,11 @@ fun skillIdentity(step: ToolStep): SkillIdentity? {
 
 fun executionGroups(steps: List<ToolStep>): List<ExecutionGroup> {
     val groups = mutableListOf<ExecutionGroup>()
+
     for (step in steps) {
         val skill = skillIdentity(step)
         val index = groups.indexOfFirst { it.skill?.name == skill?.name }
+
         if (index < 0) {
             groups.add(ExecutionGroup(skill, listOf(step)))
         } else {
@@ -171,15 +189,19 @@ fun executionGroups(steps: List<ToolStep>): List<ExecutionGroup> {
 
 fun skillFiles(steps: List<ToolStep>): List<SkillFile> {
     val files = linkedMapOf<String, SkillFile>()
+
     for (step in steps) {
         val payload = step.result?.let { jsonObject(it.content) } ?: continue
+
         if (payload.string("kind") != "skill_script_result") {
             continue
         }
+
         for (item in (payload["files"] as? JsonArray).orEmpty()) {
             val file =
                 runCatching { protocolJson.decodeFromJsonElement<SkillFile>(item) }.getOrNull()
                     ?: continue
+
             files[file.id] = file
         }
     }
@@ -191,26 +213,34 @@ fun replySources(steps: List<ToolStep>): ReplySources {
     val sources = linkedMapOf<String, KnowledgeSource>()
     val errors = linkedSetOf<String>()
     var searched = false
+
     for (step in steps) {
         if (step.call.function.name != "search_knowledge") {
             continue
         }
+
         val payload = step.result?.let { jsonObject(it.content) } ?: continue
+
         if (payload.string("kind") != "knowledge_search_result") {
             continue
         }
+
         searched = true
         payload.string("error")?.takeIf { it.isNotBlank() }?.let(errors::add)
+
         for (item in (payload["sources"] as? JsonArray).orEmpty()) {
             val fields = item as? JsonObject ?: continue
             val chunkId = fields.string("chunkId") ?: continue
             val documentId = fields.string("documentId") ?: continue
             val name = fields.string("name") ?: continue
             val excerpt = fields.string("excerpt") ?: continue
+
             if (!uuidPattern.matches(chunkId) || !uuidPattern.matches(documentId)) {
                 continue
             }
+
             val key = chunkId.lowercase()
+
             sources[key] =
                 KnowledgeSource(
                     chunkId,
@@ -272,23 +302,30 @@ fun legacyWorkflowArtifacts(
     val current = mutableListOf<LegacyWorkflowSurface>()
     val history = mutableListOf<LegacyWorkflowSurface>()
     val positions = mutableMapOf<String, Int>()
+
     fun stage(surface: LegacyWorkflowSurface): String? {
         val callId = surface.toolCallId ?: return null
         val prefix = "experiment-$callId-"
+
         if (callId !in experimentCalls || !surface.id.startsWith(prefix)) {
             return null
         }
+
         return surface.id.removePrefix(prefix).takeIf {
             it in setOf("idea", "draft", "review", "reviewed")
         }
     }
+
     for (surface in surfaces) {
         val callId = surface.toolCallId
+
         if (callId == null || stage(surface) == null) {
             current.add(surface)
             continue
         }
+
         val index = positions[callId]
+
         if (index == null) {
             positions[callId] = current.size
             current.add(surface)
@@ -297,13 +334,16 @@ fun legacyWorkflowArtifacts(
             current[index] = surface
         }
     }
+
     val completed = current.filter { stage(it) == "reviewed" }.mapNotNull { it.toolCallId }.toSet()
     val visible = current.filter { surface ->
         val replaced =
             stage(surface) == "review" && (legacyReview || surface.toolCallId in reviewCallIds)
+
         if (replaced) {
             history.add(surface)
         }
+
         !replaced
     }
 

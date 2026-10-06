@@ -8,6 +8,7 @@ android {
     namespace = "com.agentplayground.app"
     compileSdk = 37
     compileSdkMinor = 1
+
     defaultConfig {
         applicationId = "com.agentplayground.android"
         minSdk = 26
@@ -15,11 +16,14 @@ android {
         versionCode = 1
         versionName = "0.1.0"
     }
+
     buildFeatures { compose = true }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
+
     buildTypes {
         release {
             isMinifyEnabled = true
@@ -28,6 +32,7 @@ android {
         }
     }
     testOptions { unitTests.isIncludeAndroidResources = true }
+
     lint {
         abortOnError = true
         warningsAsErrors = true
@@ -54,8 +59,10 @@ dependencies {
     implementation(libs.markwon.tables)
     implementation(libs.markwon.strikethrough)
     implementation(libs.highlights)
+
     debugImplementation(libs.compose.tooling)
     debugImplementation(libs.compose.ui.test.manifest)
+
     testImplementation(libs.compose.ui.test)
     testImplementation(libs.mockwebserver)
     testImplementation(libs.junit)

@@ -50,6 +50,7 @@ class DocumentAccess(private val resolver: ContentResolver) {
                 )
                 ?.use { cursor ->
                     require(cursor.moveToFirst()) { "Document is unavailable." }
+
                     val name =
                         cursor.getString(cursor.getColumnIndexOrThrow(OpenableColumns.DISPLAY_NAME))
                     val sizeIndex = cursor.getColumnIndex(OpenableColumns.SIZE)
@@ -59,7 +60,9 @@ class DocumentAccess(private val resolver: ContentResolver) {
                         } else {
                             null
                         }
+
                     validateFile(name, size ?: 0)
+
                     PickedFile(uri, name, size)
                 } ?: error("Document details are unavailable.")
         }
@@ -70,16 +73,21 @@ class DocumentAccess(private val resolver: ContentResolver) {
                 val output = ByteArrayOutputStream()
                 val buffer = ByteArray(16 * 1024)
                 var total = 0L
+
                 while (true) {
                     val count = stream.read(buffer)
+
                     if (count < 0) {
                         break
                     }
+
                     total += count
                     require(total <= MAX_FILE_BYTES) { "Each file must be at most 10 MiB." }
                     output.write(buffer, 0, count)
                 }
+
                 validateFile(file.name, total)
+
                 output.toByteArray()
             } ?: error("Could not open ${file.name}.")
         }

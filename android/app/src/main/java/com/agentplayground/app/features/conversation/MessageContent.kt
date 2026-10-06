@@ -46,6 +46,7 @@ fun MessageContent(
                     }
                 }
             }
+
         is AssistantMessage -> {
             if (isReasoning(message)) {
                 Details("Reasoning") { Markdown(message.content.orEmpty(), onLink) }
@@ -53,6 +54,7 @@ fun MessageContent(
                 Markdown(message.content.orEmpty(), onLink)
             }
         }
+
         is ToolMessage -> Details("Tool result") { ToolResultContent(message) }
         else ->
             if (!message.content.isNullOrBlank()) {
@@ -78,9 +80,11 @@ fun AssistantTurnContent(
     var showSources by rememberSaveable(turn.id) { mutableStateOf(false) }
     var selectedSource by rememberSaveable(turn.id) { mutableStateOf<String?>(null) }
     var sourceUnavailable by rememberSaveable(turn.id) { mutableStateOf(false) }
+
     val replyLink: (String) -> Unit = { link ->
         if (link.startsWith("#knowledge-source-", ignoreCase = true)) {
             val source = turn.sources.citation(link)
+
             if (source == null) {
                 sourceUnavailable = true
             } else {
@@ -91,10 +95,12 @@ fun AssistantTurnContent(
             onLink(link)
         }
     }
+
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         if (reasoning.isNotEmpty()) {
             ReasoningContent(turn, active, visibleAnswerPhase == reasoning.size, replyLink)
         }
+
         executionGroups(turn.toolCalls).forEach { group ->
             ToolGroupContent(group) {
                 if (group.skill == null) {
@@ -126,14 +132,17 @@ fun AssistantTurnContent(
                     },
                 )
             }
+
         if (turn.sources.searched) {
             val label =
                 when {
                     turn.sources.sources.isNotEmpty() ->
                         "Sources · ${turn.sources.documents.size} documents"
+
                     turn.sources.errors.isNotEmpty() -> "Sources unavailable"
                     else -> "Sources · No matches"
                 }
+
             OutlinedButton(
                 onClick = {
                     selectedSource = null
@@ -144,9 +153,11 @@ fun AssistantTurnContent(
             }
         }
     }
+
     if (showSources) {
         SourcesSheet(turn.sources, selectedSource, api, onDownload) { showSources = false }
     }
+
     if (sourceUnavailable) {
         AlertDialog(
             onDismissRequest = { sourceUnavailable = false },

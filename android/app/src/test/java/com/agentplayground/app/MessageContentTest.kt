@@ -52,24 +52,31 @@ class MessageContentTest {
                 }
             }
         }
+
         compose.onNodeWithText("Payload").performClick()
         compose.mainClock.advanceTimeBy(80)
+
         val during =
             compose.onNodeWithTag("fold-container").getUnclippedBoundsInRoot().let {
                 it.bottom - it.top
             }
+
         compose.mainClock.advanceTimeBy(300)
+
         val expanded =
             compose.onNodeWithTag("fold-container").getUnclippedBoundsInRoot().let {
                 it.bottom - it.top
             }
+
         assertTrue("Expansion should have an intermediate height", during < expanded)
+
         compose.onNodeWithText("Hide Payload").performClick()
         compose.mainClock.advanceTimeBy(64)
         compose.onNodeWithText("Payload").performClick()
         compose.mainClock.advanceTimeBy(64)
         compose.onNodeWithText("Hide Payload").performClick()
         compose.mainClock.advanceTimeBy(500)
+
         compose.onNodeWithText("Payload body").assertDoesNotExist()
     }
 
@@ -87,14 +94,19 @@ class MessageContentTest {
             """
                 .trimIndent()
         val blocks = markdownBlocks(content)
+
         assertEquals("val name = \"Ada\"\n", copyableMarkdown(blocks.first()))
         assertEquals("Name\tNote\nAda\tpipe | symbol", copyableMarkdown(blocks.last()))
+
         compose.setContent { PlaygroundTheme("light") { Markdown(content, {}) } }
         compose.onNodeWithText("Copy code").performClick()
+
         val clipboard =
             RuntimeEnvironment.getApplication().getSystemService(Context.CLIPBOARD_SERVICE)
                 as ClipboardManager
+
         assertEquals("val name = \"Ada\"\n", clipboard.primaryClip!!.getItemAt(0).text.toString())
+
         compose.onNodeWithText("Copy table").performClick()
         assertEquals(
             "Name\tNote\nAda\tpipe | symbol",
@@ -114,6 +126,7 @@ class MessageContentTest {
                 )
                 .build()
         val rendered = renderMarkdownBlock(renderer, markdownBlocks(content).single())
+
         assertEquals(
             3,
             rendered
@@ -121,32 +134,42 @@ class MessageContentTest {
                 .size,
         )
         assertTrue(hasVisibleMarkdown(rendered))
+
         var visible = false
+
         compose.setContent {
             PlaygroundTheme("light") { Markdown(content, {}, onTextVisible = { visible = true }) }
         }
+
         compose.runOnIdle { assertTrue(visible) }
     }
 
     @Test
     fun `nested code controls and strikethrough retain CommonMark structure`() {
         val block = markdownBlocks("> ~~Old~~\n>\n> ```kotlin\n> val value = 1\n> ```").single()
+
         assertEquals("val value = 1\n", copyableMarkdown(markdownCopyTargets(block).single()))
+
         var strikethrough = false
+
         block.accept(
             object : org.commonmark.node.AbstractVisitor() {
                 override fun visit(node: org.commonmark.node.CustomNode) {
                     if (node is org.commonmark.ext.gfm.strikethrough.Strikethrough) {
                         strikethrough = true
                     }
+
                     visitChildren(node)
                 }
             }
         )
+
         assertTrue(strikethrough)
+
         compose.setContent {
             PlaygroundTheme("light") { Markdown("> ```kotlin\n> val value = 1\n> ```", {}) }
         }
+
         compose.onNodeWithText("Copy code").assertIsDisplayed()
     }
 
@@ -155,9 +178,12 @@ class MessageContentTest {
         compose.setContent {
             PlaygroundTheme("light") { Markdown("```kotlin\nval x = 1\n```", {}, settled = false) }
         }
+
         compose.onNodeWithText("Copy code").assertIsNotEnabled()
         assertEquals("unchanged", highlightCode("unknown", "unchanged", false))
+
         val highlighted = highlightCode("kotlin", "val x = 1", false) as Spanned
+
         assertTrue(
             highlighted
                 .getSpans(0, highlighted.length, ForegroundColorSpan::class.java)
@@ -171,27 +197,34 @@ class MessageContentTest {
         val code = "val values = listOf(" + (1..40).joinToString(", ") + ")\n"
         val content =
             "```kotlin\n$code```\n\n| One | Two | Three | Four |\n| --- | --- | --- | --- |\n| A | B | C | D |"
+
         compose.setContent {
             PlaygroundTheme("light") {
                 Column(Modifier.width(320.dp)) { Markdown(content, {}) }
             }
         }
+
         listOf("markdown-code-scroll", "markdown-table-scroll").forEach { tag ->
             val node = compose.onNodeWithTag(tag)
             val range =
                 node.fetchSemanticsNode().config[SemanticsProperties.HorizontalScrollAxisRange]
+
             assertTrue(
                 "$tag should expose overflow without widening the reply",
                 range.maxValue() > 0,
             )
+
             node.performTouchInput { swipeLeft() }
             assertTrue(range.value() > 0)
         }
+
         compose.onNodeWithText("Copy code").performClick()
         compose.onNodeWithText("Copied").assertIsDisplayed()
+
         val clipboard =
             RuntimeEnvironment.getApplication().getSystemService(Context.CLIPBOARD_SERVICE)
                 as ClipboardManager
+
         assertEquals(code, clipboard.primaryClip!!.getItemAt(0).text.toString())
     }
 
@@ -218,13 +251,16 @@ class MessageContentTest {
                 )
                 .single() as org.commonmark.ext.gfm.tables.TableBlock
         val rows = markdownTableRows(table)
+
         assertEquals(2, rows.size)
         assertTrue(rows.first().all { it.isHeader })
         assertEquals(
             org.commonmark.ext.gfm.tables.TableCell.Alignment.RIGHT,
             rows.last()[1].alignment,
         )
+
         val name = renderMarkdownCell(renderer, rows.last()[0])
+
         assertEquals("Ada", name.toString())
         assertTrue(
             name
@@ -235,12 +271,16 @@ class MessageContentTest {
                 )
                 .isNotEmpty()
         )
+
         val reference = renderMarkdownCell(renderer, rows.last()[1])
+
         assertEquals("guide and pipe | symbol", reference.toString())
+
         reference
             .getSpans(0, reference.length, ClickableSpan::class.java)
             .single()
             .onClick(TextView(context))
+
         assertEquals("https://example.com", opened)
     }
 
@@ -248,12 +288,15 @@ class MessageContentTest {
     fun `syntax colors stay readable on light and dark code panels`() {
         var preference by mutableStateOf("light")
         var background = 0
+
         compose.setContent {
             PlaygroundTheme(preference) {
                 val surface = MaterialTheme.colorScheme.surfaceContainerLow.toArgb()
+
                 SideEffect { background = surface }
             }
         }
+
         listOf("light", "dark").forEach { theme ->
             compose.runOnIdle { preference = theme }
             compose.runOnIdle {
@@ -265,6 +308,7 @@ class MessageContentTest {
                     )
                         as Spanned
                 val spans = text.getSpans(0, text.length, ForegroundColorSpan::class.java)
+
                 assertTrue(spans.isNotEmpty())
                 spans.forEach { span ->
                     assertTrue(
@@ -279,11 +323,13 @@ class MessageContentTest {
     @Test
     fun `empty table headers do not render a panel or report visible answer content`() {
         var visible = false
+
         compose.setContent {
             PlaygroundTheme("light") {
                 Markdown("|\n|---|", {}, onTextVisible = { visible = true })
             }
         }
+
         compose.onNodeWithText("Copy table").assertDoesNotExist()
         compose.runOnIdle { assertFalse(visible) }
     }
@@ -314,10 +360,12 @@ class MessageContentTest {
                     listOf(RunRecord("run", "user", "completed")),
                 )
                 .single()
+
         PlaygroundApi("http://localhost/").use { api ->
             compose.setContent {
                 PlaygroundTheme("light") { AssistantTurnContent(turn, api, {}, {}) }
             }
+
             compose.onNodeWithText("2 tools").assertIsDisplayed()
             compose.onNodeWithTag("tool-group-two").assertDoesNotExist()
             compose.onNodeWithTag("tool-step-one").assertDoesNotExist()
@@ -327,6 +375,7 @@ class MessageContentTest {
             compose.onNodeWithTag("tool-step-one").assertIsDisplayed()
             compose.onNodeWithTag("tool-step-two").assertIsDisplayed()
             compose.onNodeWithText("Parameters").assertDoesNotExist()
+
             compose.onNodeWithTag("tool-step-one").performClick()
             compose.onAllNodesWithText("Parameters").assertCountEquals(1)
             compose.onNodeWithText("2").assertIsDisplayed()
@@ -335,6 +384,7 @@ class MessageContentTest {
             compose.onNodeWithTag("tool-step-two").performClick()
             compose.onAllNodesWithText("Parameters").assertCountEquals(2)
             compose.onNodeWithText("4").assertIsDisplayed()
+
             compose.onNodeWithTag("tool-step-one").performClick()
             compose.onAllNodesWithText("Parameters").assertCountEquals(1)
             compose.onNodeWithText("2").assertDoesNotExist()
@@ -363,18 +413,25 @@ class MessageContentTest {
                 ToolStatus.Running,
             )
         var group by mutableStateOf(ExecutionGroup(SkillIdentity("review"), listOf(completed)))
+
         compose.setContent { PlaygroundTheme("light") { ToolGroupContent(group) } }
+
         compose.onNodeWithText("Parameters").assertDoesNotExist()
+
         compose.onNodeWithTag("tool-group-load").performClick()
         compose.onNodeWithText("Load a Skill").assertIsDisplayed()
         compose.onNodeWithText("Parameters").assertDoesNotExist()
+
         compose.onNodeWithTag("tool-step-load").performClick()
         compose.onNodeWithText("Parameters").assertIsDisplayed()
+
         compose.runOnIdle { group = group.copy(steps = listOf(completed, running)) }
         compose.onAllNodesWithText("Parameters").assertCountEquals(1)
+
         compose.onNodeWithTag("tool-step-execute").performClick()
         compose.onAllNodesWithText("Parameters").assertCountEquals(2)
         compose.onAllNodesWithText("Running").assertCountEquals(2)
+
         compose.runOnIdle {
             group =
                 group.copy(
@@ -394,8 +451,10 @@ class MessageContentTest {
                         )
                 )
         }
+
         compose.onNodeWithText("The script failed.").assertIsDisplayed()
         compose.onAllNodesWithText("Failed").assertCountEquals(2)
+
         compose.onNodeWithTag("tool-group-load").performClick()
         compose.onNodeWithText("Parameters").assertDoesNotExist()
         compose.onNodeWithText("The script failed.").assertIsDisplayed()
@@ -410,23 +469,32 @@ class MessageContentTest {
                     UserMessage("user", "Explain"),
                     reasoningMessage(reasonId, "Compare constraints."),
                 ) + if (answer != null) listOf(AssistantMessage("answer", answer)) else emptyList()
+
             return conversationTurns(messages, listOf(RunRecord("run", "user", "running"))).single()
         }
+
         var current by mutableStateOf(turn("live"))
+
         PlaygroundApi("http://localhost/").use { api ->
             compose.setContent {
                 PlaygroundTheme("light") { AssistantTurnContent(current, api, {}, {}) }
             }
+
             compose.onNodeWithTag("reasoning-content-user").assertExists()
+
             compose.onNodeWithText("Thinking").performClick()
             compose.onNodeWithTag("reasoning-content-user").assertDoesNotExist()
+
             compose.runOnIdle { current = turn("restored") }
             compose.onNodeWithTag("reasoning-content-user").assertDoesNotExist()
+
             compose.onNodeWithText("Thinking").performClick()
             compose.runOnIdle { current = turn("restored", "```kotlin") }
             compose.onNodeWithTag("reasoning-content-user").assertExists()
+
             compose.runOnIdle { current = turn("restored", "```kotlin\nval answer = 42") }
             compose.onNodeWithTag("reasoning-content-user").assertDoesNotExist()
+
             compose.onNodeWithText("Reasoning").performClick()
             compose.onNodeWithTag("reasoning-content-user").assertExists()
         }
@@ -456,12 +524,15 @@ class MessageContentTest {
                     ),
                 ),
             )
+
         PlaygroundApi("http://localhost/").use { api ->
             compose.setContent {
                 PlaygroundTheme("light") { SourcesSheet(sources, "one", api, {}, {}) }
             }
+
             compose.onNodeWithTag("source-excerpt").performTouchInput { swipeUp() }
             compose.waitForIdle()
+
             val before =
                 compose
                     .onNodeWithTag("source-excerpt")
@@ -469,8 +540,11 @@ class MessageContentTest {
                     .config[
                         androidx.compose.ui.semantics.SemanticsProperties.VerticalScrollAxisRange]
                     .value()
+
             assertTrue(before > 0f)
+
             compose.onNodeWithText("Next excerpt").performClick()
+
             val after =
                 compose
                     .onNodeWithTag("source-excerpt")
@@ -478,6 +552,7 @@ class MessageContentTest {
                     .config[
                         androidx.compose.ui.semantics.SemanticsProperties.VerticalScrollAxisRange]
                     .value()
+
             assertEquals(0f, after)
         }
     }
@@ -494,19 +569,25 @@ class MessageContentTest {
                 ),
             )
         var download: Download? = null
+
         PlaygroundApi("http://localhost/").use { api ->
             compose.setContent {
                 PlaygroundTheme("light") {
                     SourcesSheet(sources, "one", api, { download = it }, {})
                 }
             }
+
             compose.onNodeWithText("First passage").assertIsDisplayed()
+
             compose.onNodeWithText("Next excerpt").performClick()
             compose.onNodeWithText("Second passage").assertIsDisplayed()
+
             compose.onNodeWithText("Document: Guide A").performClick()
             compose.onNodeWithText("Guide B").performClick()
             compose.onNodeWithText("Other document").assertIsDisplayed()
+
             compose.onNodeWithText("Save original").performClick()
+
             assertEquals("Guide B", download?.name)
             assertEquals(api.documentPath("doc-b"), download?.url)
         }

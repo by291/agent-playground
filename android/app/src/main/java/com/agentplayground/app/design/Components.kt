@@ -21,6 +21,7 @@ fun ErrorNotice(message: String, onRetry: (() -> Unit)? = null) {
     Surface(color = MaterialTheme.colorScheme.errorContainer, shape = MaterialTheme.shapes.medium) {
         Column(Modifier.fillMaxWidth().padding(16.dp)) {
             Text(message, color = MaterialTheme.colorScheme.onErrorContainer)
+
             if (onRetry != null) {
                 TextButton(onClick = onRetry) { Text("Retry") }
             }
@@ -31,6 +32,7 @@ fun ErrorNotice(message: String, onRetry: (() -> Unit)? = null) {
 @Composable
 fun Details(title: String, content: @Composable ColumnScope.() -> Unit) {
     var expanded by remember { mutableStateOf(false) }
+
     Column {
         TextButton(
             onClick = { expanded = !expanded },
@@ -50,6 +52,7 @@ fun Details(title: String, content: @Composable ColumnScope.() -> Unit) {
                 }
             )
         }
+
         Reveal(expanded) {
             SelectionContainer { Column(Modifier.fillMaxWidth().padding(8.dp), content = content) }
         }
@@ -113,6 +116,7 @@ fun SectionHeading(title: String, subtitle: String? = null, icon: ImageVector? =
         if (icon != null) {
             IconTile(icon)
         }
+
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(title, style = MaterialTheme.typography.titleMedium)
             subtitle?.let {
@@ -148,18 +152,25 @@ fun IconTile(icon: ImageVector, modifier: Modifier = Modifier) {
 fun StatusTag(label: String, emphasis: Boolean = false) {
     val background by
         animateColorAsState(
-            if (emphasis) MaterialTheme.colorScheme.primaryContainer
-            else MaterialTheme.colorScheme.surfaceVariant,
+            if (emphasis) {
+                MaterialTheme.colorScheme.primaryContainer
+            } else {
+                MaterialTheme.colorScheme.surfaceVariant
+            },
             Motion.feedback(),
             label = "status-background",
         )
     val foreground by
         animateColorAsState(
-            if (emphasis) MaterialTheme.colorScheme.onPrimaryContainer
-            else MaterialTheme.colorScheme.onSurfaceVariant,
+            if (emphasis) {
+                MaterialTheme.colorScheme.onPrimaryContainer
+            } else {
+                MaterialTheme.colorScheme.onSurfaceVariant
+            },
             Motion.feedback(),
             label = "status-foreground",
         )
+
     Surface(shape = MaterialTheme.shapes.extraSmall, color = background) {
         ChangingContent(label) { current ->
             Text(

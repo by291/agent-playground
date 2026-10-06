@@ -27,6 +27,7 @@ fun KnowledgeScreen(vm: KnowledgeViewModel, onOpenNavigation: (() -> Unit)? = nu
     val state by vm.state.collectAsStateWithLifecycle()
     var deleting by remember { mutableStateOf<KnowledgeDocument?>(null) }
     var download by rememberSaveable(stateSaver = DownloadSaver) { mutableStateOf<Download?>(null) }
+
     val picker =
         rememberLauncherForActivityResult(
             ActivityResultContracts.OpenMultipleDocuments(),
@@ -43,8 +44,10 @@ fun KnowledgeScreen(vm: KnowledgeViewModel, onOpenNavigation: (() -> Unit)? = nu
                     vm.save(it, uri)
                 }
             }
+
             download = null
         }
+
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
@@ -92,6 +95,7 @@ fun KnowledgeScreen(vm: KnowledgeViewModel, onOpenNavigation: (() -> Unit)? = nu
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
+
                     SectionCard {
                         SectionHeading(
                             "Add to your library",
@@ -113,6 +117,7 @@ fun KnowledgeScreen(vm: KnowledgeViewModel, onOpenNavigation: (() -> Unit)? = nu
                             Text("Upload documents")
                         }
                     }
+
                     Row(
                         Modifier.fillMaxWidth().padding(top = 8.dp),
                         verticalAlignment = Alignment.CenterVertically,
@@ -129,6 +134,7 @@ fun KnowledgeScreen(vm: KnowledgeViewModel, onOpenNavigation: (() -> Unit)? = nu
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
+
                     RevealValue(state.error) { error ->
                         ErrorNotice(
                             error,
@@ -139,6 +145,7 @@ fun KnowledgeScreen(vm: KnowledgeViewModel, onOpenNavigation: (() -> Unit)? = nu
                             },
                         )
                     }
+
                     Reveal(state.pendingUploads.isNotEmpty() && !state.busy) {
                         Column {
                             Text(
@@ -152,12 +159,14 @@ fun KnowledgeScreen(vm: KnowledgeViewModel, onOpenNavigation: (() -> Unit)? = nu
                             }
                         }
                     }
+
                     Reveal(state.loading || state.busy) {
                         Column {
                             LinearProgressIndicator(Modifier.fillMaxWidth())
                             state.operation?.let { Text(it, Modifier.padding(top = 8.dp)) }
                         }
                     }
+
                     Reveal(state.documents.isEmpty() && !state.loading) {
                         SectionCard(Modifier.widthIn(max = 760.dp)) {
                             SectionHeading(
@@ -169,6 +178,7 @@ fun KnowledgeScreen(vm: KnowledgeViewModel, onOpenNavigation: (() -> Unit)? = nu
                     }
                 }
             }
+
             items(state.documents, key = { it.id }) { document ->
                 SectionCard(
                     Modifier.widthIn(max = 760.dp)
@@ -179,6 +189,7 @@ fun KnowledgeScreen(vm: KnowledgeViewModel, onOpenNavigation: (() -> Unit)? = nu
                         )
                 ) {
                     var menu by remember { mutableStateOf(false) }
+
                     Row(
                         Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.Top,
@@ -213,6 +224,7 @@ fun KnowledgeScreen(vm: KnowledgeViewModel, onOpenNavigation: (() -> Unit)? = nu
                                         enabled = !state.busy && state.pendingUploads.isEmpty(),
                                         onClick = {
                                             menu = false
+
                                             if (vm.beginResume(document.id)) {
                                                 resumePicker.launch(
                                                     arrayOf(
@@ -225,6 +237,7 @@ fun KnowledgeScreen(vm: KnowledgeViewModel, onOpenNavigation: (() -> Unit)? = nu
                                         },
                                     )
                                 }
+
                                 DropdownMenuItem(
                                     text = { Text("Save original") },
                                     leadingIcon = { Icon(Icons.Outlined.FileDownload, null) },
@@ -236,6 +249,7 @@ fun KnowledgeScreen(vm: KnowledgeViewModel, onOpenNavigation: (() -> Unit)? = nu
                                                 vm.api.documentPath(document.id),
                                                 document.name,
                                             )
+
                                         saver.launch(document.name)
                                     },
                                 )
@@ -271,6 +285,7 @@ fun KnowledgeScreen(vm: KnowledgeViewModel, onOpenNavigation: (() -> Unit)? = nu
                             }
                         }
                     }
+
                     StatusTag(
                         document.status.replaceFirstChar { it.uppercase() },
                         emphasis = document.status == "ready",
@@ -286,6 +301,7 @@ fun KnowledgeScreen(vm: KnowledgeViewModel, onOpenNavigation: (() -> Unit)? = nu
             }
         }
     }
+
     deleting?.let { document ->
         ConfirmDelete(
             "Delete shared document?",

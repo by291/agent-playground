@@ -40,19 +40,24 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+
         val application = application as PlaygroundApplication
+
         setContent {
             val preferences by
                 application.preferences.preferences.collectAsStateWithLifecycle(initialValue = null)
+
             preferences?.let { value ->
                 PlaygroundTheme(value.theme) {
                     val lightBars = MaterialTheme.colorScheme.surface.luminance() > 0.5f
+
                     SideEffect {
                         WindowCompat.getInsetsController(window, window.decorView).apply {
                             isAppearanceLightStatusBars = lightBars
                             isAppearanceLightNavigationBars = lightBars
                         }
                     }
+
                     PlaygroundApp(application, value)
                 }
             }
@@ -63,6 +68,7 @@ class MainActivity : ComponentActivity() {
 @Composable
 internal fun PlaygroundApp(application: PlaygroundApplication, preferences: AppPreferences) {
     val networkAccess = rememberServerNetworkAccess()
+
     ServerConnectionGate(application, preferences, networkAccess) {
         ConnectedPlaygroundApp(application, preferences, networkAccess)
     }
@@ -76,24 +82,28 @@ internal fun ServerConnectionGate(
     content: @Composable () -> Unit,
 ) {
     var allowed by remember(preferences.serverUrl) { mutableStateOf<Boolean?>(null) }
+
     LaunchedEffect(networkAccess, preferences.serverUrl) {
         allowed = networkAccess.request(preferences.serverUrl)
     }
 
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val scope = rememberCoroutineScope()
+
     DisposableEffect(lifecycle, networkAccess, preferences.serverUrl) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME && allowed == true) {
                 scope.launch { allowed = networkAccess.isAllowed(preferences.serverUrl) }
             }
         }
+
         lifecycle.addObserver(observer)
         onDispose { lifecycle.removeObserver(observer) }
     }
 
     when (allowed) {
         true -> content()
+
         false ->
             SettingsScreen(
                 preferences = preferences,
@@ -109,6 +119,7 @@ internal fun ServerConnectionGate(
                     }
                 },
             )
+
         null ->
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator()
@@ -124,7 +135,9 @@ private fun ConnectedPlaygroundApp(
 ) {
     var destination by rememberSaveable { mutableStateOf("chat") }
     val savedScreens = rememberSaveableStateHolder()
+
     BackHandler(enabled = destination != "chat") { destination = "chat" }
+
     // Activity-owned graph survives configuration recreation and releases the old
     // server's clients/jobs when the connection setting changes.
     val graph: ServerGraph = viewModel()
@@ -150,49 +163,64 @@ private fun ConnectedPlaygroundApp(
     val chatState by chat.state.collectAsStateWithLifecycle()
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val observesChat = destination in setOf("chat", "activity")
+
     DisposableEffect(lifecycle, observesChat, chat) {
         fun sync() {
             val started = lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
             chat.setVisible(started && observesChat)
         }
+
         val observer = LifecycleEventObserver { _, _ -> sync() }
+
         lifecycle.addObserver(observer)
         sync()
+
         onDispose {
             lifecycle.removeObserver(observer)
             chat.setVisible(false)
         }
     }
+
     val observesKnowledge = destination == "knowledge"
+
     DisposableEffect(lifecycle, observesKnowledge, knowledge) {
         fun sync() {
             knowledge.setVisible(
                 lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED) && observesKnowledge
             )
         }
+
         val observer = LifecycleEventObserver { _, _ -> sync() }
+
         lifecycle.addObserver(observer)
         sync()
+
         onDispose {
             lifecycle.removeObserver(observer)
             knowledge.setVisible(false)
         }
     }
+
     val drawer = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     val keyboard = LocalSoftwareKeyboardController.current
+
     BackHandler(enabled = drawer.isOpen) { scope.launch { drawer.close() } }
+
     CompositionLocalProvider(LocalContentColor provides MaterialTheme.colorScheme.onSurface) {
         BoxWithConstraints(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface)) {
             val expanded = maxWidth >= 840.dp
+
             LaunchedEffect(expanded, destination) {
                 if (expanded || destination == "activity") {
                     drawer.close()
                 }
             }
+
             val openNavigation: (() -> Unit)? =
-                if (expanded) null
-                else {
+                if (expanded) {
+                    null
+                } else {
                     {
                         keyboard?.hide()
                         scope.launch { drawer.open() }
@@ -210,6 +238,7 @@ private fun ConnectedPlaygroundApp(
                         if (id != chatState.session?.threadId) {
                             chat.select(id)
                         }
+
                         navigate("chat")
                     },
                     modifier = Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding(),
@@ -219,6 +248,7 @@ private fun ConnectedPlaygroundApp(
                     onSettings = { navigate("settings") },
                 )
             }
+
             val screen: @Composable (String) -> Unit = { route ->
                 savedScreens.SaveableStateProvider("${preferences.serverUrl}:$route") {
                     when (route) {
@@ -228,7 +258,9 @@ private fun ConnectedPlaygroundApp(
                                 { destination = "chat" },
                                 chat::clearActivity,
                             )
+
                         "knowledge" -> KnowledgeScreen(knowledge, openNavigation)
+
                         "settings" ->
                             SettingsScreen(
                                 preferences,
@@ -239,6 +271,7 @@ private fun ConnectedPlaygroundApp(
                                 openNavigation,
                                 networkAccess,
                             )
+
                         else ->
                             ConversationScreen(chat, preferences, openNavigation) {
                                 keyboard?.hide()
@@ -247,6 +280,7 @@ private fun ConnectedPlaygroundApp(
                     }
                 }
             }
+
             AnimatedContent(
                 targetState = destination,
                 modifier = Modifier.fillMaxSize(),
@@ -257,13 +291,16 @@ private fun ConnectedPlaygroundApp(
                                 fadeIn(tween(Motion.Expand))) togetherWith
                                 (slideOutHorizontally(tween(Motion.Page)) { -it / 12 } +
                                     fadeOut(tween(Motion.Exit)))
+
                         initialState == "activity" ->
                             (slideInHorizontally(tween(Motion.Page)) { -it / 12 } +
                                 fadeIn(tween(Motion.Expand))) togetherWith
                                 (slideOutHorizontally(tween(Motion.Page)) { it / 8 } +
                                     fadeOut(tween(Motion.Exit)))
+
                         !expanded && (drawer.isOpen || drawer.targetValue == DrawerValue.Open) ->
                             EnterTransition.None togetherWith ExitTransition.None
+
                         else ->
                             fadeIn(tween(Motion.Feedback)) togetherWith
                                 fadeOut(tween(Motion.Feedback))
@@ -273,6 +310,7 @@ private fun ConnectedPlaygroundApp(
             ) { route ->
                 when {
                     route == "activity" -> screen(route)
+
                     expanded ->
                         Row(Modifier.fillMaxSize()) {
                             Surface(
@@ -284,6 +322,7 @@ private fun ConnectedPlaygroundApp(
                             VerticalDivider()
                             Box(Modifier.weight(1f)) { screen(route) }
                         }
+
                     else ->
                         RevealNavigationDrawer(
                             drawerState = drawer,

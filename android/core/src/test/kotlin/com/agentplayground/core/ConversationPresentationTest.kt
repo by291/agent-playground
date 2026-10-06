@@ -27,6 +27,7 @@ class ConversationPresentationTest {
                     RunRecord("resume", null, "completed"),
                 ),
             )
+
         assertEquals(listOf("caller", "result"), turns.first().messages.map { it.id })
         assertEquals("completed", turns.last().status)
         assertEquals(ToolStatus.Completed, turns.first().toolCalls.single().status)
@@ -35,21 +36,25 @@ class ConversationPresentationTest {
     @Test
     fun `tool status reflects waiting paused active failed and missing results`() {
         val messages = listOf(UserMessage("user", "Start"), caller(call("wait"), call("pause")))
+
         fun statuses(status: String) =
             conversationTurns(messages, listOf(RunRecord("run", "user", status)), setOf("wait"))
                 .single()
                 .toolCalls
                 .map { it.status }
+
         assertEquals(listOf(ToolStatus.Waiting, ToolStatus.Paused), statuses("interrupted"))
         assertEquals(listOf(ToolStatus.Running, ToolStatus.Running), statuses("submission_unknown"))
         assertEquals(listOf(ToolStatus.Failed, ToolStatus.Failed), statuses("failed"))
         assertEquals(listOf(ToolStatus.Unavailable, ToolStatus.Unavailable), statuses("completed"))
+
         val failed =
             conversationTurns(
                     messages + ToolMessage("error", "{}", "wait", error = "Unavailable"),
                     emptyList(),
                 )
                 .single()
+
         assertEquals(ToolStatus.Failed, failed.toolCalls.first().status)
     }
 
@@ -62,15 +67,19 @@ class ConversationPresentationTest {
                 caller(call("wait"), call("pause")),
             )
         val runs = listOf(RunRecord("old-run", "prior", "completed"))
+
         val active = conversationTurns(messages, runs, latestStatus = "running")
+
         assertEquals("completed", active.first().status)
         assertEquals("running", active.last().status)
         assertEquals(
             listOf(ToolStatus.Running, ToolStatus.Running),
             active.last().toolCalls.map { it.status },
         )
+
         val interrupted =
             conversationTurns(messages, runs, setOf("wait"), latestStatus = "interrupted")
+
         assertEquals(
             listOf(ToolStatus.Waiting, ToolStatus.Paused),
             interrupted.last().toolCalls.map { it.status },
@@ -94,6 +103,7 @@ class ConversationPresentationTest {
                 emptyList(),
             )
         val group = executionGroups(turns.first().toolCalls).single()
+
         assertNull(group.skill)
         assertEquals(listOf("sum-one", "sum-two", "search"), group.steps.map { it.call.id })
         assertEquals(listOf("2", "4", "Found"), group.steps.map { it.result?.content })
@@ -114,7 +124,9 @@ class ConversationPresentationTest {
                     call("reports-run", "run_skill_script", """{"skill_name":"reports"}"""),
                 )
                 .map { ToolStep(it, null, ToolStatus.Running) }
+
         val groups = executionGroups(steps)
+
         assertEquals(3, groups.size)
         assertEquals(
             listOf("search", "sum"),
@@ -146,6 +158,7 @@ class ConversationPresentationTest {
                 ToolStep(load, null, ToolStatus.Completed),
                 ToolStep(script, ToolMessage("result", result, "script"), ToolStatus.Completed),
             )
+
         assertEquals(1, executionGroups(steps).size)
         assertEquals("scripts/report.py", skillIdentity(steps.last())?.path)
         assertEquals(1234L, skillFiles(steps).single().size)
@@ -174,6 +187,7 @@ class ConversationPresentationTest {
                     )
                 )
             )
+
         assertEquals(1, sources.sources.size)
         assertEquals(1, sources.documents.size)
         assertEquals("Use receipts.", sources.citation("#knowledge-source-$chunk")?.excerpt)
@@ -191,10 +205,15 @@ class ConversationPresentationTest {
                 AssistantMessage("snapshot-answer", "```kotlin"),
             )
         val fold = ReasoningFold(reasoningPhase(live, false), false)
+
         assertEquals(fold, fold.update(reasoningPhase(restored, false), true))
+
         val answered = fold.update(reasoningPhase(restored, true), false)
+
         assertFalse(answered.open)
+
         val userOpened = answered.copy(open = true)
+
         assertTrue(userOpened.update(reasoningPhase(restored, true), false).open)
     }
 
@@ -205,15 +224,19 @@ class ConversationPresentationTest {
             listOf("idea", "draft", "review").map {
                 LegacyWorkflowSurface("experiment-experiment-$it", "experiment")
             }
+
         val reviewing = legacyWorkflowArtifacts(calls, stages, setOf("experiment"))
+
         assertTrue(reviewing.current.isEmpty())
         assertEquals(3, reviewing.history.size)
+
         val completed =
             legacyWorkflowArtifacts(
                 calls,
                 stages + LegacyWorkflowSurface("experiment-experiment-reviewed", "experiment"),
                 setOf("experiment"),
             )
+
         assertEquals("experiment-experiment-reviewed", completed.current.single().id)
         assertEquals(setOf("experiment"), completed.completedCallIds)
     }

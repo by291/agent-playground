@@ -21,6 +21,7 @@ data class AppPreferences(
 class PreferenceStore(context: Context) {
     private val store = context.applicationContext.playgroundStore
     private val preferencesKey = stringPreferencesKey("preferences")
+
     val preferences: Flow<AppPreferences> =
         store.data.map {
             it[preferencesKey]?.let { value ->
@@ -43,6 +44,7 @@ class PreferenceStore(context: Context) {
         override suspend fun read(): SavedConversation? {
             val values = store.data.first()
             val id = values[currentKey] ?: return null
+
             return values[threadKey(id)]?.let {
                 protocolJson.decodeFromString<SavedConversation>(it)
             }
@@ -57,6 +59,7 @@ class PreferenceStore(context: Context) {
             if (value == null) {
                 return
             }
+
             store.edit { it[threadKey(value.threadId)] = protocolJson.encodeToString(value) }
         }
 
@@ -67,6 +70,7 @@ class PreferenceStore(context: Context) {
         suspend fun remove(thread: String) {
             store.edit {
                 it.remove(threadKey(thread))
+
                 if (it[currentKey] == thread) {
                     it.remove(currentKey)
                 }

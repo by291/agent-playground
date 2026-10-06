@@ -36,6 +36,7 @@ class ActivityNavigationTest {
                     )
                 }
             var runs = emptyList<RunRecord>()
+
             server.dispatcher =
                 object : Dispatcher() {
                     override fun dispatch(request: RecordedRequest): MockResponse =
@@ -62,6 +63,7 @@ class ActivityNavigationTest {
                                         RunAgentInput.serializer(),
                                         request.body.readUtf8(),
                                     )
+
                                 messages =
                                     messages +
                                         input.messages +
@@ -74,6 +76,7 @@ class ActivityNavigationTest {
                                             "completed",
                                         )
                                     )
+
                                 val events =
                                     listOf(
                                         RunStartedEvent(input.threadId, input.runId),
@@ -81,6 +84,7 @@ class ActivityNavigationTest {
                                         TextMessageContentEvent("live", "Live reply completed."),
                                         RunFinishedEvent(input.threadId, input.runId),
                                     )
+
                                 MockResponse()
                                     .setHeader("Content-Type", "text/event-stream")
                                     .setBodyDelay(2, TimeUnit.SECONDS)
@@ -94,17 +98,21 @@ class ActivityNavigationTest {
                         }
                 }
             server.start()
+
             val application = RuntimeEnvironment.getApplication() as PlaygroundApplication
             val preferences =
                 AppPreferences(serverUrl = server.url("/").toString(), replyAnimation = false)
             val journal = application.preferences.conversations(preferences.serverUrl)
+
             runBlocking {
                 journal.write(SavedConversation("fixture", empty = false))
                 journal.select("fixture")
             }
+
             compose.setContent {
                 PlaygroundTheme("light") { PlaygroundApp(application, preferences) }
             }
+
             await {
                 compose
                     .onAllNodesWithTag("conversation-timeline")
@@ -112,13 +120,16 @@ class ActivityNavigationTest {
                     .isNotEmpty()
             }
             await { compose.onAllNodesWithText("Question 19").fetchSemanticsNodes().isNotEmpty() }
+
             compose.onNodeWithContentDescription("Message").performTextInput("Observe this run")
             compose.onNodeWithContentDescription("Send message").performClick()
             compose.onNodeWithTag("conversation-timeline").performScrollToIndex(12)
             compose.onNodeWithContentDescription("Conversation options").performClick()
             compose.onNodeWithText("Agent activity").performClick()
+
             compose.onNodeWithText("Run activity").assertIsDisplayed()
             compose.onNodeWithText("Chat").assertDoesNotExist()
+
             await {
                 compose
                     .onAllNodesWithText("4 received · 4 retained")
@@ -126,15 +137,19 @@ class ActivityNavigationTest {
                     .isNotEmpty()
             }
             compose.onNodeWithContentDescription("Back to chat").performClick()
+
             compose.onNodeWithContentDescription("Jump to latest message").assertIsDisplayed()
             compose.onNodeWithText("Observe this run").assertDoesNotExist()
+
             compose.onNodeWithContentDescription("Message").performTextInput("Preserved draft")
             compose.onNodeWithContentDescription("Conversation options").performClick()
             compose.onNodeWithText("Agent activity").performClick()
             compose.onNodeWithText("Clear log").performClick()
             compose.onNodeWithText("0 received · 0 retained").assertIsDisplayed()
+
             compose.onNodeWithContentDescription("Back to chat").performClick()
             compose.onNodeWithContentDescription("Message").assertTextContains("Preserved draft")
+
             compose.onNodeWithContentDescription("Jump to latest message").performClick()
             compose.onNodeWithText("Observe this run").assertIsDisplayed()
         }
@@ -145,6 +160,7 @@ class ActivityNavigationTest {
             Shadows.shadowOf(Looper.getMainLooper()).idle()
             condition()
         }
+
         compose.waitForIdle()
     }
 }

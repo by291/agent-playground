@@ -131,6 +131,7 @@ private val typography =
 fun PlaygroundTheme(preference: String, content: @Composable () -> Unit) {
     val isDark = preference == "dark" || preference == "system" && isSystemInDarkTheme()
     val darkness by animateFloatAsState(if (isDark) 1f else 0f, tween(Motion.Exit), label = "theme")
+
     MaterialTheme(
         colorScheme = interpolatedColors(darkness),
         typography = typography,

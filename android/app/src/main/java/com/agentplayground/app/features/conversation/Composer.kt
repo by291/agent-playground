@@ -39,13 +39,16 @@ fun Composer(
     var context by remember { mutableStateOf(false) }
     var field by remember(session.threadId) { mutableStateOf(TextFieldValue(session.draft)) }
     var pendingInput by remember(session.threadId) { mutableStateOf<String?>(null) }
+
     LaunchedEffect(state.draftRevision, session.threadId) {
         pendingInput = null
         val draft = vm.state.value.session?.draft.orEmpty()
+
         if (field.text != draft) {
             field = TextFieldValue(draft, selection = TextRange(draft.length))
         }
     }
+
     LaunchedEffect(session.draft, session.busy) {
         // A previously emitted journal snapshot must not replace newer in-flight IME input.
         if (session.busy && session.draft.isEmpty()) {
@@ -57,6 +60,7 @@ fun Composer(
             field = TextFieldValue(session.draft, selection = TextRange(session.draft.length))
         }
     }
+
     val metadata = modelContext(state.model, session.contextUsage)
     val enabled = session.canSend && !state.uploading
     val review = session.interrupts.singleOrNull()?.let(Review::from)
@@ -68,9 +72,11 @@ fun Composer(
             review?.kind == "workflow_review" -> review.placeholder
             session.interrupts.any { externalWaitCallId(it) != null } ->
                 "The external task is running. You can return later."
+
             session.interrupts.isNotEmpty() -> "Complete the review above to continue"
             else -> "Describe a task or ask a question…"
         }
+
     Surface(color = MaterialTheme.colorScheme.surface) {
         Column(
             Modifier.fillMaxWidth()
@@ -146,6 +152,7 @@ fun Composer(
                                             event,
                                             field.composition,
                                         )
+
                                     if (shouldSend && enabled && session.draft.isNotBlank()) {
                                         vm.send()
                                         true
@@ -162,6 +169,7 @@ fun Composer(
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     )
                                 }
+
                                 innerField()
                             }
                         },
@@ -231,6 +239,7 @@ fun Composer(
             }
         }
     }
+
     if (context) {
         ModalBottomSheet(
             onDismissRequest = { context = false },
@@ -245,7 +254,9 @@ fun Composer(
             ) {
                 Text("Model context", style = MaterialTheme.typography.titleLarge)
                 Text(metadata.model ?: "Metadata is currently unavailable.")
+
                 val usage = metadata.usage
+
                 if (usage == null) {
                     Text(
                         "Context usage appears after a model call for the current model.",
@@ -261,12 +272,14 @@ fun Composer(
                         modifier = Modifier.fillMaxWidth(),
                     )
                     Text("Auto-compacts at ${usage.triggerTokens} tokens.")
+
                     if (usage.usedTokens >= usage.triggerTokens) {
                         Text(
                             "Context is near the compaction threshold.",
                             color = MaterialTheme.colorScheme.primary,
                         )
                     }
+
                     mapOf(
                             "system" to "System instructions",
                             "tools" to "Tool definitions",
@@ -286,6 +299,7 @@ fun Composer(
                                 )
                             }
                         }
+
                     Text("Compactions: ${usage.compactions}")
                     usage.lastCompaction?.let {
                         Text("Last compaction: ${it["beforeTokens"]} → ${it["afterTokens"]} tokens")

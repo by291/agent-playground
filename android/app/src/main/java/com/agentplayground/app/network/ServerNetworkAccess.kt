@@ -30,9 +30,11 @@ internal class ServerNetworkAccess(
         }
 
         val host = URI(normalizeServerUrl(serverUrl)).host.removeSuffix(".")
+
         if (host == "localhost" || host.endsWith(".localhost")) {
             return true
         }
+
         // Resolving mDNS names itself requires local-network access.
         if (host.endsWith(".local")) {
             return false
@@ -84,6 +86,7 @@ internal fun rememberServerNetworkAccess(): ServerNetworkAccess {
             pending.result?.complete(granted)
             pending.result = null
         }
+
     val access =
         remember(context, launcher) {
             ServerNetworkAccess(

@@ -17,6 +17,7 @@ class ComposerInputTest {
     @Test
     fun `a model change hides context usage from the previous model`() {
         val usage = ContextUsage("old", 50, 1000, 800, emptyMap(), compactions = 0, revision = 1)
+
         assertEquals("current", modelContext("current", usage).model)
         assertNull(modelContext("current", usage).usage)
         assertSame(usage, modelContext(null, usage).usage)
@@ -39,6 +40,7 @@ class ComposerInputTest {
                     flags,
                 )
             )
+
         assertTrue(sendsFromKeyboard("enter", enter(), null))
         assertFalse(sendsFromKeyboard("enter", enter(), TextRange(0, 2)))
         assertFalse(sendsFromKeyboard("enter", enter(NativeKeyEvent.META_SHIFT_ON), null))
@@ -46,6 +48,7 @@ class ComposerInputTest {
         assertFalse(
             sendsFromKeyboard("enter", enter(flags = NativeKeyEvent.FLAG_SOFT_KEYBOARD), null)
         )
+
         assertFalse(sendsFromKeyboard("modifier-enter", enter(), null))
         assertTrue(sendsFromKeyboard("modifier-enter", enter(NativeKeyEvent.META_CTRL_ON), null))
         assertTrue(sendsFromKeyboard("modifier-enter", enter(NativeKeyEvent.META_META_ON), null))

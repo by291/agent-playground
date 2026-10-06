@@ -50,9 +50,11 @@ fun Reveal(visible: Boolean, modifier: Modifier = Modifier, content: @Composable
 @Composable
 fun <T : Any> RevealValue(value: T?, content: @Composable (T) -> Unit) {
     var retained by remember { mutableStateOf(value) }
+
     if (value != null) {
         retained = value
     }
+
     Reveal(value != null) { retained?.let { content(it) } }
 }
 
@@ -71,6 +73,7 @@ fun <T> ChangingContent(
 fun DisclosureChevron(expanded: Boolean, size: Dp = 16.dp) {
     val rotation by
         animateFloatAsState(if (expanded) 180f else 0f, Motion.expansion(), label = "disclosure")
+
     Icon(
         Icons.Outlined.ExpandMore,
         null,
@@ -87,6 +90,7 @@ fun EntryAppearance(
     content: @Composable () -> Unit,
 ) {
     val progress = remember { Animatable(if (animate) 0f else 1f) }
+
     LaunchedEffect(animate) {
         if (animate) {
             progress.animateTo(1f, Motion.expansion())
@@ -94,6 +98,7 @@ fun EntryAppearance(
             progress.snapTo(1f)
         }
     }
+
     Box(
         modifier.graphicsLayer {
             alpha = progress.value
@@ -116,15 +121,18 @@ fun BackPreview(
     content: @Composable (Modifier) -> Unit,
 ) {
     val progress = remember { Animatable(0f) }
+
     PredictiveBackHandler(enabled) { events ->
         try {
             events.collect { progress.snapTo(it.progress) }
+
             onBack()
             progress.snapTo(0f)
         } catch (_: CancellationException) {
             progress.animateTo(0f, Motion.expansion())
         }
     }
+
     content(
         Modifier.graphicsLayer {
             translationX = progress.value * 64.dp.toPx()

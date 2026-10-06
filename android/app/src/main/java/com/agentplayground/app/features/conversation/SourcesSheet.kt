@@ -38,6 +38,7 @@ fun SourcesSheet(
     val visibility = remember { MutableTransitionState(false).apply { targetState = true } }
     var closing by remember { mutableStateOf(false) }
     var forward by remember { mutableStateOf(true) }
+
     val dismiss: () -> Unit = {
         if (fullScreen) {
             closing = true
@@ -46,11 +47,13 @@ fun SourcesSheet(
             onDismiss()
         }
     }
+
     LaunchedEffect(closing, visibility.isIdle) {
         if (closing && visibility.isIdle && !visibility.currentState) {
             onDismiss()
         }
     }
+
     val documents = sources.documents.values.toList()
     var selection by
         remember(selectedChunkId) {
@@ -59,6 +62,7 @@ fun SourcesSheet(
     val source = sources.sources.find { it.chunkId == selection } ?: sources.sources.firstOrNull()
     val passages = sources.documents[source?.documentId].orEmpty()
     val passageIndex = passages.indexOfFirst { it.chunkId == source?.chunkId }.coerceAtLeast(0)
+
     val content: @Composable () -> Unit = {
         Column(
             Modifier.fillMaxSize().padding(24.dp),
@@ -75,13 +79,18 @@ fun SourcesSheet(
                 }
             }
             sources.errors.forEach { Text(it, color = MaterialTheme.colorScheme.error) }
+
             if (source == null) {
                 Text(
-                    if (sources.errors.isEmpty()) "No matching sources in the current index."
-                    else "Sources are unavailable."
+                    if (sources.errors.isEmpty()) {
+                        "No matching sources in the current index."
+                    } else {
+                        "Sources are unavailable."
+                    }
                 )
             } else {
                 var chooseDocument by remember { mutableStateOf(false) }
+
                 Box {
                     OutlinedButton(
                         onClick = { chooseDocument = true },
@@ -170,6 +179,7 @@ fun SourcesSheet(
             }
         }
     }
+
     if (fullScreen) {
         Dialog(
             onDismissRequest = dismiss,

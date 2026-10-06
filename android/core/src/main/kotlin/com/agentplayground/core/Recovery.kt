@@ -24,12 +24,15 @@ fun recoveryDecision(
             RecoveryDecision.Retry
         }
     }
+
     if (run.status == "prepared") {
         return RecoveryDecision.Retry
     }
+
     if (isActiveRun(run.status)) {
         return RecoveryDecision.Observe
     }
+
     if (run.status == "failed" || messagePresent || !pending.input.resume.isNullOrEmpty()) {
         return RecoveryDecision.Confirmed
     }
@@ -57,6 +60,7 @@ fun reconcile(
             val serverMessages = snapshot?.messages.orEmpty()
             val localById = local.associateBy { it.id }
             val ids = serverMessages.map { it.id }.toSet()
+
             serverMessages.map { localById[it.id] ?: it } + local.filter { it.id !in ids }
         }
 

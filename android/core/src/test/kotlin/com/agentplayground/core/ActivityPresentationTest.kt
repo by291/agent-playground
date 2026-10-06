@@ -17,7 +17,9 @@ class ActivityPresentationTest {
                 ActivityEntry(5, 104, "run", TextMessageEndEvent("a")),
                 ActivityEntry(6, 105, "other", TextMessageContentEvent("a", "New run")),
             )
+
         val rows = activityRows(events, true)
+
         assertEquals(3, rows.size)
         assertEquals("Hello world", rows[0].content)
         assertEquals("Complete", rows[0].status)
@@ -38,7 +40,9 @@ class ActivityPresentationTest {
                         ActivityEntry(301, 1234, "run", TextMessageContentEvent("message", content))
                     ),
             )
+
         val exported = protocolJson.parseToJsonElement(activityExport(state, 4321)).jsonObject
+
         assertEquals(301, exported["received"]!!.jsonPrimitive.int)
         assertEquals(1, exported["retained"]!!.jsonPrimitive.int)
         assertEquals(

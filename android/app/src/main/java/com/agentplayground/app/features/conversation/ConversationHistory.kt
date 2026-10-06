@@ -40,6 +40,7 @@ fun ConversationHistory(
     var delete by remember { mutableStateOf<ConversationSummary?>(null) }
     var title by remember { mutableStateOf("") }
     val list = rememberLazyListState()
+
     val pending = state.historyMutation != null
     val current = state.session
     val currentHasContent =
@@ -67,6 +68,7 @@ fun ConversationHistory(
             state.history
         }
     val lastRowKey = rows.lastOrNull()?.let { "history:${it.threadId}" }
+
     LaunchedEffect(list, lastRowKey, state.nextCursor, state.historyLoading, state.historyError) {
         if (state.nextCursor != null && !state.historyLoading && state.historyError == null) {
             snapshotFlow { list.layoutInfo.visibleItemsInfo.any { it.key == lastRowKey } }
@@ -77,6 +79,7 @@ fun ConversationHistory(
                 }
         }
     }
+
     Column(modifier.padding(horizontal = 16.dp, vertical = 20.dp)) {
         LazyColumn(
             Modifier.weight(1f),
@@ -121,9 +124,11 @@ fun ConversationHistory(
                         shape = MaterialTheme.shapes.small,
                         color =
                             animateColorAsState(
-                                    if (destination == "knowledge")
+                                    if (destination == "knowledge") {
                                         MaterialTheme.colorScheme.secondaryContainer
-                                    else androidx.compose.ui.graphics.Color.Transparent,
+                                    } else {
+                                        androidx.compose.ui.graphics.Color.Transparent
+                                    },
                                     Motion.feedback(),
                                     label = "knowledge-selection",
                                 )
@@ -182,18 +187,25 @@ fun ConversationHistory(
                         (current?.threadId == row.threadId && currentHasContent)
                 val selection by
                     animateColorAsState(
-                        if (selected) MaterialTheme.colorScheme.secondaryContainer
-                        else androidx.compose.ui.graphics.Color.Transparent,
+                        if (selected) {
+                            MaterialTheme.colorScheme.secondaryContainer
+                        } else {
+                            androidx.compose.ui.graphics.Color.Transparent
+                        },
                         Motion.feedback(),
                         label = "history-selection",
                     )
                 val iconTint by
                     animateColorAsState(
-                        if (selected) MaterialTheme.colorScheme.primary
-                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                        if (selected) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
                         Motion.feedback(),
                         label = "history-icon",
                     )
+
                 Surface(
                     modifier =
                         Modifier.animateItem(
@@ -279,6 +291,7 @@ fun ConversationHistory(
                     }
                 }
             }
+
             if (state.nextCursor != null) {
                 item {
                     TextButton(
@@ -289,6 +302,7 @@ fun ConversationHistory(
                     }
                 }
             }
+
             if (rows.isEmpty() && !state.historyLoading) {
                 item {
                     Text(
@@ -301,6 +315,7 @@ fun ConversationHistory(
         }
         WorkspaceFooter(serverUrl, destination == "settings", onSettings)
     }
+
     rename?.let { row ->
         AlertDialog(
             onDismissRequest = { if (!pending) rename = null },
@@ -333,6 +348,7 @@ fun ConversationHistory(
             },
         )
     }
+
     delete?.let { row ->
         ConfirmDelete(
             "Delete conversation?",
@@ -352,8 +368,10 @@ private fun WorkspaceFooter(serverUrl: String, settingsSelected: Boolean, onSett
         remember(serverUrl) {
             val uri = serverUrl.toUri()
             val host = uri.host.orEmpty()
+
             if (uri.port > 0) "$host:${uri.port}" else host
         }
+
     Column(Modifier.fillMaxWidth().padding(top = 12.dp)) {
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         Row(
@@ -384,8 +402,11 @@ private fun WorkspaceFooter(serverUrl: String, settingsSelected: Boolean, onSett
             Surface(
                 color =
                     animateColorAsState(
-                            if (settingsSelected) MaterialTheme.colorScheme.secondaryContainer
-                            else androidx.compose.ui.graphics.Color.Transparent,
+                            if (settingsSelected) {
+                                MaterialTheme.colorScheme.secondaryContainer
+                            } else {
+                                androidx.compose.ui.graphics.Color.Transparent
+                            },
                             Motion.feedback(),
                             label = "settings-selection",
                         )

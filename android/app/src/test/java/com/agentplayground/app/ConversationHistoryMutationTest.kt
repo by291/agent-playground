@@ -28,12 +28,14 @@ class ConversationHistoryMutationTest {
         MockWebServer().use { server ->
             val renames = AtomicInteger()
             val deletes = AtomicInteger()
+
             server.dispatcher =
                 object : Dispatcher() {
                     override fun dispatch(request: RecordedRequest): MockResponse =
                         when {
                             request.method == "PATCH" -> {
                                 renames.incrementAndGet()
+
                                 MockResponse()
                                     .setResponseCode(503)
                                     .setBody("{\"error\":\"Try again later\"}")
@@ -41,6 +43,7 @@ class ConversationHistoryMutationTest {
                             }
                             request.method == "DELETE" -> {
                                 deletes.incrementAndGet()
+
                                 MockResponse()
                                     .setResponseCode(503)
                                     .setBody("{\"error\":\"Try again later\"}")
@@ -68,12 +71,15 @@ class ConversationHistoryMutationTest {
                         }
                 }
             server.start()
+
             val context = RuntimeEnvironment.getApplication()
             val journal = PreferenceStore(context).conversations(server.url("/").toString())
+
             runBlocking {
                 journal.write(SavedConversation("thread", empty = false))
                 journal.select("thread")
             }
+
             val store = ViewModelStore()
             val vm =
                 ViewModelProvider(
@@ -91,19 +97,25 @@ class ConversationHistoryMutationTest {
                                 as T
                     },
                 )[ConversationViewModel::class.java]
+
             try {
                 await { vm.state.value.session?.loading == false }
+
                 var completed = false
+
                 vm.rename("thread", "New title") { completed = true }
                 vm.rename("thread", "Other title") { completed = true }
                 assertNotNull(vm.state.value.historyMutation)
                 await { vm.state.value.historyMutation == null }
+
                 assertEquals(1, renames.get())
                 assertFalse(completed)
                 assertEquals("Try again later", vm.state.value.error)
+
                 vm.delete("thread") { completed = true }
                 vm.delete("thread") { completed = true }
                 await { vm.state.value.historyMutation == null }
+
                 assertEquals(1, deletes.get())
                 assertFalse(completed)
                 assertNotNull(runBlocking { journal.find("thread") })
@@ -115,10 +127,12 @@ class ConversationHistoryMutationTest {
 
     private fun await(condition: () -> Boolean) {
         val deadline = System.nanoTime() + 10_000_000_000L
+
         while (!condition() && System.nanoTime() < deadline) {
             Shadows.shadowOf(Looper.getMainLooper()).idle()
             Thread.sleep(5)
         }
+
         assertTrue("Operation did not finish", condition())
     }
 }

@@ -44,6 +44,7 @@ fun ConversationScreen(
     val state by vm.state.collectAsStateWithLifecycle()
     var menu by remember { mutableStateOf(false) }
     var download by rememberSaveable(stateSaver = DownloadSaver) { mutableStateOf<Download?>(null) }
+
     val filePicker =
         rememberLauncherForActivityResult(
             ActivityResultContracts.OpenMultipleDocuments(),
@@ -54,15 +55,19 @@ fun ConversationScreen(
             ActivityResultContracts.CreateDocument("application/octet-stream")
         ) { uri ->
             val selected = download
+
             if (uri != null && selected != null) {
                 vm.save(selected, uri)
             }
+
             download = null
         }
+
     val onDownload: (Download) -> Unit = {
         download = it
         savePicker.launch(it.name)
     }
+
     val uriHandler = LocalUriHandler.current
     val onLink: (String) -> Unit = { link ->
         if (link.startsWith("https://") || link.startsWith("http://")) {
@@ -73,6 +78,7 @@ fun ConversationScreen(
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val compactHeight = maxHeight < 600.dp
         val onSelect: (String?) -> Unit = vm::select
+
         Scaffold(
             modifier = Modifier.fillMaxSize(),
             containerColor = MaterialTheme.colorScheme.surface,
@@ -144,6 +150,7 @@ fun ConversationScreen(
             },
         ) { padding ->
             val session = state.session
+
             if (session == null) {
                 Box(
                     Modifier.fillMaxSize().padding(padding),
@@ -196,11 +203,13 @@ private fun ConversationTimeline(
     val atBottom by remember {
         derivedStateOf { list.firstVisibleItemIndex == 0 && list.firstVisibleItemScrollOffset == 0 }
     }
+
     val renderer = rememberWorkflowRenderer(state.threadId, state.outputs)
     val waits = state.interrupts.mapNotNull(::externalWaitCallId).toSet()
     val latestStatus =
         state.executionStatus ?: if (state.interrupts.isNotEmpty()) "interrupted" else null
     val turns = conversationTurns(state.messages, state.runs, waits, latestStatus)
+
     val presentations =
         state.outputs
             .filter { it.workflow?.presentation != null }
@@ -212,25 +221,31 @@ private fun ConversationTimeline(
         state.outputs
             .filter {
                 val presentation = it.workflow?.presentation
+
                 presentation != null && presentation.surfaceId !in currentSurfaceIds
             }
             .distinctBy { it.workflow!!.presentation!!.surfaceId }
+
     val owners = mutableMapOf<String, String>()
+
     for (output in state.outputs) {
         val presentation = output.workflow?.presentation ?: continue
         val owner =
             turns.find { turn -> turn.messages.any { it.id == presentation.anchorMessageId } }
                 ?: turns.find { turn -> turn.toolCalls.any { it.call.id == output.toolCallId } }
+
         if (owner != null) {
             owners[presentation.groupId] = owner.id
         }
     }
+
     val groupedSurfaces = state.outputs.mapNotNull { it.workflow?.presentation?.surfaceId }.toSet()
     val calls = turns.flatMap { it.toolCalls }.map { it.call }
     val legacySurfaces =
         renderer.surfaces.keys
             .filter { it !in groupedSurfaces }
             .map { LegacyWorkflowSurface(it, renderer.surfaceCalls[it]) }
+
     val reviewCalls =
         state.interrupts.mapNotNull { Review.from(it)?.raw?.string("workflowCallId") }.toSet()
     val legacy =
@@ -243,6 +258,7 @@ private fun ConversationTimeline(
                     Review.from(it)?.raw?.string("workflowCallId") == null
             },
         )
+
     val visibleInterrupts =
         state.interrupts.filter {
             Review.from(it)?.raw?.string("workflowCallId") !in legacy.completedCallIds
@@ -252,6 +268,7 @@ private fun ConversationTimeline(
     }
     val planIds = pendingPlans.map { it.id }.toSet()
     val reviewBusy = state.busy || state.loading || renderer.error != null
+
     val reviews: @Composable () -> Unit = {
         if (pendingPlans.size > 1) {
             PlanReviewPanel(
@@ -264,6 +281,7 @@ private fun ConversationTimeline(
                 { onContinueReviews(planIds) },
             )
         }
+
         visibleInterrupts
             .filter { pendingPlans.size <= 1 || it !in pendingPlans }
             .forEach { interrupt ->
@@ -277,6 +295,7 @@ private fun ConversationTimeline(
                 )
             }
     }
+
     val empty =
         turns.isEmpty() &&
             state.outputs.isEmpty() &&
@@ -284,6 +303,7 @@ private fun ConversationTimeline(
             state.externalTasks.isEmpty() &&
             !state.loading &&
             !state.busy
+
     val entries =
         buildList<TimelineEntry> {
             if (empty) {
@@ -300,11 +320,17 @@ private fun ConversationTimeline(
                             }
                             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                                 Text(
-                                    if (compactHeight) "What can I help with today?"
-                                    else "What can I help\nwith today?",
+                                    if (compactHeight) {
+                                        "What can I help with today?"
+                                    } else {
+                                        "What can I help\nwith today?"
+                                    },
                                     style =
-                                        if (compactHeight) MaterialTheme.typography.headlineSmall
-                                        else MaterialTheme.typography.headlineLarge,
+                                        if (compactHeight) {
+                                            MaterialTheme.typography.headlineSmall
+                                        } else {
+                                            MaterialTheme.typography.headlineLarge
+                                        },
                                 )
                                 Text(
                                     "Explore an idea, work with your documents, or turn a task into a plan.",
@@ -339,6 +365,7 @@ private fun ConversationTimeline(
                     }
                 )
             }
+
             turns.forEachIndexed { index, turn ->
                 turn.user?.let { message ->
                     add(
@@ -347,6 +374,7 @@ private fun ConversationTimeline(
                         }
                     )
                 }
+
                 val ownedCards = presentations.filter {
                     owners[it.workflow!!.presentation!!.groupId] == turn.id
                 }
@@ -354,6 +382,7 @@ private fun ConversationTimeline(
                 val tasks = state.externalTasks.filter { it.workflowCallId in callIds }
                 val legacyCards = legacy.current.filter { it.toolCallId in callIds }
                 val legacyHistory = legacy.history.filter { it.toolCallId in callIds }
+
                 // Earlier cards belong to the original tool process even when a later
                 // feedback reply owns the current presentation.
                 val previousSurfaces =
@@ -363,6 +392,7 @@ private fun ConversationTimeline(
                             legacyHistory.map { it.id })
                         .distinct()
                 val hasReviews = index == turns.lastIndex && visibleInterrupts.isNotEmpty()
+
                 if (
                     turn.messages.isNotEmpty() ||
                         ownedCards.isNotEmpty() ||
@@ -398,6 +428,7 @@ private fun ConversationTimeline(
                                     WorkflowPresentation(it, renderer)
                                 }
                                 legacyCards.forEach { WorkflowSurface(renderer, it.id) }
+
                                 if (hasReviews) {
                                     reviews()
                                 }
@@ -406,6 +437,7 @@ private fun ConversationTimeline(
                     )
                 }
             }
+
             presentations
                 .filter { it.workflow!!.presentation!!.groupId !in owners }
                 .forEach { output ->
@@ -415,7 +447,9 @@ private fun ConversationTimeline(
                         }
                     )
                 }
+
             val attachedCalls = calls.map { it.id }.toSet()
+
             legacy.current
                 .filter { it.toolCallId !in attachedCalls }
                 .forEach { surface ->
@@ -425,18 +459,22 @@ private fun ConversationTimeline(
                         }
                     )
                 }
+
             state.externalTasks
                 .filter { it.workflowCallId !in attachedCalls }
                 .forEach { task ->
                     add(TimelineEntry("task:${task.taskId}") { ExternalTaskPanel(task) })
                 }
+
             if (turns.isEmpty() && visibleInterrupts.isNotEmpty()) {
                 add(TimelineEntry("reviews") { reviews() })
             }
+
             if (isEmpty()) {
                 add(TimelineEntry("status") {})
             }
         }
+
     val noticeErrors =
         listOfNotNull(issue, state.error, state.outputError, renderer.error).distinct()
     val hasNotices =
@@ -444,6 +482,7 @@ private fun ConversationTimeline(
             state.busy ||
             state.missingOutputSequence != null ||
             noticeErrors.isNotEmpty()
+
     val notices: @Composable () -> Unit = {
         Reveal(hasNotices) {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -454,8 +493,10 @@ private fun ConversationTimeline(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
+
                 val errors =
                     listOfNotNull(issue, state.error, state.outputError, renderer.error).distinct()
+
                 RevealValue(errors.takeIf { it.isNotEmpty() }) { visibleErrors ->
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         visibleErrors.forEach { ErrorNotice(it, onRecover) }
@@ -466,8 +507,11 @@ private fun ConversationTimeline(
                         CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
                         ChangingContent(state.streaming) { streaming ->
                             Text(
-                                if (streaming) "Agent is responding…"
-                                else "Recovering agent progress…",
+                                if (streaming) {
+                                    "Agent is responding…"
+                                } else {
+                                    "Recovering agent progress…"
+                                },
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
@@ -482,7 +526,9 @@ private fun ConversationTimeline(
         entries.map { it.id }.toSet() +
             state.interrupts.map { "review:${it.id}" } +
             state.externalTasks.map { "task:${it.taskId}" }
+
     entrances.observe(entranceKeys, state.loading)
+
     // A reversed list starts at the newest content and also anchors tall, growing
     // replies by their bottom edge. Following is suspended when the reader scrolls.
     LaunchedEffect(list) {
@@ -493,6 +539,7 @@ private fun ConversationTimeline(
                 }
             }
     }
+
     LaunchedEffect(
         state.messages,
         state.outputs,
@@ -505,6 +552,7 @@ private fun ConversationTimeline(
             list.requestScrollToItem(0)
         }
     }
+
     val scrollConnection =
         remember(list) {
             object : NestedScrollConnection {
@@ -516,10 +564,12 @@ private fun ConversationTimeline(
                     if (source == NestedScrollSource.UserInput && consumed.y != 0f) {
                         following = atBottom
                     }
+
                     return Offset.Zero
                 }
             }
         }
+
     CompositionLocalProvider(
         LocalTimelineEntrances provides entrances,
         LocalReplyAnimation provides preferences.replyAnimation,
@@ -542,6 +592,7 @@ private fun ConversationTimeline(
             ) {
                 items(if (empty) entries else entries.asReversed(), key = { it.id }) { entry ->
                     val admitted = remember(entry.id) { entrances.consume(entry.id) }
+
                     EntryAppearance(
                         animate = admitted && preferences.replyAnimation,
                         modifier =
@@ -557,6 +608,7 @@ private fun ConversationTimeline(
                             verticalArrangement = Arrangement.spacedBy(16.dp),
                         ) {
                             entry.content()
+
                             if (entry.id == entries.last().id) {
                                 notices()
                             }
@@ -577,8 +629,11 @@ private fun ConversationTimeline(
                     onClick = {
                         following = true
                         scope.launch {
-                            if (preferences.replyAnimation) list.animateScrollToItem(0)
-                            else list.scrollToItem(0)
+                            if (preferences.replyAnimation) {
+                                list.animateScrollToItem(0)
+                            } else {
+                                list.scrollToItem(0)
+                            }
                         }
                     },
                     modifier = Modifier.size(48.dp),
@@ -598,6 +653,7 @@ private fun WorkflowPresentation(
     renderer: WorkflowRenderer,
 ) {
     val presentation = current.workflow!!.presentation!!
+
     ChangingContent(presentation.surfaceId) { surface -> WorkflowSurface(renderer, surface) }
 }
 

@@ -6,6 +6,7 @@ class OutputBuffer {
     private val byId = mutableMapOf<String, WorkflowOutput>()
     private var nextSequence = 1
     private var failure: String? = null
+
     val missingSequence: Int?
         get() =
             if (bySequence.lastKeyOrNull()?.let { it >= nextSequence } == true) {
@@ -34,8 +35,10 @@ class OutputBuffer {
         }
 
         val ready = mutableListOf<WorkflowOutput>()
+
         while (failure == null) {
             val output = bySequence[nextSequence] ?: break
+
             ready += output
             nextSequence += 1
         }

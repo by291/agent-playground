@@ -34,7 +34,9 @@ fun ActivityScreen(state: SessionState?, onBack: () -> Unit, onClear: () -> Unit
     var copied by remember { mutableStateOf(false) }
     val clipboard = LocalClipboard.current
     val scope = rememberCoroutineScope()
+
     val rows = remember(state?.activity, merge) { activityRows(state?.activity.orEmpty(), merge) }
+
     BackPreview(onBack = onBack) { backModifier ->
         Scaffold(
             modifier = backModifier,
@@ -128,6 +130,7 @@ fun ActivityScreen(state: SessionState?, onBack: () -> Unit, onClear: () -> Unit
                         }
                     }
                 }
+
                 if (rows.isEmpty()) {
                     item {
                         SectionCard(Modifier.widthIn(max = 840.dp)) {
@@ -139,6 +142,7 @@ fun ActivityScreen(state: SessionState?, onBack: () -> Unit, onClear: () -> Unit
                         }
                     }
                 }
+
                 rows
                     .asReversed()
                     .groupBy { it.entry.runId }
@@ -175,6 +179,7 @@ private fun ActivityEventCard(row: ActivityRow, modifier: Modifier = Modifier) {
             DateTimeFormatter.ofPattern("HH:mm:ss.SSS", Locale.ROOT)
                 .format(Instant.ofEpochMilli(entry.receivedAt).atZone(ZoneId.systemDefault()))
         }
+
     SectionCard(modifier.widthIn(max = 840.dp)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(
@@ -182,8 +187,11 @@ private fun ActivityEventCard(row: ActivityRow, modifier: Modifier = Modifier) {
                 Modifier.weight(1f),
                 style = MaterialTheme.typography.labelLarge,
                 color =
-                    if (type == "RUN_ERROR") MaterialTheme.colorScheme.error
-                    else MaterialTheme.colorScheme.onSurface,
+                    if (type == "RUN_ERROR") {
+                        MaterialTheme.colorScheme.error
+                    } else {
+                        MaterialTheme.colorScheme.onSurface
+                    },
             )
             Text(
                 time,

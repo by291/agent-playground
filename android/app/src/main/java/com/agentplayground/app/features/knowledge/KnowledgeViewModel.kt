@@ -14,18 +14,23 @@ import kotlinx.coroutines.sync.withLock
 class KnowledgeViewModel(val api: PlaygroundApi, private val files: DocumentAccess) : ViewModel() {
     private val mutable = MutableStateFlow(KnowledgeUiState())
     val state = mutable.asStateFlow()
+
     private var polling: Job? = null
     private val refreshMutex = Mutex()
 
     fun setVisible(visible: Boolean) {
         polling?.cancel()
+
         if (!visible) {
             return
         }
+
         polling = viewModelScope.launch {
             refresh()
+
             while (isActive) {
                 delay(3_000.milliseconds)
+
                 if (
                     state.value.documents.any {
                         it.status in setOf("queued", "indexing", "uploading")
@@ -46,6 +51,7 @@ class KnowledgeViewModel(val api: PlaygroundApi, private val files: DocumentAcce
 
         try {
             val documents = api.documents()
+
             mutable.update {
                 it.copy(
                     documents = documents,
@@ -61,6 +67,7 @@ class KnowledgeViewModel(val api: PlaygroundApi, private val files: DocumentAcce
             if (error is CancellationException) {
                 throw error
             }
+
             mutable.update {
                 it.copy(
                     error =
@@ -84,16 +91,20 @@ class KnowledgeViewModel(val api: PlaygroundApi, private val files: DocumentAcce
         if (state.value.busy || state.value.pendingUploads.isNotEmpty()) {
             return false
         }
+
         val document =
             state.value.documents.find { it.id == id && it.status == "uploading" } ?: return false
 
         mutable.update { it.copy(resumeDocument = document, error = null) }
+
         return true
     }
 
     fun resumeUpload(uri: Uri?) {
         val document = state.value.resumeDocument ?: return
+
         mutable.update { it.copy(resumeDocument = null) }
+
         if (uri != null) {
             uploadSelection(listOf(uri), document)
         }
@@ -105,29 +116,36 @@ class KnowledgeViewModel(val api: PlaygroundApi, private val files: DocumentAcce
         }
 
         mutable.update { it.copy(busy = true, error = null) }
+
         viewModelScope.launch {
             action(refreshOnFailure = false) {
                 val picked = uris.map { uri ->
                     val file = files.inspect(uri)
                     validateKnowledgeFile(file.name, file.size)
+
                     val size =
                         if (file.size == null) {
                             val data = files.read(file)
                             validateKnowledgeFile(file.name, data.size.toLong())
+
                             data.size.toLong()
                         } else {
                             file.size
                         }
+
                     if (resumed != null) {
                         require(file.name == resumed.name && size == resumed.size) {
                             "Choose the original ${resumed.name} (${resumed.size} bytes) to resume this upload."
                         }
+
                         file.copy(id = resumed.id)
                     } else {
                         file
                     }
                 }
+
                 mutable.update { it.copy(pendingUploads = picked) }
+
                 sendUploads()
             }
         }
@@ -150,6 +168,7 @@ class KnowledgeViewModel(val api: PlaygroundApi, private val files: DocumentAcce
     private suspend fun sendUploads() {
         for (file in state.value.pendingUploads) {
             mutable.update { it.copy(operation = "Uploading ${file.name}…") }
+
             val data = files.read(file)
             validateKnowledgeFile(file.name, data.size.toLong())
 
@@ -159,16 +178,20 @@ class KnowledgeViewModel(val api: PlaygroundApi, private val files: DocumentAcce
                 if (error is CancellationException) {
                     throw error
                 }
+
                 mutable.update { it.copy(error = error.message ?: "Document upload failed.") }
                 refresh(preserveError = true)
+
                 throw error
             }
+
             mutable.update {
                 it.copy(
                     pendingUploads =
                         it.pendingUploads.filterNot { pending -> pending.id == file.id }
                 )
             }
+
             refresh()
         }
     }
@@ -198,7 +221,9 @@ class KnowledgeViewModel(val api: PlaygroundApi, private val files: DocumentAcce
         if (mutable.value.busy) {
             return
         }
+
         mutable.update { it.copy(busy = true, error = null, operation = label) }
+
         viewModelScope.launch { action(refreshOnFailure, block) }
     }
 
@@ -209,7 +234,9 @@ class KnowledgeViewModel(val api: PlaygroundApi, private val files: DocumentAcce
             if (error is CancellationException) {
                 throw error
             }
+
             mutable.update { it.copy(error = error.message ?: "Document operation failed.") }
+
             if (refreshOnFailure) {
                 refresh(preserveError = true)
             }
@@ -235,9 +262,11 @@ data class KnowledgeUiState(
 
 private fun validateKnowledgeFile(name: String, size: Long?) {
     validateFile(name, size ?: 0)
+
     require(name.substringAfterLast('.', "").lowercase() in setOf("txt", "md", "pdf")) {
         "Use a nonempty TXT, Markdown or PDF file up to 10 MiB."
     }
+
     require(size == null || size > 0) {
         "Use a nonempty TXT, Markdown or PDF file up to 10 MiB."
     }

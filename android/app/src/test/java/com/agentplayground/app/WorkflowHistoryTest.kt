@@ -96,6 +96,7 @@ class WorkflowHistoryTest {
                     RunRecord("second-run", "feedback", "completed"),
                 ),
             )
+
         MockWebServer().use { server ->
             server.dispatcher =
                 object : Dispatcher() {
@@ -115,12 +116,15 @@ class WorkflowHistoryTest {
                         }
                 }
             server.start()
+
             val context = RuntimeEnvironment.getApplication()
             val journal = PreferenceStore(context).conversations(server.url("/").toString())
+
             runBlocking {
                 journal.write(SavedConversation("fixture", empty = false))
                 journal.select("fixture")
             }
+
             val store = ViewModelStore()
             val vm =
                 ViewModelProvider(
@@ -138,6 +142,7 @@ class WorkflowHistoryTest {
                                 as T
                     },
                 )[ConversationViewModel::class.java]
+
             try {
                 compose.setContent {
                     PlaygroundTheme("light") {
@@ -152,6 +157,7 @@ class WorkflowHistoryTest {
                             .fetchSemanticsNodes()
                             .isNotEmpty()
                 }
+
                 check()
             } finally {
                 vm.setVisible(false)

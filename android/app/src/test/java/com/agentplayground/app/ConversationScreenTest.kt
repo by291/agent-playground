@@ -46,6 +46,7 @@ class ConversationScreenTest {
             var runs = emptyList<RunRecord>()
             var submitted: RunAgentInput? = null
             var deleted = false
+
             server.dispatcher =
                 object : Dispatcher() {
                     override fun dispatch(request: RecordedRequest): MockResponse =
@@ -53,6 +54,7 @@ class ConversationScreenTest {
                             request.method == "DELETE" &&
                                 request.path == "/conversations/fixture" -> {
                                 deleted = true
+
                                 MockResponse().setResponseCode(204)
                             }
                             request.path == "/conversations/fixture" && deleted ->
@@ -85,6 +87,7 @@ class ConversationScreenTest {
                                     protocolJson.decodeFromString<RunAgentInput>(
                                         request.body.readUtf8()
                                     )
+
                                 submitted = input
                                 messages =
                                     messages +
@@ -98,6 +101,7 @@ class ConversationScreenTest {
                                             "completed",
                                         )
                                     )
+
                                 val events =
                                     listOf(
                                         RunStartedEvent(input.threadId, input.runId),
@@ -108,6 +112,7 @@ class ConversationScreenTest {
                                         ),
                                         RunFinishedEvent(input.threadId, input.runId),
                                     )
+
                                 MockResponse()
                                     .setHeader("Content-Type", "text/event-stream")
                                     .setBody(
@@ -120,12 +125,15 @@ class ConversationScreenTest {
                         }
                 }
             server.start()
+
             val context = RuntimeEnvironment.getApplication()
             val journal = PreferenceStore(context).conversations(server.url("/").toString())
+
             runBlocking {
                 journal.write(SavedConversation("fixture", empty = false))
                 journal.select("fixture")
             }
+
             val store = ViewModelStore()
             val vm =
                 ViewModelProvider(
@@ -143,6 +151,7 @@ class ConversationScreenTest {
                                 as T
                     },
                 )[ConversationViewModel::class.java]
+
             try {
                 compose.setContent {
                     PlaygroundTheme("light") { ConversationScreen(vm, AppPreferences()) }
@@ -151,11 +160,13 @@ class ConversationScreenTest {
                     Shadows.shadowOf(Looper.getMainLooper()).idle()
                     vm.state.value.session?.loading == false
                 }
+
                 compose
                     .onNodeWithTag("conversation-title")
                     .assertTextEquals("Android integration")
                     .assertIsDisplayed()
                 compose.onNodeWithText("Review our next experiment.").assertIsDisplayed()
+
                 compose
                     .onNodeWithContentDescription("Message")
                     .performTextInput("Check recovery and ordering.")
@@ -168,16 +179,20 @@ class ConversationScreenTest {
                         it.id == "new-reply" && it.content == "Validation completed."
                     } == true && vm.state.value.session?.busy == false
                 }
+
                 assertEquals(1, submitted!!.messages.size)
                 assertEquals("Check recovery and ordering.", submitted!!.messages.single().content)
                 assertNull(submitted!!.resume)
                 compose.onNodeWithText("Check recovery and ordering.").assertIsDisplayed()
+
                 var deletionCompleted = false
+
                 vm.delete("fixture") { deletionCompleted = true }
                 compose.waitUntil(10_000) {
                     Shadows.shadowOf(Looper.getMainLooper()).idle()
                     deletionCompleted && vm.state.value.session?.threadId != "fixture"
                 }
+
                 assertNull(runBlocking { journal.find("fixture") })
             } finally {
                 vm.setVisible(false)

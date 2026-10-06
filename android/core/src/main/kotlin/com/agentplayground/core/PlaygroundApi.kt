@@ -52,6 +52,7 @@ class PlaygroundApi(baseUrl: String) : ConversationApi, AutoCloseable {
     private fun url(vararg segments: String, cursor: String? = null): HttpUrl {
         val builder = root.newBuilder()
         segments.forEach { builder.addPathSegment(it) }
+
         if (cursor != null) {
             builder.addQueryParameter("cursor", cursor)
         }
@@ -69,6 +70,7 @@ class PlaygroundApi(baseUrl: String) : ConversationApi, AutoCloseable {
 
     override suspend fun snapshot(threadId: String): ConversationSnapshot? {
         val response = request(Request.Builder().url(url("conversations", threadId)).build())
+
         return response.use {
             if (it.code == 404) {
                 null
@@ -80,9 +82,11 @@ class PlaygroundApi(baseUrl: String) : ConversationApi, AutoCloseable {
 
     suspend fun rename(threadId: String, title: String): RenamedConversation {
         val trimmed = title.trim()
+
         require(trimmed.isNotEmpty() && trimmed.codePointCount(0, trimmed.length) <= 100) {
             "Enter a title between 1 and 100 characters."
         }
+
         val body = buildJsonObject { put("title", trimmed) }.toString().toRequestBody(JSON)
 
         return request(Request.Builder().url(url("conversations", threadId)).patch(body).build())
@@ -108,8 +112,10 @@ class PlaygroundApi(baseUrl: String) : ConversationApi, AutoCloseable {
 
     suspend fun uploadFile(threadId: String, id: String, name: String, data: ByteArray): SkillFile {
         validateFile(name, data.size.toLong())
+
         val file =
             upload<SkillFile>(url("conversations", threadId, "files"), "X-File-Id", id, name, data)
+
         require(file.id == id && file.threadId == threadId && file.name == name) {
             "File upload returned an unexpected identity."
         }
@@ -119,6 +125,7 @@ class PlaygroundApi(baseUrl: String) : ConversationApi, AutoCloseable {
 
     suspend fun uploadDocument(id: String, name: String, data: ByteArray): KnowledgeDocument {
         validateFile(name, data.size.toLong())
+
         val document =
             upload<KnowledgeDocument>(
                 url("api", "knowledge", "documents"),
@@ -127,6 +134,7 @@ class PlaygroundApi(baseUrl: String) : ConversationApi, AutoCloseable {
                 name,
                 data,
             )
+
         require(document.id == id && document.name == name) {
             "Document upload returned an unexpected identity."
         }
@@ -142,6 +150,7 @@ class PlaygroundApi(baseUrl: String) : ConversationApi, AutoCloseable {
 
     suspend fun download(address: String, target: OutputStream) {
         val requested = address.toHttpUrl()
+
         require(
             requested.scheme == root.scheme &&
                 requested.host == root.host &&
@@ -149,14 +158,17 @@ class PlaygroundApi(baseUrl: String) : ConversationApi, AutoCloseable {
         ) {
             "Download must belong to the configured server."
         }
+
         request(Request.Builder().url(requested).build()).use { response ->
             checkResponse(response)
+
             response.body!!.byteStream().use { it.copyTo(target) }
         }
     }
 
     override fun run(input: RunAgentInput): Flow<BaseEvent> {
         val body = protocolJson.encodeToString(input).toRequestBody(JSON)
+
         return events(Request.Builder().url(url("agent")).post(body).build()).map {
             protocolJson.decodeFromString<BaseEvent>(it.data)
         }
@@ -204,6 +216,7 @@ class PlaygroundApi(baseUrl: String) : ConversationApi, AutoCloseable {
                         }
                     },
                 )
+
         awaitClose { source.cancel() }
     }
 
@@ -211,6 +224,7 @@ class PlaygroundApi(baseUrl: String) : ConversationApi, AutoCloseable {
         suspendCancellableCoroutine { continuation ->
             val call = client.newCall(request)
             continuation.invokeOnCancellation { call.cancel() }
+
             call.enqueue(
                 object : Callback {
                     override fun onFailure(call: Call, e: IOException) {
@@ -225,10 +239,12 @@ class PlaygroundApi(baseUrl: String) : ConversationApi, AutoCloseable {
                             // main thread.
                             val buffered = response.use {
                                 val body = it.body
+
                                 it.newBuilder()
                                     .body(body?.bytes()?.toResponseBody(body.contentType()))
                                     .build()
                             }
+
                             continuation.resume(buffered) { _, value, _ -> value.close() }
                         } catch (error: IOException) {
                             if (continuation.isActive) {
@@ -267,6 +283,7 @@ class PlaygroundApi(baseUrl: String) : ConversationApi, AutoCloseable {
 
     private inline fun <reified T> decode(response: Response): T {
         checkResponse(response)
+
         return protocolJson.decodeFromString(response.body!!.string())
     }
 
@@ -280,6 +297,7 @@ class PlaygroundApi(baseUrl: String) : ConversationApi, AutoCloseable {
                             .string("error")
                     }
                     .getOrNull()
+
             throw ApiException(response.code, detail ?: "Server request failed (${response.code}).")
         }
     }
@@ -297,6 +315,7 @@ class PlaygroundApi(baseUrl: String) : ConversationApi, AutoCloseable {
 
 fun normalizeServerUrl(value: String): String {
     val url = value.trim().toHttpUrl()
+
     require(
         url.username.isEmpty() &&
             url.password.isEmpty() &&

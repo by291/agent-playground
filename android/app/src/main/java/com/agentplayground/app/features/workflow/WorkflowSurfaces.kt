@@ -28,9 +28,11 @@ fun rememberWorkflowRenderer(threadId: String, outputs: List<WorkflowOutput>): W
             }
         }
     }
+
     LaunchedEffect(processor, outputs) {
         while (ingested < outputs.size && error == null) {
             val output = outputs[ingested]
+
             try {
                 val messages =
                     when (val value = output.messages) {
@@ -38,24 +40,31 @@ fun rememberWorkflowRenderer(threadId: String, outputs: List<WorkflowOutput>): W
                         is JsonObject -> value.getValue("messages").jsonArray
                         else -> error("Expected A2UI message list")
                     }
+
                 // Parse the full batch before sending any part to the processor.
                 val parsed = messages.map { parser.parse(it.toString()) }
+
                 for (message in parsed) {
                     when (message) {
                         is A2uiCreateSurfaceMessage ->
                             surfaceCalls = surfaceCalls + (message.surfaceId to output.toolCallId)
+
                         is A2uiDeleteSurfaceMessage ->
                             surfaceCalls = surfaceCalls - message.surfaceId
+
                         else -> Unit
                     }
+
                     processor.processMessage(message)
                 }
+
                 ingested += 1
             } catch (cause: Exception) {
                 error = "Could not render workflow output ${output.id}: ${cause.message}"
             }
         }
     }
+
     return WorkflowRenderer(
         if (error == null) {
             surfaces.associateBy { it.id }

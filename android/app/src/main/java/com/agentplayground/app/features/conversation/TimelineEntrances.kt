@@ -10,6 +10,7 @@ internal val LocalReplyAnimation = staticCompositionLocalOf { false }
 internal fun ReplyEntrance(id: String, content: @Composable () -> Unit) {
     val entrances = LocalTimelineEntrances.current
     val admitted = remember(id) { entrances?.consume(id) == true }
+
     EntryAppearance(admitted && LocalReplyAnimation.current, content = content)
 }
 
@@ -26,6 +27,7 @@ internal class TimelineEntrances {
         } else {
             pending.clear()
         }
+
         seen.addAll(keys)
         pending.retainAll(keys)
         initialized = true

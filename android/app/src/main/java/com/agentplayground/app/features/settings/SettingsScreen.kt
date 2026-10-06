@@ -42,6 +42,7 @@ internal fun SettingsScreen(
     var status by remember { mutableStateOf<String?>(null) }
     var clearing by remember { mutableStateOf(false) }
     var permissionDenied by remember { mutableStateOf(localNetworkBlocked) }
+
     fun update(value: AppPreferences) {
         scope.launch {
             try {
@@ -50,10 +51,12 @@ internal fun SettingsScreen(
                 if (cause is CancellationException) {
                     throw cause
                 }
+
                 error = cause.message ?: "Settings could not be saved."
             }
         }
     }
+
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
@@ -94,6 +97,7 @@ internal fun SettingsScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
+
             SectionCard(Modifier.widthIn(max = 760.dp)) {
                 SectionHeading(
                     "Connection",
@@ -116,6 +120,7 @@ internal fun SettingsScreen(
                     singleLine = true,
                     enabled = !pending,
                 )
+
                 Button(
                     modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
                     shape = MaterialTheme.shapes.small,
@@ -123,11 +128,15 @@ internal fun SettingsScreen(
                         pending = true
                         error = null
                         status = null
+
                         scope.launch {
                             var api: PlaygroundApi? = null
+
                             try {
                                 val normalized = normalizeServerUrl(server)
+
                                 permissionDenied = !networkAccess.request(normalized)
+
                                 if (permissionDenied) {
                                     return@launch
                                 }
@@ -135,13 +144,16 @@ internal fun SettingsScreen(
                                 api = PlaygroundApi(normalized)
                                 require(api.health()) { "The server health check failed." }
                                 val info = api.info()
+
                                 store.update(preferences.copy(serverUrl = normalized))
+
                                 status = "Connected · ${info.model}"
                                 onConnected(normalized)
                             } catch (cause: Exception) {
                                 if (cause is CancellationException) {
                                     throw cause
                                 }
+
                                 error = cause.message ?: "Connection failed."
                             } finally {
                                 api?.close()
@@ -161,8 +173,10 @@ internal fun SettingsScreen(
                         )
                     }
                 }
+
                 RevealValue(status) { Text(it, color = MaterialTheme.colorScheme.primary) }
                 RevealValue(error) { ErrorNotice(it) }
+
                 if (permissionDenied) {
                     ErrorNotice(
                         "Local network access is required to connect to this server. Allow Nearby devices in Android app permissions, then connect again."
@@ -181,12 +195,14 @@ internal fun SettingsScreen(
                     }
                 }
             }
+
             SectionCard(Modifier.widthIn(max = 760.dp)) {
                 SectionHeading(
                     "Appearance",
                     "Choose how your workspace looks",
                     Icons.Outlined.Palette,
                 )
+
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     listOf("light", "dark", "system").forEach { theme ->
                         FilterChip(
@@ -196,6 +212,7 @@ internal fun SettingsScreen(
                         )
                     }
                 }
+
                 Row(
                     Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -215,6 +232,7 @@ internal fun SettingsScreen(
                     )
                 }
             }
+
             SectionCard(Modifier.widthIn(max = 760.dp)) {
                 SectionHeading(
                     "Keyboard",
@@ -234,6 +252,7 @@ internal fun SettingsScreen(
                     )
                 }
             }
+
             if (onClear != null) {
                 SectionCard(Modifier.widthIn(max = 760.dp)) {
                     SectionHeading(
@@ -255,6 +274,7 @@ internal fun SettingsScreen(
                     }
                 }
             }
+
             TextButton(
                 onClick = {
                     update(
@@ -270,6 +290,7 @@ internal fun SettingsScreen(
             }
         }
     }
+
     if (clearing && onClear != null) {
         ConfirmDelete(
             "Clear all conversations?",
