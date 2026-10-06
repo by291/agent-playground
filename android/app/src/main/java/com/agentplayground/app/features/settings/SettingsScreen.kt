@@ -1,5 +1,8 @@
 package com.agentplayground.app.features.settings
 
+import android.content.Intent
+import android.net.Uri
+import android.provider.Settings
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -10,28 +13,35 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.agentplayground.app.data.*
 import com.agentplayground.app.design.*
+import com.agentplayground.app.network.ServerNetworkAccess
 import com.agentplayground.core.*
 import kotlinx.coroutines.*
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen(
+internal fun SettingsScreen(
     preferences: AppPreferences,
     store: PreferenceStore,
-    onClear: (completed: () -> Unit) -> Unit,
+    onClear: ((completed: () -> Unit) -> Unit)?,
     conversationBusy: Boolean,
     conversationError: String?,
     onOpenNavigation: (() -> Unit)? = null,
+    networkAccess: ServerNetworkAccess,
+    localNetworkBlocked: Boolean = false,
+    onConnected: (String) -> Unit = {},
 ) {
+    val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var server by rememberSaveable(preferences.serverUrl) { mutableStateOf(preferences.serverUrl) }
     var pending by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var status by remember { mutableStateOf<String?>(null) }
     var clearing by remember { mutableStateOf(false) }
+    var permissionDenied by remember { mutableStateOf(localNetworkBlocked) }
     fun update(value: AppPreferences) {
         scope.launch {
             try {
@@ -96,6 +106,7 @@ fun SettingsScreen(
                         server = it
                         status = null
                         error = null
+                        permissionDenied = false
                     },
                     label = { Text("Backend URL") },
                     supportingText = {
@@ -116,11 +127,17 @@ fun SettingsScreen(
                             var api: PlaygroundApi? = null
                             try {
                                 val normalized = normalizeServerUrl(server)
+                                permissionDenied = !networkAccess.request(normalized)
+                                if (permissionDenied) {
+                                    return@launch
+                                }
+
                                 api = PlaygroundApi(normalized)
                                 require(api.health()) { "The server health check failed." }
                                 val info = api.info()
                                 store.update(preferences.copy(serverUrl = normalized))
                                 status = "Connected · ${info.model}"
+                                onConnected(normalized)
                             } catch (cause: Exception) {
                                 if (cause is CancellationException) {
                                     throw cause
@@ -146,6 +163,23 @@ fun SettingsScreen(
                 }
                 RevealValue(status) { Text(it, color = MaterialTheme.colorScheme.primary) }
                 RevealValue(error) { ErrorNotice(it) }
+                if (permissionDenied) {
+                    ErrorNotice(
+                        "Local network access is required to connect to this server. Allow Nearby devices in Android app permissions, then connect again."
+                    )
+                    TextButton(
+                        onClick = {
+                            context.startActivity(
+                                Intent(
+                                    Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                                    Uri.fromParts("package", context.packageName, null),
+                                )
+                            )
+                        }
+                    ) {
+                        Text("Open app permissions")
+                    }
+                }
             }
             SectionCard(Modifier.widthIn(max = 760.dp)) {
                 SectionHeading(
@@ -200,23 +234,25 @@ fun SettingsScreen(
                     )
                 }
             }
-            SectionCard(Modifier.widthIn(max = 760.dp)) {
-                SectionHeading(
-                    "Conversation data",
-                    "Manage history on the connected server",
-                    Icons.Outlined.FolderOpen,
-                )
-                Text(
-                    "Clear conversation history and its files on the connected server. Shared knowledge documents are retained.",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                OutlinedButton(
-                    onClick = { clearing = true },
-                    enabled = !conversationBusy,
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = MaterialTheme.shapes.small,
-                ) {
-                    Text("Clear all conversations", color = MaterialTheme.colorScheme.error)
+            if (onClear != null) {
+                SectionCard(Modifier.widthIn(max = 760.dp)) {
+                    SectionHeading(
+                        "Conversation data",
+                        "Manage history on the connected server",
+                        Icons.Outlined.FolderOpen,
+                    )
+                    Text(
+                        "Clear conversation history and its files on the connected server. Shared knowledge documents are retained.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    OutlinedButton(
+                        onClick = { clearing = true },
+                        enabled = !conversationBusy,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = MaterialTheme.shapes.small,
+                    ) {
+                        Text("Clear all conversations", color = MaterialTheme.colorScheme.error)
+                    }
                 }
             }
             TextButton(
@@ -234,7 +270,7 @@ fun SettingsScreen(
             }
         }
     }
-    if (clearing) {
+    if (clearing && onClear != null) {
         ConfirmDelete(
             "Clear all conversations?",
             "All conversation history and conversation files on this server will be permanently deleted.",

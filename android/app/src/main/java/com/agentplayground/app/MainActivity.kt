@@ -13,6 +13,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -30,6 +31,8 @@ import com.agentplayground.app.features.conversation.*
 import com.agentplayground.app.features.knowledge.*
 import com.agentplayground.app.features.settings.SettingsScreen
 import com.agentplayground.app.files.DocumentAccess
+import com.agentplayground.app.network.ServerNetworkAccess
+import com.agentplayground.app.network.rememberServerNetworkAccess
 import com.agentplayground.core.PlaygroundApi
 import kotlinx.coroutines.launch
 
@@ -59,6 +62,66 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 internal fun PlaygroundApp(application: PlaygroundApplication, preferences: AppPreferences) {
+    val networkAccess = rememberServerNetworkAccess()
+    ServerConnectionGate(application, preferences, networkAccess) {
+        ConnectedPlaygroundApp(application, preferences, networkAccess)
+    }
+}
+
+@Composable
+internal fun ServerConnectionGate(
+    application: PlaygroundApplication,
+    preferences: AppPreferences,
+    networkAccess: ServerNetworkAccess,
+    content: @Composable () -> Unit,
+) {
+    var allowed by remember(preferences.serverUrl) { mutableStateOf<Boolean?>(null) }
+    LaunchedEffect(networkAccess, preferences.serverUrl) {
+        allowed = networkAccess.request(preferences.serverUrl)
+    }
+
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    val scope = rememberCoroutineScope()
+    DisposableEffect(lifecycle, networkAccess, preferences.serverUrl) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME && allowed == true) {
+                scope.launch { allowed = networkAccess.isAllowed(preferences.serverUrl) }
+            }
+        }
+        lifecycle.addObserver(observer)
+        onDispose { lifecycle.removeObserver(observer) }
+    }
+
+    when (allowed) {
+        true -> content()
+        false ->
+            SettingsScreen(
+                preferences = preferences,
+                store = application.preferences,
+                onClear = null,
+                conversationBusy = false,
+                conversationError = null,
+                networkAccess = networkAccess,
+                localNetworkBlocked = true,
+                onConnected = { url ->
+                    if (url == preferences.serverUrl) {
+                        allowed = true
+                    }
+                },
+            )
+        null ->
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator()
+            }
+    }
+}
+
+@Composable
+private fun ConnectedPlaygroundApp(
+    application: PlaygroundApplication,
+    preferences: AppPreferences,
+    networkAccess: ServerNetworkAccess,
+) {
     var destination by rememberSaveable { mutableStateOf("chat") }
     val savedScreens = rememberSaveableStateHolder()
     BackHandler(enabled = destination != "chat") { destination = "chat" }
@@ -174,6 +237,7 @@ internal fun PlaygroundApp(application: PlaygroundApplication, preferences: AppP
                                 chatState.clearBlocked,
                                 chatState.error,
                                 openNavigation,
+                                networkAccess,
                             )
                         else ->
                             ConversationScreen(chat, preferences, openNavigation) {

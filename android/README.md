@@ -25,6 +25,8 @@ Start the existing backend with `make dev` from the repository root. In the app'
 
 Connect to port **3000**, not Vite or Aegra. Connection checks `/health` and `/agent-info`. Debug builds allow HTTP for local development; release builds require HTTPS. Model and storage credentials remain on the backend. This client follows the server's current shared-workspace model without adding an authentication protocol.
 
+On Android 17 / API 37 and newer, the app requests **Nearby devices** (`ACCESS_LOCAL_NETWORK`) before connecting to an emulator host alias, LAN address or local hostname. Allow it on first launch to use the default server. If denied, Settings stays available for retrying or choosing another server; **Open app permissions** opens Android settings for restoring a denied permission. Then tap **Connect and save**. Internet servers and loopback connections such as `adb reverse` do not require this permission. Android 16 and earlier retain the existing connection flow.
+
 If the emulator cannot reach the host alias, run `adb reverse tcp:3000 tcp:3000` and connect to `http://127.0.0.1:3000/`. Repeat the reverse command after restarting the emulator. Android Studio does not need to remain open: use `emulator -list-avds` and `emulator -avd <name>` from the installed SDK to launch an existing device.
 
 ## Feature mapping
@@ -68,6 +70,7 @@ app (Android)
   MainActivity / application composition and resource ownership
   data/        DataStore preferences and per-server conversation journal
   files/       ContentResolver document access and bounded reads
+  network/     Android local-network permission and connection gating
   design/      Material 3 theme and shared UI
   features/
     conversation/  ViewModel, history, timeline, composer, messages/reviews
