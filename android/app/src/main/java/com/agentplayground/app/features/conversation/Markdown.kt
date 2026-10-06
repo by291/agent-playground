@@ -33,6 +33,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.view.ViewCompat
 import com.agentplayground.app.design.ChangingContent
+import com.agentplayground.core.ReplySources
 import io.noties.markwon.AbstractMarkwonPlugin
 import io.noties.markwon.Markwon
 import io.noties.markwon.MarkwonConfiguration
@@ -51,6 +52,7 @@ fun Markdown(
     settled: Boolean = true,
     onTextVisible: (() -> Unit)? = null,
     subdued: Boolean = false,
+    citations: ReplySources? = null,
 ) {
     val colors = MaterialTheme.colorScheme
     val density = LocalDensity.current
@@ -59,7 +61,7 @@ fun Markdown(
     val context = LocalContext.current
     val blocks = remember(content) { markdownBlocks(content) }
     val renderer =
-        remember(context, colors, density) {
+        remember(context, colors, density, citations) {
             val margin = with(density) { 20.dp.roundToPx() }
             val codeSize = with(density) { 14.sp.roundToPx() }
             val tableTheme =
@@ -75,6 +77,16 @@ fun Markdown(
             Markwon.builder(context)
                 .usePlugin(TablePlugin.create(tableTheme))
                 .usePlugin(StrikethroughPlugin.create())
+                .apply {
+                    if (citations != null) {
+                        usePlugin(
+                            KnowledgeCitationsPlugin(
+                                citations,
+                                colors.primary.toArgb(),
+                            )
+                        )
+                    }
+                }
                 .usePlugin(
                     object : AbstractMarkwonPlugin() {
                         override fun configureTheme(builder: MarkwonTheme.Builder) {

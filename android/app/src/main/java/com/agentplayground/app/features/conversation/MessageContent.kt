@@ -4,10 +4,13 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.agentplayground.app.design.Details
 import com.agentplayground.app.files.Download
@@ -121,6 +124,7 @@ fun AssistantTurnContent(
                     message.content.orEmpty(),
                     replyLink,
                     settled = !active,
+                    citations = turn.sources,
                     onTextVisible = {
                         if (
                             turn.messages.indexOf(message) > lastReasoningIndex &&
@@ -133,10 +137,11 @@ fun AssistantTurnContent(
             }
 
         if (turn.sources.searched) {
+            val documents = turn.sources.documents
             val label =
                 when {
-                    turn.sources.sources.isNotEmpty() ->
-                        "Sources · ${turn.sources.documents.size} documents"
+                    documents.size == 1 -> "Sources · ${documents.values.first().first().name}"
+                    documents.size > 1 -> "Sources · ${documents.size} documents"
 
                     turn.sources.errors.isNotEmpty() -> "Sources unavailable"
                     else -> "Sources · No matches"
@@ -148,7 +153,9 @@ fun AssistantTurnContent(
                     showSources = true
                 }
             ) {
-                Text(label)
+                Icon(Icons.Outlined.Description, null, Modifier.size(16.dp))
+                Spacer(Modifier.width(8.dp))
+                Text(label, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
     }

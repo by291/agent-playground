@@ -541,7 +541,7 @@ class MessageContentTest {
 
         assertTrue(before > 0f)
 
-        compose.onNodeWithText("Next excerpt").performClick()
+        compose.onNodeWithContentDescription("Next excerpt").performClick()
 
         val after =
             compose
@@ -574,14 +574,14 @@ class MessageContentTest {
 
         compose.onNodeWithText("First passage").assertIsDisplayed()
 
-        compose.onNodeWithText("Next excerpt").performClick()
+        compose.onNodeWithContentDescription("Next excerpt").performClick()
         compose.onNodeWithText("Second passage").assertIsDisplayed()
 
-        compose.onNodeWithText("Document: Guide A").performClick()
+        compose.onNodeWithContentDescription("Choose document").performClick()
         compose.onNodeWithText("Guide B").performClick()
         compose.onNodeWithText("Other document").assertIsDisplayed()
 
-        compose.onNodeWithText("Save original").performClick()
+        compose.onNodeWithContentDescription("Save original").performClick()
 
         assertEquals("Guide B", download?.name)
         assertEquals("/original/doc-b", download?.url)

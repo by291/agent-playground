@@ -45,11 +45,14 @@ data class ReplySources(
         get() = sources.groupBy { it.documentId }
 
     fun citation(link: String): KnowledgeSource? {
-        val chunkId = citationPattern.matchEntire(link)?.groupValues?.get(1) ?: return null
+        val chunkId = knowledgeCitationId(link) ?: return null
 
         return sources.find { it.chunkId.equals(chunkId, ignoreCase = true) }
     }
 }
+
+fun knowledgeCitationId(link: String): String? =
+    citationPattern.matchEntire(link)?.groupValues?.get(1)
 
 private val citationPattern =
     Regex(
