@@ -1,5 +1,13 @@
 .DEFAULT_GOAL := help
 
+ifeq ($(OS),Windows_NT)
+SHELL := cmd.exe
+.SHELLFLAGS := /d /s /c
+GRADLEW := android\gradlew.bat
+else
+GRADLEW := ./android/gradlew
+endif
+
 .PHONY: help setup infra-up infra-down skills-smoke agent server web dev dev-stop observability-up dev-observability agent-observability server-observability web-observability typecheck lint format format-check test build check
 .PHONY: android-format android-format-check android-lint android-check
 
@@ -12,9 +20,6 @@ help:
 	@echo "Android: make android-check, make android-lint, make android-format, make android-format-check"
 
 setup:
-	@if [ ! -f .env ]; then cp .env.example .env; echo "Created .env; set DEEPSEEK_API_KEY before running the agent."; fi
-	@if [ ! -f server/.env ]; then cp server/.env.example server/.env; echo "Created server/.env."; fi
-	@if [ ! -f web/.env ]; then cp web/.env.example web/.env; echo "Created web/.env."; fi
 	node scripts/setup-env.mjs
 	uv sync
 	pnpm install
@@ -53,13 +58,13 @@ dev-observability: observability-up
 	node scripts/dev.mjs start-observability
 
 agent-observability:
-	HOST=0.0.0.0 OTEL_SERVICE_NAME=agent-playground-agent OTEL_TARGETS=GENERIC OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:4318/v1/traces ENABLE_PROMETHEUS_METRICS=true uv run agent
+	node scripts/dev.mjs run-observability agent
 
 server-observability:
-	OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:4318 pnpm dev:server
+	node scripts/dev.mjs run-observability server
 
 web-observability:
-	VITE_OBSERVABILITY_ENABLED=true pnpm dev:web
+	node scripts/dev.mjs run-observability web
 
 typecheck:
 	uv run pyrefly check
@@ -88,13 +93,13 @@ build:
 check: typecheck lint format-check test build
 
 android-format:
-	./android/gradlew -p android spotlessApply
+	$(GRADLEW) -p android spotlessApply
 
 android-format-check:
-	./android/gradlew -p android spotlessCheck
+	$(GRADLEW) -p android spotlessCheck
 
 android-lint:
-	./android/gradlew -p android :core:lint :app:lintDebug
+	$(GRADLEW) -p android :core:lint :app:lintDebug
 
 android-check:
-	./android/gradlew -p android qualityCheck
+	$(GRADLEW) -p android qualityCheck

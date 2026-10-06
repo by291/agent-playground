@@ -13,6 +13,8 @@ cd android
 ./gradlew qualityCheck
 ```
 
+In PowerShell, run `.\gradlew.bat qualityCheck` instead. The repository-root `make android-*` commands select the native wrapper automatically.
+
 The debug APK is `app/build/outputs/apk/debug/app-debug.apk`. The wrapper uses Gradle 9.5.0 with AGP 9.3.3.
 
 Start the existing backend with `make dev` from the repository root. In the app's **Settings**, connect to the TypeScript server:

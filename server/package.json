@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "node --env-file=.env --import tsx --import ./observability/bootstrap.ts --watch server.ts",
     "check": "tsc --noEmit",
-    "lint": "eslint '**/*.ts' --max-warnings 0",
+    "lint": "eslint \"**/*.ts\" --max-warnings 0",
     "test": "vitest run",
     "start": "node --env-file=.env --import tsx --import ./observability/bootstrap.ts server.ts",
     "test:watch": "vitest watch --project unit",

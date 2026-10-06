@@ -6,6 +6,10 @@
 
 Use Docker with a running daemon, Python 3.12 with uv, pnpm, Node.js and Make. The repository declares its pnpm version in [package.json](../package.json); CI uses Node.js 26 and Python 3.12. A DeepSeek API key is needed for live agent conversations. Tests with controlled models do not need that key.
 
+The same Make targets work in PowerShell and CMD on Windows with native GNU Make. Keep Node.js, uv, pnpm and Docker on `PATH`; Git Bash is not required. Use Docker Desktop with Linux containers. Make selects CMD for Windows recipes and `gradlew.bat` for Android targets, while the Node scripts handle environment-file creation and application launch settings.
+
+`.gitattributes` checks out text files with LF on every platform, reserving CRLF for Windows batch scripts. Prettier keeps its normal LF checks. Existing Windows checkouts that already contain CRLF can run `pnpm format` once to normalize the formatted sources; future checkouts use the repository attributes.
+
 ```sh
 make setup
 # Set DEEPSEEK_API_KEY in the root .env created by setup.
@@ -20,7 +24,13 @@ make dev-stop
 make infra-down
 ```
 
+In PowerShell, follow a log with `Get-Content .dev/agent.log -Tail 50 -Wait`.
+
+If Windows reports that an application control policy blocked a Python DLL or executable, inspect Windows Security's Smart App Control settings and `Microsoft-Windows-CodeIntegrity/Operational` events to identify the blocked file and active policy.
+
 Stop the applications before infrastructure so active execution can release its resources. `make dev-stop` stops the managed applications; `make infra-down` stops the project infrastructure, including optional observability services. Data volumes remain unless explicitly removed.
+
+On Linux and macOS, managed applications receive `SIGTERM`. Windows stops each managed process tree with `taskkill /T /F`, which forces termination; finish active work before stopping it. The launcher waits for the managed processes to exit before deleting their journal. If cleanup fails, the journal remains available for another `make dev-stop` attempt.
 
 For separate terminals, run `make infra-up` once, then run each of `make agent`, `make server` and `make web` in its own terminal. `make help` lists all shortcuts.
 
@@ -59,7 +69,7 @@ These defaults come from [compose.yaml](../compose.yaml) and the three environme
 | `server/.env` | Hono/Aegra addresses, application database, internal token, S3 and logging.                       | [server/.env.example](../server/.env.example) |
 | `web/.env`    | Vite's `BACKEND_URL` and browser tracing flag.                                                    | [web/.env.example](../web/.env.example)       |
 
-`make setup` uses `scripts/setup-env.mjs` to generate the same random `WORKFLOW_API_TOKEN` in the root and server environment files. For an existing checkout:
+`make setup` uses `scripts/setup-env.mjs` to copy missing environment files from their matching examples and generate the same random `WORKFLOW_API_TOKEN` in the root and server environment files. Existing files and configured tokens are preserved. For an existing checkout:
 
 ```sh
 node scripts/setup-env.mjs
@@ -117,6 +127,8 @@ Run commands from the repository root:
 | `make skills-smoke`                                | Actual Docker scripts, sandbox file I/O, network policy and cleanup; needs local infrastructure. |
 
 Database tests own temporary Testcontainers resources and need Docker. They do not use the daily Compose database or require `TEST_DATABASE_URL`. Python database tests share one container with a fresh database per test; server integration tests share one project container with a fresh database per file. The Python worker tracing test owns separate PostgreSQL and Redis containers. Tests release connections before dropping databases.
+
+`pnpm test:dev` runs the development-tool regression tests without Docker or model credentials. They cover environment setup, native Android wrapper selection, command launch and process-tree cleanup with temporary files and processes. CI runs these tests on Linux and Windows.
 
 TypeScript uses Vitest: server/pure logic tests use Node, and frontend DOM tests opt into jsdom. Frontend shared setup cleans up components, storage, theme, mocks and timers. Shared web tests reuse worker environments; App route tests run in a separate isolated project because they alter import-time configuration. Check order independence when changing shared test state:
 

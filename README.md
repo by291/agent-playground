@@ -11,6 +11,8 @@ React web / Android Compose → Hono / AG-UI adapter → Aegra execution queue �
 
 Requires Docker, uv, pnpm, Node.js, Make and a DeepSeek API key. See [local development](docs/development.md) for versions, environment ownership and troubleshooting.
 
+Windows users can run the same Make commands in PowerShell or CMD with native GNU Make and Docker Desktop using Linux containers.
+
 ```sh
 make setup
 # Set DEEPSEEK_API_KEY in the root .env created by setup.

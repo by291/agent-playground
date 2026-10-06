@@ -8,10 +8,10 @@
     "check": "pnpm --filter agent-playground-server check && pnpm --filter agent-playground-web check",
     "lint": "pnpm --filter agent-playground-server lint && pnpm --filter agent-playground-web lint",
     "test": "pnpm --filter agent-playground-server test && pnpm --filter agent-playground-web test",
-    "test:dev": "node --test scripts/dev.test.mjs",
+    "test:dev": "node --test scripts/*.test.mjs",
     "build": "pnpm --filter agent-playground-web build",
-    "format": "prettier --write 'scripts/**/*.mjs' 'server/**/*.{ts,tsx,js,json}' 'shared/**/*.ts' 'web/src/**/*.{ts,tsx,css}' 'web/tests/**/*.{ts,js}' 'web/*.{js,ts,html,json}' package.json pnpm-workspace.yaml eslint.style.mjs",
-    "format:check": "prettier --check 'scripts/**/*.mjs' 'server/**/*.{ts,tsx,js,json}' 'shared/**/*.ts' 'web/src/**/*.{ts,tsx,css}' 'web/tests/**/*.{ts,js}' 'web/*.{js,ts,html,json}' package.json pnpm-workspace.yaml eslint.style.mjs",
+    "format": "prettier --write \"scripts/**/*.mjs\" \"server/**/*.{ts,tsx,js,json}\" \"shared/**/*.ts\" \"web/src/**/*.{ts,tsx,css}\" \"web/tests/**/*.{ts,js}\" \"web/*.{js,ts,html,json}\" package.json pnpm-workspace.yaml eslint.style.mjs",
+    "format:check": "prettier --check \"scripts/**/*.mjs\" \"server/**/*.{ts,tsx,js,json}\" \"shared/**/*.ts\" \"web/src/**/*.{ts,tsx,css}\" \"web/tests/**/*.{ts,js}\" \"web/*.{js,ts,html,json}\" package.json pnpm-workspace.yaml eslint.style.mjs",
     "test:coverage": "pnpm --filter agent-playground-server test:coverage && pnpm --filter agent-playground-web test:coverage",
     "test:e2e": "pnpm --filter agent-playground-web test:e2e",
     "test:e2e:live": "pnpm --filter agent-playground-web test:e2e:live"

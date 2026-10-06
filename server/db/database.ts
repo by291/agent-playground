@@ -1,6 +1,7 @@
 import { drizzle } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import pg from "pg";
+import { fileURLToPath } from "node:url";
 
 const { Pool } = pg;
 const pool = new Pool({ connectionString: process.env.APP_DATABASE_URL });
@@ -12,7 +13,9 @@ export async function migrateServer(): Promise<void> {
     throw new Error("APP_DATABASE_URL is required");
   }
 
-  const migrationsFolder = new URL("../drizzle", import.meta.url).pathname;
+  const migrationsFolder = fileURLToPath(
+    new URL("../drizzle", import.meta.url),
+  );
 
   await migrate(db, { migrationsFolder });
 }

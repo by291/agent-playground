@@ -13,6 +13,24 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  windows-development:
+    name: Windows development tools
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/setup@v3
+        with:
+          runtime: node@26
+          cache: true
+          require-lockfile: true
+      - name: Install GNU Make
+        run: choco install make --no-progress --yes
+      - name: Check environment setup, commands and process cleanup
+        run: node --test scripts/*.test.mjs
+      - name: Check native server migration paths
+        run: pnpm --filter agent-playground-server exec vitest run --project unit db/database.test.ts
+
   android:
     name: Android
     runs-on: ubuntu-latest
