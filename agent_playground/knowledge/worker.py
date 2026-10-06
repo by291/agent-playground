@@ -95,7 +95,7 @@ async def build_index(
     if len(data) != job.size or hashlib.sha256(data).hexdigest() != job.sha256:
         raise ValueError("Source file does not match its upload metadata")
 
-    documents = await extract_document(job.name, data)
+    documents = await extract_document(job.name, data, text_encoding=job.text_encoding)
 
     async with open_store(config) as (store, embeddings, pool):
         vectors = await embeddings.aembed_documents(

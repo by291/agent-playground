@@ -13,6 +13,7 @@ const documentFixture = {
   size: 1024,
   status: "ready",
   error: null,
+  textEncoding: null,
   chunkCount: 2,
   createdAt: "2026-01-01T00:00:00Z",
   updatedAt: "2026-01-01T00:00:00Z",
@@ -35,6 +36,55 @@ function renderWorkspace() {
 
 afterEach(() => {
   MotionGlobalConfig.skipAnimations = true;
+});
+
+test("an explicit text encoding is retained for retry after a failed reindex request", async () => {
+  const encodings: (string | null)[] = [];
+
+  vi.stubGlobal(
+    "fetch",
+    vi.fn((_url: string, init?: RequestInit) => {
+      if (init?.method === "POST") {
+        encodings.push(new Headers(init.headers).get("X-Text-Encoding"));
+
+        return Promise.resolve(
+          encodings.length === 1
+            ? Response.json({ error: "Storage offline" }, { status: 503 })
+            : Response.json({ ...documentFixture, textEncoding: "gbk" }),
+        );
+      }
+
+      return Promise.resolve(Response.json([documentFixture]));
+    }),
+  );
+  const { client, view } = renderWorkspace();
+  const user = userEvent.setup();
+
+  const actions = await view.findByRole("button", {
+    name: "Actions for policy.md",
+  });
+
+  await user.click(actions);
+  await user.click(view.getByRole("menuitem", { name: "Text encoding" }));
+  const dialog = view.getByRole("dialog", { name: "Text encoding" });
+
+  within(dialog).getByRole("combobox", { name: "Text encoding" }).focus();
+  await user.keyboard("gbk");
+  expect(encodings).toEqual([]);
+  await user.click(
+    within(dialog).getByRole("button", { name: "Reindex document" }),
+  );
+  await within(dialog).findByText("Storage offline");
+  expect(view.getByRole("dialog", { name: "Text encoding" })).toBe(dialog);
+  expect(within(dialog).getByRole("combobox")).toHaveTextContent("GBK");
+  await user.click(
+    within(dialog).getByRole("button", { name: "Reindex document" }),
+  );
+  await waitFor(() => expect(view.queryByRole("dialog")).toBeNull());
+  await waitFor(() => expect(actions).toHaveFocus());
+  expect(encodings).toEqual(["gbk", "gbk"]);
+  view.unmount();
+  client.clear();
 });
 
 test("document deletion requires confirmation, blocks pending dismissal and preserves a failed request for retry", async () => {
@@ -66,10 +116,11 @@ test("document deletion requires confirmation, blocks pending dismissal and pres
   const { client, view } = renderWorkspace();
   const user = userEvent.setup();
   const deleteTrigger = await view.findByRole("button", {
-    name: "Delete policy.md",
+    name: "Actions for policy.md",
   });
 
   await user.click(deleteTrigger);
+  await user.click(view.getByRole("menuitem", { name: "Delete" }));
   let dialog = view.getByRole("alertdialog", { name: "Delete document?" });
 
   expect(dialog).toHaveTextContent("shared knowledge base");
@@ -79,6 +130,7 @@ test("document deletion requires confirmation, blocks pending dismissal and pres
   expect(view.queryByRole("alertdialog")).toBeNull();
   expect(deleteTrigger).toHaveFocus();
   await user.click(deleteTrigger);
+  await user.click(view.getByRole("menuitem", { name: "Delete" }));
   dialog = view.getByRole("alertdialog", { name: "Delete document?" });
   await user.click(
     within(dialog).getByRole("button", {
@@ -124,15 +176,18 @@ test("reindex feedback belongs to its document while the upload action keeps its
     }),
   );
   const { client, view } = renderWorkspace();
+  const user = userEvent.setup();
+  const actions = await view.findByRole("button", {
+    name: "Actions for policy.md",
+  });
 
-  fireEvent.click(await view.findByRole("button", { name: "Reindex" }));
+  await user.click(actions);
+  await user.click(view.getByRole("menuitem", { name: "Reindex" }));
   expect(view.getByRole("status")).toHaveTextContent("Queuing index…");
   expect(view.getByRole("button", { name: "Upload document" })).toBeDisabled();
   expect(view.queryByText("Uploading…")).toBeNull();
   completeIndex?.(Response.json({}));
-  await waitFor(() =>
-    expect(view.getByRole("button", { name: "Reindex" })).toBeEnabled(),
-  );
+  await waitFor(() => expect(actions).toBeEnabled());
   view.unmount();
   client.clear();
 });

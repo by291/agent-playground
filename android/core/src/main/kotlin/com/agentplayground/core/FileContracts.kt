@@ -12,6 +12,7 @@ data class KnowledgeDocument(
     val size: Long,
     val status: String,
     val error: String? = null,
+    val textEncoding: String? = null,
     val chunkCount: Int,
     val createdAt: String,
     val updatedAt: String,

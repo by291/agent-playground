@@ -4,7 +4,9 @@ import { and, desc, eq, isNull } from "drizzle-orm";
 import { z } from "zod";
 import {
   maxKnowledgeBytes,
+  knowledgeTextEncodingSchema,
   type KnowledgeDocument,
+  type KnowledgeTextEncoding,
 } from "../../shared/knowledge";
 import { db } from "../db/database";
 import { knowledgeChunks, knowledgeDocuments } from "../db/knowledge-schema";
@@ -32,6 +34,9 @@ function publicDocument(
     size: row.size,
     status: knowledgeDocumentStatus(row.status),
     error: row.error,
+    textEncoding: knowledgeTextEncodingSchema
+      .nullable()
+      .parse(row.textEncoding),
     chunkCount: row.chunkCount,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
@@ -54,7 +59,42 @@ export async function listDocuments() {
   return rows.map(publicDocument);
 }
 
-export async function uploadDocument(id: string, name: string, data: Buffer) {
+export function parseTextEncoding(value: string | undefined) {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (value === "auto") {
+    return null;
+  }
+
+  const result = knowledgeTextEncodingSchema.safeParse(value);
+
+  if (!result.success) {
+    throw new KnowledgeError("Unsupported text encoding", 400);
+  }
+
+  return result.data;
+}
+
+function validateTextEncoding(
+  name: string,
+  encoding: KnowledgeTextEncoding | null,
+) {
+  if (encoding !== null && !/\.(txt|md)$/i.test(name)) {
+    throw new KnowledgeError(
+      "Text encoding applies only to TXT and Markdown files",
+      400,
+    );
+  }
+}
+
+export async function uploadDocument(
+  id: string,
+  name: string,
+  data: Buffer,
+  textEncoding?: KnowledgeTextEncoding | null,
+) {
   if (
     !z.string().uuid().safeParse(id).success ||
     !filename.safeParse(name).success ||
@@ -67,6 +107,7 @@ export async function uploadDocument(id: string, name: string, data: Buffer) {
     );
   }
 
+  validateTextEncoding(name, textEncoding ?? null);
   const sha256 = createHash("sha256").update(data).digest("hex");
 
   // Persist the upload intent first so a crash cannot leave an untracked object.
@@ -77,6 +118,7 @@ export async function uploadDocument(id: string, name: string, data: Buffer) {
       name,
       size: data.length,
       sha256,
+      textEncoding: textEncoding ?? null,
       objectKey: `knowledge/${id}`,
     })
     .onConflictDoNothing();
@@ -95,7 +137,8 @@ export async function uploadDocument(id: string, name: string, data: Buffer) {
     if (
       row.sha256 !== sha256 ||
       row.name !== name ||
-      row.size !== data.length
+      row.size !== data.length ||
+      (textEncoding !== undefined && row.textEncoding !== textEncoding)
     ) {
       throw new KnowledgeError(
         "Document identity is already used by another file",
@@ -151,7 +194,11 @@ export async function readDocument(id: string) {
   return { name: row.name, data };
 }
 
-export async function changeDocument(id: string, action: "reindex" | "delete") {
+export async function changeDocument(
+  id: string,
+  action: "reindex" | "delete",
+  textEncoding?: KnowledgeTextEncoding | null,
+) {
   return db.transaction(async (tx) => {
     const [row] = await tx
       .select()
@@ -175,6 +222,10 @@ export async function changeDocument(id: string, action: "reindex" | "delete") {
       );
     }
 
+    if (textEncoding !== undefined) {
+      validateTextEncoding(row.name, textEncoding);
+    }
+
     await tx
       .update(knowledgeChunks)
       .set({ visible: false })
@@ -189,6 +240,7 @@ export async function changeDocument(id: string, action: "reindex" | "delete") {
         leaseUntil: null,
         chunkCount: 0,
         error: null,
+        ...(textEncoding === undefined ? {} : { textEncoding }),
         updatedAt: new Date(),
       })
       .where(eq(knowledgeDocuments.id, id))

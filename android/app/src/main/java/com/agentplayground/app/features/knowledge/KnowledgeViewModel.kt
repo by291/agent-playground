@@ -202,11 +202,16 @@ class KnowledgeViewModel(private val api: PlaygroundApi, private val files: Docu
         }
     }
 
-    fun reindex(id: String) {
+    fun reindex(id: String, textEncoding: String? = null, completed: () -> Unit = {}) {
         mutate("Reindexing document…") {
-            api.reindex(id)
+            api.reindex(id, textEncoding)
             refresh()
+            completed()
         }
+    }
+
+    fun clearError() {
+        mutable.update { it.copy(error = null) }
     }
 
     fun delete(id: String, completed: () -> Unit) {

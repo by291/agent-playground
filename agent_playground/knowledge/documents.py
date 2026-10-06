@@ -12,11 +12,18 @@ from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from pypdf import PdfReader
 
+from agent_playground.knowledge.text import decode_text
 
-def split_document(name: str, data: bytes) -> list[Document]:
+
+def split_document(
+    name: str, data: bytes, *, text_encoding: str | None = None
+) -> list[Document]:
     suffix = Path(name).suffix.lower()
 
     if suffix == ".pdf":
+        if text_encoding is not None:
+            raise ValueError("Text encoding applies only to TXT and Markdown files")
+
         reader = PdfReader(BytesIO(data))
 
         if reader.is_encrypted or len(reader.pages) > 200:
@@ -30,10 +37,7 @@ def split_document(name: str, data: bytes) -> list[Document]:
             for index, page in enumerate(reader.pages)
         ]
     elif suffix in {".txt", ".md"}:
-        try:
-            content = data.decode("utf-8-sig")
-        except UnicodeDecodeError as error:
-            raise ValueError("TXT and Markdown files must use UTF-8") from error
+        content = decode_text(data, text_encoding)
 
         documents = [
             Document(page_content=content, metadata={"name": name, "page": None})
@@ -56,12 +60,20 @@ def split_document(name: str, data: bytes) -> list[Document]:
     return splitter.split_documents(documents)
 
 
-async def extract_document(name: str, data: bytes) -> list[Document]:
+async def extract_document(
+    name: str, data: bytes, *, text_encoding: str | None = None
+) -> list[Document]:
     # Windows' database-compatible Selector loop cannot manage asyncio subprocesses.
     starting = asyncio.create_task(
         asyncio.to_thread(
             lambda: subprocess.Popen(
-                [sys.executable, "-m", "agent_playground.knowledge.documents", name],
+                [
+                    sys.executable,
+                    "-m",
+                    "agent_playground.knowledge.documents",
+                    name,
+                    text_encoding if text_encoding is not None else "auto",
+                ],
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
@@ -108,10 +120,16 @@ async def extract_document(name: str, data: bytes) -> list[Document]:
 
 if __name__ == "__main__":
     try:
-        chunks = split_document(sys.argv[1], sys.stdin.buffer.read())
+        encoding = sys.argv[2] if len(sys.argv) > 2 else "auto"
+        chunks = split_document(
+            sys.argv[1],
+            sys.stdin.buffer.read(),
+            text_encoding=None if encoding == "auto" else encoding,
+        )
         payload = {"documents": [chunk.model_dump() for chunk in chunks]}
     except ValueError as error:
         # Extraction errors cross the subprocess boundary as bounded user-readable data.
         payload = {"error": str(error)[:500]}
 
-    sys.stdout.write(json.dumps(payload, ensure_ascii=False))
+    # The subprocess wire format is UTF-8 regardless of the host's pipe locale.
+    sys.stdout.buffer.write(json.dumps(payload, ensure_ascii=False).encode("utf-8"))

@@ -19,6 +19,7 @@ export const knowledgeDocuments = pgTable("knowledge_documents", {
   objectKey: text("object_key").notNull(),
   status: text("status").notNull().default("uploading"),
   error: text("error"),
+  textEncoding: text("text_encoding"),
   chunkCount: integer("chunk_count").notNull().default(0),
   generation: text("generation"),
   leaseUntil: timestamp("lease_until", { withTimezone: true }),

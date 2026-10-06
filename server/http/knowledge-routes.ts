@@ -7,6 +7,7 @@ import {
   changeDocument,
   KnowledgeError,
   listDocuments,
+  parseTextEncoding,
   readDocument,
   uploadDocument,
 } from "../knowledge/documents";
@@ -64,13 +65,23 @@ knowledgeRoutes.post(
       context.req.header("X-Document-Id") ?? "",
       name,
       Buffer.from(await context.req.arrayBuffer()),
+      parseTextEncoding(context.req.header("X-Text-Encoding")),
     );
 
     return context.json(document, 201);
   },
 );
-knowledgeRoutes.post("/api/knowledge/documents/:id/reindex", async (context) =>
-  context.json(await changeDocument(context.req.param("id"), "reindex")),
+knowledgeRoutes.post(
+  "/api/knowledge/documents/:id/reindex",
+  async (context) => {
+    const document = await changeDocument(
+      context.req.param("id"),
+      "reindex",
+      parseTextEncoding(context.req.header("X-Text-Encoding")),
+    );
+
+    return context.json(document);
+  },
 );
 knowledgeRoutes.delete("/api/knowledge/documents/:id", async (context) => {
   await changeDocument(context.req.param("id"), "delete");

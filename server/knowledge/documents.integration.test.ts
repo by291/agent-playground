@@ -170,3 +170,100 @@ test("invalid and oversized uploads are rejected before creating an intent", asy
     await database.db.select().from(schema.knowledgeDocuments),
   ).toHaveLength(before.length);
 });
+
+test("text encoding survives reindex retries and can be reset to automatic detection", async () => {
+  const id = randomUUID();
+
+  await upload(id);
+  await database.db
+    .update(schema.knowledgeDocuments)
+    .set({ status: "failed", generation: "previous" })
+    .where(eq(schema.knowledgeDocuments.id, id));
+  const reindex = (encoding?: string) =>
+    app.request(`/api/knowledge/documents/${id}/reindex`, {
+      method: "POST",
+      headers: encoding ? { "X-Text-Encoding": encoding } : {},
+    });
+  const chosen = await reindex("gbk");
+
+  expect(chosen.status).toBe(200);
+  expect(await chosen.json()).toMatchObject({
+    textEncoding: "gbk",
+    status: "queued",
+  });
+  expect((await reindex("big5")).status).toBe(409);
+  await database.db
+    .update(schema.knowledgeDocuments)
+    .set({ status: "failed" })
+    .where(eq(schema.knowledgeDocuments.id, id));
+
+  expect(await (await reindex()).json()).toMatchObject({ textEncoding: "gbk" });
+  await database.db
+    .update(schema.knowledgeDocuments)
+    .set({ status: "ready" })
+    .where(eq(schema.knowledgeDocuments.id, id));
+
+  expect(await (await reindex("auto")).json()).toMatchObject({
+    textEncoding: null,
+  });
+  const [stored] = await database.db
+    .select()
+    .from(schema.knowledgeDocuments)
+    .where(eq(schema.knowledgeDocuments.id, id));
+
+  expect(stored!.textEncoding).toBeNull();
+  await app.request(`/api/knowledge/documents/${id}`, { method: "DELETE" });
+});
+
+test("unsupported encodings and PDF encoding overrides do not admit uploads", async () => {
+  const before = await database.db.select().from(schema.knowledgeDocuments);
+
+  for (const [name, encoding] of [
+    ["policy.md", "utf-7"],
+    ["policy.pdf", "gbk"],
+  ]) {
+    const response = await app.request("/api/knowledge/documents", {
+      method: "POST",
+      headers: {
+        "X-Filename": name!,
+        "X-Document-Id": randomUUID(),
+        "X-Text-Encoding": encoding!,
+      },
+      body: "text",
+    });
+
+    expect(response.status).toBe(400);
+  }
+
+  expect(
+    await database.db.select().from(schema.knowledgeDocuments),
+  ).toHaveLength(before.length);
+});
+
+test("unfinished uploads preserve their encoding when resumed without an override", async () => {
+  const id = randomUUID();
+  const store = await import("../storage/object-store");
+  const failedPut = vi
+    .spyOn(store, "putObject")
+    .mockRejectedValueOnce(new Error("offline"));
+  const response = await app.request("/api/knowledge/documents", {
+    method: "POST",
+    headers: {
+      "X-Filename": "policy.md",
+      "X-Document-Id": id,
+      "X-Text-Encoding": "gbk",
+    },
+    body: "Returns are allowed within 30 days.",
+  });
+
+  expect(response.status).toBe(503);
+  failedPut.mockRestore();
+  const resumed = await upload(id);
+
+  expect(resumed.status).toBe(201);
+  expect(await resumed.json()).toMatchObject({
+    textEncoding: "gbk",
+    status: "queued",
+  });
+  await app.request(`/api/knowledge/documents/${id}`, { method: "DELETE" });
+});

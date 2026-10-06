@@ -1,8 +1,17 @@
 import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
+import type { Locator, Page } from "@playwright/test";
 import { knowledgeSearchSchema } from "../../../../shared/knowledge";
 import { capture, expect, test } from "../fixtures";
 import { createCompletedConversation } from "../conversations";
+
+// Tests in this file share the controlled embedding-failure switch.
+test.describe.configure({ mode: "default" });
+
+async function selectDocumentAction(page: Page, row: Locator, name: string) {
+  await row.getByRole("button", { name: /^Actions for / }).click();
+  await page.getByRole("menuitem", { name, exact: true }).click();
+}
 
 test("shared documents index through Python, retry failures and restore retrieved sources", async ({
   page,
@@ -32,14 +41,11 @@ test("shared documents index through Python, retry failures and restore retrieve
     });
     const row = page.getByRole("listitem").filter({ hasText: filename });
 
-    await expect(
-      row.getByRole("button", { name: "Retry indexing" }),
-    ).toBeVisible();
     await expect(row).toContainText("Embedding token rate limit reached");
     await request.post("http://127.0.0.1:4300/__e2e/embedding-failure", {
       data: { enabled: false },
     });
-    await row.getByRole("button", { name: "Retry indexing" }).click();
+    await selectDocumentAction(page, row, "Retry indexing");
     await expect(row).toContainText("ready");
     const unusedCardHeight = await row.evaluate((element) => {
       const list = element.closest("ul")!;
@@ -247,16 +253,16 @@ test("shared documents index through Python, retry failures and restore retrieve
     await reader.getByRole("button", { name: "Close sources" }).click();
     await page.goto("/knowledge");
     const deleteTrigger = row.getByRole("button", {
-      name: `Delete ${filename}`,
+      name: `Actions for ${filename}`,
     });
 
-    await deleteTrigger.click();
+    await selectDocumentAction(page, row, "Delete");
     await page
       .getByRole("alertdialog", { name: "Delete document?" })
       .getByRole("button", { name: "Cancel", exact: true })
       .click();
     await expect(deleteTrigger).toBeFocused();
-    await deleteTrigger.click();
+    await selectDocumentAction(page, row, "Delete");
     await page
       .getByRole("alertdialog", { name: "Delete document?" })
       .getByRole("button", { name: "Delete document", exact: true })
@@ -265,9 +271,7 @@ test("shared documents index through Python, retry failures and restore retrieve
     await expect(
       page.getByRole("button", { name: "Upload document", exact: true }),
     ).toBeFocused();
-    await courierRow
-      .getByRole("button", { name: `Delete ${courierFilename}` })
-      .click();
+    await selectDocumentAction(page, courierRow, "Delete");
     await page
       .getByRole("alertdialog", { name: "Delete document?" })
       .getByRole("button", { name: "Delete document", exact: true })
@@ -289,5 +293,103 @@ test("shared documents index through Python, retry failures and restore retrieve
     await request.post("http://127.0.0.1:4300/__e2e/embedding-failure", {
       data: { enabled: false },
     });
+  }
+});
+
+test("an encoding choice recovers ambiguous text, persists after reload and preserves original bytes", async ({
+  page,
+  request,
+}, testInfo) => {
+  test.setTimeout(60_000);
+  const filename = `legacy-${randomUUID()}.txt`;
+  // GBK bytes for "Return 你好", independent of the application's detector.
+  const original = Buffer.from([
+    0x52, 0x65, 0x74, 0x75, 0x72, 0x6e, 0x20, 0xc4, 0xe3, 0xba, 0xc3,
+  ]);
+  let documentId: string | undefined;
+
+  try {
+    await page.goto("/knowledge");
+    await page.getByLabel("Document file").setInputFiles({
+      name: filename,
+      mimeType: "text/plain",
+      buffer: original,
+    });
+    const row = page.getByRole("listitem").filter({ hasText: filename });
+
+    await expect(row).toContainText("Choose Text encoding");
+    const fileUrl = await row
+      .getByRole("link", { name: "Download", exact: true })
+      .getAttribute("href");
+
+    expect(fileUrl).toBeTruthy();
+    documentId = fileUrl!.split("/").at(-2)!;
+    await row.getByRole("button", { name: `Actions for ${filename}` }).click();
+    await capture(page, testInfo, "knowledge-actions-menu.png");
+    await page.getByRole("menuitem", { name: "Text encoding" }).click();
+    const dialog = page.getByRole("dialog", {
+      name: "Text encoding",
+      exact: true,
+    });
+
+    await dialog.getByRole("combobox", { name: "Text encoding" }).click();
+    await page.getByRole("option", { name: "GBK", exact: true }).click();
+    await capture(page, testInfo, "knowledge-encoding.png");
+    await dialog.getByRole("button", { name: "Reindex document" }).click();
+    await expect(dialog).toHaveCount(0);
+    await expect(row.getByRole("status")).toHaveText("ready");
+    await capture(page, testInfo, "knowledge-actions.png");
+    const search = await request.post("http://127.0.0.1:4301/search", {
+      data: { query: "return policy" },
+    });
+    const result = knowledgeSearchSchema.parse(await search.json());
+
+    expect(
+      result.sources.find((source) => source.documentId === documentId)
+        ?.excerpt,
+    ).toBe("Return 你好");
+    const downloaded = await request.get(`http://127.0.0.1:4300${fileUrl}`);
+
+    expect(await downloaded.body()).toEqual(original);
+    await page.reload();
+    await page.setViewportSize({ width: 390, height: 844 });
+    await capture(page, testInfo, "knowledge-actions-mobile.png");
+    const actions = row.getByRole("button", {
+      name: `Actions for ${filename}`,
+    });
+
+    await actions.focus();
+    await actions.press("ArrowDown");
+    await expect(page.getByRole("menuitem", { name: "Reindex" })).toBeFocused();
+    await capture(page, testInfo, "knowledge-actions-menu-mobile.png");
+    await page.getByRole("menuitem", { name: "Text encoding" }).click();
+    await expect(dialog.getByRole("combobox")).toHaveText("GBK");
+    await expect(
+      dialog.getByRole("button", { name: "Cancel" }),
+    ).toBeInViewport();
+    await capture(page, testInfo, "knowledge-encoding-mobile.png");
+    await dialog.getByRole("button", { name: "Cancel" }).click();
+    await expect(actions).toBeFocused();
+    await selectDocumentAction(page, row, "Reindex");
+    await expect(row.getByRole("status")).toHaveText("ready");
+    const documents = await request.get(
+      "http://127.0.0.1:4300/api/knowledge/documents",
+    );
+
+    expect(await documents.json()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: documentId,
+          textEncoding: "gbk",
+          status: "ready",
+        }),
+      ]),
+    );
+  } finally {
+    if (documentId) {
+      await request.delete(
+        `http://127.0.0.1:4300/api/knowledge/documents/${documentId}`,
+      );
+    }
   }
 });

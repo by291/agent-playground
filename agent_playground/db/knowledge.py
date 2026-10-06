@@ -20,6 +20,7 @@ class IndexJob:
     size: int
     sha256: str
     generation: str
+    text_encoding: str | None = None
 
 
 class KnowledgeRepository:
@@ -31,7 +32,7 @@ class KnowledgeRepository:
             row = (
                 connection.execute(
                     text("""
-                SELECT id, name, size, sha256 FROM knowledge_documents
+                SELECT id, name, size, sha256, text_encoding FROM knowledge_documents
                 WHERE deleted_at IS NULL AND
                   (status = 'queued' OR (status = 'indexing' AND lease_until < now()))
                 ORDER BY updated_at, id FOR UPDATE SKIP LOCKED LIMIT 1
@@ -60,6 +61,7 @@ class KnowledgeRepository:
                 int(row["size"]),
                 str(row["sha256"]),
                 generation,
+                row["text_encoding"],
             )
 
     def fail(self, job: IndexJob, message: str) -> None:

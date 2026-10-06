@@ -6,7 +6,11 @@
 
 Open **Knowledge** in the chat sidebar to upload TXT, Markdown or text PDFs. Documents are shared across conversations. Uploads are limited to 10 MiB; PDF extraction supports up to 200 unencrypted pages and two million extracted characters. Scanned PDFs need OCR before upload.
 
-TXT and Markdown must be UTF-8, with or without a BOM. Index extraction does not detect or convert legacy encodings.
+TXT and Markdown default to automatic encoding detection. Unicode BOMs determine UTF-8, UTF-16 or UTF-32; unsigned files first use strict UTF-8, then charset-normalizer considers GB18030, GBK, Big5, Windows-1252, Shift JIS and UTF-16/32 byte orders. Detection is restricted to these codecs. Short legacy text with little language evidence and competing decodings without clear language evidence are rejected with an actionable indexing error instead of silently producing garbage.
+
+Use **Text encoding** in a document's **…** actions menu on Web or Android to choose an encoding and reindex, including returning to **Automatic detection**. Web keeps **Download** beside the menu; reindexing and deletion are in the menu. The choice is stored with the shared document and survives reload, indexing retries and worker restarts. Regular **Reindex** and **Retry indexing** preserve it. PDFs do not expose this control. Decoding is strict, rejects non-text control characters, and never uses replacement characters or an unconditional Latin-1 fallback. Automatic detection remains a heuristic; an explicit encoding is useful when a valid-looking detection produces the wrong text.
+
+The original stored bytes and download remain unchanged. API uploads and reindex requests may specify `X-Text-Encoding` with one of `utf-8`, `utf-16-le`, `utf-16-be`, `utf-32-le`, `utf-32-be`, `gb18030`, `gbk`, `big5`, `cp1252`, or `shift_jis`; `auto` selects automatic detection. Omission on reindex or upload resume preserves the existing choice. Encoding changes use the same indexing generation fencing as other reindex requests.
 
 ## Embedding configuration
 
@@ -80,7 +84,7 @@ Retrieval uses exact cosine search with up to five matches, without an approxima
 
 ## Troubleshooting
 
-1. Check the document's UTF-8 encoding or extractable PDF text and the upload/extraction limits.
+1. For TXT or Markdown, use **Text encoding** to resolve ambiguous detection or choose the original encoding. For PDFs, check that text is extractable. Check the upload/extraction limits in either case.
 2. Check `RAG_EMBEDDING_BASE_URL`, model and API key in the root environment, independently of the chat model configuration.
 3. For provider `BadRequestError`, check the maximum texts per request and whether that model accepts `dimensions`. Leave the optional dimension setting empty unless supported.
 4. Inspect `.dev/agent.log` for the indexing error; verify server S3/internal-token settings if originals cannot be downloaded.

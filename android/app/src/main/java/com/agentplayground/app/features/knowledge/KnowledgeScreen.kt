@@ -26,6 +26,7 @@ import com.agentplayground.core.KnowledgeDocument
 fun KnowledgeScreen(vm: KnowledgeViewModel, onOpenNavigation: (() -> Unit)? = null) {
     val state by vm.state.collectAsStateWithLifecycle()
     var deleting by remember { mutableStateOf<KnowledgeDocument?>(null) }
+    var encodingDocument by remember { mutableStateOf<KnowledgeDocument?>(null) }
     var download by rememberSaveable(stateSaver = DownloadSaver) { mutableStateOf<Download?>(null) }
 
     val picker =
@@ -135,7 +136,7 @@ fun KnowledgeScreen(vm: KnowledgeViewModel, onOpenNavigation: (() -> Unit)? = nu
                         )
                     }
 
-                    RevealValue(state.error) { error ->
+                    RevealValue(state.error.takeIf { encodingDocument == null }) { error ->
                         ErrorNotice(
                             error,
                             if (state.pendingUploads.isNotEmpty()) {
@@ -261,6 +262,23 @@ fun KnowledgeScreen(vm: KnowledgeViewModel, onOpenNavigation: (() -> Unit)? = nu
                                         vm.reindex(document.id)
                                     },
                                 )
+                                if (
+                                    document.name.substringAfterLast('.').lowercase() in
+                                        setOf("txt", "md")
+                                ) {
+                                    DropdownMenuItem(
+                                        text = { Text("Text encoding") },
+                                        leadingIcon = { Icon(Icons.Outlined.Translate, null) },
+                                        enabled =
+                                            !state.busy &&
+                                                document.status in setOf("ready", "failed"),
+                                        onClick = {
+                                            menu = false
+                                            vm.clearError()
+                                            encodingDocument = document
+                                        },
+                                    )
+                                }
                                 DropdownMenuItem(
                                     text = {
                                         Text("Delete", color = MaterialTheme.colorScheme.error)
@@ -296,6 +314,21 @@ fun KnowledgeScreen(vm: KnowledgeViewModel, onOpenNavigation: (() -> Unit)? = nu
                 }
             }
         }
+    }
+
+    encodingDocument?.let { document ->
+        TextEncodingDialog(
+            document = document,
+            busy = state.busy,
+            error = state.error,
+            onConfirm = { encoding ->
+                vm.reindex(document.id, encoding) { encodingDocument = null }
+            },
+            onDismiss = {
+                encodingDocument = null
+                vm.clearError()
+            },
+        )
     }
 
     deleting?.let { document ->

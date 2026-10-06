@@ -101,14 +101,18 @@ class PlaygroundApi(baseUrl: String) : ConversationApi, AutoCloseable {
 
     suspend fun deleteDocument(id: String) = delete(url("api", "knowledge", "documents", id))
 
-    suspend fun reindex(id: String): KnowledgeDocument =
-        request(
-                Request.Builder()
-                    .url(url("api", "knowledge", "documents", id, "reindex"))
-                    .post(ByteArray(0).toRequestBody())
-                    .build()
-            )
-            .use { decode(it) }
+    suspend fun reindex(id: String, textEncoding: String? = null): KnowledgeDocument {
+        val requestBuilder =
+            Request.Builder()
+                .url(url("api", "knowledge", "documents", id, "reindex"))
+                .post(ByteArray(0).toRequestBody())
+
+        if (textEncoding != null) {
+            requestBuilder.header("X-Text-Encoding", textEncoding)
+        }
+
+        return request(requestBuilder.build()).use { decode(it) }
+    }
 
     suspend fun uploadFile(threadId: String, id: String, name: String, data: ByteArray): SkillFile {
         validateFile(name, data.size.toLong())

@@ -286,6 +286,35 @@ class KnowledgeUploadTest {
         repeat(fixture.server.requestCount) { assertNotEquals("POST", fixture.request().method) }
     }
 
+    @Test
+    fun `encoding reindex carries its choice and refreshes the persisted setting`() {
+        Fixture().use { fixture ->
+            val encoded =
+                document("original-id", "queued").dropLast(1) + ",\"textEncoding\":\"gbk\"}"
+            fixture.server.enqueue(MockResponse().setBody(encoded))
+            fixture.server.enqueue(MockResponse().setBody("[$encoded]"))
+            var completed = false
+
+            fixture.vm.reindex("original-id", "gbk") { completed = true }
+            await { !fixture.vm.state.value.busy }
+
+            assertTrue(completed)
+            assertEquals("gbk", fixture.vm.state.value.documents.single().textEncoding)
+            assertEquals("gbk", fixture.request().getHeader("X-Text-Encoding"))
+            assertEquals("GET", fixture.request().method)
+
+            val automatic = document("original-id", "queued")
+            fixture.server.enqueue(MockResponse().setBody(automatic))
+            fixture.server.enqueue(MockResponse().setBody("[$automatic]"))
+            fixture.vm.reindex("original-id", "auto")
+            await { !fixture.vm.state.value.busy }
+
+            assertEquals("auto", fixture.request().getHeader("X-Text-Encoding"))
+            assertNull(fixture.vm.state.value.documents.single().textEncoding)
+            assertEquals("GET", fixture.request().method)
+        }
+    }
+
     private fun unavailable() =
         MockResponse().setResponseCode(503).setBody("{\"error\":\"Response unavailable\"}")
 

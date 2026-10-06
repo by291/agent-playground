@@ -26,6 +26,11 @@ from agent_playground.knowledge.tools import retrieve
 from agent_playground.knowledge.worker import index_job
 
 
+def create_knowledge_schema(connection: psycopg.Connection) -> None:
+    for migration in sorted(Path("server/drizzle").glob("*_knowledge*.sql")):
+        connection.execute(migration.read_bytes())
+
+
 @pytest.fixture
 def embedding_requests() -> list[list[str]]:
     return []
@@ -138,21 +143,23 @@ def test_index_retrieve_reindex_and_deleted_generation(
 ):
     monkeypatch.setenv("APP_DATABASE_URL", postgres_database_url)
     with psycopg.connect(postgres_database_url) as connection:
-        connection.execute(Path("server/drizzle/0009_knowledge.sql").read_bytes())
+        create_knowledge_schema(connection)
 
     engine = create_engine(
         postgres_database_url.replace("postgresql://", "postgresql+psycopg://", 1)
     )
     repository = KnowledgeRepository(engine)
     document_id = str(uuid4())
-    data = b"Returns are allowed within 30 days. Keep the original receipt."
+    data = "Returns are allowed within 30 days. Keep the original receipt. Café policy.".encode(
+        "cp1252"
+    )
     config = EmbeddingConfig(embedding_api, "test-model", "test-key")
 
     async def run():
         with engine.begin() as connection:
             connection.execute(
                 text(
-                    "INSERT INTO knowledge_documents (id,name,size,sha256,object_key,status) VALUES (:id,'policy.md',:size,:sha,'test','queued')"
+                    "INSERT INTO knowledge_documents (id,name,size,sha256,object_key,status,text_encoding) VALUES (:id,'policy.md',:size,:sha,'test','queued','cp1252')"
                 ),
                 {
                     "id": document_id,
@@ -163,6 +170,7 @@ def test_index_retrieve_reindex_and_deleted_generation(
 
         job = repository.claim()
         assert job is not None
+        assert job.text_encoding == "cp1252"
         assert repository.claim() is None
 
         async with httpx.AsyncClient(
@@ -179,6 +187,7 @@ def test_index_retrieve_reindex_and_deleted_generation(
                 == f"[source](#knowledge-source-{hits[0]['chunkId']})"
             )
             assert "30 days" in str(hits[0]["excerpt"])
+            assert "Café policy" in str(hits[0]["excerpt"])
             assert await retrieve("unrelated astronomy", config, repository) == []
             assert (
                 await retrieve(
@@ -341,7 +350,7 @@ def test_embedding_requests_respect_provider_batch_limits(
         monkeypatch.delenv("RAG_EMBEDDING_BATCH_SIZE", raising=False)
 
     with psycopg.connect(postgres_database_url) as connection:
-        connection.execute(Path("server/drizzle/0009_knowledge.sql").read_bytes())
+        create_knowledge_schema(connection)
 
     texts = [
         f"return {index}" if index % 2 == 0 else f"receipt {index}"
@@ -399,7 +408,7 @@ def test_rate_limited_batch_recovers_without_resending_successful_texts(
     embedding_requests: list[list[str]],
 ):
     with psycopg.connect(postgres_database_url) as connection:
-        connection.execute(Path("server/drizzle/0009_knowledge.sql").read_bytes())
+        create_knowledge_schema(connection)
 
     config = EmbeddingConfig(
         embedding_api, "rate-limit-later-batch", "test-key", batch_size=2
@@ -438,7 +447,7 @@ def test_deleted_document_stops_embedding_after_its_source_download(
     document_id = str(uuid4())
 
     with psycopg.connect(postgres_database_url) as connection:
-        connection.execute(Path("server/drizzle/0009_knowledge.sql").read_bytes())
+        create_knowledge_schema(connection)
         connection.execute(
             "INSERT INTO knowledge_documents (id,name,size,sha256,object_key,status) VALUES (%s,'policy.md',%s,%s,'test','queued')",
             (document_id, len(data), hashlib.sha256(data).hexdigest()),
@@ -484,7 +493,7 @@ def test_index_deadline_includes_slow_source_download(
     data = b"Returns within 30 days."
 
     with psycopg.connect(postgres_database_url) as connection:
-        connection.execute(Path("server/drizzle/0009_knowledge.sql").read_bytes())
+        create_knowledge_schema(connection)
         connection.execute(
             "INSERT INTO knowledge_documents (id,name,size,sha256,object_key,status) VALUES (%s,'policy.md',%s,%s,'test','queued')",
             (str(uuid4()), len(data), hashlib.sha256(data).hexdigest()),

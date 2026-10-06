@@ -24,19 +24,16 @@ import {
 } from "@/components/ui/empty";
 import {
   Item,
-  ItemActions,
   ItemContent,
   ItemDescription,
   ItemTitle,
 } from "@/components/ui/item";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
-import {
-  knowledgeFileUrl,
-  maxKnowledgeBytes,
-  type KnowledgeDocument,
-} from "@shared/knowledge";
+import { maxKnowledgeBytes, type KnowledgeDocument } from "@shared/knowledge";
 import { knowledgeRequest, listKnowledge } from "./api";
+import { TextEncodingDialog } from "./TextEncodingDialog";
+import { DocumentActions } from "./DocumentActions";
 import { AnimatePresence } from "motion/react";
 import { AnimatedLi } from "@/components/ui/motion";
 
@@ -46,7 +43,7 @@ export function KnowledgeWorkspace() {
   const client = useQueryClient();
   const input = useRef<HTMLInputElement>(null);
   const uploadButton = useRef<HTMLButtonElement>(null);
-  const confirmationOpener = useRef<HTMLButtonElement | null>(null);
+  const actionOpener = useRef<HTMLButtonElement | null>(null);
   const controller = useRef<AbortController | null>(null);
   const pending = useRef<{ id: string; file: File } | null>(null);
   const resumeId = useRef<string | null>(null);
@@ -56,6 +53,8 @@ export function KnowledgeWorkspace() {
   } | null>(null);
   const busy = operation !== null;
   const [deleting, setDeleting] = useState<KnowledgeDocument | null>(null);
+  const [encodingDocument, setEncodingDocument] =
+    useState<KnowledgeDocument | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [retryUpload, setRetryUpload] = useState(false);
   const documents = useQuery({
@@ -155,6 +154,21 @@ export function KnowledgeWorkspace() {
     }
   }
 
+  function restoreActionFocus(event: Event) {
+    event.preventDefault();
+
+    const opener = actionOpener.current;
+    const canRestoreOpener = opener?.isConnected && !opener.closest("[inert]");
+
+    if (canRestoreOpener) {
+      opener.focus();
+    } else {
+      uploadButton.current?.focus();
+    }
+
+    actionOpener.current = null;
+  }
+
   return (
     <main className="min-h-dvh bg-canvas px-4 py-8 text-ink sm:px-8">
       <div className="motion-content-enter mx-auto max-w-4xl">
@@ -224,7 +238,7 @@ export function KnowledgeWorkspace() {
             }}
           />
         </div>
-        {error && !deleting && (
+        {error && !deleting && !encodingDocument && (
           <Alert variant="destructive" className="mt-5">
             <AlertDescription>{error}</AlertDescription>
           </Alert>
@@ -339,65 +353,31 @@ export function KnowledgeWorkspace() {
                           </p>
                         )}
                       </ItemContent>
-                      <ItemActions className="flex-wrap">
-                        {document.status !== "uploading" && (
-                          <Button asChild variant="ghost" size="sm">
-                            <a
-                              href={knowledgeFileUrl(document.id)}
-                              download={document.name}
-                            >
-                              Download
-                            </a>
-                          </Button>
-                        )}
-                        {document.status === "uploading" && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            disabled={busy}
-                            onClick={() => {
-                              resumeId.current = document.id;
-                              input.current?.click();
-                            }}
-                          >
-                            Resume upload
-                          </Button>
-                        )}
-                        {["ready", "failed"].includes(document.status) && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            disabled={busy}
-                            onClick={() =>
-                              void perform(
-                                `/${document.id}/reindex`,
-                                {
-                                  method: "POST",
-                                },
-                                { kind: "reindex", id: document.id },
-                              )
-                            }
-                          >
-                            {document.status === "failed"
-                              ? "Retry indexing"
-                              : "Reindex"}
-                          </Button>
-                        )}
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          disabled={busy}
-                          aria-label={`Delete ${document.name}`}
-                          aria-haspopup="dialog"
-                          onClick={(event) => {
-                            confirmationOpener.current = event.currentTarget;
-                            setError(null);
-                            setDeleting(document);
-                          }}
-                        >
-                          Delete
-                        </Button>
-                      </ItemActions>
+                      <DocumentActions
+                        document={document}
+                        busy={busy}
+                        onResume={() => {
+                          resumeId.current = document.id;
+                          input.current?.click();
+                        }}
+                        onReindex={() =>
+                          void perform(
+                            `/${document.id}/reindex`,
+                            { method: "POST" },
+                            { kind: "reindex", id: document.id },
+                          )
+                        }
+                        onEncoding={(opener) => {
+                          actionOpener.current = opener;
+                          setError(null);
+                          setEncodingDocument(document);
+                        }}
+                        onDelete={(opener) => {
+                          actionOpener.current = opener;
+                          setError(null);
+                          setDeleting(document);
+                        }}
+                      />
                     </Item>
                   </AnimatedLi>
                 );
@@ -406,6 +386,29 @@ export function KnowledgeWorkspace() {
           </ul>
         </Card>
       </div>
+      {encodingDocument && (
+        <TextEncodingDialog
+          key={encodingDocument.id}
+          document={encodingDocument}
+          busy={busy}
+          error={error}
+          onCloseAutoFocus={restoreActionFocus}
+          onClose={() => {
+            setEncodingDocument(null);
+            setError(null);
+          }}
+          onReindex={(textEncoding) =>
+            perform(
+              `/${encodingDocument.id}/reindex`,
+              {
+                method: "POST",
+                headers: { "X-Text-Encoding": textEncoding ?? "auto" },
+              },
+              { kind: "reindex", id: encodingDocument.id },
+            )
+          }
+        />
+      )}
       <AlertDialog
         open={deleting !== null}
         onOpenChange={(open) => {
@@ -423,21 +426,7 @@ export function KnowledgeWorkspace() {
               event.preventDefault();
             }
           }}
-          onCloseAutoFocus={(event) => {
-            event.preventDefault();
-
-            const opener = confirmationOpener.current;
-            const canRestoreOpener =
-              opener?.isConnected && !opener.closest("[inert]");
-
-            if (canRestoreOpener) {
-              opener.focus();
-            } else {
-              uploadButton.current?.focus();
-            }
-
-            confirmationOpener.current = null;
-          }}
+          onCloseAutoFocus={restoreActionFocus}
         >
           <AlertDialogHeader>
             <AlertDialogTitle>Delete document?</AlertDialogTitle>
