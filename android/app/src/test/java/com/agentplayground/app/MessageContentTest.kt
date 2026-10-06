@@ -3,10 +3,20 @@ package com.agentplayground.app
 import android.content.ClipboardManager
 import android.content.Context
 import android.text.Spanned
+import android.text.style.ClickableSpan
 import android.text.style.ForegroundColorSpan
+import android.widget.TextView
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.width
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.*
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.unit.dp
+import androidx.core.graphics.ColorUtils
 import com.agentplayground.app.design.PlaygroundTheme
 import com.agentplayground.app.features.conversation.*
 import com.agentplayground.app.files.Download
@@ -118,6 +128,128 @@ class MessageContentTest {
                 .isNotEmpty()
         )
         assertEquals("val x = 1", highlighted.toString())
+    }
+
+    @Test
+    fun `wide code and tables scroll within the reply and code copy shows feedback`() {
+        val code = "val values = listOf(" + (1..40).joinToString(", ") + ")\n"
+        val content =
+            "```kotlin\n$code```\n\n| One | Two | Three | Four |\n| --- | --- | --- | --- |\n| A | B | C | D |"
+        compose.setContent {
+            PlaygroundTheme("light") {
+                Column(Modifier.width(320.dp)) { Markdown(content, {}) }
+            }
+        }
+        listOf("markdown-code-scroll", "markdown-table-scroll").forEach { tag ->
+            val node = compose.onNodeWithTag(tag)
+            val range =
+                node.fetchSemanticsNode().config[SemanticsProperties.HorizontalScrollAxisRange]
+            assertTrue(
+                "$tag should expose overflow without widening the reply",
+                range.maxValue() > 0,
+            )
+            node.performTouchInput { swipeLeft() }
+            assertTrue(range.value() > 0)
+        }
+        compose.onNodeWithText("Copy code").performClick()
+        compose.onNodeWithText("Copied").assertIsDisplayed()
+        val clipboard =
+            RuntimeEnvironment.getApplication().getSystemService(Context.CLIPBOARD_SERVICE)
+                as ClipboardManager
+        assertEquals(code, clipboard.primaryClip!!.getItemAt(0).text.toString())
+    }
+
+    @Test
+    fun `table cells retain emphasis links alignment and escaped pipe content`() {
+        val context = RuntimeEnvironment.getApplication()
+        var opened: String? = null
+        val renderer =
+            io.noties.markwon.Markwon.builder(context)
+                .usePlugin(io.noties.markwon.ext.strikethrough.StrikethroughPlugin.create())
+                .usePlugin(
+                    object : io.noties.markwon.AbstractMarkwonPlugin() {
+                        override fun configureConfiguration(
+                            builder: io.noties.markwon.MarkwonConfiguration.Builder
+                        ) {
+                            builder.linkResolver { _, link -> opened = link }
+                        }
+                    }
+                )
+                .build()
+        val table =
+            markdownBlocks(
+                    "| Name | Reference |\n| :--- | ---: |\n| **Ada** | [guide](https://example.com) and pipe \\| symbol |"
+                )
+                .single() as org.commonmark.ext.gfm.tables.TableBlock
+        val rows = markdownTableRows(table)
+        assertEquals(2, rows.size)
+        assertTrue(rows.first().all { it.isHeader })
+        assertEquals(
+            org.commonmark.ext.gfm.tables.TableCell.Alignment.RIGHT,
+            rows.last()[1].alignment,
+        )
+        val name = renderMarkdownCell(renderer, rows.last()[0])
+        assertEquals("Ada", name.toString())
+        assertTrue(
+            name
+                .getSpans(
+                    0,
+                    name.length,
+                    io.noties.markwon.core.spans.StrongEmphasisSpan::class.java,
+                )
+                .isNotEmpty()
+        )
+        val reference = renderMarkdownCell(renderer, rows.last()[1])
+        assertEquals("guide and pipe | symbol", reference.toString())
+        reference
+            .getSpans(0, reference.length, ClickableSpan::class.java)
+            .single()
+            .onClick(TextView(context))
+        assertEquals("https://example.com", opened)
+    }
+
+    @Test
+    fun `syntax colors stay readable on light and dark code panels`() {
+        var preference by mutableStateOf("light")
+        var background = 0
+        compose.setContent {
+            PlaygroundTheme(preference) {
+                val surface = MaterialTheme.colorScheme.surfaceContainerLow.toArgb()
+                SideEffect { background = surface }
+            }
+        }
+        listOf("light", "dark").forEach { theme ->
+            compose.runOnIdle { preference = theme }
+            compose.runOnIdle {
+                val text =
+                    highlightCode(
+                        "kotlin",
+                        "// Note\nval value = 42\nval name = \"Ada\"",
+                        theme == "dark",
+                    )
+                        as Spanned
+                val spans = text.getSpans(0, text.length, ForegroundColorSpan::class.java)
+                assertTrue(spans.isNotEmpty())
+                spans.forEach { span ->
+                    assertTrue(
+                        "$theme syntax color should meet normal text contrast",
+                        ColorUtils.calculateContrast(span.foregroundColor, background) >= 4.5,
+                    )
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `empty table headers do not render a panel or report visible answer content`() {
+        var visible = false
+        compose.setContent {
+            PlaygroundTheme("light") {
+                Markdown("|\n|---|", {}, onTextVisible = { visible = true })
+            }
+        }
+        compose.onNodeWithText("Copy table").assertDoesNotExist()
+        compose.runOnIdle { assertFalse(visible) }
     }
 
     @Test
