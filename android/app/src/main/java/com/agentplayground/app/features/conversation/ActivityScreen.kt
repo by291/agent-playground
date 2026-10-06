@@ -16,6 +16,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.ClipEntry
 import androidx.compose.ui.platform.LocalClipboard
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import com.agentplayground.app.design.*
@@ -76,13 +79,42 @@ fun ActivityScreen(state: SessionState?, onBack: () -> Unit, onClear: () -> Unit
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             style = MaterialTheme.typography.bodySmall,
                         )
-                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                        ) {
                             FilterChip(
                                 selected = merge,
                                 onClick = { merge = !merge },
-                                label = { Text("Merge streaming events") },
+                                label = { Text("Merge", Modifier.clearAndSetSemantics {}) },
+                                modifier =
+                                    Modifier.heightIn(min = 40.dp).semantics {
+                                        contentDescription = "Merge streaming events"
+                                    },
+                                shape = MaterialTheme.shapes.small,
+                                leadingIcon = {
+                                    Icon(
+                                        if (merge) {
+                                            Icons.Outlined.Check
+                                        } else {
+                                            Icons.Outlined.CheckBoxOutlineBlank
+                                        },
+                                        null,
+                                        Modifier.size(18.dp),
+                                    )
+                                },
+                                colors =
+                                    FilterChipDefaults.filterChipColors(
+                                        iconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        selectedContainerColor = MaterialTheme.colorScheme.primary,
+                                        selectedLabelColor = MaterialTheme.colorScheme.onPrimary,
+                                        selectedLeadingIconColor =
+                                            MaterialTheme.colorScheme.onPrimary,
+                                    ),
                             )
                             OutlinedButton(
+                                shape = MaterialTheme.shapes.small,
+                                contentPadding = PaddingValues(horizontal = 16.dp),
                                 enabled =
                                     state != null &&
                                         (rows.isNotEmpty() ||
@@ -110,6 +142,7 @@ fun ActivityScreen(state: SessionState?, onBack: () -> Unit, onClear: () -> Unit
                                 ChangingContent(copied) { Text(if (it) "Copied" else "Copy log") }
                             }
                             TextButton(
+                                shape = MaterialTheme.shapes.small,
                                 enabled = rows.isNotEmpty(),
                                 onClick = {
                                     onClear()
