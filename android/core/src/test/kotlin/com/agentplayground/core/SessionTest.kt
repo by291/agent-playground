@@ -183,19 +183,108 @@ class SessionTest {
     }
 
     @Test
-    fun `separate plan decisions preserve edited values and submit only once complete`() = runTest {
+    fun `separate plan decisions preserve edits and wait for explicit final confirmation`() =
+        runTest {
+            fun plan(id: String) =
+                Interrupt(
+                    id,
+                    "human_approval",
+                    metadata =
+                        protocolJson.parseToJsonElement(
+                            """{"langgraph":{"raw":{"kind":"experiment_plan_review","title":"Original","steps":["Original step"]}}}"""
+                        ),
+                )
+            val api =
+                ControlledApi().apply {
+                    snapshot =
+                        emptySnapshot.copy(interrupts = listOf(plan("first"), plan("second")))
+                }
+            val session =
+                ConversationSession(
+                    api,
+                    MemoryPersistence(),
+                    backgroundScope,
+                    SavedConversation("thread"),
+                )
+            session.restore()
+            session.review("first", "approve", PlanDraft("Edited", listOf("Edited step")))
+            runCurrent()
+            assertTrue(api.inputs.isEmpty())
+            assertEquals("approve", session.state.value.planDecisions["first"])
+            session.review("second", "reject", PlanDraft("Original", listOf("Original step")))
+            runCurrent()
+            assertTrue(api.inputs.isEmpty())
+            session.submitPlanReviews()
+            session.submitPlanReviews()
+            runCurrent()
+            val responses = api.inputs.single().resume!!
+            assertEquals("approve", responses[0].payload!!.jsonObject.string("decision"))
+            assertEquals("Edited", responses[0].payload!!.jsonObject.string("title"))
+            assertEquals("reject", responses[1].payload!!.jsonObject.string("decision"))
+            session.close()
+        }
+
+    @Test
+    fun `single plan remains immediate alongside an external wait`() = runTest {
+        val plan =
+            Interrupt(
+                "plan",
+                "human_approval",
+                metadata =
+                    protocolJson.parseToJsonElement(
+                        """{"langgraph":{"raw":{"kind":"experiment_plan_review","title":"Original","steps":["Step"]}}}"""
+                    ),
+            )
+        val wait =
+            Interrupt(
+                "wait",
+                "human_approval",
+                metadata =
+                    protocolJson.parseToJsonElement(
+                        """{"langgraph":{"raw":{"kind":"workflow_external_wait","workflowCallId":"task"}}}"""
+                    ),
+            )
+        val api =
+            ControlledApi().apply { snapshot = emptySnapshot.copy(interrupts = listOf(plan, wait)) }
+        val session =
+            ConversationSession(
+                api,
+                MemoryPersistence(),
+                backgroundScope,
+                SavedConversation("thread"),
+            )
+        session.restore()
+        session.review("plan", "approve")
+        runCurrent()
+        assertEquals("plan", api.inputs.single().resume!!.single().interruptId)
+        assertTrue(session.state.value.planDecisions.isEmpty())
+        session.close()
+    }
+
+    @Test
+    fun `multiple plans have an explicit submission path alongside another interrupt`() = runTest {
         fun plan(id: String) =
             Interrupt(
                 id,
                 "human_approval",
                 metadata =
                     protocolJson.parseToJsonElement(
-                        """{"langgraph":{"raw":{"kind":"experiment_plan_review","title":"Original","steps":["Original step"]}}}"""
+                        """{"langgraph":{"raw":{"kind":"experiment_plan_review","title":"Original","steps":["Step"]}}}"""
+                    ),
+            )
+        val wait =
+            Interrupt(
+                "wait",
+                "human_approval",
+                metadata =
+                    protocolJson.parseToJsonElement(
+                        """{"langgraph":{"raw":{"kind":"workflow_external_wait","workflowCallId":"task"}}}"""
                     ),
             )
         val api =
             ControlledApi().apply {
-                snapshot = emptySnapshot.copy(interrupts = listOf(plan("first"), plan("second")))
+                snapshot =
+                    emptySnapshot.copy(interrupts = listOf(plan("first"), wait, plan("second")))
             }
         val session =
             ConversationSession(
@@ -205,16 +294,115 @@ class SessionTest {
                 SavedConversation("thread"),
             )
         session.restore()
-        session.review("first", "approve", PlanDraft("Edited", listOf("Edited step")))
-        runCurrent()
+        session.review("first", "approve")
+        session.review("second", "reject")
         assertTrue(api.inputs.isEmpty())
-        assertEquals("approve", session.state.value.planDecisions["first"])
-        session.review("second", "reject", PlanDraft("Original", listOf("Original step")))
+        session.submitPlanReviews()
         runCurrent()
-        val responses = api.inputs.single().resume!!
-        assertEquals("approve", responses[0].payload!!.jsonObject.string("decision"))
-        assertEquals("Edited", responses[0].payload!!.jsonObject.string("title"))
-        assertEquals("reject", responses[1].payload!!.jsonObject.string("decision"))
+        assertEquals(listOf("first", "second"), api.inputs.single().resume!!.map { it.interruptId })
+        session.close()
+    }
+
+    @Test
+    fun `a presented single plan submits without requiring a replaced legacy sibling`() = runTest {
+        fun plan(id: String) =
+            Interrupt(
+                id,
+                "human_approval",
+                metadata =
+                    protocolJson.parseToJsonElement(
+                        """{"langgraph":{"raw":{"kind":"experiment_plan_review","title":"Plan","steps":["Step"]}}}"""
+                    ),
+            )
+        val api =
+            ControlledApi().apply {
+                snapshot =
+                    emptySnapshot.copy(interrupts = listOf(plan("replaced"), plan("pending")))
+            }
+        val session =
+            ConversationSession(
+                api,
+                MemoryPersistence(),
+                backgroundScope,
+                SavedConversation("thread"),
+            )
+        session.restore()
+        session.review("replaced", "approve", planInterruptIds = setOf("pending"))
+        assertTrue(api.inputs.isEmpty())
+        session.review("pending", "approve", planInterruptIds = setOf("pending"))
+        runCurrent()
+        assertEquals("pending", api.inputs.single().resume!!.single().interruptId)
+        session.close()
+    }
+
+    @Test
+    fun `terminal tool failure remains terminal while missing output locks recovery`() = runTest {
+        val api =
+            ControlledApi().apply {
+                snapshot =
+                    emptySnapshot.copy(
+                        messages =
+                            listOf(
+                                UserMessage("user", "Execute"),
+                                AssistantMessage(
+                                    "answer",
+                                    toolCalls =
+                                        listOf(ToolCall("call", FunctionCall("tool", "{}"))),
+                                ),
+                            ),
+                        runs = listOf(RunRecord("run", "user", "failed")),
+                        outputs =
+                            listOf(
+                                WorkflowOutput(
+                                    "second",
+                                    2,
+                                    kotlinx.serialization.json.JsonArray(emptyList()),
+                                )
+                            ),
+                    )
+            }
+        val session =
+            ConversationSession(
+                api,
+                MemoryPersistence(),
+                backgroundScope,
+                SavedConversation("thread", empty = false),
+            )
+        session.restore()
+        val state = session.state.value
+        assertTrue(state.busy)
+        assertEquals(1, state.missingOutputSequence)
+        assertNull(state.executionStatus)
+        assertEquals(
+            ToolStatus.Failed,
+            conversationTurns(state.messages, state.runs, latestStatus = state.executionStatus)
+                .single()
+                .toolCalls
+                .single()
+                .status,
+        )
+        session.close()
+    }
+
+    @Test
+    fun `official run error ends live execution before canonical settlement`() = runTest {
+        val api = ControlledApi()
+        val session =
+            ConversationSession(
+                api,
+                MemoryPersistence(),
+                backgroundScope,
+                SavedConversation("thread"),
+            )
+        session.restore()
+        session.send("Execute")
+        runCurrent()
+        assertEquals("running", session.state.value.executionStatus)
+        api.events.emit(RunErrorEvent("Agent failed"))
+        runCurrent()
+        assertEquals("failed", session.state.value.executionStatus)
+        assertTrue(session.state.value.busy)
+        assertFalse(session.state.value.streaming)
         session.close()
     }
 
@@ -413,6 +601,9 @@ class SessionTest {
         assertTrue(api.inputs.isEmpty())
         session.review("first", "approve")
         runCurrent()
+        assertTrue(api.inputs.isEmpty())
+        session.submitPlanReviews()
+        runCurrent()
         assertEquals(
             "Latest",
             api.inputs.single().resume!!.first().payload!!.jsonObject.string("title"),
@@ -446,12 +637,152 @@ class SessionTest {
         session.review("first", "approve")
         now = java.time.Instant.parse("2030-01-01T00:00:02Z")
         session.review("second", "approve")
+        session.submitPlanReviews()
         runCurrent()
         assertTrue(api.inputs.isEmpty())
         assertTrue(session.state.value.planDecisions.isEmpty())
         assertNotNull(session.state.value.error)
         session.close()
     }
+
+    @Test
+    fun `single plan review submits immediately with normalized approval`() = runTest {
+        val plan = planInterrupt("single")
+        val api = ControlledApi().apply { snapshot = emptySnapshot.copy(interrupts = listOf(plan)) }
+        val session =
+            ConversationSession(
+                api,
+                MemoryPersistence(),
+                backgroundScope,
+                SavedConversation("thread"),
+            )
+        session.restore()
+        session.review(
+            "single",
+            "approve",
+            PlanDraft("  Edited  ", listOf("  First  ", "", "  ", "Second ")),
+        )
+        runCurrent()
+        val payload = api.inputs.single().resume!!.single().payload!!.jsonObject
+        assertEquals("Edited", payload.string("title"))
+        assertEquals(protocolJson.parseToJsonElement("[\"First\",\"Second\"]"), payload["steps"])
+        session.close()
+    }
+
+    @Test
+    fun `changed interrupt batch invalidates selected decisions before continuing`() = runTest {
+        val first = planInterrupt("first")
+        val second = planInterrupt("second")
+        val api =
+            ControlledApi().apply {
+                snapshot = emptySnapshot.copy(interrupts = listOf(first, second))
+            }
+        val session =
+            ConversationSession(
+                api,
+                MemoryPersistence(),
+                backgroundScope,
+                SavedConversation("thread"),
+            )
+        session.restore()
+        session.review("first", "approve")
+        session.review("second", "reject")
+        api.snapshot =
+            emptySnapshot.copy(
+                interrupts = listOf(first, second.copy(expiresAt = "2031-01-01T00:00:00Z"))
+            )
+        session.refresh()
+        session.submitPlanReviews()
+        runCurrent()
+        assertTrue(api.inputs.isEmpty())
+        assertTrue(session.state.value.planDecisions.isEmpty())
+        session.close()
+    }
+
+    @Test
+    fun `review edits and repeated continuation cannot change pending admission`() = runTest {
+        val api =
+            ControlledApi().apply {
+                snapshot =
+                    emptySnapshot.copy(
+                        interrupts = listOf(planInterrupt("first"), planInterrupt("second"))
+                    )
+            }
+        val persistence = MemoryPersistence()
+        val session =
+            ConversationSession(api, persistence, backgroundScope, SavedConversation("thread"))
+        session.restore()
+        session.review("first", "approve")
+        session.review("second", "reject")
+        val gate = CompletableDeferred<Unit>()
+        persistence.beforeWrite = { gate.await() }
+        val submitting = backgroundScope.launch { session.submitPlanReviews() }
+        runCurrent()
+        session.editPlan("first", PlanDraft("Ignored", listOf("Ignored")))
+        session.submitPlanReviews()
+        assertEquals("Plan", session.state.value.planDrafts["first"]?.title)
+        gate.complete(Unit)
+        runCurrent()
+        assertEquals(1, api.inputs.size)
+        assertEquals(
+            "Plan",
+            api.inputs.single().resume!!.first().payload!!.jsonObject.string("title"),
+        )
+        submitting.cancel()
+        session.close()
+    }
+
+    @Test
+    fun `activity retains complete events bounds rows counts received and clears locally`() =
+        runTest {
+            val api = ControlledApi()
+            val instant = java.time.Instant.parse("2030-01-01T00:00:00Z")
+            val session =
+                ConversationSession(
+                    api,
+                    MemoryPersistence(),
+                    backgroundScope,
+                    SavedConversation("thread"),
+                    now = { instant },
+                )
+            session.send("Hello")
+            runCurrent()
+            val run = api.inputs.single().runId
+            val started = session.state.value.activity.single()
+            assertTrue(started.event is RunStartedEvent)
+            assertEquals(run, started.runId)
+            assertEquals(instant.toEpochMilli(), started.receivedAt)
+            repeat(301) {
+                api.events.emit(TextMessageContentEvent("reply", "Delta $it"))
+                runCurrent()
+            }
+            assertEquals(302L, session.state.value.receivedEventCount)
+            assertEquals(300, session.state.value.activity.size)
+            val previous = session.state.value.activity.last().sequence
+            session.clearActivity()
+            assertTrue(session.state.value.activity.isEmpty())
+            assertEquals(0L, session.state.value.receivedEventCount)
+            val event = TextMessageContentEvent("reply", "x".repeat(5_000))
+            api.events.emit(event)
+            runCurrent()
+            val retained = session.state.value.activity.single()
+            assertEquals(event, retained.event)
+            assertEquals(run, retained.runId)
+            assertEquals(previous + 1, retained.sequence)
+            assertEquals(1L, session.state.value.receivedEventCount)
+            assertTrue(session.state.value.busy)
+            session.close()
+        }
+
+    private fun planInterrupt(id: String) =
+        Interrupt(
+            id,
+            "human_approval",
+            metadata =
+                protocolJson.parseToJsonElement(
+                    """{"langgraph":{"raw":{"kind":"experiment_plan_review","title":"Plan","steps":["Step"]}}}"""
+                ),
+        )
 
     private val emptySnapshot =
         ConversationSnapshot(

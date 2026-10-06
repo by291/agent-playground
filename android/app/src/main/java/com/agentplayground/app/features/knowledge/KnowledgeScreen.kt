@@ -31,6 +31,8 @@ fun KnowledgeScreen(vm: KnowledgeViewModel) {
             ActivityResultContracts.OpenMultipleDocuments(),
             vm::upload,
         )
+    val resumePicker =
+        rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument(), vm::resumeUpload)
     val saver =
         rememberLauncherForActivityResult(
             ActivityResultContracts.CreateDocument("application/octet-stream")
@@ -193,6 +195,25 @@ fun KnowledgeScreen(vm: KnowledgeViewModel) {
                                 Icon(Icons.Outlined.MoreHoriz, "Document actions")
                             }
                             DropdownMenu(menu, onDismissRequest = { menu = false }) {
+                                if (document.status == "uploading") {
+                                    DropdownMenuItem(
+                                        text = { Text("Resume upload") },
+                                        leadingIcon = { Icon(Icons.Outlined.UploadFile, null) },
+                                        enabled = !state.busy && state.pendingUploads.isEmpty(),
+                                        onClick = {
+                                            menu = false
+                                            if (vm.beginResume(document.id)) {
+                                                resumePicker.launch(
+                                                    arrayOf(
+                                                        "text/plain",
+                                                        "text/markdown",
+                                                        "application/pdf",
+                                                    )
+                                                )
+                                            }
+                                        },
+                                    )
+                                }
                                 DropdownMenuItem(
                                     text = { Text("Save original") },
                                     leadingIcon = { Icon(Icons.Outlined.FileDownload, null) },

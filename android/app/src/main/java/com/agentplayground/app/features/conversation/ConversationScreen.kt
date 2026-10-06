@@ -14,6 +14,10 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextOverflow
@@ -25,24 +29,24 @@ import com.agentplayground.app.features.workflow.*
 import com.agentplayground.app.files.Download
 import com.agentplayground.app.files.DownloadSaver
 import com.agentplayground.core.*
-import com.agui.core.types.ToolMessage
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.*
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ConversationScreen(vm: ConversationViewModel, preferences: AppPreferences) {
+fun ConversationScreen(
+    vm: ConversationViewModel,
+    preferences: AppPreferences,
+    onActivity: () -> Unit = {},
+) {
     val state by vm.state.collectAsStateWithLifecycle()
     val drawer = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     BackHandler(enabled = drawer.isOpen) {
         scope.launch { drawer.close() }
     }
-    var activity by remember { mutableStateOf(false) }
     var menu by remember { mutableStateOf(false) }
     var download by rememberSaveable(stateSaver = DownloadSaver) { mutableStateOf<Download?>(null) }
-    var source by remember { mutableStateOf<JsonObject?>(null) }
-    var sourceUnavailable by remember { mutableStateOf(false) }
     val filePicker =
         rememberLauncherForActivityResult(
             ActivityResultContracts.OpenMultipleDocuments(),
@@ -64,23 +68,7 @@ fun ConversationScreen(vm: ConversationViewModel, preferences: AppPreferences) {
     }
     val uriHandler = LocalUriHandler.current
     val onLink: (String) -> Unit = { link ->
-        if (link.startsWith("#knowledge-source-")) {
-            val id = link.removePrefix("#knowledge-source-")
-            val sources =
-                state.session?.messages.orEmpty().filterIsInstance<ToolMessage>().flatMap { message
-                    ->
-                    (runCatching {
-                                protocolJson
-                                    .parseToJsonElement(message.content)
-                                    .jsonObject["sources"]
-                                    as? JsonArray
-                            }
-                            .getOrNull())
-                        .orEmpty()
-                }
-            source = sources.mapNotNull { it as? JsonObject }.find { it.string("chunkId") == id }
-            sourceUnavailable = source == null
-        } else if (link.startsWith("https://") || link.startsWith("http://")) {
+        if (link.startsWith("https://") || link.startsWith("http://")) {
             runCatching { uriHandler.openUri(link) }
         }
     }
@@ -158,7 +146,7 @@ fun ConversationScreen(vm: ConversationViewModel, preferences: AppPreferences) {
                                             leadingIcon = { Icon(Icons.Outlined.Timeline, null) },
                                             onClick = {
                                                 menu = false
-                                                activity = true
+                                                onActivity()
                                             },
                                         )
                                         DropdownMenuItem(
@@ -187,20 +175,23 @@ fun ConversationScreen(vm: ConversationViewModel, preferences: AppPreferences) {
                             CircularProgressIndicator()
                         }
                     } else {
-                        ConversationTimeline(
-                            session,
-                            state.error,
-                            preferences,
-                            Modifier.padding(padding),
-                            vm::recover,
-                            vm::editPlan,
-                            { id, action, plan -> vm.review(id, action, plan) },
-                            onDownload,
-                            onLink,
-                            vm.api,
-                            vm::editDraft,
-                            compactHeight,
-                        )
+                        key(session.threadId) {
+                            ConversationTimeline(
+                                session,
+                                state.error,
+                                preferences,
+                                Modifier.padding(padding),
+                                vm::recover,
+                                vm::editPlan,
+                                { id, action, plan, ids -> vm.review(id, action, plan, ids) },
+                                vm::submitPlanReviews,
+                                onDownload,
+                                onLink,
+                                vm.api,
+                                vm::editDraft,
+                                compactHeight,
+                            )
+                        }
                     }
                 }
             }
@@ -224,63 +215,6 @@ fun ConversationScreen(vm: ConversationViewModel, preferences: AppPreferences) {
             )
         }
     }
-    if (activity) {
-        AlertDialog(
-            onDismissRequest = { activity = false },
-            title = { Text("Agent activity") },
-            text = {
-                LazyColumn(
-                    Modifier.heightIn(max = 480.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    items(state.session?.activity.orEmpty().asReversed()) {
-                        Text(it, style = MaterialTheme.typography.bodySmall)
-                    }
-                }
-            },
-            confirmButton = { TextButton(onClick = { activity = false }) { Text("Close") } },
-        )
-    }
-    if (sourceUnavailable) {
-        AlertDialog(
-            onDismissRequest = { sourceUnavailable = false },
-            title = { Text("Source unavailable") },
-            text = {
-                Text("This citation has no matching retrieved passage in this conversation.")
-            },
-            confirmButton = {
-                TextButton(onClick = { sourceUnavailable = false }) { Text("Close") }
-            },
-        )
-    }
-    source?.let { item ->
-        AlertDialog(
-            onDismissRequest = { source = null },
-            title = { Text(item.string("name") ?: "Knowledge source") },
-            text = {
-                Column {
-                    item["page"]?.takeIf { it != JsonNull }?.let { Text("Page $it") }
-                    androidx.compose.foundation.text.selection.SelectionContainer {
-                        Text(item.string("excerpt").orEmpty())
-                    }
-                }
-            },
-            confirmButton = { TextButton(onClick = { source = null }) { Text("Close") } },
-            dismissButton = {
-                item.string("documentId")?.let { id ->
-                    TextButton(
-                        onClick = {
-                            onDownload(
-                                Download(vm.api.documentPath(id), item.string("name") ?: "document")
-                            )
-                        }
-                    ) {
-                        Text("Save original")
-                    }
-                }
-            },
-        )
-    }
 }
 
 @Composable
@@ -291,7 +225,8 @@ private fun ConversationTimeline(
     modifier: Modifier,
     onRecover: () -> Unit,
     onEditPlan: (String, PlanDraft) -> Unit,
-    onReview: (String, String, PlanDraft?) -> Unit,
+    onReview: (String, String, PlanDraft?, Set<String>) -> Unit,
+    onContinueReviews: (Set<String>) -> Unit,
     onDownload: (Download) -> Unit,
     onLink: (String) -> Unit,
     api: PlaygroundApi,
@@ -299,170 +234,328 @@ private fun ConversationTimeline(
     compactHeight: Boolean,
 ) {
     val list = rememberLazyListState()
+    val scope = rememberCoroutineScope()
+    var following by rememberSaveable(state.threadId) { mutableStateOf(true) }
+    val atBottom by remember {
+        derivedStateOf { list.firstVisibleItemIndex == 0 && list.firstVisibleItemScrollOffset == 0 }
+    }
     val renderer = rememberWorkflowRenderer(state.threadId, state.outputs)
-    // Replace prior presentations in the same group, retaining their current anchor ownership.
+    val waits = state.interrupts.mapNotNull(::externalWaitCallId).toSet()
+    val latestStatus =
+        state.executionStatus ?: if (state.interrupts.isNotEmpty()) "interrupted" else null
+    val turns = conversationTurns(state.messages, state.runs, waits, latestStatus)
     val presentations =
         state.outputs
             .filter { it.workflow?.presentation != null }
             .groupBy { it.workflow!!.presentation!!.groupId }
             .values
             .map { it.last() }
-    val anchored = presentations.groupBy { it.workflow!!.presentation!!.anchorMessageId }
-    val unanchored =
-        renderer.surfaces.keys
-            .filter { id ->
-                presentations.none {
-                    val presentation = it.workflow!!.presentation!!
-                    presentation.surfaceId == id &&
-                        presentation.anchorMessageId != null &&
-                        state.messages.any { message -> message.id == presentation.anchorMessageId }
-                }
-            }
-            .filter { id ->
-                val group =
-                    state.outputs
-                        .find { it.workflow?.presentation?.surfaceId == id }
-                        ?.workflow
-                        ?.presentation
-                        ?.groupId
-                group == null || presentations.any { it.workflow!!.presentation!!.surfaceId == id }
-            }
-    val stickToBottom by remember { derivedStateOf { !list.canScrollForward } }
-    LaunchedEffect(
-        state.threadId,
-        state.messages.lastOrNull()?.content,
-        state.busy,
-        renderer.surfaces.size,
-    ) {
-        if (stickToBottom && list.layoutInfo.totalItemsCount > 0) {
-            if (preferences.replyAnimation) {
-                list.animateScrollToItem(list.layoutInfo.totalItemsCount - 1)
-            } else {
-                list.scrollToItem(list.layoutInfo.totalItemsCount - 1)
-            }
+    val owners = mutableMapOf<String, String>()
+    for (output in state.outputs) {
+        val presentation = output.workflow?.presentation ?: continue
+        val owner =
+            turns.find { turn -> turn.messages.any { it.id == presentation.anchorMessageId } }
+                ?: turns.find { turn -> turn.toolCalls.any { it.call.id == output.toolCallId } }
+        if (owner != null) {
+            owners[presentation.groupId] = owner.id
         }
     }
-    LazyColumn(
-        modifier.fillMaxSize().wrapContentSize(Alignment.TopCenter).widthIn(max = 808.dp),
-        state = list,
-        contentPadding =
-            PaddingValues(horizontal = 24.dp, vertical = if (compactHeight) 12.dp else 28.dp),
-        verticalArrangement = Arrangement.spacedBy(24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        if (state.loading) {
-            item { LinearProgressIndicator(Modifier.fillMaxWidth()) }
+    val groupedSurfaces = state.outputs.mapNotNull { it.workflow?.presentation?.surfaceId }.toSet()
+    val calls = turns.flatMap { it.toolCalls }.map { it.call }
+    val legacySurfaces =
+        renderer.surfaces.keys
+            .filter { it !in groupedSurfaces }
+            .map { LegacyWorkflowSurface(it, renderer.surfaceCalls[it]) }
+    val reviewCalls =
+        state.interrupts.mapNotNull { Review.from(it)?.raw?.string("workflowCallId") }.toSet()
+    val legacy =
+        legacyWorkflowArtifacts(
+            calls,
+            legacySurfaces,
+            reviewCalls,
+            state.interrupts.any {
+                Review.from(it)?.kind == "experiment_plan_review" &&
+                    Review.from(it)?.raw?.string("workflowCallId") == null
+            },
+        )
+    val visibleInterrupts =
+        state.interrupts.filter {
+            Review.from(it)?.raw?.string("workflowCallId") !in legacy.completedCallIds
         }
-        issue?.let { item { ErrorNotice(it, onRecover) } }
-        state.error?.let { item { ErrorNotice(it, onRecover) } }
-        state.missingOutputSequence?.let {
-            item {
-                Text(
-                    "Recovering missing workflow output $it…",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+    val pendingPlans = visibleInterrupts.filter {
+        Review.from(it)?.kind == "experiment_plan_review"
+    }
+    val planIds = pendingPlans.map { it.id }.toSet()
+    val reviewBusy = state.busy || state.loading || renderer.error != null
+    val reviews: @Composable () -> Unit = {
+        if (pendingPlans.size > 1) {
+            PlanReviewPanel(
+                pendingPlans,
+                reviewBusy,
+                state.planDecisions,
+                state.planDrafts,
+                onEditPlan,
+                { id, action, plan -> onReview(id, action, plan, planIds) },
+                { onContinueReviews(planIds) },
+            )
+        }
+        visibleInterrupts
+            .filter { pendingPlans.size <= 1 || it !in pendingPlans }
+            .forEach { interrupt ->
+                ReviewPanel(
+                    interrupt,
+                    reviewBusy,
+                    state.planDecisions[interrupt.id],
+                    state.planDrafts[interrupt.id],
+                    onEditPlan,
+                    { id, action, plan -> onReview(id, action, plan, planIds) },
+                )
+            }
+    }
+    val empty =
+        turns.isEmpty() &&
+            state.outputs.isEmpty() &&
+            state.interrupts.isEmpty() &&
+            state.externalTasks.isEmpty() &&
+            !state.loading &&
+            !state.busy
+    val entries =
+        buildList<TimelineEntry> {
+            if (empty) {
+                add(
+                    TimelineEntry("welcome") {
+                        Column(
+                            Modifier.widthIn(max = 560.dp)
+                                .fillMaxWidth()
+                                .padding(top = if (compactHeight) 0.dp else 44.dp, bottom = 24.dp),
+                            verticalArrangement = Arrangement.spacedBy(24.dp),
+                        ) {
+                            if (!compactHeight) {
+                                AgentMark()
+                            }
+                            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                Text(
+                                    if (compactHeight) "What can I help with today?"
+                                    else "What can I help\nwith today?",
+                                    style =
+                                        if (compactHeight) MaterialTheme.typography.headlineSmall
+                                        else MaterialTheme.typography.headlineLarge,
+                                )
+                                Text(
+                                    "Explore an idea, work with your documents, or turn a task into a plan.",
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    style = MaterialTheme.typography.bodyLarge,
+                                )
+                            }
+                            Column(
+                                Modifier.padding(top = 8.dp),
+                                verticalArrangement = Arrangement.spacedBy(10.dp),
+                            ) {
+                                SuggestionRow(
+                                    Icons.Outlined.Lightbulb,
+                                    "Explore an idea",
+                                    "Help me think through an idea and its next steps.",
+                                    onSuggestion,
+                                )
+                                SuggestionRow(
+                                    Icons.Outlined.Description,
+                                    "Ask your knowledge base",
+                                    "Search my knowledge base and summarize the key points.",
+                                    onSuggestion,
+                                )
+                                SuggestionRow(
+                                    Icons.Outlined.Checklist,
+                                    "Make a plan",
+                                    "Create an experiment plan for a task I describe.",
+                                    onSuggestion,
+                                )
+                            }
+                        }
+                    }
+                )
+            }
+            turns.forEachIndexed { index, turn ->
+                turn.user?.let { message ->
+                    add(
+                        TimelineEntry("user:${turn.id}") {
+                            MessageContent(message, api, onDownload, onLink)
+                        }
+                    )
+                }
+                val ownedCards = presentations.filter {
+                    owners[it.workflow!!.presentation!!.groupId] == turn.id
+                }
+                val callIds = turn.toolCalls.map { it.call.id }.toSet()
+                val tasks = state.externalTasks.filter { it.workflowCallId in callIds }
+                val legacyCards = legacy.current.filter { it.toolCallId in callIds }
+                val legacyHistory = legacy.history.filter { it.toolCallId in callIds }
+                val hasReviews = index == turns.lastIndex && visibleInterrupts.isNotEmpty()
+                if (
+                    turn.messages.isNotEmpty() ||
+                        ownedCards.isNotEmpty() ||
+                        legacyCards.isNotEmpty() ||
+                        legacyHistory.isNotEmpty() ||
+                        tasks.isNotEmpty() ||
+                        hasReviews
+                ) {
+                    add(
+                        TimelineEntry("reply:${turn.id}") {
+                            AssistantTurnContent(turn, api, onDownload, onLink) {
+                                tasks.forEach { ExternalTaskPanel(it) }
+                                ownedCards.forEach {
+                                    WorkflowPresentation(it, state.outputs, renderer)
+                                }
+                                legacyCards.forEach { WorkflowSurface(renderer, it.id) }
+                                if (legacyHistory.isNotEmpty()) {
+                                    Details("Earlier workflow results (${legacyHistory.size})") {
+                                        legacyHistory.forEach { WorkflowSurface(renderer, it.id) }
+                                    }
+                                }
+                                if (hasReviews) {
+                                    reviews()
+                                }
+                            }
+                        }
+                    )
+                }
+            }
+            presentations
+                .filter { it.workflow!!.presentation!!.groupId !in owners }
+                .forEach { output ->
+                    add(
+                        TimelineEntry("surface:${output.workflow!!.presentation!!.surfaceId}") {
+                            WorkflowPresentation(output, state.outputs, renderer)
+                        }
+                    )
+                }
+            val attachedCalls = calls.map { it.id }.toSet()
+            legacy.current
+                .filter { it.toolCallId !in attachedCalls }
+                .forEach { surface ->
+                    add(
+                        TimelineEntry("surface:${surface.id}") {
+                            WorkflowSurface(renderer, surface.id)
+                        }
+                    )
+                }
+            state.externalTasks
+                .filter { it.workflowCallId !in attachedCalls }
+                .forEach { task ->
+                    add(TimelineEntry("task:${task.taskId}") { ExternalTaskPanel(task) })
+                }
+            if (turns.isEmpty() && visibleInterrupts.isNotEmpty()) {
+                add(TimelineEntry("reviews") { reviews() })
+            }
+            if (state.loading) {
+                add(TimelineEntry("loading") { LinearProgressIndicator(Modifier.fillMaxWidth()) })
+            }
+            state.missingOutputSequence?.let { sequence ->
+                add(
+                    TimelineEntry("missing-output") {
+                        Text(
+                            "Recovering missing workflow output $sequence…",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                )
+            }
+            listOfNotNull(issue, state.error, state.outputError, renderer.error)
+                .distinct()
+                .forEachIndexed { index, error ->
+                    add(TimelineEntry("error:$index") { ErrorNotice(error, onRecover) })
+                }
+            if (state.busy) {
+                add(
+                    TimelineEntry("progress") {
+                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                            Text(
+                                if (state.streaming) "Agent is responding…"
+                                else "Recovering agent progress…",
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
                 )
             }
         }
-        state.outputError?.let { item { ErrorNotice(it, onRecover) } }
-        renderer.error?.let { item { ErrorNotice(it, onRecover) } }
-        if (state.messages.isEmpty() && !state.loading && !state.busy) {
-            item {
+    // A reversed list starts at the newest content and also anchors tall, growing
+    // replies by their bottom edge. Following is suspended when the reader scrolls.
+    LaunchedEffect(list) {
+        snapshotFlow { list.isScrollInProgress }
+            .collect { scrolling ->
+                if (!scrolling) {
+                    following = atBottom
+                }
+            }
+    }
+    LaunchedEffect(
+        state.messages,
+        state.outputs,
+        state.interrupts,
+        state.externalTasks,
+        state.busy,
+        state.loading,
+    ) {
+        if (following && !list.isScrollInProgress && entries.isNotEmpty()) {
+            list.requestScrollToItem(0)
+        }
+    }
+    val scrollConnection =
+        remember(list) {
+            object : NestedScrollConnection {
+                override fun onPostScroll(
+                    consumed: Offset,
+                    available: Offset,
+                    source: NestedScrollSource,
+                ): Offset {
+                    if (source == NestedScrollSource.UserInput && consumed.y != 0f) {
+                        following = atBottom
+                    }
+                    return Offset.Zero
+                }
+            }
+        }
+    Box(modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+        LazyColumn(
+            Modifier.fillMaxSize()
+                .widthIn(max = 808.dp)
+                .testTag("conversation-timeline")
+                .nestedScroll(scrollConnection),
+            state = list,
+            reverseLayout = !empty,
+            contentPadding =
+                PaddingValues(horizontal = 24.dp, vertical = if (compactHeight) 12.dp else 28.dp),
+            verticalArrangement = Arrangement.spacedBy(24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            items(if (empty) entries else entries.asReversed(), key = { it.id }) { entry ->
                 Column(
-                    Modifier.widthIn(max = 560.dp)
-                        .fillMaxWidth()
-                        .padding(top = if (compactHeight) 0.dp else 44.dp, bottom = 24.dp),
-                    verticalArrangement = Arrangement.spacedBy(24.dp),
+                    Modifier.widthIn(max = 760.dp).fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
                 ) {
-                    if (!compactHeight) {
-                        AgentMark()
-                    }
-                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Text(
-                            if (compactHeight) "What can I help with today?"
-                            else "What can I help\nwith today?",
-                            style =
-                                if (compactHeight) MaterialTheme.typography.headlineSmall
-                                else MaterialTheme.typography.headlineLarge,
-                        )
-                        Text(
-                            "Explore an idea, work with your documents, or turn a task into a plan.",
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            style = MaterialTheme.typography.bodyLarge,
-                        )
-                    }
-                    Column(
-                        Modifier.padding(top = 8.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp),
-                    ) {
-                        SuggestionRow(
-                            Icons.Outlined.Lightbulb,
-                            "Explore an idea",
-                            "Help me think through an idea and its next steps.",
-                            onSuggestion,
-                        )
-                        SuggestionRow(
-                            Icons.Outlined.Description,
-                            "Ask your knowledge base",
-                            "Search my knowledge base and summarize the key points.",
-                            onSuggestion,
-                        )
-                        SuggestionRow(
-                            Icons.Outlined.Checklist,
-                            "Make a plan",
-                            "Create an experiment plan for a task I describe.",
-                            onSuggestion,
-                        )
-                    }
+                    entry.content()
                 }
             }
         }
-        items(state.messages, key = { it.id }) { message ->
-            Column(
-                Modifier.widthIn(max = 760.dp).fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
+        if (!empty && !atBottom) {
+            FilledTonalIconButton(
+                onClick = {
+                    following = true
+                    scope.launch {
+                        if (preferences.replyAnimation) list.animateScrollToItem(0)
+                        else list.scrollToItem(0)
+                    }
+                },
+                modifier = Modifier.align(Alignment.BottomCenter).padding(12.dp).size(48.dp),
             ) {
-                MessageContent(message, api, onDownload, onLink)
-                anchored[message.id].orEmpty().forEach { output ->
-                    WorkflowPresentation(output, state.outputs, renderer)
-                }
-            }
-        }
-        items(unanchored, key = { "surface:$it" }) { surfaceId ->
-            val current = presentations.find { it.workflow!!.presentation!!.surfaceId == surfaceId }
-            if (current != null) {
-                WorkflowPresentation(current, state.outputs, renderer)
-            } else {
-                WorkflowSurface(renderer, surfaceId)
-            }
-        }
-        items(state.externalTasks, key = { "task:${it.taskId}" }) { ExternalTaskPanel(it) }
-        items(state.interrupts, key = { "review:${it.id}" }) {
-            ReviewPanel(
-                it,
-                state.busy || renderer.error != null,
-                state.planDecisions[it.id],
-                state.planDrafts[it.id],
-                onEditPlan,
-                onReview,
-            )
-        }
-        if (state.busy) {
-            item {
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
-                    Text(
-                        if (state.streaming) {
-                            "Agent is responding…"
-                        } else {
-                            "Recovering agent progress…"
-                        },
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
+                Icon(Icons.Outlined.ArrowDownward, "Jump to latest message")
             }
         }
     }
 }
+
+private data class TimelineEntry(val id: String, val content: @Composable () -> Unit)
 
 @Composable
 private fun WorkflowPresentation(

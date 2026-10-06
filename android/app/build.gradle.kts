@@ -53,6 +53,7 @@ dependencies {
     implementation(libs.markwon.core)
     implementation(libs.markwon.tables)
     implementation(libs.markwon.strikethrough)
+    implementation(libs.highlights)
     debugImplementation(libs.compose.tooling)
     debugImplementation(libs.compose.ui.test.manifest)
     testImplementation(libs.compose.ui.test)

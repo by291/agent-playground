@@ -62,6 +62,7 @@ fun ConfirmDelete(
     text: String,
     busy: Boolean = false,
     error: String? = null,
+    confirmEnabled: Boolean = true,
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -79,8 +80,8 @@ fun ConfirmDelete(
             }
         },
         confirmButton = {
-            TextButton(onClick = onConfirm, enabled = !busy) {
-                Text("Delete", color = MaterialTheme.colorScheme.error)
+            TextButton(onClick = onConfirm, enabled = !busy && confirmEnabled) {
+                Text(if (busy) "Deleting…" else "Delete", color = MaterialTheme.colorScheme.error)
             }
         },
         dismissButton = { TextButton(onClick = onDismiss, enabled = !busy) { Text("Cancel") } },

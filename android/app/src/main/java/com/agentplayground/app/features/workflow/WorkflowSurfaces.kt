@@ -3,6 +3,8 @@ package com.agentplayground.app.features.workflow
 import androidx.a2ui.compose.runtime.A2uiMessageParser
 import androidx.a2ui.compose.runtime.observeA2uiComponentState
 import androidx.a2ui.compose.ui.A2uiMessageProcessor
+import androidx.a2ui.model.protocol.A2uiCreateSurfaceMessage
+import androidx.a2ui.model.protocol.A2uiDeleteSurfaceMessage
 import androidx.compose.runtime.*
 import com.agentplayground.core.WorkflowOutput
 import kotlinx.coroutines.launch
@@ -14,6 +16,7 @@ fun rememberWorkflowRenderer(threadId: String, outputs: List<WorkflowOutput>): W
     val processor = remember(threadId) { A2uiMessageProcessor(listOf(workflowCatalog)) }
     val parser = remember { A2uiMessageParser() }
     var ingested by remember(threadId) { mutableIntStateOf(0) }
+    var surfaceCalls by remember(threadId) { mutableStateOf<Map<String, String?>>(emptyMap()) }
     var error by remember(threadId) { mutableStateOf<String?>(null) }
     val surfaces by processor.activeSurfaces.collectAsState()
 
@@ -37,7 +40,16 @@ fun rememberWorkflowRenderer(threadId: String, outputs: List<WorkflowOutput>): W
                     }
                 // Parse the full batch before sending any part to the processor.
                 val parsed = messages.map { parser.parse(it.toString()) }
-                parsed.forEach(processor::processMessage)
+                for (message in parsed) {
+                    when (message) {
+                        is A2uiCreateSurfaceMessage ->
+                            surfaceCalls = surfaceCalls + (message.surfaceId to output.toolCallId)
+                        is A2uiDeleteSurfaceMessage ->
+                            surfaceCalls = surfaceCalls - message.surfaceId
+                        else -> Unit
+                    }
+                    processor.processMessage(message)
+                }
                 ingested += 1
             } catch (cause: Exception) {
                 error = "Could not render workflow output ${output.id}: ${cause.message}"
@@ -51,12 +63,14 @@ fun rememberWorkflowRenderer(threadId: String, outputs: List<WorkflowOutput>): W
             emptyMap()
         },
         error,
+        surfaceCalls,
     )
 }
 
 data class WorkflowRenderer(
     val surfaces: Map<String, androidx.a2ui.model.processor.A2uiSurfaceModel>,
     val error: String?,
+    val surfaceCalls: Map<String, String?> = emptyMap(),
 )
 
 @Composable

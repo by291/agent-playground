@@ -13,6 +13,7 @@ a2ui = "1.0.0-alpha01"
 markwon = "4.6.2"
 spotless = "8.9.0"
 ktfmt = "0.63"
+highlights = "1.1.0"
 
 [libraries]
 compose-bom = { module = "androidx.compose:compose-bom", version.ref = "compose" }
@@ -38,6 +39,7 @@ a2ui = { module = "androidx.a2ui.compose:compose-ui", version.ref = "a2ui" }
 markwon-core = { module = "io.noties.markwon:core", version.ref = "markwon" }
 markwon-tables = { module = "io.noties.markwon:ext-tables", version.ref = "markwon" }
 markwon-strikethrough = { module = "io.noties.markwon:ext-strikethrough", version.ref = "markwon" }
+highlights = { module = "dev.snipme:highlights", version.ref = "highlights" }
 junit = { module = "junit:junit", version = "4.13.2" }
 robolectric = { module = "org.robolectric:robolectric", version = "4.16.1" }
 

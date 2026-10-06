@@ -1,14 +1,61 @@
 package com.agentplayground.app.features.conversation
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import com.agentplayground.app.design.SectionCard
 import com.agentplayground.app.design.StatusTag
 import com.agentplayground.core.*
 import com.agui.core.types.Interrupt
+
+@Composable
+fun PlanReviewPanel(
+    interrupts: List<Interrupt>,
+    busy: Boolean,
+    decisions: Map<String, String>,
+    drafts: Map<String, PlanDraft>,
+    onEdit: (String, PlanDraft) -> Unit,
+    onReview: (String, String, PlanDraft?) -> Unit,
+    onContinue: () -> Unit,
+) {
+    val reviews = interrupts.mapNotNull(Review::from)
+    val canContinue =
+        reviews.size == interrupts.size &&
+            reviews.size > 1 &&
+            reviews.all { review ->
+                val draft = drafts[review.interrupt.id] ?: PlanDraft(review.title, review.steps)
+                val decision = decisions[review.interrupt.id]
+                review.kind == "experiment_plan_review" &&
+                    !review.expired &&
+                    (decision == "reject" || (decision == "approve" && draft.canApprove))
+            }
+
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        interrupts.forEach { interrupt ->
+            ReviewContent(
+                interrupt,
+                busy,
+                decisions[interrupt.id],
+                drafts[interrupt.id],
+                onEdit,
+                onReview,
+                multiple = true,
+            )
+        }
+        Text(
+            "Choose a decision for every plan before continuing.",
+            style = MaterialTheme.typography.bodySmall,
+        )
+        Button(onClick = onContinue, enabled = !busy && canContinue) {
+            Text(if (busy) "Continuing…" else "Continue workflow")
+        }
+    }
+}
 
 @Composable
 fun ReviewPanel(
@@ -18,6 +65,19 @@ fun ReviewPanel(
     draft: PlanDraft?,
     onEdit: (String, PlanDraft) -> Unit,
     onReview: (String, String, PlanDraft?) -> Unit,
+) {
+    ReviewContent(interrupt, busy, decision, draft, onEdit, onReview, multiple = false)
+}
+
+@Composable
+private fun ReviewContent(
+    interrupt: Interrupt,
+    busy: Boolean,
+    decision: String?,
+    draft: PlanDraft?,
+    onEdit: (String, PlanDraft) -> Unit,
+    onReview: (String, String, PlanDraft?) -> Unit,
+    multiple: Boolean,
 ) {
     val review = Review.from(interrupt)
     if (review == null) {
@@ -52,7 +112,13 @@ fun ReviewPanel(
                 { onEdit(interrupt.id, plan.copy(title = it)) },
                 label = { Text("Plan title") },
                 modifier = Modifier.fillMaxWidth(),
-                enabled = !busy,
+                enabled = !busy && !review.expired,
+                isError = title.isBlank(),
+                supportingText = {
+                    if (title.isBlank()) {
+                        Text("Enter a title to approve this plan.")
+                    }
+                },
             )
             OutlinedTextField(
                 steps,
@@ -60,11 +126,17 @@ fun ReviewPanel(
                 label = { Text("Steps (one per line)") },
                 modifier = Modifier.fillMaxWidth(),
                 minLines = 3,
-                enabled = !busy,
+                enabled = !busy && !review.expired,
+                isError = plan.steps.none { it.isNotBlank() },
+                supportingText = {
+                    if (plan.steps.none { it.isNotBlank() }) {
+                        Text("Enter at least one step to approve this plan.")
+                    }
+                },
             )
             decision?.let {
                 Text(
-                    "Decision: $it. Waiting for the remaining plans.",
+                    if (it == "approve") "Approval selected" else "Rejection selected",
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
@@ -94,15 +166,45 @@ fun ReviewPanel(
                 ) {
                     Text("Abandon")
                 }
+            } else if (multiple) {
+                Row(
+                    modifier =
+                        Modifier.selectable(
+                            selected = decision == "approve",
+                            enabled = !busy && !review.expired && plan.canApprove,
+                            role = Role.RadioButton,
+                            onClick = { onReview(interrupt.id, "approve", plan) },
+                        ),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    RadioButton(
+                        selected = decision == "approve",
+                        onClick = null,
+                        enabled = !busy && !review.expired && plan.canApprove,
+                    )
+                    Text("Approve plan")
+                }
+                Row(
+                    modifier =
+                        Modifier.selectable(
+                            selected = decision == "reject",
+                            enabled = !busy && !review.expired,
+                            role = Role.RadioButton,
+                            onClick = { onReview(interrupt.id, "reject", plan) },
+                        ),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    RadioButton(
+                        selected = decision == "reject",
+                        onClick = null,
+                        enabled = !busy && !review.expired,
+                    )
+                    Text("Reject")
+                }
             } else {
                 Button(
                     onClick = { onReview(interrupt.id, "approve", plan) },
-                    enabled =
-                        !busy &&
-                            !review.expired &&
-                            title.isNotBlank() &&
-                            plan.steps.isNotEmpty() &&
-                            plan.steps.none { it.isBlank() },
+                    enabled = !busy && !review.expired && plan.canApprove,
                 ) {
                     Text("Approve")
                 }

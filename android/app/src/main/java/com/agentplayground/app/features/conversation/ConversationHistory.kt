@@ -4,6 +4,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
@@ -25,6 +26,40 @@ fun ConversationHistory(
     var rename by remember { mutableStateOf<ConversationSummary?>(null) }
     var delete by remember { mutableStateOf<ConversationSummary?>(null) }
     var title by remember { mutableStateOf("") }
+    val list = rememberLazyListState()
+    val pending = state.historyMutation != null
+    val current = state.session
+    val rows =
+        if (
+            current != null &&
+                state.history.none { it.threadId == current.threadId } &&
+                (current.messages.isNotEmpty() ||
+                    current.outputs.isNotEmpty() ||
+                    current.busy ||
+                    current.interrupts.isNotEmpty())
+        ) {
+            listOf(
+                ConversationSummary(
+                    current.threadId,
+                    current.title,
+                    "",
+                    "",
+                    current.runs.lastOrNull()?.status,
+                )
+            ) + state.history
+        } else {
+            state.history
+        }
+    LaunchedEffect(list, rows.size, state.nextCursor, state.historyLoading, state.historyError) {
+        if (state.nextCursor != null && !state.historyLoading && state.historyError == null) {
+            snapshotFlow { list.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1 }
+                .collect { index ->
+                    if (index >= rows.lastIndex && index >= 0) {
+                        vm.loadMore()
+                    }
+                }
+        }
+    }
     Column(modifier.padding(horizontal = 16.dp, vertical = 20.dp)) {
         Row(
             Modifier.fillMaxWidth().padding(bottom = 24.dp),
@@ -43,7 +78,7 @@ fun ConversationHistory(
         }
         FilledTonalButton(
             onClick = { onSelect(null) },
-            enabled = !state.uploading,
+            enabled = !state.uploading && !pending,
             shape = MaterialTheme.shapes.medium,
             modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
         ) {
@@ -74,13 +109,15 @@ fun ConversationHistory(
         if (state.historyLoading) {
             LinearProgressIndicator(Modifier.fillMaxWidth())
         }
-        LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            items(state.history, key = { it.threadId }) { row ->
+        LazyColumn(
+            Modifier.weight(1f),
+            state = list,
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            items(rows, key = { it.threadId }) { row ->
                 var menu by remember { mutableStateOf(false) }
                 val selected = state.session?.threadId == row.threadId
-                val blocked =
-                    isActiveRun(row.status) ||
-                        (selected && (state.session?.busy == true || state.uploading))
+                val blocked = state.deletionBlocked(row.threadId)
                 Surface(
                     shape = MaterialTheme.shapes.medium,
                     color =
@@ -96,7 +133,9 @@ fun ConversationHistory(
                     ) {
                         Column(
                             Modifier.weight(1f)
-                                .clickable(enabled = !state.uploading) { onSelect(row.threadId) }
+                                .clickable(enabled = !state.uploading && !pending) {
+                                    onSelect(row.threadId)
+                                }
                                 .heightIn(min = 60.dp)
                                 .padding(horizontal = 14.dp, vertical = 12.dp)
                         ) {
@@ -120,7 +159,7 @@ fun ConversationHistory(
                                 }
                         }
                         Box {
-                            IconButton(onClick = { menu = true }) {
+                            IconButton(onClick = { menu = true }, enabled = !pending) {
                                 Icon(
                                     Icons.Outlined.MoreHoriz,
                                     "Conversation actions",
@@ -133,6 +172,7 @@ fun ConversationHistory(
                                     text = { Text("Rename") },
                                     onClick = {
                                         menu = false
+                                        vm.clearError()
                                         title = row.title
                                         rename = row
                                     },
@@ -142,6 +182,7 @@ fun ConversationHistory(
                                     enabled = !blocked,
                                     onClick = {
                                         menu = false
+                                        vm.clearError()
                                         delete = row
                                     },
                                 )
@@ -152,12 +193,15 @@ fun ConversationHistory(
             }
             if (state.nextCursor != null) {
                 item {
-                    TextButton(onClick = vm::loadMore, enabled = !state.historyLoading) {
+                    TextButton(
+                        onClick = vm::loadMore,
+                        enabled = !state.historyLoading && !pending,
+                    ) {
                         Text("Load more")
                     }
                 }
             }
-            if (state.history.isEmpty() && !state.historyLoading) {
+            if (rows.isEmpty() && !state.historyLoading) {
                 item {
                     Text(
                         "Your conversations will appear here.",
@@ -170,7 +214,7 @@ fun ConversationHistory(
     }
     rename?.let { row ->
         AlertDialog(
-            onDismissRequest = { rename = null },
+            onDismissRequest = { if (!pending) rename = null },
             title = { Text("Rename conversation") },
             text = {
                 Column {
@@ -179,6 +223,7 @@ fun ConversationHistory(
                         { title = it },
                         label = { Text("Title") },
                         singleLine = true,
+                        enabled = !pending,
                     )
                     state.error?.let { ErrorNotice(it) }
                 }
@@ -187,12 +232,16 @@ fun ConversationHistory(
                 TextButton(
                     onClick = { vm.rename(row.threadId, title) { rename = null } },
                     enabled =
-                        title.trim().isNotBlank() && title.codePointCount(0, title.length) <= 100,
+                        !pending &&
+                            title.trim().isNotBlank() &&
+                            title.trim().codePointCount(0, title.trim().length) <= 100,
                 ) {
-                    Text("Save")
+                    Text(if (pending) "Saving…" else "Save")
                 }
             },
-            dismissButton = { TextButton(onClick = { rename = null }) { Text("Cancel") } },
+            dismissButton = {
+                TextButton(onClick = { rename = null }, enabled = !pending) { Text("Cancel") }
+            },
         )
     }
     delete?.let { row ->
@@ -200,6 +249,8 @@ fun ConversationHistory(
             "Delete conversation?",
             "${row.title} and its files will be permanently deleted.",
             error = state.error,
+            busy = pending,
+            confirmEnabled = !state.deletionBlocked(row.threadId),
             onConfirm = { vm.delete(row.threadId) { delete = null } },
             onDismiss = { delete = null },
         )

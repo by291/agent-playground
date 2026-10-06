@@ -20,6 +20,8 @@ class ConversationViewModel(
     private var draftSaveJob: Job? = null
     private var visible = false
     private var historyJob: Job? = null
+    private var historyRefreshRequested = false
+    private var metadataJob: Job? = null
     private val mutable = MutableStateFlow(ConversationUiState())
     val state = mutable.asStateFlow()
 
@@ -38,11 +40,7 @@ class ConversationViewModel(
             }
         }
         refreshHistory()
-        viewModelScope.launch {
-            runCatching { api.info() }
-                .getOrNull()
-                ?.let { info -> mutable.update { it.copy(model = info.model) } }
-        }
+        refreshMetadata()
     }
 
     fun setVisible(value: Boolean) {
@@ -50,6 +48,7 @@ class ConversationViewModel(
         if (value) {
             session?.observe()
             refreshHistory()
+            refreshMetadata()
         } else {
             session?.stopObserving()
             viewModelScope.launch { action { session?.saveDraft() } }
@@ -89,7 +88,16 @@ class ConversationViewModel(
             it.copy(session = next.state.value, attachments = emptyList(), error = null)
         }
         sessionCollector = viewModelScope.launch {
-            next.state.collect { nextState -> mutable.update { it.copy(session = nextState) } }
+            next.state.collect { nextState ->
+                val previous = mutable.value.session
+                mutable.update { it.copy(session = nextState) }
+                if (
+                    !nextState.loading &&
+                        (previous?.title != nextState.title || previous.runs != nextState.runs)
+                ) {
+                    refreshHistory()
+                }
+            }
         }
         if (!visible) {
             next.stopObserving()
@@ -101,7 +109,21 @@ class ConversationViewModel(
     }
 
     fun editDraft(text: String) {
+        updateDraft(text, external = true)
+    }
+
+    fun editInput(text: String) {
+        updateDraft(text, external = false)
+    }
+
+    private fun updateDraft(text: String, external: Boolean) {
         session?.editDraft(text)
+        mutable.update {
+            it.copy(
+                session = session?.state?.value ?: it.session,
+                draftRevision = it.draftRevision + if (external) 1 else 0,
+            )
+        }
         draftSaveJob?.cancel()
         val current = session
         draftSaveJob = viewModelScope.launch {
@@ -185,8 +207,41 @@ class ConversationViewModel(
         session?.editPlan(id, draft)
     }
 
-    fun review(id: String, decision: String, plan: PlanDraft?) {
-        viewModelScope.launch { action { session?.review(id, decision, plan) } }
+    fun review(
+        id: String,
+        decision: String,
+        plan: PlanDraft?,
+        planInterruptIds: Set<String>? = null,
+    ) {
+        viewModelScope.launch { action { session?.review(id, decision, plan, planInterruptIds) } }
+    }
+
+    fun submitPlanReviews(planInterruptIds: Set<String>? = null) {
+        viewModelScope.launch { action { session?.submitPlanReviews(planInterruptIds) } }
+    }
+
+    fun clearActivity() {
+        session?.clearActivity()
+    }
+
+    fun clearError() {
+        mutable.update { it.copy(error = null) }
+    }
+
+    private fun refreshMetadata() {
+        if (metadataJob?.isActive == true) {
+            return
+        }
+        metadataJob = viewModelScope.launch {
+            try {
+                val info = api.info()
+                mutable.update { it.copy(model = info.model) }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                // A transient metadata failure does not prevent conversation recovery.
+            }
+        }
     }
 
     fun recover() {
@@ -195,6 +250,7 @@ class ConversationViewModel(
 
     fun refreshHistory() {
         if (historyJob?.isActive == true) {
+            historyRefreshRequested = true
             return
         }
         historyJob = viewModelScope.launch {
@@ -223,6 +279,11 @@ class ConversationViewModel(
                 mutable.update { it.copy(historyError = error.message) }
             } finally {
                 mutable.update { it.copy(historyLoading = false) }
+                historyJob = null
+                if (historyRefreshRequested) {
+                    historyRefreshRequested = false
+                    refreshHistory()
+                }
             }
         }
     }
@@ -251,51 +312,70 @@ class ConversationViewModel(
                 mutable.update { it.copy(historyError = error.message) }
             } finally {
                 mutable.update { it.copy(historyLoading = false) }
+                historyJob = null
+                if (historyRefreshRequested) {
+                    historyRefreshRequested = false
+                    refreshHistory()
+                }
             }
         }
     }
 
     fun rename(thread: String, title: String, completed: () -> Unit) {
-        viewModelScope.launch {
-            action {
-                api.rename(thread, title)
-                val current = session
-                if (current?.threadId == thread) {
-                    current.refresh()
-                }
-                refreshHistory()
-                completed()
+        mutateHistory(HistoryMutation("rename", thread)) {
+            api.rename(thread, title)
+            val current = session
+            if (current?.threadId == thread) {
+                current.refresh()
             }
+            refreshHistory()
+            completed()
         }
     }
 
     fun delete(thread: String, completed: () -> Unit) {
-        viewModelScope.launch {
-            action {
-                api.deleteConversation(thread)
-                val selected = session?.threadId == thread
-                if (selected) {
-                    forgetSession()
-                }
-                journal.remove(thread)
-                if (selected) {
-                    select(null)
-                }
-                refreshHistory()
-                completed()
+        if (mutable.value.deletionBlocked(thread)) {
+            return
+        }
+        mutateHistory(HistoryMutation("delete", thread)) {
+            api.deleteConversation(thread)
+            val selected = session?.threadId == thread
+            if (selected) {
+                forgetSession()
             }
+            journal.remove(thread)
+            if (selected) {
+                select(null)
+            }
+            refreshHistory()
+            completed()
         }
     }
 
     fun clear(completed: () -> Unit) {
+        if (mutable.value.clearBlocked) {
+            return
+        }
+        mutateHistory(HistoryMutation("clear", null)) {
+            api.clearConversations()
+            forgetSession()
+            journal.clear()
+            select(null)
+            refreshHistory()
+            completed()
+        }
+    }
+
+    private fun mutateHistory(operation: HistoryMutation, block: suspend () -> Unit) {
+        if (mutable.value.historyMutation != null) {
+            return
+        }
+        mutable.update { it.copy(historyMutation = operation, error = null) }
         viewModelScope.launch {
-            action {
-                api.clearConversations()
-                forgetSession()
-                journal.clear()
-                select(null)
-                refreshHistory()
-                completed()
+            try {
+                action(block)
+            } finally {
+                mutable.update { it.copy(historyMutation = null) }
             }
         }
     }
@@ -330,6 +410,7 @@ class ConversationViewModel(
 }
 
 data class ConversationUiState(
+    val draftRevision: Long = 0,
     val session: SessionState? = null,
     val history: List<ConversationSummary> = emptyList(),
     val nextCursor: String? = null,
@@ -339,4 +420,19 @@ data class ConversationUiState(
     val attachments: List<PickedFile> = emptyList(),
     val uploading: Boolean = false,
     val error: String? = null,
-)
+    val historyMutation: HistoryMutation? = null,
+) {
+    fun deletionBlocked(threadId: String): Boolean =
+        history.any { it.threadId == threadId && isActiveRun(it.status) } ||
+            (session?.threadId == threadId && (session.busy || session.loading || uploading))
+
+    val clearBlocked: Boolean
+        get() =
+            uploading ||
+                session?.busy == true ||
+                session?.loading == true ||
+                history.any { isActiveRun(it.status) } ||
+                historyMutation != null
+}
+
+data class HistoryMutation(val kind: String, val threadId: String?)

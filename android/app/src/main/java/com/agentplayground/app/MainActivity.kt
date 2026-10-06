@@ -2,6 +2,7 @@ package com.agentplayground.app
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.*
@@ -11,6 +12,7 @@ import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.luminance
@@ -55,8 +57,10 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-private fun PlaygroundApp(application: PlaygroundApplication, preferences: AppPreferences) {
+internal fun PlaygroundApp(application: PlaygroundApplication, preferences: AppPreferences) {
     var destination by rememberSaveable { mutableStateOf("chat") }
+    val savedScreens = rememberSaveableStateHolder()
+    BackHandler(enabled = destination == "activity") { destination = "chat" }
     // Activity-owned graph survives configuration recreation and releases the old
     // server's clients/jobs when the connection setting changes.
     val graph: ServerGraph = viewModel()
@@ -81,11 +85,11 @@ private fun PlaygroundApp(application: PlaygroundApplication, preferences: AppPr
         )
     val chatState by chat.state.collectAsStateWithLifecycle()
     val lifecycle = LocalLifecycleOwner.current.lifecycle
-    DisposableEffect(lifecycle, destination, chat, knowledge) {
+    val observesChat = destination in setOf("chat", "activity")
+    DisposableEffect(lifecycle, observesChat, chat) {
         fun sync() {
             val started = lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
-            chat.setVisible(started && destination == "chat")
-            knowledge.setVisible(started && destination == "knowledge")
+            chat.setVisible(started && observesChat)
         }
         val observer = LifecycleEventObserver { _, _ -> sync() }
         lifecycle.addObserver(observer)
@@ -93,12 +97,28 @@ private fun PlaygroundApp(application: PlaygroundApplication, preferences: AppPr
         onDispose {
             lifecycle.removeObserver(observer)
             chat.setVisible(false)
+        }
+    }
+    val observesKnowledge = destination == "knowledge"
+    DisposableEffect(lifecycle, observesKnowledge, knowledge) {
+        fun sync() {
+            knowledge.setVisible(
+                lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED) && observesKnowledge
+            )
+        }
+        val observer = LifecycleEventObserver { _, _ -> sync() }
+        lifecycle.addObserver(observer)
+        sync()
+        onDispose {
+            lifecycle.removeObserver(observer)
             knowledge.setVisible(false)
         }
     }
     Scaffold(
         bottomBar = {
-            if (WindowInsets.ime.getBottom(LocalDensity.current) == 0) {
+            if (
+                destination != "activity" && WindowInsets.ime.getBottom(LocalDensity.current) == 0
+            ) {
                 Surface(color = MaterialTheme.colorScheme.surface) {
                     Column {
                         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
@@ -145,17 +165,25 @@ private fun PlaygroundApp(application: PlaygroundApplication, preferences: AppPr
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
     ) { padding ->
         Box(Modifier.fillMaxSize().padding(padding)) {
-            when (destination) {
-                "knowledge" -> KnowledgeScreen(knowledge)
-                "settings" ->
-                    SettingsScreen(
-                        preferences,
-                        application.preferences,
-                        chat::clear,
-                        chatState.uploading || chatState.session?.busy == true,
-                        chatState.error,
-                    )
-                else -> ConversationScreen(chat, preferences)
+            savedScreens.SaveableStateProvider("${preferences.serverUrl}:$destination") {
+                when (destination) {
+                    "activity" ->
+                        ActivityScreen(
+                            chatState.session,
+                            { destination = "chat" },
+                            chat::clearActivity,
+                        )
+                    "knowledge" -> KnowledgeScreen(knowledge)
+                    "settings" ->
+                        SettingsScreen(
+                            preferences,
+                            application.preferences,
+                            chat::clear,
+                            chatState.clearBlocked,
+                            chatState.error,
+                        )
+                    else -> ConversationScreen(chat, preferences) { destination = "activity" }
+                }
             }
         }
     }

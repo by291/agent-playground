@@ -8,12 +8,14 @@ import com.agentplayground.core.*
 import kotlin.time.Duration.Companion.milliseconds
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 class KnowledgeViewModel(val api: PlaygroundApi, private val files: DocumentAccess) : ViewModel() {
     private val mutable = MutableStateFlow(KnowledgeUiState())
     val state = mutable.asStateFlow()
     private var polling: Job? = null
-    private var refreshing = false
+    private val refreshMutex = Mutex()
 
     fun setVisible(visible: Boolean) {
         polling?.cancel()
@@ -39,22 +41,19 @@ class KnowledgeViewModel(val api: PlaygroundApi, private val files: DocumentAcce
         viewModelScope.launch { refresh() }
     }
 
-    private suspend fun refresh() {
-        if (refreshing) {
-            return
-        }
-        refreshing = true
+    private suspend fun refresh(preserveError: Boolean = false) = refreshMutex.withLock {
         mutable.update { it.copy(loading = true) }
+
         try {
             val documents = api.documents()
             mutable.update {
                 it.copy(
                     documents = documents,
                     error =
-                        if (it.pendingUploads.isEmpty()) {
-                            null
-                        } else {
+                        if (preserveError || it.pendingUploads.isNotEmpty()) {
                             it.error
+                        } else {
+                            null
                         },
                 )
             }
@@ -62,22 +61,72 @@ class KnowledgeViewModel(val api: PlaygroundApi, private val files: DocumentAcce
             if (error is CancellationException) {
                 throw error
             }
-            mutable.update { it.copy(error = error.message ?: "Could not load documents.") }
+            mutable.update {
+                it.copy(
+                    error =
+                        if (preserveError && it.error != null) {
+                            it.error
+                        } else {
+                            error.message ?: "Could not load documents."
+                        }
+                )
+            }
         } finally {
-            refreshing = false
             mutable.update { it.copy(loading = false) }
         }
     }
 
     fun upload(uris: List<Uri>) {
-        if (mutable.value.busy || mutable.value.pendingUploads.isNotEmpty()) {
+        uploadSelection(uris)
+    }
+
+    fun beginResume(id: String): Boolean {
+        if (state.value.busy || state.value.pendingUploads.isNotEmpty()) {
+            return false
+        }
+        val document =
+            state.value.documents.find { it.id == id && it.status == "uploading" } ?: return false
+
+        mutable.update { it.copy(resumeDocument = document, error = null) }
+        return true
+    }
+
+    fun resumeUpload(uri: Uri?) {
+        val document = state.value.resumeDocument ?: return
+        mutable.update { it.copy(resumeDocument = null) }
+        if (uri != null) {
+            uploadSelection(listOf(uri), document)
+        }
+    }
+
+    private fun uploadSelection(uris: List<Uri>, resumed: KnowledgeDocument? = null) {
+        if (uris.isEmpty() || mutable.value.busy || mutable.value.pendingUploads.isNotEmpty()) {
             return
         }
 
         mutable.update { it.copy(busy = true, error = null) }
         viewModelScope.launch {
-            action {
-                val picked = uris.map { files.inspect(it) }
+            action(refreshOnFailure = false) {
+                val picked = uris.map { uri ->
+                    val file = files.inspect(uri)
+                    validateKnowledgeFile(file.name, file.size)
+                    val size =
+                        if (file.size == null) {
+                            val data = files.read(file)
+                            validateKnowledgeFile(file.name, data.size.toLong())
+                            data.size.toLong()
+                        } else {
+                            file.size
+                        }
+                    if (resumed != null) {
+                        require(file.name == resumed.name && size == resumed.size) {
+                            "Choose the original ${resumed.name} (${resumed.size} bytes) to resume this upload."
+                        }
+                        file.copy(id = resumed.id)
+                    } else {
+                        file
+                    }
+                }
                 mutable.update { it.copy(pendingUploads = picked) }
                 sendUploads()
             }
@@ -89,7 +138,7 @@ class KnowledgeViewModel(val api: PlaygroundApi, private val files: DocumentAcce
             return
         }
 
-        mutate("Retrying documents…") { sendUploads() }
+        mutate("Retrying documents…", refreshOnFailure = false) { sendUploads() }
     }
 
     fun discardUploads() {
@@ -101,7 +150,19 @@ class KnowledgeViewModel(val api: PlaygroundApi, private val files: DocumentAcce
     private suspend fun sendUploads() {
         for (file in state.value.pendingUploads) {
             mutable.update { it.copy(operation = "Uploading ${file.name}…") }
-            api.uploadDocument(file.id, file.name, files.read(file))
+            val data = files.read(file)
+            validateKnowledgeFile(file.name, data.size.toLong())
+
+            try {
+                api.uploadDocument(file.id, file.name, data)
+            } catch (error: Exception) {
+                if (error is CancellationException) {
+                    throw error
+                }
+                mutable.update { it.copy(error = error.message ?: "Document upload failed.") }
+                refresh(preserveError = true)
+                throw error
+            }
             mutable.update {
                 it.copy(
                     pendingUploads =
@@ -128,18 +189,20 @@ class KnowledgeViewModel(val api: PlaygroundApi, private val files: DocumentAcce
     }
 
     fun save(download: Download, uri: Uri) {
-        mutate("Saving ${download.name}…") { files.save(api, download, uri) }
+        mutate("Saving ${download.name}…", refreshOnFailure = false) {
+            files.save(api, download, uri)
+        }
     }
 
-    private fun mutate(label: String, block: suspend () -> Unit) {
+    private fun mutate(label: String, refreshOnFailure: Boolean = true, block: suspend () -> Unit) {
         if (mutable.value.busy) {
             return
         }
         mutable.update { it.copy(busy = true, error = null, operation = label) }
-        viewModelScope.launch { action(block) }
+        viewModelScope.launch { action(refreshOnFailure, block) }
     }
 
-    private suspend fun action(block: suspend () -> Unit) {
+    private suspend fun action(refreshOnFailure: Boolean = true, block: suspend () -> Unit) {
         try {
             block()
         } catch (error: Exception) {
@@ -147,6 +210,9 @@ class KnowledgeViewModel(val api: PlaygroundApi, private val files: DocumentAcce
                 throw error
             }
             mutable.update { it.copy(error = error.message ?: "Document operation failed.") }
+            if (refreshOnFailure) {
+                refresh(preserveError = true)
+            }
         } finally {
             mutable.update { it.copy(busy = false, operation = null) }
         }
@@ -164,4 +230,15 @@ data class KnowledgeUiState(
     val operation: String? = null,
     val error: String? = null,
     val pendingUploads: List<PickedFile> = emptyList(),
+    val resumeDocument: KnowledgeDocument? = null,
 )
+
+private fun validateKnowledgeFile(name: String, size: Long?) {
+    validateFile(name, size ?: 0)
+    require(name.substringAfterLast('.', "").lowercase() in setOf("txt", "md", "pdf")) {
+        "Use a nonempty TXT, Markdown or PDF file up to 10 MiB."
+    }
+    require(size == null || size > 0) {
+        "Use a nonempty TXT, Markdown or PDF file up to 10 MiB."
+    }
+}

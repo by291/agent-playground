@@ -22,7 +22,12 @@ fun newSubmission(
         resume = resume,
     )
 
-data class PlanDraft(val title: String, val steps: List<String>)
+data class PlanDraft(val title: String, val steps: List<String>) {
+    val canApprove
+        get() = title.isNotBlank() && steps.any { it.isNotBlank() }
+
+    fun normalized() = PlanDraft(title.trim(), steps.map(String::trim).filter(String::isNotBlank))
+}
 
 data class Review(val interrupt: Interrupt, val raw: JsonObject) {
     val kind
@@ -102,20 +107,15 @@ data class Review(val interrupt: Interrupt, val raw: JsonObject) {
                         return null
                     }
 
-                    val replacement = plan ?: PlanDraft(title, steps)
-                    if (
-                        action == "approve" &&
-                            (replacement.title.isBlank() ||
-                                replacement.steps.isEmpty() ||
-                                replacement.steps.any { it.isBlank() })
-                    ) {
+                    val replacement = (plan ?: PlanDraft(title, steps)).normalized()
+                    if (action == "approve" && !replacement.canApprove) {
                         return null
                     }
 
                     buildJsonObject {
                         put("decision", action)
-                        put("title", replacement.title.trim())
-                        put("steps", JsonArray(replacement.steps.map { JsonPrimitive(it.trim()) }))
+                        put("title", replacement.title)
+                        put("steps", JsonArray(replacement.steps.map(::JsonPrimitive)))
                     }
                 }
                 else -> return null
@@ -157,6 +157,13 @@ data class Review(val interrupt: Interrupt, val raw: JsonObject) {
 }
 
 fun JsonObject.string(key: String): String? = (get(key) as? JsonPrimitive)?.contentOrNull
+
+fun externalWaitCallId(interrupt: Interrupt): String? {
+    val metadata = interrupt.metadata as? JsonObject
+    val langgraph = metadata?.get("langgraph") as? JsonObject
+    val raw = langgraph?.get("raw") as? JsonObject
+    return raw?.takeIf { it.string("kind") == "workflow_external_wait" }?.string("workflowCallId")
+}
 
 const val MAX_FILE_BYTES = 10 * 1024 * 1024L
 

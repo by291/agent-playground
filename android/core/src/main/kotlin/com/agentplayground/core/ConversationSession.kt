@@ -33,6 +33,8 @@ class ConversationSession(
     private val journalMutex = Mutex()
     private val outputBuffer = OutputBuffer()
     private var eventRevision = 0L
+    private var activitySequence = 0L
+    private var activityRunId: String? = null
     private var observing = false
     private val mutableState =
         MutableStateFlow(
@@ -146,7 +148,12 @@ class ConversationSession(
         )
     }
 
-    suspend fun review(interruptId: String, action: String, plan: PlanDraft? = null) {
+    suspend fun review(
+        interruptId: String,
+        action: String,
+        plan: PlanDraft? = null,
+        planInterruptIds: Set<String>? = null,
+    ) {
         if (closed || admitting || settling || state.value.busy || state.value.loading) {
             return
         }
@@ -159,39 +166,22 @@ class ConversationSession(
                     plan
                         ?: state.value.planDrafts[interruptId]
                         ?: PlanDraft(review.title, review.steps)
-                review.respond(action, plan = draft, now = now()) ?: return
-                mutableState.update {
-                    it.copy(
-                        planDecisions = it.planDecisions + (interruptId to action),
-                        planDrafts = it.planDrafts + (interruptId to draft),
-                    )
-                }
-                val plans =
-                    state.value.interrupts.mapNotNull(Review::from).filter {
-                        it.kind == "experiment_plan_review"
-                    }
-                if (plans.any { it.interrupt.id !in state.value.planDecisions }) {
+                val response = review.respond(action, plan = draft, now = now()) ?: return
+                if (planInterruptIds != null && interruptId !in planInterruptIds) {
                     return
                 }
-
-                val responses = plans.map { current ->
-                    current.respond(
-                        state.value.planDecisions.getValue(current.interrupt.id),
-                        plan = state.value.planDrafts[current.interrupt.id],
-                        now = now(),
-                    )
-                }
-                if (responses.any { it == null }) {
-                    mutableState.update { current ->
-                        current.copy(
-                            planDecisions = emptyMap(),
-                            error = "A plan is no longer valid. Refresh before deciding again.",
+                if (pendingPlans(state.value, planInterruptIds).size > 1) {
+                    mutableState.update {
+                        it.copy(
+                            planDecisions = it.planDecisions + (interruptId to action),
+                            planDrafts = it.planDrafts + (interruptId to draft),
+                            error = null,
                         )
                     }
                     return
                 }
 
-                responses.filterNotNull()
+                listOf(response)
             } else {
                 listOf(review.respond(action, now = now()) ?: return)
             }
@@ -200,8 +190,62 @@ class ConversationSession(
         submit(PendingSubmission(newSubmission(threadId, runId, resume = entries), runId), null)
     }
 
+    suspend fun submitPlanReviews(planInterruptIds: Set<String>? = null) {
+        if (closed || admitting || settling || state.value.busy || state.value.loading) {
+            return
+        }
+
+        val current = state.value
+        val plans = pendingPlans(current, planInterruptIds)
+        if (
+            plans.size < 2 ||
+                plans.any { it.kind != "experiment_plan_review" } ||
+                plans.any { it.interrupt.id !in current.planDecisions }
+        ) {
+            return
+        }
+
+        val responses = plans.map { review ->
+            review.respond(
+                current.planDecisions.getValue(review.interrupt.id),
+                plan = current.planDrafts[review.interrupt.id],
+                now = now(),
+            )
+        }
+        if (responses.any { it == null }) {
+            mutableState.update {
+                it.copy(
+                    planDecisions = emptyMap(),
+                    error = "A plan is no longer valid. Refresh before deciding again.",
+                )
+            }
+            return
+        }
+
+        val runId = UUID.randomUUID().toString()
+        submit(
+            PendingSubmission(
+                newSubmission(threadId, runId, resume = responses.filterNotNull()),
+                runId,
+            ),
+            null,
+        )
+    }
+
+    // The renderer can replace old plan editors with durable completed workflow outputs.
+    // Only explicitly presented plan IDs participate; each response is revalidated here.
+    private fun pendingPlans(current: SessionState, planInterruptIds: Set<String>?): List<Review> =
+        current.interrupts.mapNotNull(Review::from).filter {
+            it.kind == "experiment_plan_review" &&
+                (planInterruptIds == null || it.interrupt.id in planInterruptIds)
+        }
+
     fun editPlan(interruptId: String, draft: PlanDraft) {
-        if (closed || state.value.busy || state.value.loading) {
+        if (closed || admitting || settling || state.value.busy || state.value.loading) {
+            return
+        }
+        val review = state.value.interrupts.find { it.id == interruptId }?.let(Review::from)
+        if (review?.kind != "experiment_plan_review" || review.expiredAt(now())) {
             return
         }
 
@@ -216,7 +260,7 @@ class ConversationSession(
     private suspend fun submit(submission: PendingSubmission, message: UserMessage?) {
         admitting = true
         // Lock the UI before the first suspension so rapid taps cannot create two admissions.
-        mutableState.update { it.copy(busy = true, error = null) }
+        mutableState.update { it.copy(busy = true, executionStatus = "running", error = null) }
         try {
             updateSaved { it.copy(pending = submission, empty = false, draft = "") }
         } catch (cancelled: CancellationException) {
@@ -226,6 +270,7 @@ class ConversationSession(
             mutableState.update {
                 it.copy(
                     busy = false,
+                    executionStatus = null,
                     error = "Could not save the pending request: ${error.message}",
                 )
             }
@@ -259,8 +304,11 @@ class ConversationSession(
             return
         }
 
-        mutableState.update { it.copy(busy = true, loading = false, error = null) }
+        mutableState.update {
+            it.copy(busy = true, executionStatus = "running", loading = false, error = null)
+        }
         settling = true
+        activityRunId = submission.input.runId
         val generation = ++streamGeneration
         streamJob = scope.launch {
             try {
@@ -361,6 +409,8 @@ class ConversationSession(
                             },
                         externalTasks = snapshot?.externalTasks ?: current.externalTasks,
                         runs = snapshot?.runs ?: current.runs,
+                        executionStatus =
+                            if (useCanonicalMessages) null else current.executionStatus,
                         contextUsage = usage,
                         busy =
                             admitting ||
@@ -393,9 +443,15 @@ class ConversationSession(
 
     private fun receive(event: BaseEvent) {
         eventRevision += 1
+        if (event is RunStartedEvent) {
+            activityRunId = event.runId
+        }
+        val activityEntry =
+            ActivityEntry(++activitySequence, now().toEpochMilli(), activityRunId, event)
         mutableState.update { current ->
             when (event) {
-                is RunStartedEvent -> current.copy(streaming = true, busy = true)
+                is RunStartedEvent ->
+                    current.copy(streaming = true, busy = true, executionStatus = "running")
                 is ReasoningMessageStartEvent ->
                     current.copy(
                         messages = upsert(current.messages, reasoningMessage(event.messageId))
@@ -501,10 +557,18 @@ class ConversationSession(
                 is RunFinishedEvent ->
                     current.copy(
                         streaming = false,
+                        executionStatus =
+                            if (event.outcome is RunFinishedInterruptOutcome) "interrupted"
+                            else "completed",
                         interrupts =
                             (event.outcome as? RunFinishedInterruptOutcome)?.interrupts.orEmpty(),
                     )
-                is RunErrorEvent -> current.copy(streaming = false, error = event.message)
+                is RunErrorEvent ->
+                    current.copy(
+                        streaming = false,
+                        executionStatus = "failed",
+                        error = event.message,
+                    )
                 else -> current
             }
         }
@@ -532,12 +596,14 @@ class ConversationSession(
         }
         mutableState.update {
             it.copy(
-                activity =
-                    (it.activity +
-                            "${event.eventType.name}\n${protocolJson.encodeToString(BaseEvent.serializer(), event).take(4_000)}")
-                        .takeLast(300)
+                activity = (it.activity + activityEntry).takeLast(300),
+                receivedEventCount = it.receivedEventCount + 1,
             )
         }
+    }
+
+    fun clearActivity() {
+        mutableState.update { it.copy(activity = emptyList(), receivedEventCount = 0) }
     }
 
     private fun ingestOutputs(outputs: List<WorkflowOutput>) {
@@ -577,10 +643,12 @@ data class SessionState(
     val externalTasks: List<ExternalTask> = emptyList(),
     val runs: List<RunRecord> = emptyList(),
     val contextUsage: ContextUsage? = null,
-    val activity: List<String> = emptyList(),
+    val activity: List<ActivityEntry> = emptyList(),
+    val receivedEventCount: Long = 0,
     val busy: Boolean = false,
     val loading: Boolean = false,
     val streaming: Boolean = false,
+    val executionStatus: String? = null,
     val error: String? = null,
     val outputError: String? = null,
     val missingOutputSequence: Int? = null,
