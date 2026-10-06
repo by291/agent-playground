@@ -7,6 +7,7 @@
 ```mermaid
 flowchart LR
     Web[React web / AG-UI client] --> Server[Hono / AG-UI adapter]
+    Android[Android Compose client] --> Server
     Server --> Aegra[Aegra / Redis execution queue]
     Aegra --> Agent[Python LangChain agent / LangGraph workflows]
     Aegra --> Checkpoints[(Aegra checkpoints)]
@@ -36,6 +37,7 @@ The server uses the official `@ag-ui/langgraph` adapter to create native Aegra r
 | `server/app.ts`, `server/server.ts`                                  | HTTP assembly and process/resource lifecycle respectively.                                                 |
 | `web/src/app/`, `web/src/pages/`                                     | Routing/providers and page composition.                                                                    |
 | `web/src/features/conversation/`, `knowledge/`, `a2ui/`              | Chat/session UI, shared document management and official A2UI processing/catalog.                          |
+| `android/core/`, `android/app/`                                      | JVM protocol/session core and Compose presentation, Android lifecycle and file access.                     |
 | `shared/`                                                            | Application contracts: runs, context, conversations, workflow outputs/reviews, tasks, files and knowledge. |
 
 AG-UI and A2UI protocol schemas remain owned by the official libraries. SQL workflows reuse API response models from `services/sql/models.py`; their revision output and business state remain in `workflows/sql/models.py`. `http.py` registers services and owns the report and knowledge worker lifecycles.

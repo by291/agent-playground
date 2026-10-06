@@ -1,6 +1,6 @@
 # Agent playground
 
-An evolving agent application for validating runtime capabilities and strengthening engineering foundations toward production use. A Python LangChain agent runs through Aegra; the Hono server adapts AG-UI and manages durable conversations; the React and native Android clients provide chat, workflow review and A2UI rendering.
+An evolving agent application for validating runtime capabilities and strengthening engineering foundations toward production use. A Python LangChain agent runs through Aegra; the Hono server adapts AG-UI and manages durable conversations; React and native Android clients provide chat, workflow review and A2UI rendering.
 
 ```text
 React web / Android Compose → Hono / AG-UI adapter → Aegra execution queue → Python agent
