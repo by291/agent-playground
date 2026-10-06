@@ -1,18 +1,25 @@
 package com.agentplayground.app.features.conversation
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.MenuBook
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.core.net.toUri
 import com.agentplayground.app.design.*
 import com.agentplayground.core.*
 
@@ -22,6 +29,10 @@ fun ConversationHistory(
     vm: ConversationViewModel,
     onSelect: (String?) -> Unit,
     modifier: Modifier = Modifier,
+    destination: String = "chat",
+    serverUrl: String = "",
+    onKnowledge: () -> Unit = {},
+    onSettings: () -> Unit = {},
 ) {
     var rename by remember { mutableStateOf<ConversationSummary?>(null) }
     var delete by remember { mutableStateOf<ConversationSummary?>(null) }
@@ -29,14 +40,17 @@ fun ConversationHistory(
     val list = rememberLazyListState()
     val pending = state.historyMutation != null
     val current = state.session
+    val currentHasContent =
+        current != null &&
+            (current.messages.isNotEmpty() ||
+                current.outputs.isNotEmpty() ||
+                current.busy ||
+                current.interrupts.isNotEmpty())
     val rows =
         if (
             current != null &&
                 state.history.none { it.threadId == current.threadId } &&
-                (current.messages.isNotEmpty() ||
-                    current.outputs.isNotEmpty() ||
-                    current.busy ||
-                    current.interrupts.isNotEmpty())
+                current.threadId.isNotEmpty()
         ) {
             listOf(
                 ConversationSummary(
@@ -50,103 +64,155 @@ fun ConversationHistory(
         } else {
             state.history
         }
-    LaunchedEffect(list, rows.size, state.nextCursor, state.historyLoading, state.historyError) {
+    val lastRowKey = rows.lastOrNull()?.let { "history:${it.threadId}" }
+    LaunchedEffect(list, lastRowKey, state.nextCursor, state.historyLoading, state.historyError) {
         if (state.nextCursor != null && !state.historyLoading && state.historyError == null) {
-            snapshotFlow { list.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1 }
-                .collect { index ->
-                    if (index >= rows.lastIndex && index >= 0) {
+            snapshotFlow { list.layoutInfo.visibleItemsInfo.any { it.key == lastRowKey } }
+                .collect { lastRowVisible ->
+                    if (lastRowVisible) {
                         vm.loadMore()
                     }
                 }
         }
     }
     Column(modifier.padding(horizontal = 16.dp, vertical = 20.dp)) {
-        Row(
-            Modifier.fillMaxWidth().padding(bottom = 24.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            AgentMark()
-            Column(Modifier.weight(1f)) {
-                Text("Playground", style = MaterialTheme.typography.titleLarge)
-                Text(
-                    "Your workspace",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        }
-        FilledTonalButton(
-            onClick = { onSelect(null) },
-            enabled = !state.uploading && !pending,
-            shape = MaterialTheme.shapes.medium,
-            modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
-        ) {
-            Icon(Icons.Outlined.Add, null, Modifier.size(20.dp))
-            Spacer(Modifier.width(8.dp))
-            Text("New conversation")
-        }
-        Row(
-            Modifier.fillMaxWidth().padding(top = 20.dp, bottom = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                "RECENT",
-                Modifier.weight(1f),
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            IconButton(onClick = vm::refreshHistory, enabled = !state.historyLoading) {
-                Icon(
-                    Icons.Outlined.Refresh,
-                    "Refresh history",
-                    Modifier.size(20.dp),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        }
-        state.historyError?.let { ErrorNotice(it, vm::refreshHistory) }
-        if (state.historyLoading) {
-            LinearProgressIndicator(Modifier.fillMaxWidth())
-        }
         LazyColumn(
             Modifier.weight(1f),
             state = list,
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            items(rows, key = { it.threadId }) { row ->
+            item("history-header") {
+                Column {
+                    Row(
+                        Modifier.fillMaxWidth().padding(bottom = 24.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        AgentMark()
+                        Column(Modifier.weight(1f)) {
+                            Text("Agent Playground", style = MaterialTheme.typography.titleSmall)
+                            Text(
+                                "Workspace",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                    OutlinedButton(
+                        onClick = { onSelect(null) },
+                        enabled = !state.uploading && !pending,
+                        shape = MaterialTheme.shapes.small,
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                        colors =
+                            ButtonDefaults.outlinedButtonColors(
+                                containerColor = MaterialTheme.colorScheme.surface,
+                                contentColor = MaterialTheme.colorScheme.onSurface,
+                            ),
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                    ) {
+                        Icon(Icons.Outlined.Add, null, Modifier.size(20.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("New conversation")
+                    }
+                    Surface(
+                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                        shape = MaterialTheme.shapes.small,
+                        color =
+                            if (destination == "knowledge")
+                                MaterialTheme.colorScheme.secondaryContainer
+                            else androidx.compose.ui.graphics.Color.Transparent,
+                    ) {
+                        Row(
+                            Modifier.fillMaxWidth()
+                                .semantics { selected = destination == "knowledge" }
+                                .clickable(role = Role.Button, onClick = onKnowledge)
+                                .heightIn(min = 48.dp)
+                                .padding(horizontal = 12.dp, vertical = 8.dp)
+                                .testTag("navigation-knowledge"),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            Icon(
+                                Icons.AutoMirrored.Outlined.MenuBook,
+                                null,
+                                Modifier.size(20.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            Text("Knowledge", style = MaterialTheme.typography.bodyMedium)
+                        }
+                    }
+                    Row(
+                        Modifier.fillMaxWidth().padding(top = 20.dp, bottom = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            "CONVERSATIONS",
+                            Modifier.weight(1f),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        IconButton(onClick = vm::refreshHistory, enabled = !state.historyLoading) {
+                            Icon(
+                                Icons.Outlined.Refresh,
+                                "Refresh history",
+                                Modifier.size(20.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                    state.historyError?.let { ErrorNotice(it, vm::refreshHistory) }
+                    if (state.historyLoading) {
+                        LinearProgressIndicator(Modifier.fillMaxWidth())
+                    }
+                }
+            }
+            items(rows, key = { "history:${it.threadId}" }) { row ->
                 var menu by remember { mutableStateOf(false) }
-                val selected = state.session?.threadId == row.threadId
+                val selected = destination == "chat" && state.session?.threadId == row.threadId
                 val blocked = state.deletionBlocked(row.threadId)
+                val hasActions =
+                    state.history.any { it.threadId == row.threadId } ||
+                        (current?.threadId == row.threadId && currentHasContent)
                 Surface(
-                    shape = MaterialTheme.shapes.medium,
+                    shape = MaterialTheme.shapes.small,
                     color =
                         if (selected) {
-                            MaterialTheme.colorScheme.primaryContainer
+                            MaterialTheme.colorScheme.secondaryContainer
                         } else {
-                            MaterialTheme.colorScheme.background
+                            androidx.compose.ui.graphics.Color.Transparent
                         },
                 ) {
                     Row(
                         Modifier.fillMaxWidth(),
                         verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
                     ) {
+                        Icon(
+                            Icons.Outlined.ChatBubbleOutline,
+                            null,
+                            Modifier.padding(start = 12.dp).size(18.dp),
+                            tint =
+                                if (selected) MaterialTheme.colorScheme.primary
+                                else MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                         Column(
                             Modifier.weight(1f)
-                                .clickable(enabled = !state.uploading && !pending) {
+                                .testTag("history-${row.threadId}")
+                                .semantics { this.selected = selected }
+                                .clickable(
+                                    enabled = !state.uploading && !pending,
+                                    role = Role.Button,
+                                ) {
                                     onSelect(row.threadId)
                                 }
-                                .heightIn(min = 60.dp)
-                                .padding(horizontal = 14.dp, vertical = 12.dp)
+                                .heightIn(min = 48.dp)
+                                .padding(horizontal = 10.dp, vertical = 10.dp)
                         ) {
                             Text(
                                 row.title,
                                 maxLines = 2,
                                 overflow = TextOverflow.Ellipsis,
                                 style = MaterialTheme.typography.bodyMedium,
-                                color =
-                                    if (selected) MaterialTheme.colorScheme.onPrimaryContainer
-                                    else MaterialTheme.colorScheme.onSurface,
+                                color = MaterialTheme.colorScheme.onSurface,
                             )
                             row.status
                                 ?.takeIf { isActiveRun(it) }
@@ -158,34 +224,36 @@ fun ConversationHistory(
                                     )
                                 }
                         }
-                        Box {
-                            IconButton(onClick = { menu = true }, enabled = !pending) {
-                                Icon(
-                                    Icons.Outlined.MoreHoriz,
-                                    "Conversation actions",
-                                    Modifier.size(20.dp),
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
-                            DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                                DropdownMenuItem(
-                                    text = { Text("Rename") },
-                                    onClick = {
-                                        menu = false
-                                        vm.clearError()
-                                        title = row.title
-                                        rename = row
-                                    },
-                                )
-                                DropdownMenuItem(
-                                    text = { Text("Delete") },
-                                    enabled = !blocked,
-                                    onClick = {
-                                        menu = false
-                                        vm.clearError()
-                                        delete = row
-                                    },
-                                )
+                        if (hasActions) {
+                            Box {
+                                IconButton(onClick = { menu = true }, enabled = !pending) {
+                                    Icon(
+                                        Icons.Outlined.MoreHoriz,
+                                        "Conversation actions",
+                                        Modifier.size(20.dp),
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                                DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                                    DropdownMenuItem(
+                                        text = { Text("Rename") },
+                                        onClick = {
+                                            menu = false
+                                            vm.clearError()
+                                            title = row.title
+                                            rename = row
+                                        },
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("Delete") },
+                                        enabled = !blocked,
+                                        onClick = {
+                                            menu = false
+                                            vm.clearError()
+                                            delete = row
+                                        },
+                                    )
+                                }
                             }
                         }
                     }
@@ -211,6 +279,7 @@ fun ConversationHistory(
                 }
             }
         }
+        WorkspaceFooter(serverUrl, destination == "settings", onSettings)
     }
     rename?.let { row ->
         AlertDialog(
@@ -254,5 +323,65 @@ fun ConversationHistory(
             onConfirm = { vm.delete(row.threadId) { delete = null } },
             onDismiss = { delete = null },
         )
+    }
+}
+
+@Composable
+private fun WorkspaceFooter(serverUrl: String, settingsSelected: Boolean, onSettings: () -> Unit) {
+    val server =
+        remember(serverUrl) {
+            val uri = serverUrl.toUri()
+            val host = uri.host.orEmpty()
+            if (uri.port > 0) "$host:${uri.port}" else host
+        }
+    Column(Modifier.fillMaxWidth().padding(top = 12.dp)) {
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        Row(
+            Modifier.fillMaxWidth().padding(top = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Icon(
+                Icons.Outlined.Dns,
+                null,
+                Modifier.size(18.dp),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Column(Modifier.weight(1f)) {
+                Text(
+                    "Server",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    server,
+                    style = MaterialTheme.typography.bodySmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Surface(
+                color =
+                    if (settingsSelected) MaterialTheme.colorScheme.secondaryContainer
+                    else androidx.compose.ui.graphics.Color.Transparent,
+                shape = MaterialTheme.shapes.small,
+            ) {
+                IconButton(
+                    onClick = onSettings,
+                    modifier =
+                        Modifier.testTag("navigation-settings").semantics {
+                            selected = settingsSelected
+                        },
+                ) {
+                    Icon(
+                        Icons.Outlined.Settings,
+                        "Open settings",
+                        Modifier.size(20.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
     }
 }

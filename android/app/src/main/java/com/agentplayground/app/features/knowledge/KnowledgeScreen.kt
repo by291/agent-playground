@@ -22,7 +22,7 @@ import com.agentplayground.core.KnowledgeDocument
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun KnowledgeScreen(vm: KnowledgeViewModel) {
+fun KnowledgeScreen(vm: KnowledgeViewModel, onOpenNavigation: (() -> Unit)? = null) {
     val state by vm.state.collectAsStateWithLifecycle()
     var deleting by remember { mutableStateOf<KnowledgeDocument?>(null) }
     var download by rememberSaveable(stateSaver = DownloadSaver) { mutableStateOf<Download?>(null) }
@@ -54,6 +54,13 @@ fun KnowledgeScreen(vm: KnowledgeViewModel) {
                         containerColor = MaterialTheme.colorScheme.background
                     ),
                 title = { Text("Knowledge", style = MaterialTheme.typography.titleLarge) },
+                navigationIcon = {
+                    if (onOpenNavigation != null) {
+                        IconButton(onClick = onOpenNavigation) {
+                            Icon(Icons.Outlined.Menu, "Open navigation menu")
+                        }
+                    }
+                },
                 actions = {
                     IconButton(onClick = vm::reload, enabled = !state.loading) {
                         Icon(Icons.Outlined.Refresh, "Refresh documents")
@@ -63,7 +70,7 @@ fun KnowledgeScreen(vm: KnowledgeViewModel) {
         },
     ) { padding ->
         LazyColumn(
-            Modifier.fillMaxSize().padding(padding),
+            Modifier.fillMaxSize().padding(padding).navigationBarsPadding(),
             contentPadding = PaddingValues(horizontal = 20.dp, vertical = 24.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
             horizontalAlignment = Alignment.CenterHorizontally,

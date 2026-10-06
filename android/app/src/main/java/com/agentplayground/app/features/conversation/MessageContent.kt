@@ -1,16 +1,15 @@
 package com.agentplayground.app.features.conversation
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import com.agentplayground.app.design.Details
-import com.agentplayground.app.design.StatusTag
 import com.agentplayground.app.files.Download
 import com.agentplayground.core.*
 import com.agui.core.types.*
@@ -26,8 +25,16 @@ fun MessageContent(
         is UserMessage ->
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                 Surface(
-                    shape = MaterialTheme.shapes.large,
-                    color = MaterialTheme.colorScheme.surfaceVariant,
+                    shape =
+                        RoundedCornerShape(
+                            topStart = 18.dp,
+                            topEnd = 18.dp,
+                            bottomStart = 18.dp,
+                            bottomEnd = 6.dp,
+                        ),
+                    color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                    contentColor = MaterialTheme.colorScheme.onSurface,
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                     modifier = Modifier.widthIn(max = 560.dp),
                 ) {
                     SelectionContainer {
@@ -46,7 +53,7 @@ fun MessageContent(
                 Markdown(message.content.orEmpty(), onLink)
             }
         }
-        is ToolMessage -> Details("Tool result") { ToolResult(message) }
+        is ToolMessage -> Details("Tool result") { ToolResultContent(message) }
         else ->
             if (!message.content.isNullOrBlank()) {
                 Details(message.messageRole.name.lowercase()) { Text(message.content.orEmpty()) }
@@ -88,35 +95,7 @@ fun AssistantTurnContent(
             ReasoningContent(turn, active, visibleAnswerPhase == reasoning.size, replyLink)
         }
         executionGroups(turn.toolCalls).forEach { group ->
-            val name =
-                group.skill?.let { "Skill · ${it.name}" }
-                    ?: "Tool · ${group.steps.first().call.function.name.replace('_', ' ')}"
-            val statuses = group.steps.map { it.status.name }.distinct().joinToString(" / ")
-            Details("$name · $statuses") {
-                group.steps.forEach { step ->
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text(
-                            step.call.function.name.replace('_', ' '),
-                            style = MaterialTheme.typography.labelLarge,
-                        )
-                        StatusTag(step.status.name, step.status == ToolStatus.Running)
-                    }
-                    skillIdentity(step)?.path?.let {
-                        Text(it, style = MaterialTheme.typography.bodySmall)
-                    }
-                    Text("Parameters", style = MaterialTheme.typography.labelMedium)
-                    Text(
-                        step.call.function.arguments,
-                        fontFamily = FontFamily.Monospace,
-                        style = MaterialTheme.typography.bodySmall,
-                    )
-                    step.result?.let { result ->
-                        Text("Result", style = MaterialTheme.typography.labelMedium)
-                        ToolResult(result)
-                    }
-                    HorizontalDivider(Modifier.padding(vertical = 8.dp))
-                }
-            }
+            ToolGroupContent(group)
         }
         skillFiles(turn.toolCalls).forEach { file ->
             OutlinedButton(onClick = { onDownload(Download(api.filePath(file), file.name)) }) {
@@ -173,49 +152,6 @@ fun AssistantTurnContent(
             },
         )
     }
-}
-
-@Composable
-private fun ReasoningContent(
-    turn: ConversationTurn,
-    active: Boolean,
-    answerVisible: Boolean,
-    onLink: (String) -> Unit,
-) {
-    val phase = reasoningPhase(turn.messages, answerVisible)
-    val automaticOpen = active && phase.startsWith("reasoning-")
-    var savedPhase by rememberSaveable(turn.id) { mutableStateOf(phase) }
-    var open by rememberSaveable(turn.id) { mutableStateOf(automaticOpen) }
-    if (savedPhase != phase) {
-        savedPhase = phase
-        open = automaticOpen
-    }
-    val thinking = active && turn.messages.lastOrNull()?.let(::isReasoning) == true
-    Column {
-        TextButton(onClick = { open = !open }) {
-            Text(if (thinking) "Thinking" else "Reasoning")
-            Text(if (open) " · Hide" else " · Show")
-        }
-        if (open) {
-            Column(Modifier.testTag("reasoning-content-${turn.id}")) {
-                turn.messages
-                    .filter { isReasoning(it) && !it.content.isNullOrBlank() }
-                    .forEach { Markdown(it.content.orEmpty(), onLink, settled = !active) }
-            }
-        }
-    }
-}
-
-@Composable
-private fun ToolResult(message: ToolMessage) {
-    if (!message.error.isNullOrEmpty()) {
-        Text(message.error.orEmpty(), color = MaterialTheme.colorScheme.error)
-    }
-    Text(
-        message.content,
-        fontFamily = FontFamily.Monospace,
-        style = MaterialTheme.typography.bodySmall,
-    )
 }
 
 private fun displayFileSize(size: Long): String =

@@ -253,6 +253,66 @@ class MessageContentTest {
     }
 
     @Test
+    fun `tool disclosure keeps user expansion while a skill adds calls and exposes failures`() {
+        val completed =
+            ToolStep(
+                ToolCall("load", FunctionCall("load_skill", "{\"skill_name\":\"review\"}")),
+                ToolMessage("loaded", "Ready", "load"),
+                ToolStatus.Completed,
+            )
+        val running =
+            ToolStep(
+                ToolCall(
+                    "execute",
+                    FunctionCall(
+                        "run_skill_script",
+                        "{\"skill_name\":\"review\",\"path\":\"review.py\"}",
+                    ),
+                ),
+                null,
+                ToolStatus.Running,
+            )
+        var group by mutableStateOf(ExecutionGroup(SkillIdentity("review"), listOf(completed)))
+        compose.setContent { PlaygroundTheme("light") { ToolGroupContent(group) } }
+        compose.onNodeWithText("Parameters").assertDoesNotExist()
+        compose.onNodeWithTag("tool-group-load").performClick()
+        compose.onNodeWithText("Load a Skill").assertIsDisplayed()
+        compose.onNodeWithText("Parameters").assertDoesNotExist()
+        compose.onNodeWithTag("tool-step-load").performClick()
+        compose.onNodeWithText("Parameters").assertIsDisplayed()
+        compose.runOnIdle { group = group.copy(steps = listOf(completed, running)) }
+        compose.onAllNodesWithText("Parameters").assertCountEquals(1)
+        compose.onNodeWithTag("tool-step-execute").performClick()
+        compose.onAllNodesWithText("Parameters").assertCountEquals(2)
+        compose.onAllNodesWithText("Running").assertCountEquals(2)
+        compose.runOnIdle {
+            group =
+                group.copy(
+                    steps =
+                        listOf(
+                            completed,
+                            running.copy(
+                                status = ToolStatus.Failed,
+                                result =
+                                    ToolMessage(
+                                        "failed",
+                                        "",
+                                        "execute",
+                                        error = "The script failed.",
+                                    ),
+                            ),
+                        )
+                )
+        }
+        compose.onNodeWithText("The script failed.").assertIsDisplayed()
+        compose.onAllNodesWithText("Failed").assertCountEquals(2)
+        compose.onNodeWithTag("tool-group-load").performClick()
+        compose.onNodeWithText("Parameters").assertDoesNotExist()
+        compose.onNodeWithText("The script failed.").assertIsDisplayed()
+        compose.onNodeWithText("Failed").assertIsDisplayed()
+    }
+
+    @Test
     fun `reasoning user fold survives recovery and waits for visible code before collapsing`() {
         fun turn(reasonId: String, answer: String? = null): ConversationTurn {
             val messages =

@@ -6,19 +6,13 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.selection.selectable
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.luminance
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalWindowInfo
-import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowCompat
 import androidx.lifecycle.*
@@ -27,11 +21,13 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.agentplayground.app.data.AppPreferences
 import com.agentplayground.app.design.PlaygroundTheme
+import com.agentplayground.app.design.RevealNavigationDrawer
 import com.agentplayground.app.features.conversation.*
 import com.agentplayground.app.features.knowledge.*
 import com.agentplayground.app.features.settings.SettingsScreen
 import com.agentplayground.app.files.DocumentAccess
 import com.agentplayground.core.PlaygroundApi
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -61,7 +57,7 @@ class MainActivity : ComponentActivity() {
 internal fun PlaygroundApp(application: PlaygroundApplication, preferences: AppPreferences) {
     var destination by rememberSaveable { mutableStateOf("chat") }
     val savedScreens = rememberSaveableStateHolder()
-    BackHandler(enabled = destination == "activity") { destination = "chat" }
+    BackHandler(enabled = destination != "chat") { destination = "chat" }
     // Activity-owned graph survives configuration recreation and releases the old
     // server's clients/jobs when the connection setting changes.
     val graph: ServerGraph = viewModel()
@@ -115,18 +111,49 @@ internal fun PlaygroundApp(application: PlaygroundApplication, preferences: AppP
             knowledge.setVisible(false)
         }
     }
-    val windowWidth =
-        with(LocalDensity.current) { LocalWindowInfo.current.containerSize.width.toDp() }
-    val pushesChat = destination == "chat" && windowWidth < 840.dp
-    Scaffold(
-        bottomBar = {
-            if (!pushesChat && destination != "activity") {
-                PrimaryNavigation(destination) { destination = it }
+    val drawer = rememberDrawerState(DrawerValue.Closed)
+    val scope = rememberCoroutineScope()
+    val keyboard = LocalSoftwareKeyboardController.current
+    BackHandler(enabled = drawer.isOpen) { scope.launch { drawer.close() } }
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val expanded = maxWidth >= 840.dp
+        LaunchedEffect(expanded, destination) {
+            if (expanded || destination == "activity") {
+                drawer.close()
             }
-        },
-        contentWindowInsets = WindowInsets(0, 0, 0, 0),
-    ) { padding ->
-        Box(Modifier.fillMaxSize().padding(padding)) {
+        }
+        val openNavigation: (() -> Unit)? =
+            if (expanded) null
+            else {
+                {
+                    keyboard?.hide()
+                    scope.launch { drawer.open() }
+                }
+            }
+        val navigate: (String) -> Unit = { route ->
+            scope.launch {
+                drawer.close()
+                destination = route
+            }
+        }
+        val sidebar: @Composable () -> Unit = {
+            ConversationHistory(
+                chatState,
+                chat,
+                onSelect = { id ->
+                    if (id != chatState.session?.threadId) {
+                        chat.select(id)
+                    }
+                    navigate("chat")
+                },
+                modifier = Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding(),
+                destination = destination,
+                serverUrl = preferences.serverUrl,
+                onKnowledge = { navigate("knowledge") },
+                onSettings = { navigate("settings") },
+            )
+        }
+        val screen: @Composable () -> Unit = {
             savedScreens.SaveableStateProvider("${preferences.serverUrl}:$destination") {
                 when (destination) {
                     "activity" ->
@@ -135,7 +162,7 @@ internal fun PlaygroundApp(application: PlaygroundApplication, preferences: AppP
                             { destination = "chat" },
                             chat::clearActivity,
                         )
-                    "knowledge" -> KnowledgeScreen(knowledge)
+                    "knowledge" -> KnowledgeScreen(knowledge, openNavigation)
                     "settings" ->
                         SettingsScreen(
                             preferences,
@@ -143,64 +170,34 @@ internal fun PlaygroundApp(application: PlaygroundApplication, preferences: AppP
                             chat::clear,
                             chatState.clearBlocked,
                             chatState.error,
+                            openNavigation,
                         )
                     else ->
-                        ConversationScreen(
-                            chat,
-                            preferences,
-                            bottomNavigation = {
-                                if (pushesChat) {
-                                    PrimaryNavigation(destination) { destination = it }
-                                }
-                            },
-                            onActivity = { destination = "activity" },
-                        )
+                        ConversationScreen(chat, preferences, openNavigation) {
+                            destination = "activity"
+                        }
                 }
             }
         }
-    }
-}
-
-@Composable
-private fun PrimaryNavigation(destination: String, onNavigate: (String) -> Unit) {
-    if (WindowInsets.ime.getBottom(LocalDensity.current) != 0) {
-        return
-    }
-    Surface(color = MaterialTheme.colorScheme.surface) {
-        Column {
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-            Row(
-                Modifier.fillMaxWidth()
-                    .navigationBarsPadding()
-                    .padding(horizontal = 20.dp, vertical = 6.dp)
-            ) {
-                listOf(
-                        Triple("chat", "Chat", Icons.Outlined.ChatBubbleOutline),
-                        Triple("knowledge", "Knowledge", Icons.Outlined.FolderOpen),
-                        Triple("settings", "Settings", Icons.Outlined.Settings),
-                    )
-                    .forEach { (route, label, icon) ->
-                        val selected = destination == route
-                        val color =
-                            if (selected) MaterialTheme.colorScheme.primary
-                            else MaterialTheme.colorScheme.onSurfaceVariant
-                        Column(
-                            Modifier.weight(1f)
-                                .selectable(
-                                    selected,
-                                    role = Role.Tab,
-                                    onClick = { onNavigate(route) },
-                                )
-                                .padding(vertical = 8.dp)
-                                .heightIn(min = 48.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(4.dp),
-                        ) {
-                            Icon(icon, null, Modifier.size(22.dp), tint = color)
-                            Text(label, style = MaterialTheme.typography.labelMedium, color = color)
-                        }
+        when {
+            destination == "activity" -> screen()
+            expanded ->
+                Row(Modifier.fillMaxSize()) {
+                    Surface(
+                        Modifier.width(280.dp).fillMaxHeight(),
+                        color = MaterialTheme.colorScheme.surface,
+                    ) {
+                        sidebar()
                     }
-            }
+                    VerticalDivider()
+                    Box(Modifier.weight(1f)) { screen() }
+                }
+            else ->
+                RevealNavigationDrawer(
+                    drawerState = drawer,
+                    drawerContent = sidebar,
+                    content = screen,
+                )
         }
     }
 }

@@ -49,6 +49,7 @@ fun Markdown(
     onLink: (String) -> Unit,
     settled: Boolean = true,
     onTextVisible: (() -> Unit)? = null,
+    subdued: Boolean = false,
 ) {
     val colors = MaterialTheme.colorScheme
     val density = LocalDensity.current
@@ -130,6 +131,7 @@ fun Markdown(
                                     renderer,
                                     Modifier.fillMaxWidth().padding(12.dp),
                                     onTextVisible = onTextVisible,
+                                    subdued = subdued,
                                 )
                             }
                         } else {
@@ -139,6 +141,7 @@ fun Markdown(
                                 modifier.fillMaxWidth(),
                                 heading = block is Heading,
                                 onTextVisible = onTextVisible,
+                                subdued = subdued,
                             )
                         }
                         // Nested blocks stay with Markwon so list numbering and quote structure
@@ -165,12 +168,13 @@ private fun MarkdownText(
     heading: Boolean = false,
     gravity: Int = Gravity.START,
     onTextVisible: (() -> Unit)? = null,
+    subdued: Boolean = false,
 ) {
     val colors = MaterialTheme.colorScheme
     AndroidView(
         factory = { context ->
             TextView(context).apply {
-                textSize = if (compact) 14f else 16f
+                textSize = if (compact || subdued) 14f else 16f
                 includeFontPadding = false
                 setTextIsSelectable(true)
                 movementMethod = LinkMovementMethod.getInstance()
@@ -179,7 +183,7 @@ private fun MarkdownText(
         },
         modifier = modifier,
         update = { view ->
-            view.setTextColor(colors.onSurface.toArgb())
+            view.setTextColor((if (subdued) colors.onSurfaceVariant else colors.onSurface).toArgb())
             view.setLinkTextColor(colors.primary.toArgb())
             view.typeface = if (heading && compact) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
             view.gravity = gravity

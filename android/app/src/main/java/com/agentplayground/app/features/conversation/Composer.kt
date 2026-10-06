@@ -70,7 +70,10 @@ fun Composer(
         }
     Surface(color = MaterialTheme.colorScheme.surface) {
         Column(
-            Modifier.fillMaxWidth().imePadding().padding(horizontal = 16.dp, vertical = 12.dp),
+            Modifier.fillMaxWidth()
+                .navigationBarsPadding()
+                .imePadding()
+                .padding(horizontal = 16.dp, vertical = 12.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Surface(

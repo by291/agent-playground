@@ -1,6 +1,5 @@
 package com.agentplayground.app.features.conversation
 
-import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
@@ -18,7 +17,6 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextOverflow
@@ -38,16 +36,10 @@ import kotlinx.serialization.json.*
 fun ConversationScreen(
     vm: ConversationViewModel,
     preferences: AppPreferences,
-    bottomNavigation: @Composable () -> Unit = {},
+    onOpenNavigation: (() -> Unit)? = null,
     onActivity: () -> Unit = {},
 ) {
     val state by vm.state.collectAsStateWithLifecycle()
-    val drawer = rememberDrawerState(DrawerValue.Closed)
-    val scope = rememberCoroutineScope()
-    val keyboard = LocalSoftwareKeyboardController.current
-    BackHandler(enabled = drawer.isOpen) {
-        scope.launch { drawer.close() }
-    }
     var menu by remember { mutableStateOf(false) }
     var download by rememberSaveable(stateSaver = DownloadSaver) { mutableStateOf<Download?>(null) }
     val filePicker =
@@ -77,156 +69,105 @@ fun ConversationScreen(
     }
 
     BoxWithConstraints(Modifier.fillMaxSize()) {
-        val expanded = maxWidth >= 840.dp
         val compactHeight = maxHeight < 600.dp
-        LaunchedEffect(expanded) {
-            if (expanded && drawer.isOpen) {
-                drawer.close()
-            }
-        }
-        val onSelect: (String?) -> Unit = { id ->
-            vm.select(id)
-            scope.launch { drawer.close() }
-        }
-        val body: @Composable () -> Unit = {
-            Row(Modifier.fillMaxSize()) {
-                if (expanded) {
-                    Surface(
-                        Modifier.width(280.dp).fillMaxHeight(),
-                        color = MaterialTheme.colorScheme.surface,
-                    ) {
-                        ConversationHistory(
-                            state,
-                            vm,
-                            onSelect,
-                            Modifier.fillMaxSize().statusBarsPadding(),
-                        )
-                    }
-                    VerticalDivider()
-                }
-                Scaffold(
-                    modifier = Modifier.weight(1f),
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    contentWindowInsets = WindowInsets(0, 0, 0, 0),
-                    topBar = {
-                        TopAppBar(
-                            colors =
-                                TopAppBarDefaults.topAppBarColors(
-                                    containerColor = MaterialTheme.colorScheme.surface
-                                ),
-                            title = {
-                                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                                    Text(
-                                        state.session?.title ?: "Agent Playground",
-                                        style = MaterialTheme.typography.titleMedium,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                        modifier = Modifier.testTag("conversation-title"),
-                                    )
-                                    Text(
-                                        "Agent Playground",
-                                        style = MaterialTheme.typography.labelMedium,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                }
-                            },
-                            navigationIcon = {
-                                if (!expanded) {
-                                    IconButton(
-                                        onClick = {
-                                            keyboard?.hide()
-                                            scope.launch { drawer.open() }
-                                        }
-                                    ) {
-                                        Icon(Icons.Outlined.Menu, "Open conversation history")
-                                    }
-                                }
-                            },
-                            actions = {
-                                IconButton(
-                                    onClick = { onSelect(null) },
-                                    enabled = !state.uploading,
-                                ) {
-                                    Icon(Icons.Outlined.Add, "New conversation")
-                                }
-                                Box {
-                                    IconButton(onClick = { menu = true }) {
-                                        Icon(Icons.Outlined.MoreHoriz, "Conversation options")
-                                    }
-                                    DropdownMenu(menu, onDismissRequest = { menu = false }) {
-                                        DropdownMenuItem(
-                                            text = { Text("Agent activity") },
-                                            leadingIcon = { Icon(Icons.Outlined.Timeline, null) },
-                                            onClick = {
-                                                menu = false
-                                                onActivity()
-                                            },
-                                        )
-                                        DropdownMenuItem(
-                                            text = { Text("Refresh conversation") },
-                                            leadingIcon = { Icon(Icons.Outlined.Refresh, null) },
-                                            onClick = {
-                                                menu = false
-                                                vm.recover()
-                                            },
-                                        )
-                                    }
-                                }
-                            },
-                        )
-                    },
-                    bottomBar = {
-                        Column {
-                            Composer(state, vm, preferences) { filePicker.launch(arrayOf("*/*")) }
-                            bottomNavigation()
-                        }
-                    },
-                ) { padding ->
-                    val session = state.session
-                    if (session == null) {
-                        Box(
-                            Modifier.fillMaxSize().padding(padding),
-                            contentAlignment = androidx.compose.ui.Alignment.Center,
-                        ) {
-                            CircularProgressIndicator()
-                        }
-                    } else {
-                        key(session.threadId) {
-                            ConversationTimeline(
-                                session,
-                                state.error,
-                                preferences,
-                                Modifier.padding(padding),
-                                vm::recover,
-                                vm::editPlan,
-                                { id, action, plan, ids -> vm.review(id, action, plan, ids) },
-                                vm::submitPlanReviews,
-                                onDownload,
-                                onLink,
-                                vm.api,
-                                vm::editDraft,
-                                compactHeight,
+        val onSelect: (String?) -> Unit = vm::select
+        Scaffold(
+            modifier = Modifier.fillMaxSize(),
+            containerColor = MaterialTheme.colorScheme.surface,
+            contentWindowInsets = WindowInsets(0, 0, 0, 0),
+            topBar = {
+                TopAppBar(
+                    colors =
+                        TopAppBarDefaults.topAppBarColors(
+                            containerColor = MaterialTheme.colorScheme.surface
+                        ),
+                    title = {
+                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text(
+                                state.session?.title ?: "Agent Playground",
+                                style = MaterialTheme.typography.titleMedium,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.testTag("conversation-title"),
+                            )
+                            Text(
+                                "Agent Playground",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
-                    }
+                    },
+                    navigationIcon = {
+                        if (onOpenNavigation != null) {
+                            IconButton(onClick = onOpenNavigation) {
+                                Icon(Icons.Outlined.Menu, "Open conversation history")
+                            }
+                        }
+                    },
+                    actions = {
+                        IconButton(
+                            onClick = { onSelect(null) },
+                            enabled = !state.uploading,
+                        ) {
+                            Icon(Icons.Outlined.Add, "New conversation")
+                        }
+                        Box {
+                            IconButton(onClick = { menu = true }) {
+                                Icon(Icons.Outlined.MoreHoriz, "Conversation options")
+                            }
+                            DropdownMenu(menu, onDismissRequest = { menu = false }) {
+                                DropdownMenuItem(
+                                    text = { Text("Agent activity") },
+                                    leadingIcon = { Icon(Icons.Outlined.Timeline, null) },
+                                    onClick = {
+                                        menu = false
+                                        onActivity()
+                                    },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Refresh conversation") },
+                                    leadingIcon = { Icon(Icons.Outlined.Refresh, null) },
+                                    onClick = {
+                                        menu = false
+                                        vm.recover()
+                                    },
+                                )
+                            }
+                        }
+                    },
+                )
+            },
+            bottomBar = {
+                Composer(state, vm, preferences) { filePicker.launch(arrayOf("*/*")) }
+            },
+        ) { padding ->
+            val session = state.session
+            if (session == null) {
+                Box(
+                    Modifier.fillMaxSize().padding(padding),
+                    contentAlignment = androidx.compose.ui.Alignment.Center,
+                ) {
+                    CircularProgressIndicator()
+                }
+            } else {
+                key(session.threadId) {
+                    ConversationTimeline(
+                        session,
+                        state.error,
+                        preferences,
+                        Modifier.padding(padding),
+                        vm::recover,
+                        vm::editPlan,
+                        { id, action, plan, ids -> vm.review(id, action, plan, ids) },
+                        vm::submitPlanReviews,
+                        onDownload,
+                        onLink,
+                        vm.api,
+                        vm::editDraft,
+                        compactHeight,
+                    )
                 }
             }
-        }
-        if (expanded) {
-            body()
-        } else {
-            RevealNavigationDrawer(
-                drawerState = drawer,
-                drawerContent = {
-                    ConversationHistory(
-                        state,
-                        vm,
-                        onSelect,
-                        Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding(),
-                    )
-                },
-                content = body,
-            )
         }
     }
 }

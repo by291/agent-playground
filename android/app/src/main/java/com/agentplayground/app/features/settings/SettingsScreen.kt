@@ -24,6 +24,7 @@ fun SettingsScreen(
     onClear: (completed: () -> Unit) -> Unit,
     conversationBusy: Boolean,
     conversationError: String?,
+    onOpenNavigation: (() -> Unit)? = null,
 ) {
     val scope = rememberCoroutineScope()
     var server by rememberSaveable(preferences.serverUrl) { mutableStateOf(preferences.serverUrl) }
@@ -49,6 +50,13 @@ fun SettingsScreen(
         topBar = {
             TopAppBar(
                 title = { Text("Settings", style = MaterialTheme.typography.titleLarge) },
+                navigationIcon = {
+                    if (onOpenNavigation != null) {
+                        IconButton(onClick = onOpenNavigation) {
+                            Icon(Icons.Outlined.Menu, "Open navigation menu")
+                        }
+                    }
+                },
                 colors =
                     TopAppBarDefaults.topAppBarColors(
                         containerColor = MaterialTheme.colorScheme.background
@@ -59,6 +67,7 @@ fun SettingsScreen(
         Column(
             Modifier.fillMaxSize()
                 .padding(padding)
+                .navigationBarsPadding()
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 20.dp, vertical = 24.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
