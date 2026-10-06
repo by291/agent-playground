@@ -156,10 +156,42 @@ test.describe("normal motion", () => {
         content.evaluate((element) => element.getBoundingClientRect().height),
       )
       .toBeGreaterThan(20);
-    await toggle.evaluate((element) => (element as HTMLElement).click());
-    await expect(content).toHaveAttribute("inert");
-    await expect(content).toHaveAttribute("aria-hidden", "true");
-    await toggle.evaluate((element) => (element as HTMLElement).click());
+    // Observe and reverse the brief exit in the browser, before protocol calls
+    // and trace snapshots can outlast the animation on a busy CI runner.
+    const reversal = await toggle.evaluate(async (element) => {
+      const trigger = element as HTMLElement;
+      const disclosure = trigger.closest('[data-slot="collapsible"]');
+      const panel = disclosure?.querySelector<HTMLElement>(
+        '[data-slot="collapsible-content"]',
+      );
+
+      if (!panel) {
+        throw new Error("Disclosure panel is missing");
+      }
+
+      trigger.click();
+      await Promise.resolve();
+      const exiting = {
+        connected: panel.isConnected,
+        inert: panel.inert,
+        hidden: panel.getAttribute("aria-hidden"),
+      };
+
+      trigger.click();
+      await Promise.resolve();
+
+      return {
+        exiting,
+        retained:
+          disclosure?.querySelector('[data-slot="collapsible-content"]') ===
+          panel,
+      };
+    });
+
+    expect(reversal).toEqual({
+      exiting: { connected: true, inert: true, hidden: "true" },
+      retained: true,
+    });
     await expect(toggle).toHaveAttribute("aria-expanded", "true");
     await expect(content).not.toHaveAttribute("inert");
     await expect
@@ -182,19 +214,37 @@ test.describe("normal motion", () => {
         (element) => getComputedStyle(element).animationName,
       ),
     ).toBe("sheet-in");
-    await reader
+    const exit = await reader
       .getByRole("button", { name: "Close sources" })
-      .evaluate((element) => (element as HTMLElement).click());
+      .evaluate(async (element) => {
+        const sheet = element.closest<HTMLElement>(
+          '[data-slot="sheet-content"]',
+        );
+
+        if (!sheet) {
+          throw new Error("Source sheet is missing");
+        }
+
+        (element as HTMLElement).click();
+        await Promise.resolve();
+
+        return {
+          connected: sheet.isConnected,
+          state: sheet.getAttribute("data-state"),
+          pointerEvents: getComputedStyle(sheet).pointerEvents,
+          animation: getComputedStyle(sheet).animationName,
+        };
+      });
     const exiting = page.locator(
       '[data-slot="sheet-content"][data-state="closed"]',
     );
 
-    await expect(exiting).toHaveCount(1);
-    expect(
-      await exiting.evaluate(
-        (element) => getComputedStyle(element).pointerEvents,
-      ),
-    ).toBe("none");
+    expect(exit).toEqual({
+      connected: true,
+      state: "closed",
+      pointerEvents: "none",
+      animation: "sheet-out",
+    });
     await expect(exiting).toHaveCount(0);
     await expect(citation).toBeFocused();
   });
