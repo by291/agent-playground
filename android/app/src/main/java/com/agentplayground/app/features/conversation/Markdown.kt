@@ -6,6 +6,10 @@ import android.content.Context
 import android.graphics.Typeface
 import android.text.Spanned
 import android.text.method.LinkMovementMethod
+import android.text.style.CharacterStyle
+import android.text.style.ForegroundColorSpan
+import android.text.style.RelativeSizeSpan
+import android.text.style.TypefaceSpan
 import android.view.Gravity
 import android.widget.TextView
 import androidx.compose.foundation.BorderStroke
@@ -37,6 +41,8 @@ import com.agentplayground.core.ReplySources
 import io.noties.markwon.AbstractMarkwonPlugin
 import io.noties.markwon.Markwon
 import io.noties.markwon.MarkwonConfiguration
+import io.noties.markwon.MarkwonSpansFactory
+import io.noties.markwon.MarkwonVisitor
 import io.noties.markwon.core.MarkwonTheme
 import io.noties.markwon.ext.strikethrough.StrikethroughPlugin
 import io.noties.markwon.ext.tables.TablePlugin
@@ -89,6 +95,27 @@ fun Markdown(
                 }
                 .usePlugin(
                     object : AbstractMarkwonPlugin() {
+                        override fun configureVisitor(builder: MarkwonVisitor.Builder) {
+                            // Inline code stays in the prose flow without artificial NBSP padding.
+                            builder.on(Code::class.java) { visitor, code ->
+                                val start = visitor.length()
+
+                                visitor.builder().append(code.literal)
+                                visitor.setSpansForNodeOptional(code, start)
+                            }
+                        }
+
+                        override fun configureSpansFactory(builder: MarkwonSpansFactory.Builder) {
+                            // Native text spans avoid backgrounds stretching across line spacing.
+                            builder.setFactory(Code::class.java) { _, _ ->
+                                arrayOf<CharacterStyle>(
+                                    TypefaceSpan("monospace"),
+                                    RelativeSizeSpan(0.9f),
+                                    ForegroundColorSpan(colors.onSurfaceVariant.toArgb()),
+                                )
+                            }
+                        }
+
                         override fun configureTheme(builder: MarkwonTheme.Builder) {
                             builder
                                 .linkColor(colors.primary.toArgb())
@@ -97,11 +124,8 @@ fun Markdown(
                                 .blockQuoteColor(colors.primary.copy(alpha = 0.55f).toArgb())
                                 .bulletWidth(with(density) { 4.dp.roundToPx() })
                                 .listItemColor(colors.onSurfaceVariant.toArgb())
-                                .codeTextColor(colors.onSurface.toArgb())
-                                .codeBackgroundColor(colors.surfaceContainer.toArgb())
                                 .codeBlockTextColor(colors.onSurface.toArgb())
                                 .codeBlockBackgroundColor(colors.surfaceContainerLow.toArgb())
-                                .codeTextSize(codeSize)
                                 .codeBlockTextSize(codeSize)
                                 .headingTextSizeMultipliers(
                                     floatArrayOf(1.5f, 1.3f, 1.15f, 1f, 1f, 1f)
