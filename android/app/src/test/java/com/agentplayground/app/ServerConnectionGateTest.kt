@@ -1,8 +1,10 @@
 package com.agentplayground.app
 
+import androidx.activity.ComponentActivity
 import androidx.compose.material3.Text
 import androidx.compose.ui.test.*
-import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
+import androidx.lifecycle.Lifecycle
 import com.agentplayground.app.data.AppPreferences
 import com.agentplayground.app.design.PlaygroundTheme
 import com.agentplayground.app.network.ServerNetworkAccess
@@ -20,7 +22,7 @@ import org.robolectric.annotation.GraphicsMode
 @Config(sdk = [35], application = PlaygroundApplication::class, qualifiers = "w360dp-h740dp-xxhdpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class ServerConnectionGateTest {
-    @get:Rule val compose = createComposeRule()
+    @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
 
     @Test
     fun `first launch waits for permission before creating the connected workspace`() {
@@ -70,6 +72,27 @@ class ServerConnectionGateTest {
         compose.onNodeWithText("Connect and save").assertIsEnabled()
         compose.onNodeWithText("Open app permissions").assertIsDisplayed()
         compose.runOnIdle { assertEquals(2, requests) }
+    }
+
+    @Test
+    fun `returning to the app after permission revocation gates the workspace again`() {
+        var granted = true
+        val access =
+            ServerNetworkAccess(
+                sdkInt = 37,
+                isGranted = { granted },
+                requestPermission = { error("Resume checks do not launch permission dialogs") },
+            )
+
+        fixture(access)
+
+        compose.onNodeWithText("Connected workspace").assertIsDisplayed()
+        compose.activityRule.scenario.moveToState(Lifecycle.State.CREATED)
+        granted = false
+        compose.activityRule.scenario.moveToState(Lifecycle.State.RESUMED)
+
+        compose.onNodeWithText("Connected workspace").assertDoesNotExist()
+        compose.onNodeWithText("Open app permissions").assertIsDisplayed()
     }
 
     private fun fixture(access: ServerNetworkAccess) {

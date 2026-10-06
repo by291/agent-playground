@@ -10,7 +10,7 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 
 class ConversationViewModel(
-    val api: PlaygroundApi,
+    private val api: PlaygroundApi,
     private val journal: PreferenceStore.ConversationJournal,
     private val files: DocumentAccess,
 ) : ViewModel() {
@@ -19,13 +19,26 @@ class ConversationViewModel(
     private var selectionJob: Job? = null
     private var draftSaveJob: Job? = null
     private var visible = false
-    private var historyJob: Job? = null
-    private var historyRefreshRequested = false
     private var metadataJob: Job? = null
     private val mutable = MutableStateFlow(ConversationUiState())
     val state = mutable.asStateFlow()
 
+    private val history = ConversationHistoryRepository(viewModelScope, api::conversations)
+
     init {
+        viewModelScope.launch {
+            history.state.collect { snapshot ->
+                mutable.update {
+                    it.copy(
+                        history = snapshot.conversations,
+                        nextCursor = snapshot.nextCursor,
+                        historyLoading = snapshot.loading,
+                        historyError = snapshot.error,
+                    )
+                }
+            }
+        }
+
         selectionJob = viewModelScope.launch {
             try {
                 selectSaved(journal.read() ?: SavedConversation(UUID.randomUUID().toString()))
@@ -132,6 +145,8 @@ class ConversationViewModel(
 
     private fun updateDraft(text: String, external: Boolean) {
         session?.editDraft(text)
+
+        // Only external replacements reset the text field; ordinary edits retain IME composition.
         mutable.update {
             it.copy(
                 session = session?.state?.value ?: it.session,
@@ -195,24 +210,13 @@ class ConversationViewModel(
         viewModelScope.launch {
             try {
                 val text = current.state.value.draft
+                // Selected files retain their IDs after failure, so retries reuse server resources.
                 val uploaded =
                     state.attachments.map { file ->
                         api.uploadFile(current.threadId, file.id, file.name, files.read(file))
                     }
 
-                val content =
-                    if (uploaded.isEmpty()) {
-                        text
-                    } else {
-                        val references =
-                            uploaded.joinToString("\n") {
-                                "${protocolJson.encodeToString(kotlinx.serialization.serializer<String>(), it.name)} — File ID: ${it.id}"
-                            }
-
-                        "$text\n\nUploaded files:\n$references"
-                    }
-
-                current.send(content)
+                current.send(attachmentMessage(text, uploaded))
 
                 if (session === current && current.state.value.draft.isEmpty()) {
                     mutable.update { it.copy(attachments = emptyList()) }
@@ -281,88 +285,11 @@ class ConversationViewModel(
     }
 
     fun refreshHistory() {
-        if (historyJob?.isActive == true) {
-            historyRefreshRequested = true
-            return
-        }
-
-        historyJob = viewModelScope.launch {
-            mutable.update { it.copy(historyLoading = true) }
-
-            try {
-                // Re-fetch every loaded page to preserve the head/tail boundary after updates.
-                val pages = mutableListOf<ConversationSummary>()
-                var cursor: String? = null
-                val desired = mutable.value.history.size.coerceAtLeast(30)
-
-                do {
-                    val page = api.conversations(cursor)
-                    pages += page.conversations
-                    cursor = page.nextCursor
-                } while (cursor != null && pages.size < desired)
-
-                mutable.update {
-                    it.copy(
-                        history = pages.distinctBy { row -> row.threadId },
-                        nextCursor = cursor,
-                        historyError = null,
-                    )
-                }
-            } catch (error: Exception) {
-                if (error is CancellationException) {
-                    throw error
-                }
-
-                mutable.update { it.copy(historyError = error.message) }
-            } finally {
-                mutable.update { it.copy(historyLoading = false) }
-                historyJob = null
-
-                if (historyRefreshRequested) {
-                    historyRefreshRequested = false
-                    refreshHistory()
-                }
-            }
-        }
+        history.refresh()
     }
 
     fun loadMore() {
-        val cursor = mutable.value.nextCursor ?: return
-
-        if (historyJob?.isActive == true) {
-            return
-        }
-
-        historyJob = viewModelScope.launch {
-            mutable.update { it.copy(historyLoading = true) }
-
-            try {
-                val page = api.conversations(cursor)
-
-                mutable.update {
-                    it.copy(
-                        history =
-                            (it.history + page.conversations).distinctBy { row -> row.threadId },
-                        nextCursor = page.nextCursor,
-                        historyError = null,
-                    )
-                }
-            } catch (error: Exception) {
-                if (error is CancellationException) {
-                    throw error
-                }
-
-                mutable.update { it.copy(historyError = error.message) }
-            } finally {
-                mutable.update { it.copy(historyLoading = false) }
-                historyJob = null
-
-                if (historyRefreshRequested) {
-                    historyRefreshRequested = false
-                    refreshHistory()
-                }
-            }
-        }
+        history.loadMore()
     }
 
     fun rename(thread: String, title: String, completed: () -> Unit) {
@@ -447,6 +374,10 @@ class ConversationViewModel(
         viewModelScope.launch { action { files.save(api, download, uri) } }
     }
 
+    fun fileDownload(file: SkillFile): Download = Download(api.filePath(file), file.name)
+
+    fun documentDownload(id: String, name: String): Download = Download(api.documentPath(id), name)
+
     private suspend fun action(block: suspend () -> Unit) {
         mutable.update { it.copy(error = null) }
 
@@ -462,9 +393,23 @@ class ConversationViewModel(
     }
 
     override fun onCleared() {
+        history.close()
         session?.close()
         api.close()
     }
+}
+
+private fun attachmentMessage(text: String, files: List<SkillFile>): String {
+    if (files.isEmpty()) {
+        return text
+    }
+
+    val references =
+        files.joinToString("\n") {
+            "${protocolJson.encodeToString(kotlinx.serialization.serializer<String>(), it.name)} — File ID: ${it.id}"
+        }
+
+    return "$text\n\nUploaded files:\n$references"
 }
 
 data class ConversationUiState(

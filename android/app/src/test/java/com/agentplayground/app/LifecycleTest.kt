@@ -36,7 +36,12 @@ class LifecycleTest {
         restored.owner("https://other.example/")
         assertTrue(child.released)
 
+        val replacement =
+            ViewModelProvider(restored.owner("https://other.example/"))[ResourceModel::class.java]
+
         controller.pause().stop().destroy()
+
+        assertTrue(replacement.released)
     }
 
     @Test
@@ -48,6 +53,19 @@ class LifecycleTest {
             val saved = with(scope) { save(pending) }!!
 
             assertEquals(pending, restore(saved))
+        }
+    }
+
+    @Test
+    fun `workspace destinations survive saved state serialization`() {
+        val scope = androidx.compose.runtime.saveable.SaverScope { true }
+
+        with(WorkspaceDestination.saver) {
+            WorkspaceDestination.entries.forEach { destination ->
+                val saved = with(scope) { save(destination) }!!
+
+                assertEquals(destination, restore(saved))
+            }
         }
     }
 

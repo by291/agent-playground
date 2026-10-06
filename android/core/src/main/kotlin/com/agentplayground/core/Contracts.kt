@@ -4,8 +4,6 @@ import com.agui.core.types.Interrupt
 import com.agui.core.types.Message
 import com.agui.core.types.RunAgentInput
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.JsonElement
-import kotlinx.serialization.json.JsonObject
 
 @Serializable
 data class ConversationSummary(
@@ -49,60 +47,6 @@ data class ContextUsage(
     val compactions: Int,
     val lastCompaction: Map<String, Int>? = null,
     val revision: Int,
-)
-
-@Serializable
-data class ExternalTask(
-    val taskId: String,
-    val workflowCallId: String,
-    val label: String,
-    val revision: Int,
-    val status: String,
-    val stage: String,
-    val message: String,
-    val progress: Double? = null,
-    val error: String? = null,
-    val history: List<JsonObject>,
-    val continuationStatus: String? = null,
-)
-
-@Serializable
-data class WorkflowOutput(
-    val id: String,
-    val outputSeq: Int,
-    val messages: JsonElement,
-    val toolCallId: String? = null,
-    val workflow: WorkflowMetadata? = null,
-)
-
-@Serializable
-data class WorkflowMetadata(
-    val reply: WorkflowReply? = null,
-    val presentation: WorkflowPresentation? = null,
-)
-
-@Serializable data class WorkflowReply(val id: String, val content: String)
-
-@Serializable
-data class WorkflowPresentation(
-    val surfaceId: String,
-    val groupId: String,
-    val anchorMessageId: String? = null,
-)
-
-@Serializable
-data class SkillFile(val id: String, val threadId: String, val name: String, val size: Long)
-
-@Serializable
-data class KnowledgeDocument(
-    val id: String,
-    val name: String,
-    val size: Long,
-    val status: String,
-    val error: String? = null,
-    val chunkCount: Int,
-    val createdAt: String,
-    val updatedAt: String,
 )
 
 @Serializable data class AgentInfo(val model: String)

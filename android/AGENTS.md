@@ -3,6 +3,9 @@
 - Keep the existing server as the owner of agent execution, context, persistence and external-task continuation.
 - `core/` is JVM-only: application contracts, official AG-UI types, HTTP/SSE, submission/recovery and output ordering.
 - `app/` owns Android lifecycle, DataStore, ContentResolver, Material 3 and feature UI. ViewModels orchestrate repositories; Composables render state and dispatch actions.
+- Keep conversation run state owned by `ConversationSession`. Event reducers, review policies and timeline model builders are pure transformations; they do not launch jobs or write journals. History loading owns its request coordination, while the conversation ViewModel owns selection and journal mutations.
+- Keep network transactions and preference writes outside rendering functions. Update preferences atomically against their latest stored value, changing only the requested fields. Permission launchers and system file pickers stay at the Android UI boundary.
+- Keep API clients private to their resource owners. Renderers receive download descriptors or callbacks instead of transport clients. Use AndroidX ViewModel factories and lifecycle effects for standard creation and visibility handling.
 - Keep A2UI library details inside `features/workflow/`. Use the official renderer and protocol types; custom components must match the existing workflow catalog.
 - Maintain explicit resource ownership. Release jobs and API clients when their owner is disposed; preserve original admission identities before network requests.
 - Store settings and journals by normalized server URL. Never copy backend model/storage credentials into the app.

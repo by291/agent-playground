@@ -67,22 +67,31 @@ Knowledge groups upload guidance and document status, with save/reindex/delete i
 
 ```text
 app (Android)
-  MainActivity / application composition and resource ownership
+  MainActivity            System bars, theme and the Android entry point
+  PlaygroundApp           Connection gating and settings entry
+  ServerGraph             Activity-retained, server-scoped ViewModels/resources
+  PlaygroundWorkspace     Typed destinations, saved screens and drawer/sidebar layout
+  WorkspaceLifecycle      AndroidX lifecycle effects for visible observation
   data/        DataStore preferences and per-server conversation journal
   files/       ContentResolver document access and bounded reads
   network/     Android local-network permission and connection gating
   design/      Material 3 theme and shared UI
   features/
-    conversation/  ViewModel, history, timeline, composer, messages/reviews
+    conversation/  Session coordination, history repository, pure timeline model and UI
     knowledge/     ViewModel, document operations and status polling
-    settings/      Connection and user preferences
+    settings/      Connection ViewModel, permission bridge and user preferences
     workflow/      AndroidX A2UI catalog and composition-owned renderer
         ↓
 core (JVM)
-  Contracts.kt            Application REST/persistence contracts
+  Contracts.kt / *Contracts.kt  Application REST/persistence contracts by responsibility
   PlaygroundApi.kt        OkHttp REST and library SSE transport
   ConversationSession.kt  Run lifecycle and StateFlow, independent of Android UI
-  Submission.kt           Admission input, review response and file validation
+  ConversationEvents.kt   Pure event projection and application payload decoding
+  ConversationState.kt    Conversation state and send/review eligibility
+  ReviewPolicy.kt         Pure single/batch review validation and selection
+  Review.kt               Review payload adaptation and response contracts
+  Submission.kt           Admission input and pending-message restoration
+  FileValidation.kt       Shared file boundaries
   Recovery.kt             Pending identity and checkpoint reconciliation
   OutputBuffer.kt         Sequenced envelope deduplication/gap detection
         ↓
@@ -90,6 +99,10 @@ Existing TypeScript HTTP/AG-UI server → Aegra → Python agent
 ```
 
 Activity-retained ViewModels own API clients and session jobs, preserving attachments and transfers through configuration recreation. Pending save targets use saved state. Server changes dispose the previous ViewModel graph. Conversation observation is attached while chat or activity is started; knowledge polls only while visible and indexing is pending. Renderer actors run in composition-owned coroutines. The core module uses official AG-UI protocol types; application REST types correspond to `shared/` and the web snapshot contract.
+
+`ConversationSession` owns per-thread run-state transitions and draft/pending persistence. Its event projection and review policies are pure transformations, leaving admission, recovery and ordered output delivery in the session. The history repository separately coordinates pagination and coalesced refreshes; the conversation ViewModel owns session selection and journal selection/removal. The pure timeline model resolves current cards, original-tool history and visible reviews before Compose renders them. Message/source renderers receive download callbacks rather than resource-owning API clients.
+
+`SettingsViewModel` coordinates connection checks and preference writes; the screen owns Android permission launchers and displays state. Leaving the settings screen cancels its connection check; the server-address draft remains in saved state. Preference updates transform the latest DataStore record atomically and change only their requested fields, so a delayed connection check preserves concurrent theme and keyboard changes. Standard ViewModel factories and visible observation use AndroidX factory/lifecycle APIs. Connection clients are closed by their transaction, and server-scoped model clients are closed when their retained graph is released.
 
 Each thread's draft/pending input is stored separately under its normalized server URL. A request is saved before POST, including the original run and message IDs. An unobserved admission or server `prepared` admission is retried with exactly the saved payload; dispatched/running/unknown submissions are watched until a canonical checkpoint confirms them. Local streaming messages are protected from snapshots fetched before newer stream events and from older unfinished checkpoints. Admission remains locked through persistence and stream settlement. Plan drafts and decisions are session-owned; edits invalidate a prior decision and all plans are revalidated before batching. Workflow output envelopes are applied in contiguous sequence order, detect conflicting duplicates and wait for missing predecessors. The official A2UI processor handles protocol validation, component registry and dynamic binding.
 

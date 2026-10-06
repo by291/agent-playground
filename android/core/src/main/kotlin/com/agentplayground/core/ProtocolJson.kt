@@ -55,3 +55,5 @@ private object ReasoningMessageAdapter : KSerializer<Message> {
         encoder.encodeSerializableValue(AssistantMessage.serializer(), value as AssistantMessage)
     }
 }
+
+fun JsonObject.string(key: String): String? = (get(key) as? JsonPrimitive)?.contentOrNull

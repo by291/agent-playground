@@ -15,11 +15,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.createSavedStateHandle
+import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
 import com.agentplayground.app.data.*
 import com.agentplayground.app.design.*
 import com.agentplayground.app.network.ServerNetworkAccess
-import com.agentplayground.core.*
-import kotlinx.coroutines.*
+import kotlinx.coroutines.CancellationException
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -35,25 +39,58 @@ internal fun SettingsScreen(
     onConnected: (String) -> Unit = {},
 ) {
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    var server by rememberSaveable(preferences.serverUrl) { mutableStateOf(preferences.serverUrl) }
-    var pending by remember { mutableStateOf(false) }
-    var error by remember { mutableStateOf<String?>(null) }
-    var status by remember { mutableStateOf<String?>(null) }
-    var clearing by remember { mutableStateOf(false) }
-    var permissionDenied by remember { mutableStateOf(localNetworkBlocked) }
-
-    fun update(value: AppPreferences) {
-        scope.launch {
-            try {
-                store.update(value)
-            } catch (cause: Exception) {
-                if (cause is CancellationException) {
-                    throw cause
+    val model: SettingsViewModel =
+        viewModel(
+            factory =
+                remember(store) {
+                    viewModelFactory {
+                        initializer {
+                            SettingsViewModel(
+                                store,
+                                createSavedStateHandle(),
+                                preferences.serverUrl,
+                            )
+                        }
+                    }
                 }
+        )
+    val connection by model.state.collectAsStateWithLifecycle()
+    val connected by rememberUpdatedState(onConnected)
+    var clearing by rememberSaveable { mutableStateOf(false) }
 
-                error = cause.message ?: "Settings could not be saved."
+    LaunchedEffect(model, preferences.serverUrl) { model.savedServerChanged(preferences.serverUrl) }
+
+    DisposableEffect(model) {
+        // Leaving settings cancels its connection transaction before another screen can start work.
+        onDispose { model.cancelConnection() }
+    }
+
+    LaunchedEffect(model, localNetworkBlocked) {
+        if (localNetworkBlocked) {
+            model.showNetworkBlocked()
+        }
+    }
+
+    // Permission launchers belong to the UI; connection checking and persistence belong to its
+    // model.
+    LaunchedEffect(model, networkAccess, connection.permissionRequest) {
+        val serverUrl = connection.permissionRequest ?: return@LaunchedEffect
+
+        try {
+            model.networkAccessResult(serverUrl, networkAccess.request(serverUrl))
+        } catch (cause: Exception) {
+            if (cause is CancellationException) {
+                throw cause
             }
+
+            model.networkAccessFailed(serverUrl, cause)
+        }
+    }
+
+    LaunchedEffect(model, connection.connectedServerUrl) {
+        connection.connectedServerUrl?.let {
+            connected(it)
+            model.connectedHandled(it)
         }
     }
 
@@ -105,65 +142,24 @@ internal fun SettingsScreen(
                     Icons.Outlined.Dns,
                 )
                 OutlinedTextField(
-                    server,
-                    {
-                        server = it
-                        status = null
-                        error = null
-                        permissionDenied = false
-                    },
+                    connection.server,
+                    model::editServer,
                     label = { Text("Backend URL") },
                     supportingText = {
                         Text("Use your server address. Emulator default: http://10.0.2.2:3000")
                     },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
-                    enabled = !pending,
+                    enabled = !connection.pending,
                 )
 
                 Button(
                     modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
                     shape = MaterialTheme.shapes.small,
-                    onClick = {
-                        pending = true
-                        error = null
-                        status = null
-
-                        scope.launch {
-                            var api: PlaygroundApi? = null
-
-                            try {
-                                val normalized = normalizeServerUrl(server)
-
-                                permissionDenied = !networkAccess.request(normalized)
-
-                                if (permissionDenied) {
-                                    return@launch
-                                }
-
-                                api = PlaygroundApi(normalized)
-                                require(api.health()) { "The server health check failed." }
-                                val info = api.info()
-
-                                store.update(preferences.copy(serverUrl = normalized))
-
-                                status = "Connected · ${info.model}"
-                                onConnected(normalized)
-                            } catch (cause: Exception) {
-                                if (cause is CancellationException) {
-                                    throw cause
-                                }
-
-                                error = cause.message ?: "Connection failed."
-                            } finally {
-                                api?.close()
-                                pending = false
-                            }
-                        }
-                    },
-                    enabled = !pending && !conversationBusy,
+                    onClick = model::connect,
+                    enabled = !connection.pending && !conversationBusy,
                 ) {
-                    ChangingContent(pending) { connecting ->
+                    ChangingContent(connection.pending) { connecting ->
                         Text(
                             if (connecting) {
                                 "Connecting…"
@@ -174,10 +170,12 @@ internal fun SettingsScreen(
                     }
                 }
 
-                RevealValue(status) { Text(it, color = MaterialTheme.colorScheme.primary) }
-                RevealValue(error) { ErrorNotice(it) }
+                RevealValue(connection.status) {
+                    Text(it, color = MaterialTheme.colorScheme.primary)
+                }
+                RevealValue(connection.error) { ErrorNotice(it) }
 
-                if (permissionDenied) {
+                if (connection.permissionDenied) {
                     ErrorNotice(
                         "Local network access is required to connect to this server. Allow Nearby devices in Android app permissions, then connect again."
                     )
@@ -207,7 +205,7 @@ internal fun SettingsScreen(
                     listOf("light", "dark", "system").forEach { theme ->
                         FilterChip(
                             selected = preferences.theme == theme,
-                            onClick = { update(preferences.copy(theme = theme)) },
+                            onClick = { model.updateTheme(theme) },
                             label = { Text(theme.replaceFirstChar { it.uppercase() }) },
                         )
                     }
@@ -228,7 +226,7 @@ internal fun SettingsScreen(
                     }
                     Switch(
                         checked = preferences.replyAnimation,
-                        onCheckedChange = { update(preferences.copy(replyAnimation = it)) },
+                        onCheckedChange = model::updateReplyAnimation,
                     )
                 }
             }
@@ -242,12 +240,12 @@ internal fun SettingsScreen(
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     FilterChip(
                         selected = preferences.sendShortcut == "enter",
-                        onClick = { update(preferences.copy(sendShortcut = "enter")) },
+                        onClick = { model.updateSendShortcut("enter") },
                         label = { Text("Enter to send") },
                     )
                     FilterChip(
                         selected = preferences.sendShortcut == "modifier-enter",
-                        onClick = { update(preferences.copy(sendShortcut = "modifier-enter")) },
+                        onClick = { model.updateSendShortcut("modifier-enter") },
                         label = { Text("Ctrl / Cmd + Enter") },
                     )
                 }
@@ -275,17 +273,7 @@ internal fun SettingsScreen(
                 }
             }
 
-            TextButton(
-                onClick = {
-                    update(
-                        preferences.copy(
-                            theme = "light",
-                            replyAnimation = true,
-                            sendShortcut = "enter",
-                        )
-                    )
-                }
-            ) {
+            TextButton(onClick = model::resetAppearanceAndKeyboard) {
                 Text("Reset appearance and keyboard")
             }
         }

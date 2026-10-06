@@ -1,6 +1,12 @@
 package com.agentplayground.core
 
-/** Admission ordering is application metadata around the official A2UI messages. */
+/**
+ * Admission ordering is application metadata around the official A2UI messages.
+ *
+ * Delivered entries remain indexed for this conversation's lifetime so snapshot/stream replays are
+ * idempotent and conflicting content is detected even behind the delivery cursor. A conflict
+ * remains terminal for this buffer; continuing delivery would hide an inconsistent output history.
+ */
 class OutputBuffer {
     private val bySequence = sortedMapOf<Int, WorkflowOutput>()
     private val byId = mutableMapOf<String, WorkflowOutput>()

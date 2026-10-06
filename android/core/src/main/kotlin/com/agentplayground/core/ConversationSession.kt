@@ -6,9 +6,13 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import kotlinx.serialization.json.*
 
-/** One instance owns one thread. Android lifecycle and navigation release its jobs. */
+/**
+ * One instance owns one thread. Android lifecycle and navigation release its jobs.
+ *
+ * Calls and collected events must share the scope's serialized owner context (Android uses Main).
+ * The mutexes serialize suspendable snapshot/journal work, not access from multiple dispatchers.
+ */
 class ConversationSession(
     private val api: ConversationApi,
     private val persistence: ConversationPersistence,
@@ -21,6 +25,7 @@ class ConversationSession(
 
     private var closed = false
     private var admitting = false
+    // A terminal event does not release admission until EOF and snapshot reconciliation finish.
     private var settling = false
     private var attached = true
     private var streamGeneration = 0
@@ -36,6 +41,7 @@ class ConversationSession(
     private val journalMutex = Mutex()
 
     private val outputBuffer = OutputBuffer()
+    // A snapshot may replace streamed messages only when no event arrived during its fetch.
     private var eventRevision = 0L
     private var activitySequence = 0L
     private var activityRunId: String? = null
@@ -171,39 +177,10 @@ class ConversationSession(
             return
         }
 
-        val review =
-            state.value.interrupts.find { it.id == interruptId }?.let(Review::from) ?: return
-        val entries =
-            if (review.kind == "experiment_plan_review") {
-                val draft =
-                    plan
-                        ?: state.value.planDrafts[interruptId]
-                        ?: PlanDraft(review.title, review.steps)
-                val response = review.respond(action, plan = draft, now = now()) ?: return
+        val resolution =
+            resolveReview(state.value, interruptId, action, plan, planInterruptIds, now()) ?: return
 
-                if (planInterruptIds != null && interruptId !in planInterruptIds) {
-                    return
-                }
-
-                if (pendingPlans(state.value, planInterruptIds).size > 1) {
-                    mutableState.update {
-                        it.copy(
-                            planDecisions = it.planDecisions + (interruptId to action),
-                            planDrafts = it.planDrafts + (interruptId to draft),
-                            error = null,
-                        )
-                    }
-
-                    return
-                }
-
-                listOf(response)
-            } else {
-                listOf(review.respond(action, now = now()) ?: return)
-            }
-        val runId = UUID.randomUUID().toString()
-
-        submit(PendingSubmission(newSubmission(threadId, runId, resume = entries), runId), null)
+        applyReviewResolution(resolution)
     }
 
     suspend fun submitPlanReviews(planInterruptIds: Set<String>? = null) {
@@ -211,62 +188,51 @@ class ConversationSession(
             return
         }
 
-        val current = state.value
-        val plans = pendingPlans(current, planInterruptIds)
+        val resolution = resolvePlanReviews(state.value, planInterruptIds, now()) ?: return
 
-        if (
-            plans.size < 2 ||
-                plans.any { it.kind != "experiment_plan_review" } ||
-                plans.any { it.interrupt.id !in current.planDecisions }
-        ) {
-            return
-        }
+        applyReviewResolution(resolution)
+    }
 
-        val responses = plans.map { review ->
-            review.respond(
-                current.planDecisions.getValue(review.interrupt.id),
-                plan = current.planDrafts[review.interrupt.id],
-                now = now(),
-            )
-        }
+    private suspend fun applyReviewResolution(resolution: ReviewResolution) {
+        when (resolution) {
+            is ReviewResolution.SelectPlan ->
+                mutableState.update {
+                    it.copy(
+                        planDecisions =
+                            it.planDecisions + (resolution.interruptId to resolution.action),
+                        planDrafts = it.planDrafts + (resolution.interruptId to resolution.draft),
+                        error = null,
+                    )
+                }
 
-        if (responses.any { it == null }) {
-            mutableState.update {
-                it.copy(
-                    planDecisions = emptyMap(),
-                    error = "A plan is no longer valid. Refresh before deciding again.",
+            is ReviewResolution.Submit -> {
+                val runId = UUID.randomUUID().toString()
+
+                submit(
+                    PendingSubmission(
+                        newSubmission(threadId, runId, resume = resolution.entries),
+                        runId,
+                    ),
+                    null,
                 )
             }
 
-            return
+            ReviewResolution.InvalidPlans ->
+                mutableState.update {
+                    it.copy(
+                        planDecisions = emptyMap(),
+                        error = "A plan is no longer valid. Refresh before deciding again.",
+                    )
+                }
         }
-
-        val runId = UUID.randomUUID().toString()
-        submit(
-            PendingSubmission(
-                newSubmission(threadId, runId, resume = responses.filterNotNull()),
-                runId,
-            ),
-            null,
-        )
     }
-
-    // The renderer can replace old plan editors with durable completed workflow outputs.
-    // Only explicitly presented plan IDs participate; each response is revalidated here.
-    private fun pendingPlans(current: SessionState, planInterruptIds: Set<String>?): List<Review> =
-        current.interrupts.mapNotNull(Review::from).filter {
-            it.kind == "experiment_plan_review" &&
-                (planInterruptIds == null || it.interrupt.id in planInterruptIds)
-        }
 
     fun editPlan(interruptId: String, draft: PlanDraft) {
         if (closed || admitting || settling || state.value.busy || state.value.loading) {
             return
         }
 
-        val review = state.value.interrupts.find { it.id == interruptId }?.let(Review::from)
-
-        if (review?.kind != "experiment_plan_review" || review.expiredAt(now())) {
+        if (!canEditPlanReview(state.value, interruptId, now())) {
             return
         }
 
@@ -349,6 +315,8 @@ class ConversationSession(
                     )
                 }
             } finally {
+                // Detaching invalidates this generation. An old stream cannot settle or unlock
+                // a replacement stream, including when its snapshot finishes after reattachment.
                 if (generation == streamGeneration && currentCoroutineContext().isActive) {
                     mutableState.update { it.copy(streaming = false) }
                     refresh(settlement = true)
@@ -396,6 +364,8 @@ class ConversationSession(
                 val snapshot = api.snapshot(threadId)
                 val locallyActive = admitting || (settling && !settlement)
                 val result = reconcile(snapshot, pending, state.value.messages)
+                // Only a quiet owner can accept canonical messages/interrupts. Settlement is the
+                // stream owner's final reconciliation; polling cannot release that ownership.
                 val useCanonicalMessages = !locallyActive && before == eventRevision
 
                 ingestOutputs(snapshot?.outputs.orEmpty())
@@ -421,10 +391,7 @@ class ConversationSession(
                 }
 
                 mutableState.update { current ->
-                    val usage =
-                        snapshot?.contextUsage?.takeIf {
-                            it.revision >= (current.contextUsage?.revision ?: 0)
-                        } ?: current.contextUsage
+                    val usage = latestContextUsage(current.contextUsage, snapshot?.contextUsage)
 
                     current.copy(
                         title = snapshot?.title ?: current.title,
@@ -486,170 +453,18 @@ class ConversationSession(
         val activityEntry =
             ActivityEntry(++activitySequence, now().toEpochMilli(), activityRunId, event)
 
-        mutableState.update { current ->
-            when (event) {
-                is RunStartedEvent ->
-                    current.copy(streaming = true, busy = true, executionStatus = "running")
+        mutableState.update { reduceConversationEvent(it, event) }
 
-                is ReasoningMessageStartEvent ->
-                    current.copy(
-                        messages = upsert(current.messages, reasoningMessage(event.messageId))
-                    )
+        try {
+            val output = decodeWorkflowOutput(event)
 
-                is ReasoningMessageContentEvent ->
-                    current.copy(
-                        messages =
-                            current.messages.map {
-                                if (isReasoning(it) && it.id == event.messageId) {
-                                    (it as AssistantMessage).copy(
-                                        content = it.content.orEmpty() + event.delta
-                                    )
-                                } else {
-                                    it
-                                }
-                            }
-                    )
-
-                is TextMessageStartEvent ->
-                    current.copy(
-                        messages = upsert(current.messages, AssistantMessage(event.messageId, ""))
-                    )
-
-                is TextMessageContentEvent ->
-                    current.copy(
-                        messages =
-                            current.messages.map {
-                                if (it is AssistantMessage && it.id == event.messageId) {
-                                    it.copy(content = it.content.orEmpty() + event.delta)
-                                } else {
-                                    it
-                                }
-                            }
-                    )
-
-                is MessagesSnapshotEvent -> current.copy(messages = event.messages)
-
-                is ToolCallStartEvent -> {
-                    val owner = event.parentMessageId ?: "tool-${event.toolCallId}"
-                    val previous =
-                        current.messages.find { it.id == owner } as? AssistantMessage
-                            ?: AssistantMessage(owner)
-                    val calls =
-                        previous.toolCalls.orEmpty().filterNot { it.id == event.toolCallId } +
-                            ToolCall(event.toolCallId, FunctionCall(event.toolCallName, ""))
-
-                    current.copy(
-                        messages = upsert(current.messages, previous.copy(toolCalls = calls))
-                    )
-                }
-
-                is ToolCallArgsEvent ->
-                    current.copy(
-                        messages =
-                            current.messages.map { message ->
-                                if (message is AssistantMessage) {
-                                    message.copy(
-                                        toolCalls =
-                                            message.toolCalls?.map { call ->
-                                                if (call.id == event.toolCallId) {
-                                                    call.copy(
-                                                        function =
-                                                            call.function.copy(
-                                                                arguments =
-                                                                    call.function.arguments +
-                                                                        event.delta
-                                                            )
-                                                    )
-                                                } else {
-                                                    call
-                                                }
-                                            }
-                                    )
-                                } else {
-                                    message
-                                }
-                            }
-                    )
-
-                is ToolCallResultEvent ->
-                    current.copy(
-                        messages =
-                            upsert(
-                                current.messages,
-                                ToolMessage(event.messageId, event.content, event.toolCallId),
-                            )
-                    )
-
-                is StateSnapshotEvent -> {
-                    val snapshot = event.snapshot as? JsonObject
-                    val usage =
-                        snapshot?.get("context_usage")?.let {
-                            runCatching { protocolJson.decodeFromJsonElement<ContextUsage>(it) }
-                                .getOrNull()
-                        }
-                    val errors =
-                        (snapshot?.get("toolErrors") as? JsonArray).orEmpty().mapNotNull {
-                            runCatching { protocolJson.decodeFromJsonElement<Message>(it) }
-                                .getOrNull()
-                        }
-
-                    current.copy(
-                        contextUsage =
-                            usage?.takeIf { it.revision >= (current.contextUsage?.revision ?: 0) }
-                                ?: current.contextUsage,
-                        messages =
-                            errors.fold(current.messages) { messages, error ->
-                                upsert(messages, error)
-                            },
-                    )
-                }
-
-                is RunFinishedEvent ->
-                    current.copy(
-                        streaming = false,
-                        executionStatus =
-                            if (event.outcome is RunFinishedInterruptOutcome) {
-                                "interrupted"
-                            } else {
-                                "completed"
-                            },
-                        interrupts =
-                            (event.outcome as? RunFinishedInterruptOutcome)?.interrupts.orEmpty(),
-                    )
-
-                is RunErrorEvent ->
-                    current.copy(
-                        streaming = false,
-                        executionStatus = "failed",
-                        error = event.message,
-                    )
-
-                else -> current
+            if (output != null) {
+                ingestOutputs(listOf(output))
             }
-        }
-
-        if (event is CustomEvent && event.name == "a2ui") {
-            try {
-                ingestOutputs(listOf(protocolJson.decodeFromJsonElement(event.value)))
-            } catch (error: Exception) {
-                mutableState.update {
-                    it.copy(outputError = "Invalid workflow output: ${error.message}")
-                }
+        } catch (error: Exception) {
+            mutableState.update {
+                it.copy(outputError = "Invalid workflow output: ${error.message}")
             }
-        }
-
-        if (event is CustomEvent && event.name == "context_usage") {
-            runCatching { protocolJson.decodeFromJsonElement<ContextUsage>(event.value) }
-                .getOrNull()
-                ?.let { usage ->
-                    mutableState.update {
-                        if (usage.revision >= (it.contextUsage?.revision ?: 0)) {
-                            it.copy(contextUsage = usage)
-                        } else {
-                            it
-                        }
-                    }
-                }
         }
 
         mutableState.update {
@@ -681,6 +496,9 @@ class ConversationSession(
 
     private suspend fun updateSaved(transform: (SavedConversation) -> SavedConversation) =
         journalMutex.withLock {
+            // Transform the latest journal under the lock, then persist before publishing memory.
+            // A delayed draft save must neither erase a pending identity nor acknowledge a failed
+            // write.
             val next = transform(saved)
 
             persistence.write(next)
@@ -692,82 +510,4 @@ class ConversationSession(
         stopObserving()
         lifetime.cancel()
     }
-}
-
-data class SessionState(
-    val threadId: String,
-    val title: String = "New conversation",
-    val draft: String = "",
-    val messages: List<Message> = emptyList(),
-    val interrupts: List<Interrupt> = emptyList(),
-    val outputs: List<WorkflowOutput> = emptyList(),
-    val externalTasks: List<ExternalTask> = emptyList(),
-    val runs: List<RunRecord> = emptyList(),
-    val contextUsage: ContextUsage? = null,
-    val activity: List<ActivityEntry> = emptyList(),
-    val receivedEventCount: Long = 0,
-    val busy: Boolean = false,
-    val loading: Boolean = false,
-    val streaming: Boolean = false,
-    val executionStatus: String? = null,
-    val error: String? = null,
-    val outputError: String? = null,
-    val missingOutputSequence: Int? = null,
-    val planDecisions: Map<String, String> = emptyMap(),
-    val planDrafts: Map<String, PlanDraft> = emptyMap(),
-) {
-    val canSend
-        get() =
-            !busy &&
-                !loading &&
-                (interrupts.isEmpty() ||
-                    interrupts.singleOrNull()?.let(Review::from)?.let {
-                        it.kind == "workflow_review" && !it.expired
-                    } == true)
-}
-
-private fun upsert(messages: List<Message>, message: Message): List<Message> =
-    if (messages.any { it.id == message.id }) {
-        messages.map {
-            if (it.id == message.id) {
-                message
-            } else {
-                it
-            }
-        }
-    } else {
-        messages + message
-    }
-
-private fun addOutputReplies(
-    messages: List<Message>,
-    outputs: List<WorkflowOutput>,
-): List<Message> =
-    outputs.fold(messages) { result, output ->
-        val reply = output.workflow?.reply
-
-        if (reply != null && result.none { it.id == reply.id }) {
-            result + AssistantMessage(reply.id, reply.content)
-        } else {
-            result
-        }
-    }
-
-private fun pendingMessage(pending: PendingSubmission?): UserMessage? {
-    val normal = pending?.input?.messages?.filterIsInstance<UserMessage>()?.lastOrNull()
-
-    if (normal != null) {
-        return normal
-    }
-
-    val feedback =
-        pending
-            ?.input
-            ?.resume
-            ?.mapNotNull { it.payload as? JsonObject }
-            ?.find { it.string("action") == "message" } ?: return null
-    val id = feedback.string("messageId") ?: return null
-    val content = feedback.string("message") ?: return null
-
-    return UserMessage(id, content)
 }

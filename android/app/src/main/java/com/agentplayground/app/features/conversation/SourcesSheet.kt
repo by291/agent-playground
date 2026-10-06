@@ -28,7 +28,7 @@ import com.agentplayground.core.*
 fun SourcesSheet(
     sources: ReplySources,
     selectedChunkId: String?,
-    api: PlaygroundApi,
+    documentDownload: (String, String) -> Download,
     onDownload: (Download) -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -170,7 +170,7 @@ fun SourcesSheet(
                 }
                 OutlinedButton(
                     onClick = {
-                        onDownload(Download(api.documentPath(source.documentId), source.name))
+                        onDownload(documentDownload(source.documentId, source.name))
                     },
                     modifier = Modifier.fillMaxWidth(),
                 ) {

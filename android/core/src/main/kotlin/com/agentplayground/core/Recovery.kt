@@ -26,6 +26,8 @@ fun recoveryDecision(
     }
 
     if (run.status == "prepared") {
+        // Prepared reserves admission but still needs dispatch. Retry the persisted input with its
+        // original run/message identities; creating a new request would admit a second run.
         return RecoveryDecision.Retry
     }
 

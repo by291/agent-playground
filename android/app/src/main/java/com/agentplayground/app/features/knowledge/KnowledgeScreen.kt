@@ -244,11 +244,7 @@ fun KnowledgeScreen(vm: KnowledgeViewModel, onOpenNavigation: (() -> Unit)? = nu
                                     enabled = !state.busy && document.status != "uploading",
                                     onClick = {
                                         menu = false
-                                        download =
-                                            Download(
-                                                vm.api.documentPath(document.id),
-                                                document.name,
-                                            )
+                                        download = vm.documentDownload(document)
 
                                         saver.launch(document.name)
                                     },

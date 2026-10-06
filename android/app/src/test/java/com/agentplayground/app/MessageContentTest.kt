@@ -361,35 +361,35 @@ class MessageContentTest {
                 )
                 .single()
 
-        PlaygroundApi("http://localhost/").use { api ->
-            compose.setContent {
-                PlaygroundTheme("light") { AssistantTurnContent(turn, api, {}, {}) }
+        compose.setContent {
+            PlaygroundTheme("light") {
+                AssistantTurnContent(turn, ::fileDownload, ::documentDownload, {}, {})
             }
-
-            compose.onNodeWithText("2 tools").assertIsDisplayed()
-            compose.onNodeWithTag("tool-group-two").assertDoesNotExist()
-            compose.onNodeWithTag("tool-step-one").assertDoesNotExist()
-            compose.onNodeWithTag("tool-step-two").assertDoesNotExist()
-
-            compose.onNodeWithTag("tool-group-one").performClick()
-            compose.onNodeWithTag("tool-step-one").assertIsDisplayed()
-            compose.onNodeWithTag("tool-step-two").assertIsDisplayed()
-            compose.onNodeWithText("Parameters").assertDoesNotExist()
-
-            compose.onNodeWithTag("tool-step-one").performClick()
-            compose.onAllNodesWithText("Parameters").assertCountEquals(1)
-            compose.onNodeWithText("2").assertIsDisplayed()
-            compose.onNodeWithText("4").assertDoesNotExist()
-
-            compose.onNodeWithTag("tool-step-two").performClick()
-            compose.onAllNodesWithText("Parameters").assertCountEquals(2)
-            compose.onNodeWithText("4").assertIsDisplayed()
-
-            compose.onNodeWithTag("tool-step-one").performClick()
-            compose.onAllNodesWithText("Parameters").assertCountEquals(1)
-            compose.onNodeWithText("2").assertDoesNotExist()
-            compose.onNodeWithText("4").assertIsDisplayed()
         }
+
+        compose.onNodeWithText("2 tools").assertIsDisplayed()
+        compose.onNodeWithTag("tool-group-two").assertDoesNotExist()
+        compose.onNodeWithTag("tool-step-one").assertDoesNotExist()
+        compose.onNodeWithTag("tool-step-two").assertDoesNotExist()
+
+        compose.onNodeWithTag("tool-group-one").performClick()
+        compose.onNodeWithTag("tool-step-one").assertIsDisplayed()
+        compose.onNodeWithTag("tool-step-two").assertIsDisplayed()
+        compose.onNodeWithText("Parameters").assertDoesNotExist()
+
+        compose.onNodeWithTag("tool-step-one").performClick()
+        compose.onAllNodesWithText("Parameters").assertCountEquals(1)
+        compose.onNodeWithText("2").assertIsDisplayed()
+        compose.onNodeWithText("4").assertDoesNotExist()
+
+        compose.onNodeWithTag("tool-step-two").performClick()
+        compose.onAllNodesWithText("Parameters").assertCountEquals(2)
+        compose.onNodeWithText("4").assertIsDisplayed()
+
+        compose.onNodeWithTag("tool-step-one").performClick()
+        compose.onAllNodesWithText("Parameters").assertCountEquals(1)
+        compose.onNodeWithText("2").assertDoesNotExist()
+        compose.onNodeWithText("4").assertIsDisplayed()
     }
 
     @Test
@@ -475,29 +475,29 @@ class MessageContentTest {
 
         var current by mutableStateOf(turn("live"))
 
-        PlaygroundApi("http://localhost/").use { api ->
-            compose.setContent {
-                PlaygroundTheme("light") { AssistantTurnContent(current, api, {}, {}) }
+        compose.setContent {
+            PlaygroundTheme("light") {
+                AssistantTurnContent(current, ::fileDownload, ::documentDownload, {}, {})
             }
-
-            compose.onNodeWithTag("reasoning-content-user").assertExists()
-
-            compose.onNodeWithText("Thinking").performClick()
-            compose.onNodeWithTag("reasoning-content-user").assertDoesNotExist()
-
-            compose.runOnIdle { current = turn("restored") }
-            compose.onNodeWithTag("reasoning-content-user").assertDoesNotExist()
-
-            compose.onNodeWithText("Thinking").performClick()
-            compose.runOnIdle { current = turn("restored", "```kotlin") }
-            compose.onNodeWithTag("reasoning-content-user").assertExists()
-
-            compose.runOnIdle { current = turn("restored", "```kotlin\nval answer = 42") }
-            compose.onNodeWithTag("reasoning-content-user").assertDoesNotExist()
-
-            compose.onNodeWithText("Reasoning").performClick()
-            compose.onNodeWithTag("reasoning-content-user").assertExists()
         }
+
+        compose.onNodeWithTag("reasoning-content-user").assertExists()
+
+        compose.onNodeWithText("Thinking").performClick()
+        compose.onNodeWithTag("reasoning-content-user").assertDoesNotExist()
+
+        compose.runOnIdle { current = turn("restored") }
+        compose.onNodeWithTag("reasoning-content-user").assertDoesNotExist()
+
+        compose.onNodeWithText("Thinking").performClick()
+        compose.runOnIdle { current = turn("restored", "```kotlin") }
+        compose.onNodeWithTag("reasoning-content-user").assertExists()
+
+        compose.runOnIdle { current = turn("restored", "```kotlin\nval answer = 42") }
+        compose.onNodeWithTag("reasoning-content-user").assertDoesNotExist()
+
+        compose.onNodeWithText("Reasoning").performClick()
+        compose.onNodeWithTag("reasoning-content-user").assertExists()
     }
 
     @Test
@@ -525,36 +525,32 @@ class MessageContentTest {
                 ),
             )
 
-        PlaygroundApi("http://localhost/").use { api ->
-            compose.setContent {
-                PlaygroundTheme("light") { SourcesSheet(sources, "one", api, {}, {}) }
-            }
-
-            compose.onNodeWithTag("source-excerpt").performTouchInput { swipeUp() }
-            compose.waitForIdle()
-
-            val before =
-                compose
-                    .onNodeWithTag("source-excerpt")
-                    .fetchSemanticsNode()
-                    .config[
-                        androidx.compose.ui.semantics.SemanticsProperties.VerticalScrollAxisRange]
-                    .value()
-
-            assertTrue(before > 0f)
-
-            compose.onNodeWithText("Next excerpt").performClick()
-
-            val after =
-                compose
-                    .onNodeWithTag("source-excerpt")
-                    .fetchSemanticsNode()
-                    .config[
-                        androidx.compose.ui.semantics.SemanticsProperties.VerticalScrollAxisRange]
-                    .value()
-
-            assertEquals(0f, after)
+        compose.setContent {
+            PlaygroundTheme("light") { SourcesSheet(sources, "one", ::documentDownload, {}, {}) }
         }
+
+        compose.onNodeWithTag("source-excerpt").performTouchInput { swipeUp() }
+        compose.waitForIdle()
+
+        val before =
+            compose
+                .onNodeWithTag("source-excerpt")
+                .fetchSemanticsNode()
+                .config[androidx.compose.ui.semantics.SemanticsProperties.VerticalScrollAxisRange]
+                .value()
+
+        assertTrue(before > 0f)
+
+        compose.onNodeWithText("Next excerpt").performClick()
+
+        val after =
+            compose
+                .onNodeWithTag("source-excerpt")
+                .fetchSemanticsNode()
+                .config[androidx.compose.ui.semantics.SemanticsProperties.VerticalScrollAxisRange]
+                .value()
+
+        assertEquals(0f, after)
     }
 
     @Test
@@ -570,26 +566,29 @@ class MessageContentTest {
             )
         var download: Download? = null
 
-        PlaygroundApi("http://localhost/").use { api ->
-            compose.setContent {
-                PlaygroundTheme("light") {
-                    SourcesSheet(sources, "one", api, { download = it }, {})
-                }
+        compose.setContent {
+            PlaygroundTheme("light") {
+                SourcesSheet(sources, "one", ::documentDownload, { download = it }, {})
             }
-
-            compose.onNodeWithText("First passage").assertIsDisplayed()
-
-            compose.onNodeWithText("Next excerpt").performClick()
-            compose.onNodeWithText("Second passage").assertIsDisplayed()
-
-            compose.onNodeWithText("Document: Guide A").performClick()
-            compose.onNodeWithText("Guide B").performClick()
-            compose.onNodeWithText("Other document").assertIsDisplayed()
-
-            compose.onNodeWithText("Save original").performClick()
-
-            assertEquals("Guide B", download?.name)
-            assertEquals(api.documentPath("doc-b"), download?.url)
         }
+
+        compose.onNodeWithText("First passage").assertIsDisplayed()
+
+        compose.onNodeWithText("Next excerpt").performClick()
+        compose.onNodeWithText("Second passage").assertIsDisplayed()
+
+        compose.onNodeWithText("Document: Guide A").performClick()
+        compose.onNodeWithText("Guide B").performClick()
+        compose.onNodeWithText("Other document").assertIsDisplayed()
+
+        compose.onNodeWithText("Save original").performClick()
+
+        assertEquals("Guide B", download?.name)
+        assertEquals("/original/doc-b", download?.url)
     }
+
+    private fun fileDownload(file: SkillFile): Download = Download("/file/${file.id}", file.name)
+
+    private fun documentDownload(id: String, name: String): Download =
+        Download("/original/$id", name)
 }

@@ -22,16 +22,36 @@ class PreferenceStore(context: Context) {
     private val store = context.applicationContext.playgroundStore
     private val preferencesKey = stringPreferencesKey("preferences")
 
-    val preferences: Flow<AppPreferences> =
-        store.data.map {
-            it[preferencesKey]?.let { value ->
-                runCatching { protocolJson.decodeFromString<AppPreferences>(value) }.getOrNull()
-            } ?: AppPreferences()
-        }
+    val preferences: Flow<AppPreferences> = store.data.map { decodePreferences(it[preferencesKey]) }
 
-    suspend fun update(value: AppPreferences) {
-        store.edit { it[preferencesKey] = protocolJson.encodeToString(value) }
+    suspend fun updateServerUrl(value: String) = update {
+        it.copy(serverUrl = normalizeServerUrl(value))
     }
+
+    suspend fun updateTheme(value: String) = update { it.copy(theme = value) }
+
+    suspend fun updateReplyAnimation(value: Boolean) = update { it.copy(replyAnimation = value) }
+
+    suspend fun updateSendShortcut(value: String) = update { it.copy(sendShortcut = value) }
+
+    suspend fun resetAppearanceAndKeyboard() = update {
+        it.copy(theme = "light", replyAnimation = true, sendShortcut = "enter")
+    }
+
+    private suspend fun update(transform: (AppPreferences) -> AppPreferences) {
+        // Read inside the transaction so delayed connection checks cannot overwrite newer edits.
+        store.edit { values ->
+            val latest = decodePreferences(values[preferencesKey])
+            val updated = transform(latest)
+
+            values[preferencesKey] = protocolJson.encodeToString(updated)
+        }
+    }
+
+    private fun decodePreferences(value: String?): AppPreferences =
+        value?.let {
+            runCatching { protocolJson.decodeFromString<AppPreferences>(it) }.getOrNull()
+        } ?: AppPreferences()
 
     fun conversations(server: String): ConversationJournal =
         ConversationJournal(normalizeServerUrl(server))

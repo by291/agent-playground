@@ -11,7 +11,8 @@ import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
-class KnowledgeViewModel(val api: PlaygroundApi, private val files: DocumentAccess) : ViewModel() {
+class KnowledgeViewModel(private val api: PlaygroundApi, private val files: DocumentAccess) :
+    ViewModel() {
     private val mutable = MutableStateFlow(KnowledgeUiState())
     val state = mutable.asStateFlow()
 
@@ -138,6 +139,8 @@ class KnowledgeViewModel(val api: PlaygroundApi, private val files: DocumentAcce
                             "Choose the original ${resumed.name} (${resumed.size} bytes) to resume this upload."
                         }
 
+                        // Resume the admitted document; a new ID would create a second server
+                        // resource.
                         file.copy(id = resumed.id)
                     } else {
                         file
@@ -180,6 +183,9 @@ class KnowledgeViewModel(val api: PlaygroundApi, private val files: DocumentAcce
                 }
 
                 mutable.update { it.copy(error = error.message ?: "Document upload failed.") }
+
+                // A failed response can follow successful server admission. Reconcile it while
+                // retaining the original error and file ID for an explicit retry.
                 refresh(preserveError = true)
 
                 throw error
@@ -216,6 +222,9 @@ class KnowledgeViewModel(val api: PlaygroundApi, private val files: DocumentAcce
             files.save(api, download, uri)
         }
     }
+
+    fun documentDownload(document: KnowledgeDocument): Download =
+        Download(api.documentPath(document.id), document.name)
 
     private fun mutate(label: String, refreshOnFailure: Boolean = true, block: suspend () -> Unit) {
         if (mutable.value.busy) {

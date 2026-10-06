@@ -17,8 +17,6 @@ import com.agui.core.types.*
 @Composable
 fun MessageContent(
     message: Message,
-    api: PlaygroundApi,
-    onDownload: (Download) -> Unit,
     onLink: (String) -> Unit,
 ) {
     when (message) {
@@ -66,7 +64,8 @@ fun MessageContent(
 @Composable
 fun AssistantTurnContent(
     turn: ConversationTurn,
-    api: PlaygroundApi,
+    fileDownload: (SkillFile) -> Download,
+    documentDownload: (String, String) -> Download,
     onDownload: (Download) -> Unit,
     onLink: (String) -> Unit,
     processDetails: @Composable () -> Unit = {},
@@ -109,7 +108,7 @@ fun AssistantTurnContent(
             }
         }
         skillFiles(turn.toolCalls).forEach { file ->
-            OutlinedButton(onClick = { onDownload(Download(api.filePath(file), file.name)) }) {
+            OutlinedButton(onClick = { onDownload(fileDownload(file)) }) {
                 Text("Save ${file.name} · ${displayFileSize(file.size)}")
             }
         }
@@ -155,7 +154,9 @@ fun AssistantTurnContent(
     }
 
     if (showSources) {
-        SourcesSheet(turn.sources, selectedSource, api, onDownload) { showSources = false }
+        SourcesSheet(turn.sources, selectedSource, documentDownload, onDownload) {
+            showSources = false
+        }
     }
 
     if (sourceUnavailable) {
