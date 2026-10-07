@@ -9,6 +9,7 @@ export interface SavedConversation {
   threadId: string;
   pending?: PendingSubmission;
   empty?: boolean;
+  modelId?: string;
 }
 
 export interface ConversationReference extends Omit<
@@ -59,6 +60,9 @@ export function loadConversation(threadId?: string): ConversationReference {
         return {
           threadId: saved.threadId,
           ...(pending.success ? { pending: pending.data } : {}),
+          ...("modelId" in saved && typeof saved.modelId === "string"
+            ? { modelId: saved.modelId }
+            : {}),
           ...("empty" in saved && typeof saved.empty === "boolean"
             ? { empty: saved.empty }
             : {}),
@@ -74,8 +78,8 @@ export function loadConversation(threadId?: string): ConversationReference {
 
 export function saveConversation(conversation: SavedConversation): void {
   // The fresh marker applies only to this page; reloads must check server history.
-  const { threadId, pending, empty } = conversation;
-  const value = JSON.stringify({ threadId, pending, empty });
+  const { threadId, pending, empty, modelId } = conversation;
+  const value = JSON.stringify({ threadId, pending, empty, modelId });
   const previous = loadConversation();
 
   try {

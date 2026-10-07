@@ -1,6 +1,8 @@
 import { z } from "zod";
 import { spawn, type ChildProcess } from "node:child_process";
 import { join } from "node:path";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import {
   knowledgeCitationUrl,
@@ -26,6 +28,7 @@ import { conversations, conversationMessages } from "../../db/schema";
 import { scrollHistory } from "./scroll-history";
 
 let knowledgeProcess: ChildProcess | undefined;
+let configurationDirectory: string | undefined;
 let stopKnowledgeCleanup: (() => Promise<void>) | undefined;
 let storage: StartedTestContainer | undefined;
 let redis: StartedTestContainer | undefined;
@@ -96,7 +99,16 @@ function stop() {
               (await import("../../storage/object-store")).closeObjectStore();
               await storage?.stop();
             } finally {
-              await redis?.stop();
+              try {
+                await redis?.stop();
+              } finally {
+                if (configurationDirectory) {
+                  await rm(configurationDirectory, {
+                    recursive: true,
+                    force: true,
+                  });
+                }
+              }
             }
           }
         }
@@ -400,6 +412,59 @@ async function start() {
       ? join(root, ".venv", "Scripts", "python.exe")
       : join(root, ".venv", "bin", "python");
 
+  configurationDirectory = await mkdtemp(
+    join(tmpdir(), "agent-configuration-"),
+  );
+  const modelConfigPath = join(configurationDirectory, "models.yaml");
+  const agentConfigPath = join(configurationDirectory, "agent.yaml");
+
+  // JSON is valid YAML; this owned fixture never reads a developer's model keys.
+  await writeFile(
+    modelConfigPath,
+    JSON.stringify({
+      chat: {
+        default: "deepseek",
+        models: {
+          deepseek: {
+            provider: "deepseek",
+            label: "DeepSeek",
+            model: "deepseek-flash",
+            api_key: "",
+            max_output_tokens: 4096,
+            thinking: "disabled",
+          },
+        },
+      },
+      embedding: {
+        base_url: "http://127.0.0.1:4300/__e2e",
+        model: "controlled-model",
+        api_key: "controlled-key",
+        tokens_per_minute: 1000000,
+        requests_per_minute: 24000,
+        max_retries: 1,
+        index_timeout: 600,
+      },
+    }),
+    { mode: 0o600 },
+  );
+  await writeFile(
+    agentConfigPath,
+    JSON.stringify({
+      database: {
+        aegra_url: postgres.getConnectionUri(),
+        application_url: postgres.getConnectionUri(),
+      },
+      redis: {
+        url: `redis://${redis.getHost()}:${redis.getMappedPort(6379)}/0`,
+      },
+      workflow: {
+        app_api_url: "http://127.0.0.1:4300",
+        api_token: process.env.WORKFLOW_API_TOKEN ?? "",
+      },
+    }),
+    { mode: 0o600 },
+  );
+
   knowledgeProcess = spawn(
     python,
     [
@@ -424,17 +489,8 @@ async function start() {
       env: {
         ...process.env,
         PYTHONPATH: root,
-        APP_API_URL: "http://127.0.0.1:4300",
-        REDIS_URL: `redis://${redis.getHost()}:${redis.getMappedPort(6379)}/0`,
-        RAG_EMBEDDING_BASE_URL: "http://127.0.0.1:4300/__e2e",
-        RAG_EMBEDDING_MODEL: "controlled-model",
-        RAG_EMBEDDING_API_KEY: "controlled-key",
-        RAG_EMBEDDING_DIMENSIONS: "",
-        RAG_EMBEDDING_TPM: "1000000",
-        RAG_EMBEDDING_RPM: "24000",
-        RAG_EMBEDDING_MAX_RETRIES: "1",
-        RAG_INDEX_TIMEOUT_SECONDS: "600",
-        RAG_EMBEDDING_QUOTA_SCOPE: "",
+        MODELS_CONFIG_PATH: modelConfigPath,
+        AGENT_CONFIG_PATH: agentConfigPath,
       },
     },
   );

@@ -1,12 +1,11 @@
 """Submit reports and reconcile ambiguous responses using the original task ID."""
 
-import os
 from typing import Literal
 
 import httpx
 from pydantic import ValidationError
 
-from agent_playground.config import app_api_url
+from agent_playground.config import app_api_url, load_agent_config
 from agent_playground.services.report.models import (
     ReportEvent,
     ReportJobStatus,
@@ -16,9 +15,7 @@ from agent_playground.services.report.models import (
 
 class HttpReportApi:
     def __init__(self):
-        self.base_url = os.getenv(
-            "REPORT_DEMO_API_URL", "http://127.0.0.1:2026/report-demo"
-        ).rstrip("/")
+        self.base_url = load_agent_config().services.report_demo_url
 
     async def submit(
         self,

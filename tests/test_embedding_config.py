@@ -3,23 +3,22 @@
 import pytest
 
 from agent_playground.knowledge.store import EmbeddingConfig
+from tests.model_config import ModelConfigFile
 
 
 @pytest.mark.parametrize(
     "variable,value",
     [
-        ("RAG_EMBEDDING_TPM", "0"),
-        ("RAG_EMBEDDING_RPM", "-1"),
-        ("RAG_EMBEDDING_MAX_RETRIES", "-1"),
-        ("RAG_INDEX_TIMEOUT_SECONDS", "nan"),
+        ("tokens_per_minute", 0),
+        ("requests_per_minute", -1),
+        ("max_retries", -1),
+        ("index_timeout", "nan"),
     ],
 )
 def test_invalid_embedding_limits_fail_before_sending(
-    variable: str, value: str, monkeypatch: pytest.MonkeyPatch
+    variable: str, value: str | int, model_config: ModelConfigFile
 ):
-    monkeypatch.setenv("RAG_EMBEDDING_MODEL", "test-model")
-    monkeypatch.setenv("RAG_EMBEDDING_API_KEY", "test-key")
-    monkeypatch.setenv(variable, value)
+    model_config.embedding(model="test-model", api_key="test-key", **{variable: value})
 
     with pytest.raises(ValueError, match=variable):
-        EmbeddingConfig.from_env()
+        EmbeddingConfig.from_config()

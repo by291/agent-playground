@@ -8,6 +8,7 @@ import pytest
 from agent_playground.db.connection import app_engine, prepare_app_store
 from agent_playground.http import app
 from agent_playground.services.sql.validation import check_sql
+from tests.agent_config import update_agent_config
 
 
 def test_sql_checks_reject_wildcards_unknown_columns_and_mutations():
@@ -78,7 +79,7 @@ def test_http_generation_validation_and_idempotent_receipts(
             )
             assert conflict.status_code == 409
 
-    monkeypatch.setenv("APP_DATABASE_URL", postgres_database_url)
+    update_agent_config("database", application_url=postgres_database_url)
     app_engine.cache_clear()
     prepare_app_store()
 

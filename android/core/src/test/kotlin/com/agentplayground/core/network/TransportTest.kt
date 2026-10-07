@@ -12,6 +12,35 @@ import org.junit.Test
 
 class TransportTest {
     @Test
+    fun `model changes use the conversation endpoint and preserve conflicts`() = runBlocking {
+        MockWebServer().use { server ->
+            server.enqueue(MockResponse().setBody("""{"threadId":"thread","modelId":"qwen"}"""))
+            server.enqueue(
+                MockResponse()
+                    .setResponseCode(409)
+                    .setBody("""{"error":"Complete the current run before changing models."}""")
+            )
+            PlaygroundApi(server.url("/workspace/").toString()).use { api ->
+                val selected = api.selectModel("thread", "qwen")
+                val request = server.takeRequest(2, TimeUnit.SECONDS)!!
+
+                assertEquals("qwen", selected.modelId)
+                assertEquals("PATCH", request.method)
+                assertEquals("/workspace/conversations/thread/model", request.path)
+                assertEquals("""{"modelId":"qwen"}""", request.body.readUtf8())
+
+                try {
+                    api.selectModel("thread", "deepseek")
+                    fail("Expected model conflict")
+                } catch (error: ApiException) {
+                    assertEquals(409, error.status)
+                    assertEquals("Complete the current run before changing models.", error.message)
+                }
+            }
+        }
+    }
+
+    @Test
     fun `file previews preserve server prefixes and choose thumbnail or full resources`() =
         runBlocking {
             MockWebServer().use { server ->

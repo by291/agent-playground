@@ -4,7 +4,7 @@
 
 ## Drafts and the first submission
 
-`/` opens a blank draft. Opening the page, clicking **New conversation**, typing or selecting attachments does not allocate a thread ID or fetch a snapshot. The first valid submission allocates the ID and promotes the URL to `/c/<threadId>` without replacing the mounted session. Selected attachments upload at that point, before sending the message. Upload retries reuse the same thread and file IDs; later turns use the same conversation ID.
+`/` opens a blank draft. Opening the page, clicking **New conversation**, typing or selecting attachments does not allocate a thread ID or fetch a snapshot. The first valid submission allocates the ID and promotes the URL to `/c/<threadId>` without replacing the mounted session. Choosing a different model also allocates the local ID and promotes the URL so the choice survives reload; the conversation enters history only after admission. Selected attachments upload at submission, before sending the message. Upload retries reuse the same thread and file IDs; later turns use the same conversation ID.
 
 A conversation appears in history only after its first message is admitted. Its initial title comes from that message, limited to 100 Unicode characters. Welcome suggestions prepare an editable draft; only sending starts the run. Switching conversations resets unsent drafts and unsubmitted review edits.
 
@@ -30,14 +30,15 @@ Mouse-wheel zoom uses small continuous steps and frame-based interpolation aroun
 
 The sidebar orders conversations by their latest submission, loads older pages at the end and provides explicit retry, rename and delete actions. Opening a saved row restores its transcript, tool process, outputs, pending review and external tasks. Copy `/c/<threadId>` to open a saved discussion in another browser with access to the same server. Refresh, Back and Forward restore the addressed conversation; `/` continues to mean a blank draft. A production web server must serve the SPA entry point for `/c/*`.
 
-| Endpoint                              | Behavior                                                                                                                                     |
-| ------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET /conversations`                  | Pages of 30 summaries with an opaque `nextCursor`; pass it as `cursor`.                                                                      |
-| `GET /conversations/:threadId`        | Persisted messages, runs, outputs, interrupts, external tasks and context usage.                                                             |
-| `GET /conversations/:threadId/events` | Snapshot invalidation SSE; reconnect emits `ready` and refetches saved state.                                                                |
-| `PATCH /conversations/:threadId`      | Rename with `{ "title": "..." }`.                                                                                                            |
-| `DELETE /conversations/:threadId`     | Soft-delete a conversation; return `204` or reject active/unconfirmed runs with `409`.                                                       |
-| `DELETE /conversations`               | Atomically clear the selected saved history, including unloaded pages; any active/unconfirmed latest run rejects the whole batch with `409`. |
+| Endpoint                               | Behavior                                                                                                                                     |
+| -------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /conversations`                   | Pages of 30 summaries with an opaque `nextCursor`; pass it as `cursor`.                                                                      |
+| `GET /conversations/:threadId`         | Persisted messages, runs, outputs, interrupts, external tasks and context usage.                                                             |
+| `GET /conversations/:threadId/events`  | Snapshot invalidation SSE; reconnect emits `ready` and refetches saved state.                                                                |
+| `PATCH /conversations/:threadId`       | Rename with `{ "title": "..." }`.                                                                                                            |
+| `PATCH /conversations/:threadId/model` | Save an available conversation model; active, paused and external work reject switching.                                                     |
+| `DELETE /conversations/:threadId`      | Soft-delete a conversation; return `204` or reject active/unconfirmed runs with `409`.                                                       |
+| `DELETE /conversations`                | Atomically clear the selected saved history, including unloaded pages; any active/unconfirmed latest run rejects the whole batch with `409`. |
 
 Deletion hides the conversation and prevents new submissions/recovery, retaining run/message records, workflow outputs and Aegra checkpoints. Completed, failed and paused conversations may be deleted. Concurrently created conversations outside a clear-history batch are unaffected. Conversation-file access is revoked immediately and S3 cleanup follows separately; shared knowledge documents are not deleted. These operations affect the current shared workspace, without per-user ownership.
 
@@ -81,9 +82,9 @@ Settings also provides **Clear all conversations**, which opens a separate confi
 
 ### Compaction
 
-The agent uses LangChain's `SummarizationMiddleware` to compact older messages automatically when estimated context usage reaches 80% of the model window. It retains recent messages within a 20% token budget, preserving tool-call/result pairs, and replaces earlier history with a summary saved in the checkpoint. The summarization call receives all selected history without the middleware's default 4,000-token truncation. It uses the same DeepSeek model with thinking disabled and a 4,096-token output limit; summary failures propagate without replacing history. A single oversized turn that still exceeds the window after compaction is rejected rather than silently truncated.
+The agent uses LangChain's `SummarizationMiddleware` to compact older messages automatically when estimated context usage reaches 80% of the model window. It retains recent messages within a 20% token budget, preserving tool-call/result pairs, and replaces earlier history with a summary saved in the checkpoint. The summarization call receives all selected history without the middleware's default 4,000-token truncation. It uses the selected conversation model with thinking disabled and a 4,096-token output limit; summary failures propagate without replacing history. A single oversized turn that still exceeds the window after compaction is rejected rather than silently truncated.
 
-The root `.env` can override `CONTEXT_COMPACT_RATIO` (greater than `0.2` and less than `1`) and `CONTEXT_WINDOW_TOKENS`. The window otherwise comes from LangChain's model profile; a custom DeepSeek model without a profile requires an explicit window. Changing these settings requires restarting the agent.
+The root `models.yaml` optionally configures `chat.compact_ratio` (default `0.8`, greater than `0.2` and less than `1`). Each entry under `chat.models` uses the same optional `thinking` level (`disabled`, `low`, `medium`, `high`) and input/output budget overrides. When omitted, thinking is disabled and budgets come from normalized model information. The effective input budget accounts for thinking mode, caps history at the provider input limit and reserves output within context capacity. Unknown models require complete library metadata or a verified registry entry; budget overrides cannot substitute for missing model capacities. Changing these settings requires restarting the agent. See [model selection](model-selection.md) for provider settings, Web and Android selectors and fixed-model recovery rules.
 
 ### Usage indicator
 

@@ -1,6 +1,7 @@
 package com.agentplayground.core.network
 
 import com.agentplayground.core.model.AgentInfo
+import com.agentplayground.core.model.ConversationModel
 import com.agentplayground.core.model.ConversationPage
 import com.agentplayground.core.model.ConversationSnapshot
 import com.agentplayground.core.model.KnowledgeDocument
@@ -36,6 +37,8 @@ class ApiException(val status: Int, message: String) : IOException(message)
 data class ServerEvent(val name: String?, val data: String)
 
 interface ConversationApi {
+    suspend fun selectModel(threadId: String, modelId: String): ConversationModel
+
     suspend fun snapshot(threadId: String): ConversationSnapshot?
 
     fun run(input: RunAgentInput): Flow<BaseEvent>
@@ -91,6 +94,24 @@ class PlaygroundApi(baseUrl: String) : ConversationApi, AutoCloseable {
                 decode<ConversationSnapshot>(it)
             }
         }
+    }
+
+    override suspend fun selectModel(threadId: String, modelId: String): ConversationModel {
+        val body = buildJsonObject { put("modelId", modelId) }.toString().toRequestBody(JSON)
+        val selected =
+            request(
+                    Request.Builder()
+                        .url(url("conversations", threadId, "model"))
+                        .patch(body)
+                        .build()
+                )
+                .use { decode<ConversationModel>(it) }
+
+        require(selected.threadId == threadId && selected.modelId == modelId) {
+            "Model selection returned an unexpected identity."
+        }
+
+        return selected
     }
 
     suspend fun rename(threadId: String, title: String): RenamedConversation {

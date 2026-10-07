@@ -6,6 +6,7 @@ export function runAgent(
   input: RunAgentInput,
   onRunCreated: (id: string) => void,
   onProducerSettled: () => Promise<void>,
+  modelId: string | null = null,
 ) {
   // Adapter state belongs to one request; the stateless SDK client can be shared.
   const agent = new ReviewLangGraphAgent(
@@ -22,7 +23,10 @@ export function runAgent(
   return agent.run({
     ...input,
     forwardedProps: {
-      config: { metadata: { agui_run_id: input.runId } },
+      config: {
+        ...(modelId ? { configurable: { model_id: modelId } } : {}),
+        metadata: { agui_run_id: input.runId },
+      },
       onDisconnect: "continue",
       onRunCreated: ({ run_id }: { run_id: string }) => onRunCreated(run_id),
     },

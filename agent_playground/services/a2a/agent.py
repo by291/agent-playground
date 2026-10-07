@@ -2,7 +2,6 @@
 
 import asyncio
 import logging
-import os
 import time
 from collections.abc import AsyncGenerator
 from contextlib import aclosing
@@ -14,9 +13,9 @@ from a2a.server.events.event_queue_v2 import EventQueue, EventQueueSource
 from a2a.server.tasks import TaskUpdater
 from a2a.types import Part, Role
 from langchain_core.messages import AIMessageChunk, HumanMessage, SystemMessage
-from langchain_deepseek import ChatDeepSeek
 
-from agent_playground.config import configured_model_name
+from agent_playground.config import load_agent_config, load_model_config
+from agent_playground.models import create_chat_model
 from agent_playground.services.a2a.protocol import AgentRole
 
 logger = logging.getLogger(__name__)
@@ -50,10 +49,10 @@ class DemoAgentExecutor(AgentExecutor):
             raise ValueError("A2A agent role must be planner or reviewer")
 
         self.role = role
-        self.mode = mode or os.getenv("A2A_DEMO_MODE", "model")
+        self.mode = mode or load_agent_config().a2a.mode
 
         if self.mode not in {"model", "scripted"}:
-            raise ValueError("A2A_DEMO_MODE must be model or scripted")
+            raise ValueError("Agent a2a.mode must be model or scripted")
 
         self.chunk_delay = chunk_delay
         self.active_task_ids: set[str] = set()
@@ -155,13 +154,12 @@ class DemoAgentExecutor(AgentExecutor):
 
             return
 
-        model = ChatDeepSeek(
-            model=configured_model_name(),
+        model = create_chat_model(
+            load_model_config().a2a_model,
             max_tokens=2200,
-            stream_usage=True,
             # The demo budgets visible answers; reasoning can otherwise consume
             # that budget before any artifact text is produced.
-            extra_body={"thinking": {"type": "disabled"}},
+            disable_thinking=True,
         )
         messages = [
             SystemMessage(content=SYSTEM_PROMPTS[self.role]),

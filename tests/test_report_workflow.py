@@ -12,6 +12,7 @@ from langgraph.types import Command, StateSnapshot
 
 from agent_playground.workflows.external import register_external_task
 from agent_playground.workflows.report.graph import ReportState, make_report_workflow
+from tests.agent_config import update_agent_config
 
 
 class ReportApiFixture:
@@ -102,9 +103,9 @@ def configure_report_api(monkeypatch: pytest.MonkeyPatch, outcome: str):
         return None
 
     monkeypatch.setattr(httpx, "AsyncClient", client_factory)
-    monkeypatch.setenv("WORKFLOW_API_TOKEN", "internal-token")
-    monkeypatch.setenv("APP_API_URL", "http://app")
-    monkeypatch.setenv("REPORT_DEMO_API_URL", "http://report/report-demo")
+    update_agent_config("workflow", api_token="internal-token")
+    update_agent_config("workflow", app_api_url="http://app")
+    update_agent_config("services", report_demo_url="http://report/report-demo")
     monkeypatch.setattr(
         "agent_playground.workflows.report.graph.publish_workflow_output", publish
     )

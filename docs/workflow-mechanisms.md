@@ -9,7 +9,7 @@
 | `run_experiment_workflow` | Send **"Create an experiment plan for testing an agent workflow."**                                      | Edit the plan and choose **Approve plan** or **Reject**; decide each parallel plan before **Continue workflow**.                |
 | `run_sql_workflow`        | Choose **Review SQL**, or send **"Use run_sql_workflow to calculate monthly revenue from paid orders."** | Request SQL changes/explanations in chat. **Accept and submit** requires a passing check; **Abandon** ends without submission.  |
 | `run_report_workflow`     | Choose **Generate report** and send; specify `outcome="failed"` to test failure.                         | About 12 seconds of simulated progress; background continuation completes without an open page, and reopening restores results. |
-| `run_a2a_workflow`        | Choose **Collaborate with agents** and send; use `require_input=True` for an additional-input example. | Planner, reviewer and revision output stream live; input/cancel and recovery are described in the [A2A guide](a2a-demo.md). |
+| `run_a2a_workflow`        | Choose **Collaborate with agents** and send; use `require_input=True` for an additional-input example.   | Planner, reviewer and revision output stream live; input/cancel and recovery are described in the [A2A guide](a2a-demo.md).     |
 
 Welcome actions prepare editable messages; sending starts execution. Experiment plans show the current card, retaining earlier steps in tool history. Review results replace the editor in the original reply and survive reload.
 
@@ -25,7 +25,7 @@ Queries exceeding the parser's nesting complexity return a failed check with an 
 
 The report API persists simulated jobs/callback offsets, progressing through queued, preparing, processing, finalizing and completed stages. Restart resumes delivery; `404` for a deleted task stops callbacks. These APIs demonstrate workflow mechanisms rather than production SQL execution or reporting.
 
-Root `SQL_DEMO_API_URL` and `REPORT_DEMO_API_URL` configure the demonstration APIs. `APP_API_URL` targets the TypeScript server; `WORKFLOW_API_TOKEN` must match `server/.env`. Defaults are in [development configuration](development.md#environment-ownership).
+`services.sql_demo_url` and `services.report_demo_url` in `agent.yaml` configure the demonstration APIs. `workflow.app_api_url` targets the TypeScript server, and `workflow.api_token` matches `WORKFLOW_API_TOKEN` in `server/.env`. Defaults are in [development configuration](development.md#configuration-ownership).
 
 ## Workflow execution
 

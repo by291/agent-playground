@@ -104,7 +104,7 @@ class EmbeddingService(Embeddings):
 
                 if cost > self.config.batch_token_budget:
                     raise ValueError(
-                        "A text fragment exceeds the per-second embedding budget; check RAG_EMBEDDING_TPM or shorten the text"
+                        "A text fragment exceeds the per-second embedding budget; check embedding.tokens_per_minute in models.yaml or shorten the text"
                     )
 
                 if batch and tokens + cost > self.config.batch_token_budget:

@@ -11,10 +11,14 @@ import {
   TooltipContent,
 } from "@/components/ui/tooltip";
 import { XIcon } from "@phosphor-icons/react/dist/csr/X";
+import { CaretDownIcon } from "@phosphor-icons/react/dist/csr/CaretDown";
 import { useQuery } from "@tanstack/react-query";
+import { useId, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { useConversation } from "../ConversationProvider";
 import { agentInfoQueryOptions } from "../api/agent-info";
+import { canSelectModel } from "../model/selectors";
 import type { ContextUsage } from "@shared/context-usage";
 
 const compactNumber = new Intl.NumberFormat("en-US", {
@@ -30,10 +34,24 @@ const categories = [
   { key: "summary", label: "Compacted summary", color: "bg-violet-500" },
 ] as const;
 
-export function ContextIndicator() {
+export function ContextIndicator({ disabled = false }: { disabled?: boolean }) {
+  const [open, setOpen] = useState(false);
+  const [selectionError, setSelectionError] = useState<string | null>(null);
+  const groupId = useId();
   const reportedUsage = useConversation((state) => state.contextUsage);
+  const modelId = useConversation((state) => state.modelId);
+  const selectModel = useConversation((state) => state.selectModel);
+  const selectable = useConversation(canSelectModel);
+  const modelSwitching = useConversation((state) => state.modelSwitching);
   const { data: agentInfo } = useQuery(agentInfoQueryOptions());
-  const model = agentInfo?.model ?? reportedUsage?.model ?? "Model";
+  const models = agentInfo?.models ?? [];
+  const hasCatalog = models.length > 0;
+  const effectiveModelId = modelId ?? agentInfo?.defaultModelId;
+  const selectedModel = agentInfo?.models?.find(
+    (option) => option.id === effectiveModelId,
+  );
+  const model =
+    selectedModel?.model ?? agentInfo?.model ?? reportedUsage?.model ?? "Model";
   const usage = reportedUsage?.model === model ? reportedUsage : null;
   const ratio = usage ? usage.usedTokens / usage.contextWindow : 0;
   const percentage = Math.round(ratio * 100);
@@ -44,9 +62,44 @@ export function ContextIndicator() {
   }
 
   const nearLimit = !!usage && usage.usedTokens >= usage.triggerTokens;
+  const action = hasCatalog ? "Choose model and show details" : "Show details";
+  const selectionDisabled = disabled || !selectable;
+  let selectionHelp = "Applies to the next message in this conversation.";
+
+  if (modelSwitching) {
+    selectionHelp = "Changing model…";
+  } else if (selectionDisabled) {
+    selectionHelp =
+      "Wait for conversation work to finish before changing models.";
+  }
+
+  async function changeModel(selection: string) {
+    if (selectionDisabled || selection === effectiveModelId) {
+      return;
+    }
+
+    setSelectionError(null);
+
+    try {
+      await selectModel(selection);
+      setOpen(false);
+    } catch (error) {
+      setSelectionError(
+        error instanceof Error
+          ? error.message
+          : "Model selection is unavailable",
+      );
+    }
+  }
 
   return (
-    <Popover>
+    <Popover
+      open={open}
+      onOpenChange={(value) => {
+        setOpen(value);
+        setSelectionError(null);
+      }}
+    >
       <Tooltip>
         <TooltipTrigger asChild>
           <PopoverTrigger asChild>
@@ -56,8 +109,8 @@ export function ContextIndicator() {
               className="workspace-toolbar-button h-10 min-w-0 shrink gap-2 px-2.5"
               aria-label={
                 usage
-                  ? `${model}. Estimated context usage ${label}. Show details`
-                  : `${model}. Show details`
+                  ? `${model}. Estimated context usage ${label}. ${action}`
+                  : `${model}. ${action}`
               }
             >
               <svg
@@ -90,6 +143,13 @@ export function ContextIndicator() {
               <span className="max-w-44 truncate text-xs font-medium">
                 {model}
               </span>
+              {hasCatalog && (
+                <CaretDownIcon
+                  size={12}
+                  className="shrink-0 text-muted"
+                  aria-hidden="true"
+                />
+              )}
             </Button>
           </PopoverTrigger>
         </TooltipTrigger>
@@ -107,7 +167,9 @@ export function ContextIndicator() {
         aria-label="Context usage details"
       >
         <div className="mb-4 flex items-center justify-between gap-3">
-          <h2 className="text-sm font-semibold">Context window</h2>
+          <h2 className="text-sm font-semibold">
+            {hasCatalog ? "Model" : "Context window"}
+          </h2>
           <PopoverClose asChild>
             <Button
               type="button"
@@ -120,6 +182,55 @@ export function ContextIndicator() {
             </Button>
           </PopoverClose>
         </div>
+        {hasCatalog && (
+          <div className="mb-3 space-y-3 border-b border-line pb-4">
+            <RadioGroup
+              value={effectiveModelId ?? ""}
+              onValueChange={(selection) => void changeModel(selection)}
+              disabled={selectionDisabled}
+              aria-label="Conversation model"
+            >
+              {models.map((option) => (
+                <label
+                  key={option.id}
+                  htmlFor={`${groupId}-${option.id}`}
+                  className={`flex items-center gap-3 rounded-md px-3 py-2.5 ${
+                    option.id === effectiveModelId
+                      ? "bg-selected"
+                      : "hover:bg-sidebar"
+                  } ${selectionDisabled || !option.available ? "cursor-not-allowed opacity-60" : "cursor-pointer"}`}
+                >
+                  <RadioGroupItem
+                    id={`${groupId}-${option.id}`}
+                    value={option.id}
+                    disabled={!option.available}
+                    aria-label={option.label}
+                  />
+                  <span className="min-w-0 flex-1 text-sm">
+                    <span className="block font-medium">{option.label}</span>
+                    <span className="block text-xs text-muted">
+                      {option.model}
+                    </span>
+                    {!option.available && (
+                      <span className="block text-xs text-muted">
+                        Not configured
+                      </span>
+                    )}
+                  </span>
+                </label>
+              ))}
+            </RadioGroup>
+            <p className="text-xs/relaxed text-muted">{selectionHelp}</p>
+            {selectionError && (
+              <p role="alert" className="text-xs/relaxed text-destructive">
+                {selectionError}
+              </p>
+            )}
+          </div>
+        )}
+        {hasCatalog && (
+          <h3 className="mb-3 text-sm font-semibold">Context window</h3>
+        )}
         {usage ? (
           <ContextDetails usage={usage} />
         ) : (

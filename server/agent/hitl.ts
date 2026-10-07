@@ -10,6 +10,18 @@ export class ReviewLangGraphAgent extends LangGraphAgent {
     super(config);
   }
 
+  override async getSchemaKeys() {
+    const schema = await super.getSchemaKeys();
+
+    if (!schema) {
+      return schema;
+    }
+
+    // The Aegra graph factory selects the model before the compiled graph runs,
+    // so this server-owned field is absent from the graph's configuration schema.
+    return { ...schema, config: [...(schema.config ?? []), "model_id"] };
+  }
+
   override async runAgentStream(
     ...args: Parameters<LangGraphAgent["runAgentStream"]>
   ): Promise<void> {

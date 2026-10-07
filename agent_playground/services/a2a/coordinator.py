@@ -2,7 +2,6 @@
 
 import asyncio
 import logging
-import os
 from functools import partial
 from uuid import uuid4
 
@@ -22,7 +21,7 @@ from a2a.types import (
 )
 from a2a.utils.errors import TaskNotCancelableError, TaskNotFoundError
 
-from agent_playground.config import app_api_url
+from agent_playground.config import app_api_url, load_agent_config
 from agent_playground.db.a2a_jobs import (
     CollaborationJob,
     change_job,
@@ -225,10 +224,8 @@ async def process_job(
             job = refreshed
         step = STEPS[job.state.stage_index]
         role = "reviewer" if step == "review" else "planner"
-        endpoint = os.getenv(
-            f"A2A_{role.upper()}_URL",
-            f"http://127.0.0.1:{2032 if role == 'reviewer' else 2031}",
-        )
+        a2a = load_agent_config().a2a
+        endpoint = a2a.reviewer_url if role == "reviewer" else a2a.planner_url
         message_id = f"{job.request.id}-{step}"
         task_id = remote_task_id(message_id)
 

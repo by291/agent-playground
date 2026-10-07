@@ -26,6 +26,8 @@ from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapProp
 from testcontainers.community.postgres import PostgresContainer
 from testcontainers.core.container import DockerContainer
 
+from tests.agent_config import update_agent_config
+
 ROOT = Path(__file__).resolve().parents[1]
 pytestmark = pytest.mark.integration
 
@@ -97,12 +99,12 @@ def worker(tmp_path: Path) -> Iterator[tuple[str, list[Span]]]:
                 )
 
             agent_database = database.replace("agent:agent@", "aegra:aegra@")
+            update_agent_config("database", application_url=database)
             port = free_port()
             env = {
                 **os.environ,
                 "AEGRA_CONFIG": str(config),
                 "DATABASE_URL": agent_database,
-                "APP_DATABASE_URL": database,
                 "REDIS_BROKER_ENABLED": "true",
                 "REDIS_URL": f"redis://{redis.get_container_host_ip()}:{redis.get_exposed_port(6379)}/0",
                 "OTEL_TARGETS": "GENERIC",

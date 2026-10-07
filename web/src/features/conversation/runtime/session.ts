@@ -32,7 +32,8 @@ import {
   transitionLifecycle,
   type LifecycleEvent,
 } from "../model/lifecycle";
-import { isRunning, isRestoring } from "../model/selectors";
+import { canSelectModel, isRunning, isRestoring } from "../model/selectors";
+import { selectConversationModel } from "../api/models";
 import { createSubmissionRunner } from "./submission";
 import { isRunFinished } from "@shared/run-status";
 import { parseContextUsage } from "@shared/context-usage";
@@ -65,6 +66,8 @@ export function createConversationSession(
     | { runId: string; notify: (() => void) | undefined; notified: boolean }
     | undefined;
   let savedEmpty = saved.empty;
+  let savedModelId = saved.modelId ?? saved.pending?.modelId ?? null;
+  let modelSelection: AbortController | undefined;
   let submittedRunId: string | undefined;
   let awaitingCheckpoint = false;
   let streamInterrupts: Interrupt[] | undefined;
@@ -77,6 +80,9 @@ export function createConversationSession(
     threadId: threadId ?? null,
     ensureThreadId,
     contextUsage: null,
+    modelId: savedModelId,
+    modelSwitching: false,
+    selectModel,
     externalTasks: [],
     runs: [],
     messages: [],
@@ -194,7 +200,10 @@ export function createConversationSession(
     const usage = parseContextUsage(value);
     const current = store.getState().contextUsage;
 
-    if (usage && (!current || usage.revision >= current.revision)) {
+    if (
+      usage &&
+      (usage.model !== current?.model || usage.revision >= current.revision)
+    ) {
       store.setState({ contextUsage: usage });
     }
   }
@@ -257,10 +266,20 @@ export function createConversationSession(
         return run;
       });
 
+      const state = store.getState();
+      // Uploads can create a server row before admission pins its first model.
+      const preserveLocalModel =
+        state.modelSwitching ||
+        !snapshot ||
+        (snapshot.runs.length === 0 && !snapshot.modelId);
+
       receiveContextUsage(snapshot?.contextUsage);
       agent.setMessages(result.messages);
       store.setState({
         title: snapshot?.title,
+        modelId: preserveLocalModel
+          ? state.modelId
+          : (snapshot?.modelId ?? null),
         messages: [...agent.messages],
         pendingInterrupts: result.interrupts,
         runs,
@@ -298,15 +317,20 @@ export function createConversationSession(
 
     if (
       threadId &&
-      (savedEmpty !== empty || pendingConfirmed || pendingRejected)
+      (savedEmpty !== empty ||
+        savedModelId !== state.modelId ||
+        pendingConfirmed ||
+        pendingRejected)
     ) {
-      // Persist only the empty-page hint; history still comes from the server.
+      // Persist the local choice and admission hints; history comes from the server.
       saveConversation({
         threadId,
         empty,
         ...(pending ? { pending } : {}),
+        ...(state.modelId ? { modelId: state.modelId } : {}),
       });
       savedEmpty = empty;
+      savedModelId = state.modelId;
     }
 
     store.setState({
@@ -410,6 +434,9 @@ export function createConversationSession(
         threadId: ensureThreadId(),
         pending: input,
         empty: false,
+        ...(store.getState().modelId
+          ? { modelId: store.getState().modelId! }
+          : {}),
       });
     } catch (error) {
       const failure =
@@ -436,7 +463,13 @@ export function createConversationSession(
 
     threadId = crypto.randomUUID();
     agent.threadId = threadId;
-    saveConversation({ threadId, empty: true });
+    saveConversation({
+      threadId,
+      empty: true,
+      ...(store.getState().modelId
+        ? { modelId: store.getState().modelId! }
+        : {}),
+    });
     store.setState({ threadId });
 
     return threadId;
@@ -445,7 +478,65 @@ export function createConversationSession(
   function busy() {
     const state = store.getState();
 
-    return !connected || isRestoring(state) || isRunning(state);
+    return (
+      !connected ||
+      state.modelSwitching ||
+      isRestoring(state) ||
+      isRunning(state)
+    );
+  }
+
+  async function selectModel(modelId: string): Promise<void> {
+    const state = store.getState();
+
+    if (!connected || pending || !canSelectModel(state)) {
+      throw new Error(
+        "Wait for conversation work to finish before changing its model",
+      );
+    }
+
+    if (modelId === state.modelId) {
+      return;
+    }
+
+    const controller = new AbortController();
+
+    modelSelection = controller;
+    store.setState({ modelSwitching: true });
+
+    try {
+      if (pendingSnapshot) {
+        await selectConversationModel(
+          ensureThreadId(),
+          modelId,
+          controller.signal,
+        );
+        await requestSnapshot();
+      }
+
+      if (!connected || controller.signal.aborted) {
+        return;
+      }
+
+      saveConversation({
+        threadId: ensureThreadId(),
+        empty: state.lifecycle.emptyHint,
+        modelId,
+      });
+      savedModelId = modelId;
+      store.setState({ modelId, contextUsage: null });
+    } catch (error) {
+      if (connected && !controller.signal.aborted) {
+        void requestSnapshot();
+      }
+
+      throw error;
+    } finally {
+      if (modelSelection === controller) {
+        modelSelection = undefined;
+        store.setState({ modelSwitching: false });
+      }
+    }
   }
 
   function send(content: string, onAccepted?: () => void): Promise<void> {
@@ -514,6 +605,9 @@ export function createConversationSession(
         messageId: message.id,
         messages: [...agent.messages, message],
         state: structuredClone(agent.state as Record<string, unknown>),
+        ...(store.getState().modelId
+          ? { modelId: store.getState().modelId! }
+          : {}),
       },
       onAccepted,
     );
@@ -692,6 +786,7 @@ export function createConversationSession(
 
     return () => {
       connected = false;
+      modelSelection?.abort();
       submission.trace?.outcome("disconnected");
       subscription.unsubscribe();
       a2ui?.dispose();

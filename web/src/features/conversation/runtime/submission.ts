@@ -51,6 +51,9 @@ export function createSubmissionRunner(
       try {
         await agent.runAgent({
           runId: submission.runId,
+          ...(submission.modelId
+            ? { forwardedProps: { modelId: submission.modelId } }
+            : {}),
           ...(submission.resume ? { resume: submission.resume } : {}),
         });
 

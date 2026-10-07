@@ -17,6 +17,7 @@ import { synchronizeConversation } from "./checkpoint-sync";
 import { notifyConversation } from "./changes";
 import { logger } from "../observability/logger";
 import { scanExternalTasks } from "./external-task-scan";
+import { fetchAgentInfo } from "../agent/info";
 
 // Background requests own their deadline and abort signal independently of live streams.
 function createWorkerClient(signal?: AbortSignal) {
@@ -107,6 +108,7 @@ export async function processExternalTasks(
           userMessage: null,
           isResume: true,
           externalTaskId: task.taskId,
+          agentInfo: await fetchAgentInfo(signal),
         });
 
         run = admitted.row;
@@ -133,7 +135,7 @@ export async function processExternalTasks(
         // existing mapping reconciliation, never an unconfirmed second creation.
         const payload: unknown = entry.payload;
         const config = {
-          configurable: {},
+          configurable: run.modelId ? { model_id: run.modelId } : {},
           metadata: { agui_run_id: run.aguiRunId },
         };
         const created = await client.runs.create(task.threadId, "agent", {

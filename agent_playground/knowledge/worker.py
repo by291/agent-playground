@@ -3,13 +3,12 @@
 import asyncio
 import hashlib
 import logging
-import os
 from collections.abc import Awaitable, Callable
 from uuid import uuid4
 
 import httpx
 
-from agent_playground.config import app_api_url
+from agent_playground.config import app_api_url, workflow_api_token
 from agent_playground.db.async_operations import run_database_operation
 from agent_playground.db.knowledge import IndexJob, KnowledgeRepository, publish_index
 from agent_playground.knowledge.documents import extract_document
@@ -88,7 +87,7 @@ async def build_index(
 ) -> bool:
     response = await source_client.get(
         f"{app_api_url()}/internal/knowledge/documents/{job.id}/file",
-        headers={"Authorization": f"Bearer {os.getenv('WORKFLOW_API_TOKEN', '')}"},
+        headers={"Authorization": f"Bearer {workflow_api_token()}"},
     )
     response.raise_for_status()
     data = response.content
@@ -142,7 +141,7 @@ async def run_knowledge_worker() -> None:
                 if job:
                     try:
                         await index_job(
-                            job, repository, EmbeddingConfig.from_env(), client
+                            job, repository, EmbeddingConfig.from_config(), client
                         )
                     except Exception as error:
                         message = indexing_error_message(error)

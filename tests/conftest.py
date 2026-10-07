@@ -1,6 +1,7 @@
 """Share PostgreSQL startup while keeping each integration test's database isolated."""
 
 from collections.abc import Iterator
+from pathlib import Path
 from urllib.parse import urlsplit
 from uuid import uuid4
 
@@ -9,6 +10,20 @@ import pytest
 from psycopg import sql
 from testcontainers.community.postgres import PostgresContainer
 from testcontainers.community.redis import RedisContainer
+
+from tests.model_config import ModelConfigFile
+
+pytest_plugins = ["tests.agent_config"]
+
+
+@pytest.fixture(autouse=True)
+def model_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    configuration = ModelConfigFile(tmp_path / "models.yaml")
+    monkeypatch.setenv("MODELS_CONFIG_PATH", str(configuration.path))
+
+    yield configuration
+
+    configuration.save()
 
 
 def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:

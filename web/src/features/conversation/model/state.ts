@@ -19,6 +19,9 @@ export interface ConversationState {
   ensureThreadId: () => string;
   title?: string | undefined;
   contextUsage: ContextUsage | null;
+  modelId: string | null;
+  modelSwitching: boolean;
+  selectModel: (modelId: string) => Promise<void>;
   externalTasks: ExternalTaskSnapshot[];
   runs: ConversationSnapshot["runs"];
   messages: Message[];

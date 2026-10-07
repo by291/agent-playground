@@ -1,0 +1,37 @@
+# Copy to models.yaml. The local file includes credentials and is ignored by Git.
+chat:
+  default: deepseek
+  models:
+    deepseek:
+      provider: deepseek
+      model: deepseek-flash
+      api_key: ""
+      thinking: medium
+    qwen:
+      provider: qwen
+      model: qwen3.8-flash
+      api_key: ""
+      thinking: disabled
+
+# Optional chat overrides: label, base_url, max_input_tokens, max_output_tokens.
+# Thinking levels: disabled (default), low, medium, high. compact_ratio defaults to 0.8.
+
+# Independent child agents use this model regardless of the conversation selection.
+a2a_model: deepseek
+
+embedding:
+  base_url: https://maas.qianwenaiapi.com/compatible-mode/v1
+  model: qwen3.7-text-embedding-flash
+  api_key: ""
+  # Match the provider contract and account/business-space quota.
+  batch_size: 20
+  tokens_per_minute: 1000000
+  requests_per_minute: 24000
+  max_retries: 5
+  index_timeout: 600
+  # Optional shared account identity across endpoint aliases.
+  quota_scope: ""
+  # Only set when supported by the embedding provider.
+  # dimensions: 1024
+  # Largest cosine distance accepted as evidence, between 0 and 2.
+  max_distance: 0.55

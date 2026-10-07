@@ -5,7 +5,7 @@ test("the configured model sits beside send and opens context details on desktop
 }, testInfo) => {
   await page.goto("/");
   const model = page.getByRole("button", {
-    name: "test-model. Show details",
+    name: "test-model. Choose model and show details",
     exact: true,
   });
   const send = page.getByRole("button", { name: "Send message", exact: true });

@@ -1,7 +1,7 @@
 """Report model context and delegate compaction to LangChain."""
 
-import os
 from collections.abc import Iterable
+from math import ceil
 from typing import Annotated, Any, NotRequired, TypedDict, cast, override
 
 from langchain.agents.middleware import AgentState, SummarizationMiddleware
@@ -15,7 +15,10 @@ from langchain_core.messages import (
     SystemMessage,
     ToolMessage,
 )
-from langchain_core.messages.utils import count_tokens_approximately
+from langchain_core.messages.utils import (
+    convert_to_messages,
+    count_tokens_approximately,
+)
 from langchain_core.tools import BaseTool
 from langgraph.runtime import Runtime
 from pydantic import BaseModel, Field
@@ -59,32 +62,54 @@ class ContextSettings(BaseModel):
     compact_ratio: float = Field(default=0.8, gt=0.2, lt=1)
 
     @classmethod
-    def from_model(cls, model: BaseChatModel):
+    def from_model(
+        cls,
+        model: BaseChatModel,
+        *,
+        window: int | None = None,
+        compact_ratio: float = 0.8,
+    ):
         profile = model.profile or {}
-        window = os.getenv("CONTEXT_WINDOW_TOKENS")
-
         if window is None:
             model_window = profile.get("max_input_tokens")
 
             if isinstance(model_window, int):
-                window = str(model_window)
+                window = model_window
             elif model.__class__.__module__.startswith("langchain_deepseek"):
-                raise ValueError("Set CONTEXT_WINDOW_TOKENS for an unknown model")
+                raise ValueError(
+                    "Set max_input_tokens in models.yaml for an unknown model"
+                )
             else:
-                window = "1000000"
+                window = 1000000
 
         return cls(
-            window=int(window),
-            compact_ratio=float(os.getenv("CONTEXT_COMPACT_RATIO", "0.8")),
+            window=window,
+            compact_ratio=compact_ratio,
         )
 
 
-def estimate_tokens(messages: Iterable[MessageLikeRepresentation]) -> int:
+def estimate_tokens(
+    messages: Iterable[MessageLikeRepresentation], *, tokens_per_image: int = 1024
+) -> int:
     # A conservative character ratio also accommodates the playground's Chinese text.
-    # DeepSeek caps each resized image at 1,024 tokens; base64 length is not tokens.
-    return count_tokens_approximately(
-        messages, chars_per_token=2.0, tokens_per_image=1024
+    # Image pixels are charged by the provider; base64 length is not a token estimate.
+    history = convert_to_messages(messages)
+    tokens = count_tokens_approximately(
+        history, chars_per_token=2.0, tokens_per_image=tokens_per_image
     )
+
+    # The library counter excludes additional_kwargs, while thinking tool calls
+    # send reasoning_content back to the provider as part of the input history.
+    for message in history:
+        if not isinstance(message, AIMessage):
+            continue
+
+        reasoning = message.additional_kwargs.get("reasoning_content")
+
+        if isinstance(reasoning, str):
+            tokens += ceil(len(reasoning) / 2.0)
+
+    return tokens
 
 
 def recoverable_responses(state: ContextState) -> list[AIMessage | ToolMessage]:
@@ -125,8 +150,11 @@ class ContextMiddleware(SummarizationMiddleware):
         summary_model: BaseChatModel,
         system_prompt: str,
         tools: list[BaseTool],
+        settings: ContextSettings | None = None,
+        tokens_per_image: int = 1024,
     ):
-        self.settings = ContextSettings.from_model(model)
+        self.settings = settings or ContextSettings.from_model(model)
+        self.tokens_per_image = tokens_per_image
         self.model_name = str(getattr(model, "model_name", model.__class__.__name__))
         self.system_tokens = estimate_tokens([SystemMessage(content=system_prompt)])
         self.tool_tokens = count_tokens_approximately(
@@ -155,7 +183,7 @@ class ContextMiddleware(SummarizationMiddleware):
             model=summary_model,
             trigger=("tokens", self.trigger_tokens - fixed_tokens),
             keep=("tokens", max(1, int(self.settings.window * 0.2) - fixed_tokens)),
-            token_counter=estimate_tokens,
+            token_counter=self._estimate_tokens,
             trim_tokens_to_summarize=None,
         )
 
@@ -194,7 +222,7 @@ class ContextMiddleware(SummarizationMiddleware):
         self, state: AgentState[Any], runtime: Runtime[Any]
     ) -> dict[str, Any]:
         context_state = cast("ContextState", state)
-        usage = self._usage(context_state, state["messages"])
+        usage = self._usage(context_state, state["messages"], include_input_usage=True)
         return {
             "context_usage": usage,
             "response_messages": recoverable_responses(context_state),
@@ -226,7 +254,16 @@ class ContextMiddleware(SummarizationMiddleware):
 
         return {**(update or {}), "context_usage": usage}
 
-    def _usage(self, state: ContextState, messages: list[AnyMessage]) -> ContextUsage:
+    def _estimate_tokens(self, messages: Iterable[MessageLikeRepresentation]) -> int:
+        return estimate_tokens(messages, tokens_per_image=self.tokens_per_image)
+
+    def _usage(
+        self,
+        state: ContextState,
+        messages: list[AnyMessage],
+        *,
+        include_input_usage: bool = False,
+    ) -> ContextUsage:
         conversation: list[AnyMessage] = []
         results: list[AnyMessage] = []
         summaries: list[AnyMessage] = []
@@ -242,17 +279,22 @@ class ContextMiddleware(SummarizationMiddleware):
         breakdown: ContextBreakdown = {
             "system": self.system_tokens,
             "tools": self.tool_tokens,
-            "conversation": estimate_tokens(conversation),
-            "toolResults": estimate_tokens(results),
-            "summary": estimate_tokens(summaries),
+            "conversation": self._estimate_tokens(conversation),
+            "toolResults": self._estimate_tokens(results),
+            "summary": self._estimate_tokens(summaries),
         }
         previous = state.get("context_usage")
-        last_input = previous["lastInputTokens"] if previous else None
+        last_input = (
+            previous["lastInputTokens"]
+            if previous and previous["model"] == self.model_name
+            else None
+        )
 
-        for message in reversed(messages):
-            if isinstance(message, AIMessage) and message.usage_metadata:
-                last_input = message.usage_metadata["input_tokens"]
-                break
+        if include_input_usage:
+            for message in reversed(messages):
+                if isinstance(message, AIMessage) and message.usage_metadata:
+                    last_input = message.usage_metadata["input_tokens"]
+                    break
 
         return {
             "model": self.model_name,

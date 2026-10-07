@@ -1,6 +1,9 @@
 import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
-import { renameConversationSchema } from "../../shared/conversation";
+import {
+  renameConversationSchema,
+  selectConversationModelSchema,
+} from "../../shared/conversation";
 import { synchronizeConversation } from "../conversation/checkpoint-sync";
 import { conversationSnapshot } from "../conversation/conversation-snapshot";
 import { SubmissionError } from "../conversation/errors";
@@ -14,8 +17,43 @@ import {
 } from "../conversation/management";
 import { logger } from "../observability/logger";
 import { streamConversationChanges } from "./conversation-events";
+import { selectConversationModel } from "../conversation/models";
 
 export const conversationRoutes = new Hono();
+
+conversationRoutes.patch(
+  "/:threadId/model",
+  bodyLimit({ maxSize: 4096 }),
+  async (context) => {
+    const parsed = selectConversationModelSchema.safeParse(
+      await context.req.json().catch(() => null),
+    );
+
+    if (!parsed.success) {
+      return context.json({ error: "Invalid conversation model" }, 400);
+    }
+
+    try {
+      return context.json(
+        await selectConversationModel(
+          context.req.param("threadId"),
+          parsed.data.modelId,
+        ),
+      );
+    } catch (error) {
+      if (error instanceof SubmissionError) {
+        return context.json({ error: error.message }, error.status);
+      }
+
+      logger.error({ err: error }, "Conversation model selection failed");
+
+      return context.json(
+        { error: "Conversation model selection is unavailable" },
+        503,
+      );
+    }
+  },
+);
 
 conversationRoutes.get("/", async (context) => {
   try {

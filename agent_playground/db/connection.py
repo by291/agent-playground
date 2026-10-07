@@ -1,11 +1,11 @@
 """Own the shared engine; prepare Python-owned tables explicitly at startup."""
 
-import os
 from functools import lru_cache
 
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
 
+from agent_playground.config import load_agent_config
 from agent_playground.db.schema import (
     a2a_jobs,
     a2a_tasks,
@@ -25,10 +25,12 @@ def postgres_driver_url(database_url: str) -> str:
 
 @lru_cache(maxsize=1)
 def app_engine() -> Engine:
-    database_url = os.environ.get("APP_DATABASE_URL")
+    database_url = load_agent_config().database.application_url.get_secret_value()
 
     if not database_url:
-        raise RuntimeError("APP_DATABASE_URL is required for application storage")
+        raise RuntimeError(
+            "Agent database.application_url is required for application storage"
+        )
 
     return create_engine(
         postgres_driver_url(database_url), connect_args={"connect_timeout": 5}

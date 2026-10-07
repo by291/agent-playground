@@ -6,6 +6,7 @@ import com.agentplayground.core.model.ExternalTask
 import com.agentplayground.core.model.ExternalTaskControl
 import com.agentplayground.core.model.RunRecord
 import com.agentplayground.core.model.WorkflowOutput
+import com.agentplayground.core.model.isActiveRun
 import com.agentplayground.core.model.isExternalTaskActive
 import com.agui.core.types.Interrupt
 import com.agui.core.types.Message
@@ -21,6 +22,11 @@ data class SessionState(
     val externalTaskControls: Map<String, ExternalTaskControl> = emptyMap(),
     val runs: List<RunRecord> = emptyList(),
     val contextUsage: ContextUsage? = null,
+    val modelId: String? = null,
+    val modelSelectionLocal: Boolean = false,
+    val modelSelectionPending: Boolean = false,
+    val modelSelectionError: String? = null,
+    val pendingSubmission: Boolean = false,
     val activity: List<ActivityEntry> = emptyList(),
     val receivedEventCount: Long = 0,
     val busy: Boolean = false,
@@ -33,9 +39,21 @@ data class SessionState(
     val planDecisions: Map<String, String> = emptyMap(),
     val planDrafts: Map<String, PlanDraft> = emptyMap(),
 ) {
+    val canSelectModel
+        get() =
+            !busy &&
+                !loading &&
+                !modelSelectionPending &&
+                !pendingSubmission &&
+                interrupts.isEmpty() &&
+                runs.lastOrNull()?.let { isActiveRun(it.status) || it.status == "interrupted" } !=
+                    true &&
+                externalTasks.none { isExternalTaskActive(it.status) }
+
     val canSend
         get() =
             !busy &&
+                !modelSelectionPending &&
                 !loading &&
                 externalTasks.none { it.kind == "a2a" && isExternalTaskActive(it.status) } &&
                 (interrupts.isEmpty() ||

@@ -92,11 +92,13 @@ export function pendingRetry(
       messages: pending.messages,
       state: pending.state,
       resume: pending.resume,
+      modelId: pending.modelId,
     }) ===
       JSON.stringify({
         messages: candidate.messages,
         state: candidate.state,
         resume: candidate.resume,
+        modelId: candidate.modelId,
       });
 
   return sameInput ? "retry" : "changed";

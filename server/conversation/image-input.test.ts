@@ -13,6 +13,9 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("./skill-files", () => ({ readSkillFile: mocks.readFile }));
+vi.mock("../agent/info", () => ({
+  fetchAgentInfo: () => Promise.resolve({ model: "test-model" }),
+}));
 vi.mock("./checkpoint-sync", () => ({
   synchronizeConversation: mocks.synchronize,
 }));
@@ -31,6 +34,9 @@ const png = Buffer.from(
 beforeEach(() => {
   vi.resetAllMocks();
   mocks.claim.mockResolvedValue(vi.fn());
+  mocks.admit.mockResolvedValue({ row: { modelId: null } } as Awaited<
+    ReturnType<typeof import("./run-store").admitRun>
+  >);
 });
 
 function submission(files: { id: string; name: string }[] = []): RunAgentInput {
@@ -107,6 +113,22 @@ test("ordinary file attachments and text stay text-only", async () => {
   const { input: prepared } = await prepareConversationRun(input);
 
   assert.equal(prepared.messages[0]?.content, input.messages[0]?.content);
+});
+
+test("only the selected model reaches admission from client forwarded properties", async () => {
+  const input = submission();
+
+  input.forwardedProps = {
+    modelId: "qwen",
+    config: { configurable: { model_id: "attacker" } },
+    onDisconnect: "cancel",
+  };
+  const prepared = await prepareConversationRun(input);
+
+  assert.deepEqual(mocks.admit.mock.calls[0]?.[0].request.forwardedProps, {
+    modelId: "qwen",
+  });
+  assert.deepEqual(prepared.input.forwardedProps, { modelId: "qwen" });
 });
 
 test.each(["jpeg", "png", "gif", "webp"] as const)(

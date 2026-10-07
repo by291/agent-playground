@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { access, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { test } from "node:test";
-import { launchProcesses, stopProcesses } from "./dev.mjs";
+import { a2aCommands, launchProcesses, stopProcesses } from "./dev.mjs";
 import {
   forceStop,
   isRunning,
@@ -12,17 +12,40 @@ import {
 } from "./test-helpers.mjs";
 
 async function waitForFile(path) {
-  for (let attempt = 0; attempt < 40; attempt += 1) {
+  let content = "";
+
+  await waitFor(async () => {
     try {
-      return await readFile(path, "utf8");
+      content = await readFile(path, "utf8");
+
+      // File creation is observable before the child finishes writing its marker.
+      return content.length > 0;
     } catch (error) {
-      if (error.code !== "ENOENT" || attempt === 39) {
+      if (error.code !== "ENOENT") {
         throw error;
       }
-      await new Promise((resolve) => setTimeout(resolve, 25));
+
+      return false;
     }
-  }
+  });
+
+  return content;
 }
+
+test("independent A2A services use runtime YAML without importing root dotenv or fixed ports", () => {
+  const commands = a2aCommands();
+
+  assert.deepEqual(
+    commands.map(({ name }) => name),
+    ["a2a-planner", "a2a-reviewer"],
+  );
+
+  for (const { args } of commands) {
+    assert.equal(args.includes("--env-file"), false);
+    assert.equal(args.includes(".env"), false);
+    assert.equal(args.includes("--port"), false);
+  }
+});
 
 test("background launcher reuses live processes and stops descendants", async () => {
   const directory = await temporaryDirectory();

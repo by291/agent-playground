@@ -5,6 +5,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
@@ -16,6 +17,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.key.*
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextRange
@@ -44,9 +47,11 @@ internal fun Composer(
     onRemoveAttachment: (String) -> Unit,
     loadImage: AttachmentImageLoader,
     onAttach: () -> Unit,
+    onSelectModel: (String) -> Unit,
 ) {
     val session = state.session ?: return
-    var context by remember { mutableStateOf(false) }
+    var context by remember(session.threadId) { mutableStateOf(false) }
+    var contextDetails by remember(session.threadId) { mutableStateOf(false) }
     var field by remember(session.threadId) { mutableStateOf(TextFieldValue(session.draft)) }
     var pendingInput by remember(session.threadId) { mutableStateOf<String?>(null) }
 
@@ -71,7 +76,8 @@ internal fun Composer(
         }
     }
 
-    val metadata = modelContext(state.model, session.contextUsage)
+    val metadata = modelContext(state.currentModel, session.contextUsage)
+    val hasCatalog = state.agentInfo?.models?.isNotEmpty() == true
     val enabled = session.canSend && !state.uploading
     val review = session.interrupts.singleOrNull()?.let(Review::from)
     val placeholder =
@@ -130,7 +136,10 @@ internal fun Composer(
                             pendingInput = it.text
                             onEditInput(it.text)
                         },
-                        enabled = enabled,
+                        // Model saving blocks admission while retaining the editor's focus and IME
+                        // state.
+                        enabled =
+                            session.copy(modelSelectionPending = false).canSend && !state.uploading,
                         textStyle =
                             MaterialTheme.typography.bodyLarge.copy(
                                 color = MaterialTheme.colorScheme.onSurface
@@ -181,8 +190,16 @@ internal fun Composer(
                             )
                         }
                         TextButton(
-                            onClick = { context = true },
-                            modifier = Modifier.weight(1f),
+                            onClick = {
+                                contextDetails = !hasCatalog
+                                context = true
+                            },
+                            modifier =
+                                Modifier.weight(1f).semantics {
+                                    contentDescription =
+                                        if (hasCatalog) "Choose conversation model"
+                                        else "Model context"
+                                },
                             colors =
                                 ButtonDefaults.textButtonColors(
                                     contentColor = MaterialTheme.colorScheme.onSurfaceVariant
@@ -190,11 +207,15 @@ internal fun Composer(
                             contentPadding = PaddingValues(horizontal = 4.dp),
                         ) {
                             Text(
-                                metadata.model ?: "Model unavailable",
+                                state.modelLabel ?: "Model unavailable",
                                 style = MaterialTheme.typography.labelMedium,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                             )
+                            if (hasCatalog) {
+                                Icon(Icons.Outlined.KeyboardArrowDown, null, Modifier.size(16.dp))
+                            }
+
                             Reveal(metadata.usage != null) {
                                 metadata.usage?.let {
                                     Text(
@@ -235,6 +256,13 @@ internal fun Composer(
                     }
                 }
             }
+            session.modelSelectionError?.let {
+                Text(
+                    it,
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
         }
     }
 
@@ -250,67 +278,145 @@ internal fun Composer(
                     .padding(bottom = 32.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                Text("Model context", style = MaterialTheme.typography.titleLarge)
-                Text(metadata.model ?: "Metadata is currently unavailable.")
-
-                val usage = metadata.usage
-
-                if (usage == null) {
+                if (!contextDetails && hasCatalog) {
+                    Text("Conversation model", style = MaterialTheme.typography.titleLarge)
                     Text(
-                        "Context usage appears after a model call for the current model.",
+                        "Applies to your next message.",
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                } else {
-                    Text("Approximately ${usage.usedTokens} / ${usage.contextWindow} tokens")
-                    LinearProgressIndicator(
-                        progress = {
-                            (usage.usedTokens.toFloat() / usage.contextWindow.coerceAtLeast(1))
-                                .coerceIn(0f, 1f)
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    Text("Auto-compacts at ${usage.triggerTokens} tokens.")
+                    state.agentInfo?.models?.forEach { option ->
+                        val selected =
+                            option.id == (session.modelId ?: state.agentInfo.defaultModelId)
+                        val optionEnabled = state.canSelectModel && option.available
 
-                    if (usage.usedTokens >= usage.triggerTokens) {
-                        Text(
-                            "Context is near the compaction threshold.",
-                            color = MaterialTheme.colorScheme.primary,
-                        )
-                    }
-
-                    mapOf(
-                            "system" to "System instructions",
-                            "tools" to "Tool definitions",
-                            "conversation" to "Conversation",
-                            "toolResults" to "Tool results",
-                            "summary" to "Compacted summary",
-                        )
-                        .forEach { (key, label) ->
-                            Row(
-                                Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                            ) {
-                                Text(label, style = MaterialTheme.typography.bodySmall)
-                                Text(
-                                    "${usage.breakdown[key] ?: 0}",
-                                    style = MaterialTheme.typography.bodySmall,
+                        Row(
+                            Modifier.fillMaxWidth()
+                                .testTag("model-option-${option.id}")
+                                .selectable(
+                                    selected = selected,
+                                    enabled = optionEnabled,
+                                    role = Role.RadioButton,
+                                    onClick = {
+                                        onSelectModel(option.id)
+                                        context = false
+                                    },
                                 )
+                                .padding(vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            RadioButton(
+                                selected = selected,
+                                onClick = null,
+                                enabled = optionEnabled,
+                            )
+                            Column(Modifier.weight(1f)) {
+                                Text(
+                                    option.label,
+                                    color =
+                                        if (optionEnabled) MaterialTheme.colorScheme.onSurface
+                                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                if (option.model != option.label) {
+                                    Text(
+                                        option.model,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+
+                                if (!option.available) {
+                                    Text(
+                                        "Not configured",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
                             }
                         }
+                    }
+                    if (!state.canSelectModel) {
+                        Text(
+                            when {
+                                session.modelSelectionPending &&
+                                    session.modelSelectionError != null -> "Recovering model…"
+                                session.modelSelectionPending -> "Saving model…"
+                                else -> "Finish the current activity before changing models."
+                            },
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                    TextButton(onClick = { contextDetails = true }) { Text("Context details") }
+                } else {
+                    Text("Model context", style = MaterialTheme.typography.titleLarge)
+                    Text(metadata.model ?: "Metadata is currently unavailable.")
 
-                    Text("Compactions: ${usage.compactions}")
-                    usage.lastCompaction?.let {
-                        Text("Last compaction: ${it["beforeTokens"]} → ${it["afterTokens"]} tokens")
+                    val usage = metadata.usage
+
+                    if (usage == null) {
+                        Text(
+                            "Context usage appears after a model call for the current model.",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    } else {
+                        Text("Approximately ${usage.usedTokens} / ${usage.contextWindow} tokens")
+                        LinearProgressIndicator(
+                            progress = {
+                                (usage.usedTokens.toFloat() / usage.contextWindow.coerceAtLeast(1))
+                                    .coerceIn(0f, 1f)
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        Text("Auto-compacts at ${usage.triggerTokens} tokens.")
+
+                        if (usage.usedTokens >= usage.triggerTokens) {
+                            Text(
+                                "Context is near the compaction threshold.",
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+                        }
+
+                        mapOf(
+                                "system" to "System instructions",
+                                "tools" to "Tool definitions",
+                                "conversation" to "Conversation",
+                                "toolResults" to "Tool results",
+                                "summary" to "Compacted summary",
+                            )
+                            .forEach { (key, label) ->
+                                Row(
+                                    Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                ) {
+                                    Text(label, style = MaterialTheme.typography.bodySmall)
+                                    Text(
+                                        "${usage.breakdown[key] ?: 0}",
+                                        style = MaterialTheme.typography.bodySmall,
+                                    )
+                                }
+                            }
+
+                        Text("Compactions: ${usage.compactions}")
+                        usage.lastCompaction?.let {
+                            Text(
+                                "Last compaction: ${it["beforeTokens"]} → ${it["afterTokens"]} tokens"
+                            )
+                        }
+                        usage.lastInputTokens?.let {
+                            Text("Last request input: $it tokens, reported by the provider.")
+                        }
+                        Text(
+                            "The model uses a summary of older messages. Your full chat stays available.",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = MaterialTheme.typography.bodySmall,
+                        )
                     }
-                    usage.lastInputTokens?.let {
-                        Text("Last request input: $it tokens, reported by the provider.")
+                    if (hasCatalog) {
+                        TextButton(onClick = { contextDetails = false }) { Text("Back to models") }
                     }
-                    Text(
-                        "The model uses a summary of older messages. Your full chat stays available.",
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        style = MaterialTheme.typography.bodySmall,
-                    )
                 }
+
                 TextButton(
                     onClick = { context = false },
                     modifier = Modifier.align(Alignment.End),

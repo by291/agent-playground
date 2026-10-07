@@ -17,6 +17,8 @@ import {
 import { validateReview, validateExternalContinuation } from "./reviews";
 import { externalTasks } from "../db/external-task-schema";
 import { defaultConversationTitle } from "./titles";
+import type { AgentInfo } from "../../shared/agent-info";
+import { availableModelId, requestedModelId } from "../agent/models";
 
 interface RunSubmission {
   threadId: string;
@@ -26,6 +28,7 @@ interface RunSubmission {
   userMessage: Message | null;
   isResume: boolean;
   externalTaskId?: string;
+  agentInfo?: AgentInfo;
 }
 
 const dispatchOwners = new Map<string, symbol>();
@@ -38,6 +41,7 @@ export async function admitRun({
   userMessage,
   isResume,
   externalTaskId,
+  agentInfo,
 }: RunSubmission): Promise<{ row: RunRow }> {
   return db.transaction(async (tx) => {
     await tx.insert(conversations).values({ threadId }).onConflictDoNothing();
@@ -126,6 +130,28 @@ export async function admitRun({
       }
     }
 
+    // Resume the checkpoint with the model that produced it. Legacy direct
+    // admissions stay nullable; live admissions resolve the Python catalog here.
+    const requestedModel = requestedModelId(request);
+    let modelId: string | null = null;
+
+    if (isResume) {
+      modelId = current?.modelId ?? null;
+
+      if (modelId && requestedModel && requestedModel !== modelId) {
+        throw new SubmissionError("Cannot change the paused run model", 409);
+      }
+    } else if (agentInfo) {
+      modelId = availableModelId(
+        agentInfo,
+        requestedModel ?? conversation.modelId,
+      );
+    }
+
+    if (isResume && modelId && agentInfo) {
+      availableModelId(agentInfo, modelId);
+    }
+
     const [row] = await tx
       .insert(conversationRuns)
       .values({
@@ -134,6 +160,7 @@ export async function admitRun({
         submitSeq: conversation.nextSubmitSeq,
         messageId,
         request,
+        modelId,
         status: "prepared",
       })
       .returning();
@@ -163,6 +190,7 @@ export async function admitRun({
       .set({
         nextSubmitSeq: conversation.nextSubmitSeq + 1,
         updatedAt: new Date(),
+        ...(!isResume && modelId ? { modelId } : {}),
         ...(conversation.nextSubmitSeq === 1 &&
         userMessage &&
         conversation.title === "Untitled conversation"

@@ -23,7 +23,12 @@ data class ConversationPage(
 @Serializable data class RenamedConversation(val threadId: String, val title: String)
 
 @Serializable
-data class RunRecord(val runId: String, val messageId: String? = null, val status: String)
+data class RunRecord(
+    val runId: String,
+    val messageId: String? = null,
+    val status: String,
+    val modelId: String? = null,
+)
 
 @Serializable
 data class ConversationSnapshot(
@@ -34,6 +39,7 @@ data class ConversationSnapshot(
     val runs: List<RunRecord>,
     val contextUsage: ContextUsage? = null,
     val externalTasks: List<ExternalTask> = emptyList(),
+    val modelId: String? = null,
 )
 
 @Serializable
@@ -49,7 +55,17 @@ data class ContextUsage(
     val revision: Int,
 )
 
-@Serializable data class AgentInfo(val model: String)
+@Serializable
+data class AgentInfo(
+    val model: String,
+    val defaultModelId: String? = null,
+    val models: List<AgentModel> = emptyList(),
+)
+
+@Serializable
+data class AgentModel(val id: String, val label: String, val model: String, val available: Boolean)
+
+@Serializable data class ConversationModel(val threadId: String, val modelId: String)
 
 @Serializable data class PendingSubmission(val input: RunAgentInput, val messageId: String)
 
@@ -59,6 +75,8 @@ data class SavedConversation(
     val draft: String = "",
     val pending: PendingSubmission? = null,
     val empty: Boolean = true,
+    val modelId: String? = null,
+    val modelSelectionLocal: Boolean = false,
 )
 
 interface ConversationPersistence {

@@ -1,12 +1,12 @@
 """Authenticated coordinator job submission and conversation controls."""
 
-import os
 from hmac import compare_digest
 from typing import Annotated
 
 from fastapi import APIRouter, Header, HTTPException
 from pydantic import BaseModel, Field
 
+from agent_playground.config import workflow_api_token
 from agent_playground.db.a2a_jobs import (
     create_job,
     read_job,
@@ -34,7 +34,7 @@ def check_token(authorization: str | None, expected: str) -> None:
 async def submit_job(
     request: CollaborationRequest, authorization: Annotated[str | None, Header()] = None
 ):
-    check_token(authorization, os.getenv("WORKFLOW_API_TOKEN", ""))
+    check_token(authorization, workflow_api_token())
 
     try:
         job = await run_database_operation(create_job, request)

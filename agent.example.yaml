@@ -1,0 +1,52 @@
+# Private Agent runtime settings. Copy to agent.yaml or run make setup.
+# Model/provider configuration and keys belong in models.yaml.
+http:
+  host: 127.0.0.1
+  port: 2026
+
+database:
+  aegra_url: postgresql://aegra:aegra@127.0.0.1:55432/agent_playground
+  application_url: postgresql://agent:agent@127.0.0.1:55432/agent_playground
+
+redis:
+  broker_enabled: true
+  url: redis://127.0.0.1:56379/0
+
+workflow:
+  app_api_url: http://127.0.0.1:3000
+  # Must match WORKFLOW_API_TOKEN in server/.env; make setup fills a blank token.
+  api_token: ""
+
+services:
+  sql_demo_url: http://127.0.0.1:2026/sql-demo
+  report_demo_url: http://127.0.0.1:2026/report-demo
+
+a2a:
+  mode: model
+  planner_url: http://127.0.0.1:2031
+  reviewer_url: http://127.0.0.1:2032
+  demo_api_url: http://127.0.0.1:2026/a2a-demo
+
+skills:
+  directory: skills
+  sandbox_url: http://127.0.0.1:8080
+  sandbox_api_key: agent-playground-local-sandbox
+  sandbox_image: agent-playground-skill-runtime:local
+  command_timeout: 120
+  allowed_hosts: [httpbin.org]
+  # Explicit values passed to sandboxed scripts, including any script-only keys.
+  script_environment: {}
+
+observability:
+  service_name: agent-playground-agent
+  # Configure the local Collector here; see docs/observability.md.
+  targets: []
+  otlp_endpoint: null
+  otlp_headers: ""
+  console_export: false
+  prometheus_metrics: false
+  langfuse_base_url: http://localhost:3000
+  langfuse_public_key: ""
+  langfuse_secret_key: ""
+  phoenix_endpoint: http://127.0.0.1:6006/v1/traces
+  phoenix_api_key: ""

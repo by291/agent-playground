@@ -47,6 +47,31 @@ async function handleRequest(
   const pathname = new URL(request.url ?? "/", "http://fixture").pathname;
   const threadId = pathname.split("/")[2] ?? "";
 
+  if (pathname === "/agent-info") {
+    response.end(
+      JSON.stringify({
+        model: "test-model",
+        defaultModelId: "deepseek",
+        models: [
+          {
+            id: "deepseek",
+            label: "DeepSeek",
+            model: "test-model",
+            available: true,
+          },
+          {
+            id: "qwen",
+            label: "Qwen",
+            model: "qwen3.8-flash",
+            available: true,
+          },
+        ],
+      }),
+    );
+
+    return;
+  }
+
   if (pathname === "/assistants/search") {
     response.end(
       JSON.stringify([
@@ -172,7 +197,7 @@ async function handleRequest(
           { taskId: string; status: string; kind: string }
         >;
       };
-      config: { metadata: object };
+      config: { metadata: object; configurable?: { model_id?: string } };
     };
     const result = Object.values(input.command.resume)[0];
 
@@ -651,6 +676,34 @@ test("a completed external task resumes and archives a workflow with no browser"
     "The background task completed.",
   );
   assert.equal(snapshot?.interrupts.length, 0);
+});
+
+test("background continuation inherits the paused run's pinned model after restart", async () => {
+  const task = await register();
+
+  await database.db
+    .update(schema.conversationRuns)
+    .set({ modelId: "qwen" })
+    .where(eq(schema.conversationRuns.aguiRunId, task.request.runId));
+  await database.db
+    .update(schema.conversations)
+    .set({ modelId: "deepseek" })
+    .where(eq(schema.conversations.threadId, task.threadId));
+  assert.equal(
+    (await update(task.taskId, task.token, 1, "succeeded")).status,
+    200,
+  );
+  const { processExternalTasks } = await import("./external-task-worker");
+
+  await processExternalTasks();
+  const { latestRun } = await import("./run-store");
+
+  assert.equal((await latestRun(task.threadId))?.modelId, "qwen");
+  const created = runs.get(task.threadId) as {
+    config: { configurable: { model_id?: string } };
+  };
+
+  assert.equal(created.config.configurable.model_id, "qwen");
 });
 
 test("continuation scans exclude settled history but retain unsynchronized and pending tasks", async () => {

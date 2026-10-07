@@ -2,15 +2,14 @@
 
 import hashlib
 import json
-import math
-import os
 from contextlib import asynccontextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from langchain_postgres import PGEngine, PGVectorStore
 from openai import AsyncOpenAI
 from sqlalchemy.ext.asyncio import create_async_engine
 
+from agent_playground.config import load_agent_config, load_model_config
 from agent_playground.db.connection import postgres_driver_url
 from agent_playground.knowledge.embeddings import EmbeddingService
 from agent_playground.knowledge.rate_limits import EmbeddingQuota
@@ -20,7 +19,7 @@ from agent_playground.knowledge.rate_limits import EmbeddingQuota
 class EmbeddingConfig:
     base_url: str
     model: str
-    api_key: str
+    api_key: str = field(repr=False)
     dimensions: int | None = None
     max_distance: float = 0.55
     batch_size: int = 10
@@ -42,35 +41,27 @@ class EmbeddingConfig:
         return hashlib.sha256(identity.encode()).hexdigest()
 
     @classmethod
-    def from_env(cls) -> "EmbeddingConfig":
-        api_key = os.getenv("RAG_EMBEDDING_API_KEY", "")
-        model = os.getenv("RAG_EMBEDDING_MODEL", "")
+    def from_config(cls) -> "EmbeddingConfig":
+        settings = load_model_config().embedding
+        api_key = settings.api_key.get_secret_value()
 
-        if not api_key or not model:
+        if not api_key.strip() or not settings.model:
             raise ValueError(
-                "Configure RAG_EMBEDDING_API_KEY and RAG_EMBEDDING_MODEL, then retry indexing"
+                "Configure embedding.api_key and embedding.model in models.yaml, then retry indexing"
             )
 
-        dimensions = os.getenv("RAG_EMBEDDING_DIMENSIONS", "")
-        distance = float(os.getenv("RAG_MAX_DISTANCE", "0.55"))
-
-        if not math.isfinite(distance) or not 0 <= distance <= 2:
-            raise ValueError("RAG_MAX_DISTANCE must be between 0 and 2")
-
         return cls(
-            os.getenv("RAG_EMBEDDING_BASE_URL", "https://api.openai.com/v1").rstrip(
-                "/"
-            ),
-            model,
+            settings.base_url.rstrip("/"),
+            settings.model,
             api_key,
-            int(dimensions) if dimensions else None,
-            distance,
-            integer_setting("RAG_EMBEDDING_BATCH_SIZE", 10),
-            integer_setting("RAG_EMBEDDING_TPM", 1_000_000),
-            integer_setting("RAG_EMBEDDING_RPM", 24_000),
-            integer_setting("RAG_EMBEDDING_MAX_RETRIES", 5, minimum=0),
-            integer_setting("RAG_INDEX_TIMEOUT_SECONDS", 600),
-            os.getenv("RAG_EMBEDDING_QUOTA_SCOPE", ""),
+            settings.dimensions,
+            settings.max_distance,
+            settings.batch_size,
+            settings.tokens_per_minute,
+            settings.requests_per_minute,
+            settings.max_retries,
+            settings.index_timeout,
+            settings.quota_scope,
         )
 
     def profile(self, dimension: int) -> str:
@@ -81,21 +72,11 @@ class EmbeddingConfig:
         return f"{hashlib.sha256(identity.encode()).hexdigest()}:{dimension}"
 
 
-def integer_setting(name: str, default: int, minimum: int = 1) -> int:
-    try:
-        value = int(os.getenv(name, str(default)))
-    except ValueError as error:
-        raise ValueError(f"{name} must be an integer of at least {minimum}") from error
-
-    if value < minimum:
-        raise ValueError(f"{name} must be an integer of at least {minimum}")
-
-    return value
-
-
 @asynccontextmanager
 async def open_store(config: EmbeddingConfig, database_url: str | None = None):
-    url = database_url or os.environ["APP_DATABASE_URL"]
+    url = (
+        database_url or load_agent_config().database.application_url.get_secret_value()
+    )
     pool = create_async_engine(
         postgres_driver_url(url), connect_args={"connect_timeout": 5}
     )

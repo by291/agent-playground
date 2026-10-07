@@ -5,6 +5,7 @@ import asyncio
 from collections.abc import AsyncGenerator
 from contextlib import aclosing, asynccontextmanager
 from typing import cast, override
+from urllib.parse import urlsplit
 
 import uvicorn
 from a2a.server.agent_execution import RequestContext, RequestContextBuilder
@@ -34,6 +35,7 @@ from a2a.utils.errors import TaskNotFoundError, UnsupportedOperationError
 from fastapi import FastAPI
 from google.protobuf.json_format import MessageToDict
 
+from agent_playground.config import load_agent_config
 from agent_playground.db.a2a_tasks import PostgresTaskStore
 from agent_playground.db.async_operations import run_database_operation
 from agent_playground.db.connection import close_app_store, prepare_app_store
@@ -304,12 +306,17 @@ def create_a2a_app(
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run one independent A2A demo agent")
     parser.add_argument("--role", choices=["planner", "reviewer"], required=True)
-    parser.add_argument("--host", default="127.0.0.1")
+    parser.add_argument("--host")
     parser.add_argument("--port", type=int)
     args = parser.parse_args()
-    port = args.port or (2031 if args.role == "planner" else 2032)
-    app = create_a2a_app(args.role, f"http://{args.host}:{port}")
-    uvicorn.run(app, host=args.host, port=port, timeout_graceful_shutdown=5)
+    settings = load_agent_config().a2a
+    endpoint = settings.planner_url if args.role == "planner" else settings.reviewer_url
+    address = urlsplit(endpoint)
+    host = args.host or address.hostname
+    port = args.port or address.port or (443 if address.scheme == "https" else 80)
+    base_url = f"http://{host}:{port}" if args.host or args.port else endpoint
+    app = create_a2a_app(args.role, base_url)
+    uvicorn.run(app, host=host or "127.0.0.1", port=port, timeout_graceful_shutdown=5)
 
 
 if __name__ == "__main__":

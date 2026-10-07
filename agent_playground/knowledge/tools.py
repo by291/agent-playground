@@ -63,7 +63,7 @@ async def search_knowledge(query: str, runtime: ToolRuntime) -> ToolMessage:
     }
 
     try:
-        config = EmbeddingConfig.from_env()
+        config = EmbeddingConfig.from_config()
         repository = await asyncio.to_thread(KnowledgeRepository)
         payload["sources"] = await retrieve(query, config, repository)
     except ValueError as error:

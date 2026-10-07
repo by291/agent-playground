@@ -10,6 +10,7 @@ fun newSubmission(
     runId: String,
     message: UserMessage? = null,
     resume: List<ResumeEntry>? = null,
+    modelId: String? = null,
 ): RunAgentInput =
     RunAgentInput(
         threadId = threadId,
@@ -21,6 +22,12 @@ fun newSubmission(
                 emptyList()
             },
         resume = resume,
+        forwardedProps =
+            buildJsonObject {
+                if (modelId != null) {
+                    put("modelId", modelId)
+                }
+            },
     )
 
 internal fun pendingMessage(pending: PendingSubmission?): UserMessage? {

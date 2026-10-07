@@ -5,9 +5,12 @@ import { synchronizeConversation } from "./checkpoint-sync";
 import { SubmissionError } from "./errors";
 import { workflowFeedbackMessage } from "./reviews";
 import { prepareImageInput } from "./image-input";
+import { fetchAgentInfo } from "../agent/info";
+import { requestedModelId } from "../agent/models";
 
 export interface PreparedConversationRun {
   input: RunAgentInput;
+  modelId: string | null;
   releaseDispatch: () => void;
 }
 
@@ -18,6 +21,13 @@ export async function prepareConversationRun(
   const trustedInput = { ...input };
 
   delete trustedInput.forwardedProps;
+
+  const selectedModel = requestedModelId(input);
+
+  if (selectedModel !== undefined) {
+    trustedInput.forwardedProps = { modelId: selectedModel };
+  }
+
   const isResume = !!trustedInput.resume?.length;
   const userMessage = isResume
     ? workflowFeedbackMessage(trustedInput)
@@ -38,13 +48,15 @@ export async function prepareConversationRun(
 
   // Refresh only the current run; admission does not need the full conversation history.
   await synchronizeConversation(trustedInput.threadId);
-  await admitRun({
+  const agentInfo = await fetchAgentInfo();
+  const { row } = await admitRun({
     threadId: trustedInput.threadId,
     runId: trustedInput.runId,
     messageId,
     request: trustedInput,
     userMessage,
     isResume,
+    agentInfo,
   });
 
   const releaseDispatch = await claimPreparedDispatch(trustedInput.runId);
@@ -53,14 +65,14 @@ export async function prepareConversationRun(
     throw new SubmissionError("Submission already dispatched", 409);
   }
 
-  return { input: modelInput, releaseDispatch };
+  return { input: modelInput, modelId: row.modelId, releaseDispatch };
 }
 
 export function executeConversationRun(
   prepared: PreparedConversationRun,
   onRunCreated: (id: string) => void,
 ): AgentExecution {
-  const { input, releaseDispatch } = prepared;
+  const { input, modelId, releaseDispatch } = prepared;
   let mappingWrite = Promise.resolve();
   let mappingError: Error | undefined;
 
@@ -88,6 +100,7 @@ export function executeConversationRun(
           releaseDispatch();
         }
       },
+      modelId,
     );
 
     return {

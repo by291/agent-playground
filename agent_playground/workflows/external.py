@@ -1,6 +1,5 @@
 """Register durable external tasks and wait for trusted backend continuation."""
 
-import os
 from hashlib import sha256
 from typing import Any, Literal
 
@@ -9,7 +8,7 @@ from langgraph.config import get_config
 from langgraph.types import interrupt
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from agent_playground.config import app_api_url
+from agent_playground.config import app_api_url, workflow_api_token
 
 
 class ExternalTaskRegistration(BaseModel):
@@ -45,11 +44,11 @@ async def register_external_task(
     config = get_config()
     thread_id = (config.get("configurable") or {}).get("thread_id")
     run_id = (config.get("metadata") or {}).get("agui_run_id")
-    token = os.getenv("WORKFLOW_API_TOKEN")
+    token = workflow_api_token()
 
     if not isinstance(thread_id, str) or not isinstance(run_id, str) or not token:
         raise ValueError(
-            "External task registration requires run identity and WORKFLOW_API_TOKEN"
+            "External task registration requires run identity and workflow.api_token in agent.yaml"
         )
 
     task_id = (

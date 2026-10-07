@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field
 
 from agent_playground.workflows import external
 from agent_playground.workflows.external import wait_for_external_task
+from tests.agent_config import update_agent_config
 
 
 class WaitState(BaseModel):
@@ -86,7 +87,7 @@ def test_registration_identity_survives_a_new_run(monkeypatch: pytest.MonkeyPatc
         return client_class(transport=transport, **kwargs)
 
     monkeypatch.setattr(external.httpx, "AsyncClient", client_factory)
-    monkeypatch.setenv("WORKFLOW_API_TOKEN", "internal-token")
+    update_agent_config("workflow", api_token="internal-token")
 
     async def run():
         async def submit(state: WaitState):

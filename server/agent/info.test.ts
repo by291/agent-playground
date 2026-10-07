@@ -26,3 +26,45 @@ test("unavailable and malformed upstream metadata do not fabricate a model name"
     assert.equal(response.status, 503);
   }
 });
+
+test("the public model catalog preserves availability and removes provider secrets", async () => {
+  vi.stubGlobal("fetch", () =>
+    Promise.resolve(
+      Response.json({
+        model: "deepseek-flash",
+        defaultModelId: "deepseek",
+        apiKey: "private",
+        models: [
+          {
+            id: "deepseek",
+            label: "DeepSeek",
+            model: "deepseek-flash",
+            available: true,
+          },
+          {
+            id: "qwen",
+            label: "Qwen",
+            model: "qwen3.8-flash",
+            available: false,
+            apiBase: "private",
+          },
+        ],
+      }),
+    ),
+  );
+  const response = await app.request("/agent-info");
+
+  assert.deepEqual(await response.json(), {
+    model: "deepseek-flash",
+    defaultModelId: "deepseek",
+    models: [
+      {
+        id: "deepseek",
+        label: "DeepSeek",
+        model: "deepseek-flash",
+        available: true,
+      },
+      { id: "qwen", label: "Qwen", model: "qwen3.8-flash", available: false },
+    ],
+  });
+});

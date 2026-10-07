@@ -44,6 +44,11 @@ const requestSchema = z.object({
     })
     .optional(),
   command: z.object({ resume: z.unknown() }).optional(),
+  config: z
+    .object({
+      configurable: z.object({ model_id: z.string().optional() }).optional(),
+    })
+    .optional(),
   metadata: z.object({ agui_run_id: z.string() }),
 });
 
@@ -82,7 +87,21 @@ export function controlledAegra(database: typeof db) {
   const api = new Hono();
   const threads = new Map<string, Thread>();
 
-  api.get("/agent-info", (context) => context.json({ model: "test-model" }));
+  api.get("/agent-info", (context) =>
+    context.json({
+      model: "test-model",
+      defaultModelId: "deepseek",
+      models: [
+        {
+          id: "deepseek",
+          label: "DeepSeek",
+          model: "test-model",
+          available: true,
+        },
+        { id: "qwen", label: "Qwen", model: "test-qwen", available: true },
+      ],
+    }),
+  );
 
   function threadFor(id: string) {
     let thread = threads.get(id);
@@ -485,7 +504,11 @@ export function controlledAegra(database: typeof db) {
                 )
                 .join("\n");
 
-        if (Array.isArray(message.content)) {
+        if (prompt === "Report the selected model") {
+          await reply(
+            `Selected model: ${input.config?.configurable?.model_id ?? "none"}`,
+          );
+        } else if (Array.isArray(message.content)) {
           const images = message.content.filter(
             (part) => part.type === "image_url",
           );

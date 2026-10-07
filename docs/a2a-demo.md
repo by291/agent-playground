@@ -22,16 +22,16 @@ The planner returns A2A `input-required`. Enter the requested information in **A
 
 ## Configuration
 
-The child agents read the root environment, just like the Python application. Model mode is the default and uses the root DeepSeek model/key settings. Child calls disable thinking and budget 2,200 answer tokens so the bounded demonstration produces visible text promptly. `A2A_DEMO_MODE=scripted` supplies deterministic, progressively streamed example paragraphs for protocol demonstrations and controlled checks. Scripted content is an example rather than model-generated analysis.
+The child agents read `agent.yaml` and `models.yaml`, just like the Python application. Model mode is the default and uses the catalog entry selected by `a2a_model` in `models.yaml` (DeepSeek by default). Child calls disable thinking and budget 2,200 answer tokens so the bounded demonstration produces visible text promptly. `a2a.mode: scripted` in `agent.yaml` supplies deterministic, progressively streamed example paragraphs for protocol demonstrations and controlled checks. Scripted content is an example rather than model-generated analysis.
 
 | Root setting       | Default                          |
 | ------------------ | -------------------------------- |
-| `A2A_PLANNER_URL`  | `http://127.0.0.1:2031`          |
-| `A2A_REVIEWER_URL` | `http://127.0.0.1:2032`          |
-| `A2A_DEMO_API_URL` | `http://127.0.0.1:2026/a2a-demo` |
-| `A2A_DEMO_MODE`    | `model`                          |
+| `a2a.planner_url`  | `http://127.0.0.1:2031`          |
+| `a2a.reviewer_url` | `http://127.0.0.1:2032`          |
+| `a2a.demo_api_url` | `http://127.0.0.1:2026/a2a-demo` |
+| `a2a.mode`         | `model`                          |
 
-The TypeScript server independently accepts `A2A_DEMO_API_URL` in `server/.env`; its default follows its own `AEGRA_URL` plus `/a2a-demo`. It never reads the root `.env`. Custom remote agents must implement the SDK task/message conventions and the demo's bounded text output contract. A child can be launched separately with `uv run --env-file .env python -m agent_playground.services.a2a.server --role planner --port 2031`.
+The TypeScript server independently accepts `A2A_DEMO_API_URL` in `server/.env`; its default follows its own `AEGRA_URL` plus `/a2a-demo`. It never reads the root `.env`. Custom remote agents must implement the SDK task/message conventions and the demo's bounded text output contract. A child can be launched separately with `uv run python -m agent_playground.services.a2a.server --role planner --port 2031`.
 
 Each child publishes `/.well-known/agent-card.json` and a JSON-RPC endpoint. This local demo uses A2A 1.0 with streaming tasks and text artifacts. The child endpoints are development services without per-user authentication; keep them on trusted development interfaces. Coordinator submission uses `WORKFLOW_API_TOKEN`. Input/cancel forwarding uses the private task callback token, which public conversation snapshots never expose.
 

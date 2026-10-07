@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import os
 import time
 from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, Self, cast
@@ -14,6 +13,8 @@ from limits.aio.storage.redis.redispy import RedispyBridge
 from limits.aio.strategies import SlidingWindowCounterRateLimiter
 from redis.asyncio import Redis
 
+from agent_playground.config import load_agent_config
+
 if TYPE_CHECKING:
     from agent_playground.knowledge.store import EmbeddingConfig
 
@@ -22,10 +23,12 @@ BeforeRequest = Callable[[], Awaitable[None]]
 
 class EmbeddingQuota:
     def __init__(self, config: EmbeddingConfig, redis_url: str | None = None):
-        url = redis_url or os.getenv("REDIS_URL", "")
+        url = redis_url or load_agent_config().redis.url.get_secret_value()
 
         if not url:
-            raise ValueError("Configure REDIS_URL for shared embedding rate limits")
+            raise ValueError(
+                "Configure redis.url in agent.yaml for shared embedding rate limits"
+            )
 
         storage = RedisStorage(
             f"async+{url}",

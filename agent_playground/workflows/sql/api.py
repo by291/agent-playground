@@ -1,10 +1,10 @@
 """HTTP contracts and client for the local SQL demonstration service."""
 
-import os
 from typing import Protocol
 
 import httpx
 
+from agent_playground.config import load_agent_config
 from agent_playground.services.sql.models import SqlCheck, SqlSource, SqlSubmission
 
 
@@ -18,7 +18,7 @@ class SqlApi(Protocol):
 
 class HttpSqlApi:
     def __init__(self):
-        self.base_url = os.getenv("SQL_DEMO_API_URL", "http://127.0.0.1:2026/sql-demo")
+        self.base_url = load_agent_config().services.sql_demo_url
 
     async def fetch(self, task: str) -> SqlSource:
         async with httpx.AsyncClient(timeout=30) as client:

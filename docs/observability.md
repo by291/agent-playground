@@ -33,16 +33,30 @@ Browser `app.first_text_received_ms` measures the first nonempty text delta, exc
 
 ## Local startup
 
+Set the Agent listener and telemetry in the private `agent.yaml` before starting:
+
+```yaml
+http:
+  host: 0.0.0.0
+  port: 2026
+observability:
+  targets: [GENERIC]
+  otlp_endpoint: http://127.0.0.1:4318/v1/traces
+  prometheus_metrics: true
+```
+
+Preserve the other sections in the complete file. The listener allows the Compose Prometheus service to scrape Aegra; the launcher converts telemetry settings into Aegra's required environment. Agent settings always come from YAML, including in observability mode.
+
 ```sh
 make setup
-# Set DEEPSEEK_API_KEY in the root .env.
+# Set chat.models.deepseek.api_key in models.yaml.
 make infra-up
 # Stop managed apps before switching process modes.
 make dev-stop
 make dev-observability
 ```
 
-Existing environments can skip setup; use [development](development.md) for configuration and restart instructions. `make infra-up` builds the Skill runtime and prepares sandbox images. Observability mode additionally enables its Compose profile.
+Existing environments can skip setup; use [development](development.md) for configuration and restart instructions. `make infra-up` builds the Skill runtime and prepares sandbox images. Observability mode additionally enables its native Compose profile and server/Web telemetry. To stop Agent telemetry, clear `observability.targets`, disable `prometheus_metrics` and restart the Agent.
 
 The first start downloads Langfuse, ClickHouse, MinIO, Collector, Prometheus and Grafana images. Langfuse uses separate PostgreSQL, Redis and data volumes.
 
@@ -59,9 +73,9 @@ Grafana loads the `Agent Playground` dashboard with target health, SSE outcomes/
 
 Application processes run in the background with logs in `.dev/`. `make dev-stop` stops the three applications; `make infra-down` stops infrastructure, including observability.
 
-Alternatively run `make observability-up`, `make agent-observability`, `make server-observability` and `make web-observability` separately. Each application reads its own `.env`; these commands supply local telemetry settings through process environment.
+Alternatively run `make observability-up`, `make agent-observability`, `make server-observability` and `make web-observability` separately. The Agent uses the YAML settings above; the server and Web read their own `.env`, and their commands supply local telemetry settings through process environment variables.
 
-For manual settings, Python `OTEL_EXPORTER_OTLP_ENDPOINT` includes `/v1/traces`; the server uses an OTLP base URL without that path. Set frontend `VITE_OBSERVABILITY_ENABLED=true`, restarting Vite after a change. Production builds require the flag at build time.
+For manual Agent settings, `observability.otlp_endpoint` in `agent.yaml` includes `/v1/traces`; the server uses an OTLP base URL without that path. See [Agent configuration](agent-configuration.md) for trace targets and exporter keys. Set frontend `VITE_OBSERVABILITY_ENABLED=true`, restarting Vite after a change. Production builds require the flag at build time.
 
 ## Deployment boundaries
 

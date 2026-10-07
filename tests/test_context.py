@@ -14,6 +14,49 @@ from langgraph.checkpoint.memory import InMemorySaver
 from pydantic import PrivateAttr
 
 from agent_playground.graph import make_graph
+from tests.model_config import ModelConfigFile
+
+
+def test_switching_models_does_not_report_the_previous_provider_input_usage():
+    from agent_playground.context import ContextMiddleware, ContextState
+
+    model = RecordingModel(responses=[AIMessage(content="Next.")])
+    middleware = ContextMiddleware(model, model, "Prompt", [])
+    state: ContextState = {
+        "messages": [
+            AIMessage(
+                content="Earlier.",
+                usage_metadata={
+                    "input_tokens": 900,
+                    "output_tokens": 1,
+                    "total_tokens": 901,
+                },
+            )
+        ],
+        "context_usage": {
+            "model": "previous-model",
+            "usedTokens": 900,
+            "contextWindow": 10000,
+            "triggerTokens": 8000,
+            "breakdown": {
+                "system": 0,
+                "tools": 0,
+                "conversation": 900,
+                "toolResults": 0,
+                "summary": 0,
+            },
+            "lastInputTokens": 900,
+            "compactions": 1,
+            "lastCompaction": None,
+            "revision": 4,
+        },
+    }
+
+    usage = middleware._usage(state, state["messages"])
+
+    assert usage["lastInputTokens"] is None
+    assert usage["model"] == "RecordingModel"
+    assert usage["compactions"] == 1
 
 
 def test_image_token_estimate_uses_deepseek_upper_bound_not_base64_length():
@@ -31,6 +74,19 @@ def test_image_token_estimate_uses_deepseek_upper_bound_not_base64_length():
     )
 
     assert estimate_tokens([image]) - estimate_tokens([text]) == 1024
+
+
+def test_token_estimate_counts_replayed_reasoning_without_changing_visible_content():
+    from agent_playground.context import estimate_tokens
+
+    plain = AIMessage(content="Use the clock tool.")
+    reasoning = "Inspect the timestamp. " * 200
+    thinking = plain.model_copy(
+        update={"additional_kwargs": {"reasoning_content": reasoning}}
+    )
+
+    assert estimate_tokens([thinking]) - estimate_tokens([plain]) >= len(reasoning) // 2
+    assert thinking.content == plain.content
 
 
 class RecordingModel(FakeMessagesListChatModel):
@@ -97,10 +153,11 @@ def test_image_pixels_survive_checkpoint_and_followup(asynchronous: bool):
 
 @pytest.mark.parametrize("asynchronous", [False, True])
 def test_compaction_keeps_early_facts_and_survives_graph_recreation(
-    monkeypatch: pytest.MonkeyPatch, asynchronous: bool
+    model_config: ModelConfigFile, asynchronous: bool
 ):
-    monkeypatch.setenv("CONTEXT_WINDOW_TOKENS", "20000")
-    monkeypatch.setenv("CONTEXT_COMPACT_RATIO", "0.5")
+    model_config.chat(max_input_tokens=20000)
+    model_config.settings["chat"]["compact_ratio"] = 0.5
+    model_config.save()
     summary_model = RecordingModel(
         responses=[AIMessage(content="Remember project Cedar.")]
     )
@@ -187,9 +244,9 @@ def test_usage_includes_fixed_context_tools_and_provider_input_tokens():
 
 
 def test_a_single_oversized_request_fails_without_silently_dropping_it(
-    monkeypatch: pytest.MonkeyPatch,
+    model_config: ModelConfigFile,
 ):
-    monkeypatch.setenv("CONTEXT_WINDOW_TOKENS", "10000")
+    model_config.chat(max_input_tokens=10000)
     model = RecordingModel(responses=[AIMessage(content="Should not be called.")])
     graph = make_graph(model=model)
 
@@ -201,10 +258,11 @@ def test_a_single_oversized_request_fails_without_silently_dropping_it(
 
 @pytest.mark.parametrize("asynchronous", [False, True])
 def test_public_tool_messages_survive_compaction_within_a_turn(
-    monkeypatch: pytest.MonkeyPatch, asynchronous: bool
+    model_config: ModelConfigFile, asynchronous: bool
 ):
-    monkeypatch.setenv("CONTEXT_WINDOW_TOKENS", "20000")
-    monkeypatch.setenv("CONTEXT_COMPACT_RATIO", "0.5")
+    model_config.chat(max_input_tokens=20000)
+    model_config.settings["chat"]["compact_ratio"] = 0.5
+    model_config.save()
 
     @tool
     def lookup_fact() -> str:

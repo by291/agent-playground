@@ -1,7 +1,6 @@
 """Transfer conversation-owned files through the authenticated application API."""
 
 import base64
-import os
 from pathlib import PurePosixPath
 from urllib.parse import unquote
 from uuid import NAMESPACE_URL, UUID, uuid5
@@ -9,7 +8,7 @@ from uuid import NAMESPACE_URL, UUID, uuid5
 import httpx
 from pydantic import BaseModel, ConfigDict, Field
 
-from agent_playground.config import app_api_url
+from agent_playground.config import app_api_url, workflow_api_token
 from agent_playground.skills.catalog import MAX_FILE_BYTES, relative_path
 
 
@@ -27,10 +26,12 @@ class SkillFileClient:
         self.thread_id = thread_id
         self.run_id = run_id
         self.call_id = call_id
-        token = os.getenv("WORKFLOW_API_TOKEN")
+        token = workflow_api_token()
 
         if not token:
-            raise ValueError("Skill file transfer requires WORKFLOW_API_TOKEN")
+            raise ValueError(
+                "Skill file transfer requires workflow.api_token in agent.yaml"
+            )
 
         self.headers = {"Authorization": f"Bearer {token}"}
 

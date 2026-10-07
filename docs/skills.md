@@ -22,7 +22,7 @@ Skill calls are grouped by name with a **Skill** label and execution status. Exp
 
 ## Publishing bundles
 
-The default location is `skills/<name>/` in the repository. Override it through root `SKILL_DIRECTORY` if needed. Names must match their directory and use lowercase letters, digits and hyphens. YAML frontmatter in `SKILL.md` requires a name and nonempty description:
+The default location is `skills/<name>/` in the repository. Override it through `skills.directory` in `agent.yaml` if needed. Names must match their directory and use lowercase letters, digits and hyphens. YAML frontmatter in `SKILL.md` requires a name and nonempty description:
 
 ```markdown
 ---
@@ -47,7 +47,7 @@ Regular chat also sends supported image attachments directly to the model, while
 
 Scripts receive current-conversation file IDs through `input_files`, at `/workspace/inputs/<id>/<name>`. `output_files` declares paths relative to `/workspace`. Published files appear as downloads and recover after reload. Tool results report the actual exit code, logs, errors and successfully published files.
 
-Internal transfers use `WORKFLOW_API_TOKEN` and `APP_API_URL`. Inputs are checked against conversation ownership; outputs must also belong to an existing run. S3 settings are shared with knowledge documents; see [storage configuration](development.md#s3-compatible-storage). S3 credentials are not sent to the browser or scripts.
+Internal transfers use `workflow.api_token` and `workflow.app_api_url` in `agent.yaml`; the token matches the server's `WORKFLOW_API_TOKEN`. Inputs are checked against conversation ownership; outputs must also belong to an existing run. S3 settings are shared with knowledge documents; see [storage configuration](development.md#s3-compatible-storage). S3 credentials are not sent to the browser or scripts.
 
 Deleting a conversation immediately revokes file downloads. The server attempts S3 cleanup every 30 seconds; failures retain metadata for later passes or restart. Successful cleanup retains a metadata tombstone and scans one `skill-files/` object-list page per pass, so uploads that finish remotely after a timeout can be found and deleted again. S3 credentials require list, get, put and delete permissions for these objects. Shared knowledge documents have their own lifecycle and survive conversation deletion.
 
@@ -57,15 +57,15 @@ Deleting a conversation immediately revokes file downloads. The server attempts 
 
 Each Aegra worker execution lazily creates one Docker sandbox. Calls in that execution share `/workspace`, which is destroyed on completion, failure or cancellation. A 20-minute TTL collects sandboxes left by process crashes. A later conversation turn or review resume creates a new workspace, requiring input file IDs to be supplied again.
 
-| Limit                   | Current value                                                                                           |
-| ----------------------- | ------------------------------------------------------------------------------------------------------- |
-| Identity                | UID/GID 1000.                                                                                           |
-| Resources               | 1 CPU, 512 MiB memory, 256 processes.                                                                   |
-| Script call             | Up to 120 seconds; `.py`, `.sh` or `.js`; arguments passed literally.                                   |
-| Inputs/declared outputs | At most four each, up to 10 MiB per file.                                                               |
-| Logs                    | At most 65,536 characters across stdout/stderr; each returned stream is truncated to 32,768 characters. |
-| Egress                  | Root `SKILL_ALLOWED_HOSTS`, defaulting to `httpbin.org`.                                                |
-| Environment             | Only names explicitly listed in `SKILL_SCRIPT_ENV`; not the entire agent environment.                   |
+| Limit                   | Current value                                                                                            |
+| ----------------------- | -------------------------------------------------------------------------------------------------------- |
+| Identity                | UID/GID 1000.                                                                                            |
+| Resources               | 1 CPU, 512 MiB memory, 256 processes.                                                                    |
+| Script call             | Up to 120 seconds; `.py`, `.sh` or `.js`; arguments passed literally.                                    |
+| Inputs/declared outputs | At most four each, up to 10 MiB per file.                                                                |
+| Logs                    | At most 65,536 characters across stdout/stderr; each returned stream is truncated to 32,768 characters.  |
+| Egress                  | `skills.allowed_hosts` in `agent.yaml`, defaulting to `httpbin.org`.                                     |
+| Environment             | Only explicit values from `skills.script_environment` in `agent.yaml`; not the entire Agent environment. |
 
 Scripts do not mount the repository, host files or Docker socket. The OpenSandbox control service holds the socket; its published API and dynamic execution ports are limited to loopback. Local configuration uses the official `release-1.1.1-rc.1` image with native `[docker] publish_host = "127.0.0.1"` in [sandbox.toml](../infra/skills/sandbox.toml), without a startup patch. This is a prerelease image; Compose/runtime configuration records the pinned version.
 

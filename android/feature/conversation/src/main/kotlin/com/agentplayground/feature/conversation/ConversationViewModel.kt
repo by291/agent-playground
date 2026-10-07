@@ -7,6 +7,8 @@ import androidx.lifecycle.viewModelScope
 import com.agentplayground.core.conversation.ConversationSession
 import com.agentplayground.core.conversation.PlanDraft
 import com.agentplayground.core.conversation.SessionState
+import com.agentplayground.core.model.AgentInfo
+import com.agentplayground.core.model.AgentModel
 import com.agentplayground.core.model.ConversationSummary
 import com.agentplayground.core.model.Download
 import com.agentplayground.core.model.MessageAttachment
@@ -29,6 +31,7 @@ class ConversationViewModel(private val repository: ConversationRepository) : Vi
     private var draftSaveJob: Job? = null
     private var visible = false
     private var metadataJob: Job? = null
+    private var modelSelectionJob: Job? = null
     private val mutable = MutableStateFlow(ConversationUiState())
     val state = mutable.asStateFlow()
 
@@ -110,6 +113,7 @@ class ConversationViewModel(private val repository: ConversationRepository) : Vi
     }
 
     private suspend fun selectSaved(saved: SavedConversation) {
+        modelSelectionJob?.cancel()
         session?.close()
         sessionCollector?.cancel()
         draftSaveJob?.cancel()
@@ -118,6 +122,7 @@ class ConversationViewModel(private val repository: ConversationRepository) : Vi
 
         val next = repository.createSession(viewModelScope, saved)
         session = next
+        next.setDefaultModel(mutable.value.agentInfo?.defaultModelId)
         mutable.update {
             it.copy(session = next.state.value, attachments = emptyList(), error = null)
         }
@@ -271,6 +276,20 @@ class ConversationViewModel(private val repository: ConversationRepository) : Vi
         session?.cancelExternalTask(taskId)
     }
 
+    fun selectModel(modelId: String) {
+        val current = session ?: return
+        val state = mutable.value
+
+        if (
+            !state.canSelectModel ||
+                state.agentInfo?.models?.any { it.id == modelId && it.available } != true
+        ) {
+            return
+        }
+
+        modelSelectionJob = viewModelScope.launch { current.selectModel(modelId) }
+    }
+
     fun clearActivity() {
         session?.clearActivity()
     }
@@ -288,7 +307,8 @@ class ConversationViewModel(private val repository: ConversationRepository) : Vi
             try {
                 val info = repository.agentInfo()
 
-                mutable.update { it.copy(model = info.model) }
+                session?.setDefaultModel(info.defaultModelId)
+                mutable.update { it.copy(model = info.model, agentInfo = info) }
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Exception) {
@@ -381,6 +401,7 @@ class ConversationViewModel(private val repository: ConversationRepository) : Vi
     }
 
     private fun forgetSession() {
+        modelSelectionJob?.cancel()
         draftSaveJob?.cancel()
         sessionCollector?.cancel()
         session?.close()
@@ -445,11 +466,26 @@ data class ConversationUiState(
     val historyLoading: Boolean = false,
     val historyError: String? = null,
     val model: String? = null,
+    val agentInfo: AgentInfo? = null,
     val attachments: List<PickedFile> = emptyList(),
     val uploading: Boolean = false,
     val error: String? = null,
     val historyMutation: HistoryMutation? = null,
 ) {
+    val selectedModel: AgentModel?
+        get() = agentInfo?.models?.find { it.id == (session?.modelId ?: agentInfo.defaultModelId) }
+
+    val currentModel: String?
+        get() =
+            selectedModel?.model
+                ?: if (session?.modelId == null) agentInfo?.model ?: model else session.modelId
+
+    val modelLabel: String?
+        get() = selectedModel?.label ?: currentModel
+
+    val canSelectModel: Boolean
+        get() = session?.canSelectModel == true && !uploading
+
     fun deletionBlocked(threadId: String): Boolean =
         history.any { it.threadId == threadId && isActiveRun(it.status) } ||
             (session?.threadId == threadId && (session.busy || session.loading || uploading))

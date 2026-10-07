@@ -9,17 +9,17 @@ React web / Android Compose → Hono / AG-UI adapter → Aegra execution queue �
 
 ## Quick start
 
-Requires Docker, uv, pnpm, Node.js, Make and a DeepSeek API key. See [local development](docs/development.md) for versions, environment ownership and troubleshooting.
+Requires Docker, uv, pnpm, Node.js, Make and a configured DeepSeek or Qwen API key. See [local development](docs/development.md) for versions, model selection, environment ownership and troubleshooting.
 
 Windows users can run the same Make commands in PowerShell or CMD with native GNU Make and Docker Desktop using Linux containers.
 
 ```sh
 make setup
-# Set DEEPSEEK_API_KEY in the root .env created by setup.
+# Set chat.models.deepseek.api_key in models.yaml created by setup.
 make dev
 ```
 
-Open <http://127.0.0.1:5173>. The agent, server and web app run in the background; logs are in `.dev/`. The default infrastructure includes PostgreSQL with pgvector, Redis, OpenSandbox and SeaweedFS S3. Configure an independent embedding API in the root `.env` before indexing knowledge documents.
+Open <http://127.0.0.1:5173>. The agent, server and web app run in the background; logs are in `.dev/`. The default infrastructure includes PostgreSQL with pgvector, Redis, OpenSandbox and SeaweedFS S3. Configure the independent `embedding` section in `models.yaml` before indexing knowledge documents.
 
 ```sh
 make dev-stop

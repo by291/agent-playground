@@ -13,6 +13,10 @@ export const renameConversationSchema = z.object({
   title: conversationTitleSchema,
 });
 
+export const selectConversationModelSchema = z.object({
+  modelId: z.string().trim().min(1).max(100),
+});
+
 export const conversationSummarySchema = z.object({
   threadId: z.string().min(1),
   title: conversationTitleSchema,

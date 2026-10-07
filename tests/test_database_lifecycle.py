@@ -12,12 +12,13 @@ from agent_playground import http
 from agent_playground.db.connection import app_engine, prepare_app_store
 from agent_playground.knowledge import worker as knowledge_worker_module
 from agent_playground.services.report import worker as report_worker_module
+from tests.agent_config import update_agent_config
 
 
 def test_schema_preparation_creates_only_python_owned_tables(
     monkeypatch: pytest.MonkeyPatch, postgres_database_url: str
 ):
-    monkeypatch.setenv("APP_DATABASE_URL", postgres_database_url)
+    update_agent_config("database", application_url=postgres_database_url)
     app_engine.cache_clear()
     engine = app_engine()
 
@@ -41,7 +42,7 @@ def test_schema_preparation_creates_only_python_owned_tables(
 def test_concurrent_process_startup_prepares_schema_once(
     monkeypatch: pytest.MonkeyPatch, postgres_database_url: str
 ):
-    monkeypatch.setenv("APP_DATABASE_URL", postgres_database_url)
+    update_agent_config("database", application_url=postgres_database_url)
     app_engine.cache_clear()
     engine = app_engine()
     ready = threading.Barrier(3)
@@ -125,7 +126,7 @@ def test_shutdown_waits_for_a_cancelled_workers_database_thread(
 def test_application_shutdown_drains_workers_before_releasing_its_engine(
     monkeypatch: pytest.MonkeyPatch, postgres_database_url: str
 ):
-    monkeypatch.setenv("APP_DATABASE_URL", postgres_database_url)
+    update_agent_config("database", application_url=postgres_database_url)
     app_engine.cache_clear()
     prepare_app_store()
     engine = app_engine()

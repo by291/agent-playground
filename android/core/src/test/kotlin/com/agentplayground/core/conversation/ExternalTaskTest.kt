@@ -306,6 +306,13 @@ class ExternalTaskTest {
             return snapshot
         }
 
+        override suspend fun selectModel(
+            threadId: String,
+            modelId: String,
+        ): com.agentplayground.core.model.ConversationModel {
+            error("Unexpected model change")
+        }
+
         override fun run(input: RunAgentInput): Flow<BaseEvent> = emptyFlow()
 
         override fun changes(threadId: String): Flow<ServerEvent> = changeEvents

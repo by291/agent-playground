@@ -22,9 +22,9 @@ help:
 	@echo "Android: make android-check, make android-lint, make android-format, make android-format-check"
 
 setup:
-	node scripts/setup-env.mjs
 	uv sync
 	pnpm install
+	node scripts/setup-env.mjs
 
 infra-up:
 	docker build -t agent-playground-skill-runtime:local -f infra/skills/runtime.Dockerfile infra/skills

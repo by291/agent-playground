@@ -37,7 +37,7 @@ test(
         },
         {
           target: "android-lint",
-          expected: "-p android :core:lint :app:lintDebug",
+          expected: "-p android lintCheck",
         },
         { target: "android-check", expected: "-p android qualityCheck" },
       ];

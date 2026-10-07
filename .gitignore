@@ -1,6 +1,8 @@
 node_modules/
 .pnpm-store/
 .env
+/models.yaml
+/agent.yaml
 dist/
 .dev/
 coverage/

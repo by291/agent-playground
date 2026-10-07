@@ -8,12 +8,13 @@ import httpx
 import pytest
 
 from agent_playground.skills.files import SkillFileClient
+from tests.agent_config import update_agent_config
 
 
 def test_partial_output_publication_keeps_completed_file_links(
     monkeypatch: pytest.MonkeyPatch,
 ):
-    monkeypatch.setenv("WORKFLOW_API_TOKEN", "test-token")
+    update_agent_config("workflow", api_token="test-token")
     requests: list[dict[str, Any]] = []
 
     def respond(request: httpx.Request):

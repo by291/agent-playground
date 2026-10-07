@@ -2,7 +2,6 @@
 
 import asyncio
 import json
-import os
 import shlex
 from contextlib import asynccontextmanager
 from contextvars import ContextVar
@@ -17,6 +16,7 @@ from opensandbox.models.execd import ExecutionHandlers, OutputMessage, RunComman
 from opensandbox.models.filesystem import WriteEntry
 from opensandbox.models.sandboxes import NetworkPolicy, NetworkRule
 
+from agent_playground.config import load_agent_config
 from agent_playground.skills.catalog import MAX_FILE_BYTES, SkillCatalog, relative_path
 
 MAX_LOG_CHARS = 32 * 1024
@@ -43,22 +43,19 @@ class SandboxSettings:
     environment: dict[str, str] = field(default_factory=dict)
 
     @classmethod
-    def from_environment(cls):
-        names = os.getenv("SKILL_SCRIPT_ENV", "").split(",")
-        environment = {
-            name.strip(): os.environ[name.strip()] for name in names if name.strip()
-        }
+    def from_config(cls):
+        config = load_agent_config().skills
 
         return cls(
-            url=os.getenv("SKILL_SANDBOX_URL", cls.url),
-            api_key=os.getenv("SKILL_SANDBOX_API_KEY", cls.api_key),
-            image=os.getenv("SKILL_SANDBOX_IMAGE", cls.image),
-            allowed_hosts=tuple(
-                host.strip()
-                for host in os.getenv("SKILL_ALLOWED_HOSTS", "httpbin.org").split(",")
-                if host.strip()
-            ),
-            environment=environment,
+            url=config.sandbox_url,
+            api_key=config.sandbox_api_key.get_secret_value(),
+            image=config.sandbox_image,
+            command_timeout=config.command_timeout,
+            allowed_hosts=tuple(config.allowed_hosts),
+            environment={
+                name: value.get_secret_value()
+                for name, value in config.script_environment.items()
+            },
         )
 
 
@@ -287,7 +284,7 @@ current_session: ContextVar[SkillSession | None] = ContextVar(
 
 @asynccontextmanager
 async def skill_execution(catalog: SkillCatalog):
-    async with SkillSession(catalog, SandboxSettings.from_environment()) as session:
+    async with SkillSession(catalog, SandboxSettings.from_config()) as session:
         token = current_session.set(session)
 
         try:

@@ -1,24 +1,20 @@
 """Submit one durable collaboration job with replay-safe identity."""
 
-import os
-
 import httpx
 from pydantic import ValidationError
 
-from agent_playground.config import app_api_url
+from agent_playground.config import app_api_url, load_agent_config, workflow_api_token
 from agent_playground.services.a2a.models import CollaborationRequest
 
 
 class HttpA2aApi:
     def __init__(self):
-        self.base_url = os.getenv(
-            "A2A_DEMO_API_URL", "http://127.0.0.1:2026/a2a-demo"
-        ).rstrip("/")
+        self.base_url = load_agent_config().a2a.demo_api_url
 
     async def submit(
         self, *, task_id: str, task: str, callback_token: str, require_input: bool
     ) -> None:
-        internal_token = os.getenv("WORKFLOW_API_TOKEN", "")
+        internal_token = workflow_api_token()
 
         async with httpx.AsyncClient(timeout=30) as client:
             try:

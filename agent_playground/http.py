@@ -5,10 +5,11 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from agent_playground.config import configured_model_name
 from agent_playground.db.async_operations import run_database_operation
 from agent_playground.db.connection import close_app_store, prepare_app_store
 from agent_playground.knowledge.worker import run_knowledge_worker
+from agent_playground.models import AgentInfo
+from agent_playground.models import agent_info as model_agent_info
 from agent_playground.services.a2a.coordinator import run_a2a_worker
 from agent_playground.services.a2a.routes import router as a2a_router
 from agent_playground.services.report.routes import router as report_router
@@ -53,5 +54,5 @@ app.include_router(a2a_router)
 
 
 @app.get("/agent-info")
-def agent_info() -> dict[str, str]:
-    return {"model": configured_model_name()}
+def agent_info() -> AgentInfo:
+    return model_agent_info()

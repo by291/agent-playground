@@ -44,7 +44,7 @@ def health():
 @app.post("/search")
 async def search(input: Search):
     sources = await retrieve(
-        input.query, EmbeddingConfig.from_env(), KnowledgeRepository()
+        input.query, EmbeddingConfig.from_config(), KnowledgeRepository()
     )
 
     return {

@@ -143,6 +143,7 @@ fun ConversationRoute(
                     onRemoveAttachment = vm::removeAttachment,
                     loadImage = vm::loadAttachmentImage,
                     onAttach = { filePicker.launch(arrayOf("*/*")) },
+                    onSelectModel = vm::selectModel,
                 )
             },
         ) { padding ->

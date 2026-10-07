@@ -7,8 +7,12 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ConversationProvider } from "../ConversationProvider";
 import type { ConversationSnapshot } from "../api/contracts";
 import { ConversationWorkspace } from "./ConversationWorkspace";
+import type { AgentInfo } from "@shared/agent-info";
 
-function renderWorkspace(snapshot: ConversationSnapshot | null = null) {
+function renderWorkspace(
+  snapshot: ConversationSnapshot | null = null,
+  agentInfo: AgentInfo = { model: "test-model" },
+) {
   const client = new QueryClient();
   const conversation = {
     threadId: "navigation",
@@ -19,7 +23,7 @@ function renderWorkspace(snapshot: ConversationSnapshot | null = null) {
   onTestFinished(() => client.clear());
   vi.stubGlobal("fetch", (url: string) => {
     if (url === "/agent-info") {
-      return Promise.resolve(Response.json({ model: "test-model" }));
+      return Promise.resolve(Response.json(agentInfo));
     }
 
     if (url === "/health") {
@@ -162,6 +166,112 @@ test("restored context usage remains available from the model control", async ()
     "1000",
   );
   assert.ok(page.getByText("Auto-compacts at 80%."));
+});
+
+test("a canonical model switch displays the selected model and hides another model's context usage", async () => {
+  const page = renderWorkspace(
+    {
+      modelId: "qwen",
+      messages: [],
+      outputs: [],
+      interrupts: [],
+      runs: [],
+      contextUsage: {
+        model: "deepseek-flash",
+        usedTokens: 1000,
+        contextWindow: 100_000,
+        triggerTokens: 80_000,
+        breakdown: {
+          system: 200,
+          tools: 100,
+          conversation: 700,
+          toolResults: 0,
+          summary: 0,
+        },
+        lastInputTokens: null,
+        compactions: 0,
+        lastCompaction: null,
+        revision: 1,
+      },
+    },
+    {
+      model: "deepseek-flash",
+      defaultModelId: "deepseek",
+      models: [
+        {
+          id: "deepseek",
+          label: "DeepSeek",
+          model: "deepseek-flash",
+          available: true,
+        },
+        { id: "qwen", label: "Qwen", model: "qwen3.8-flash", available: true },
+      ],
+    },
+  );
+  const model = await page.findByRole("button", {
+    name: "qwen3.8-flash. Choose model and show details",
+  });
+
+  fireEvent.click(model);
+  assert.equal(
+    page.queryByRole("progressbar", { name: "Estimated context usage" }),
+    null,
+  );
+});
+
+test("the model picker disables unconfigured models and preserves the draft on selection", async () => {
+  const page = renderWorkspace(null, {
+    model: "deepseek-flash",
+    defaultModelId: "deepseek",
+    models: [
+      {
+        id: "deepseek",
+        label: "DeepSeek",
+        model: "deepseek-flash",
+        available: true,
+      },
+      { id: "qwen", label: "Qwen", model: "qwen3.8-flash", available: false },
+    ],
+  });
+  const input = page.getByRole("textbox", { name: "Message" });
+
+  fireEvent.change(input, { target: { value: "Keep my model draft" } });
+  fireEvent.click(
+    await page.findByRole("button", { name: /deepseek-flash.*Choose model/ }),
+  );
+  expect(page.getByRole("radio", { name: /DeepSeek/ })).toBeChecked();
+  expect(page.getByRole("radio", { name: /Qwen/ })).toBeDisabled();
+  expect(page.getByText("Not configured")).toBeVisible();
+  fireEvent.keyDown(document, { key: "Escape" });
+  expect(input).toHaveValue("Keep my model draft");
+});
+
+test("choosing an available model updates a fresh conversation without clearing its draft", async () => {
+  const page = renderWorkspace(null, {
+    model: "deepseek-flash",
+    defaultModelId: "deepseek",
+    models: [
+      {
+        id: "deepseek",
+        label: "DeepSeek",
+        model: "deepseek-flash",
+        available: true,
+      },
+      { id: "qwen", label: "Qwen", model: "qwen3.8-flash", available: true },
+    ],
+  });
+  const input = page.getByRole("textbox", { name: "Message" });
+
+  fireEvent.change(input, { target: { value: "Keep this question" } });
+  fireEvent.click(
+    await page.findByRole("button", { name: /deepseek-flash.*Choose model/ }),
+  );
+  fireEvent.click(page.getByRole("radio", { name: /Qwen/ }));
+  expect(
+    await page.findByRole("button", { name: /qwen3.8-flash.*Choose model/ }),
+  ).toBeVisible();
+  expect(input).toHaveValue("Keep this question");
+  expect(page.queryByRole("radiogroup")).toBeNull();
 });
 
 test("navigation restores the saved collapse preference on a new page", () => {

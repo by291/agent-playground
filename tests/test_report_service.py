@@ -17,6 +17,7 @@ from agent_playground.http import app
 from agent_playground.services.report.jobs import pending_report_events
 from agent_playground.services.report.models import ReportRequest
 from agent_playground.services.report.worker import deliver_report_events
+from tests.agent_config import update_agent_config
 
 
 def create_report_job(request: ReportRequest):
@@ -32,7 +33,7 @@ def test_report_api_reconciles_an_accepted_job_without_exposing_callback_credent
     monkeypatch: pytest.MonkeyPatch,
     postgres_database_url: str,
 ):
-    monkeypatch.setenv("APP_DATABASE_URL", postgres_database_url)
+    update_agent_config("database", application_url=postgres_database_url)
     app_engine.cache_clear()
     prepare_app_store()
     engine = app_engine()
@@ -82,7 +83,7 @@ def test_report_events_resume_from_the_last_committed_delivery(
     monkeypatch: pytest.MonkeyPatch,
     postgres_database_url: str,
 ):
-    monkeypatch.setenv("APP_DATABASE_URL", postgres_database_url)
+    update_agent_config("database", application_url=postgres_database_url)
     app_engine.cache_clear()
     prepare_app_store()
     engine = app_engine()

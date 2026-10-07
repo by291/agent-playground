@@ -2,13 +2,13 @@
 
 import json
 import logging
-import os
 from functools import cache
 from pathlib import Path
 
 from langchain.tools import ToolRuntime, tool
 from langchain_core.messages import ToolMessage
 
+from agent_playground.config import PROJECT_ROOT, load_agent_config
 from agent_playground.skills.catalog import SkillCatalog
 from agent_playground.skills.files import SkillFileClient
 from agent_playground.skills.sandbox import current_session
@@ -16,11 +16,10 @@ from agent_playground.skills.sandbox import current_session
 
 @cache
 def default_catalog() -> SkillCatalog:
-    root = Path(
-        os.getenv(
-            "SKILL_DIRECTORY", str(Path(__file__).resolve().parents[2] / "skills")
-        )
-    )
+    root = Path(load_agent_config().skills.directory)
+
+    if not root.is_absolute():
+        root = PROJECT_ROOT / root
 
     return SkillCatalog(root)
 

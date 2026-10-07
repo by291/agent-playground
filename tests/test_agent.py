@@ -1,7 +1,6 @@
 """Check the graph without calling a real model provider."""
 
 import asyncio
-import os
 from collections.abc import Sequence
 from typing import Any, cast, override
 from uuid import uuid4
@@ -17,8 +16,6 @@ from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import Command
 from pydantic import BaseModel
-
-os.environ.setdefault("DEEPSEEK_API_KEY", "test")
 
 from agent_playground.db.workflow_outputs import WorkflowOutput
 from agent_playground.graph import make_graph, mcp_client

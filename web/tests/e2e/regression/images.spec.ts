@@ -184,6 +184,14 @@ test.describe("touch image gallery", () => {
       .getByRole("img", { name: "landscape.png" });
 
     await expect(nextImage).toHaveJSProperty("naturalWidth", 3600);
+    // Settle the swipe so both native taps hit the current image's zoom wrapper.
+    await dialog.evaluate(async (element) => {
+      await Promise.all(
+        element
+          .getAnimations({ subtree: true })
+          .map((animation) => animation.finished),
+      );
+    });
     const nextFitted = (await nextImage.boundingBox())!;
 
     await page.touchscreen.tap(195, 400);

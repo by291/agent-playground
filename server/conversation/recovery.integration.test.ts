@@ -59,6 +59,8 @@ const upstream = createServer((request, response) => {
 
   if (unavailable) {
     response.end(JSON.stringify({ detail: "Service unavailable" }));
+  } else if (request.url === "/agent-info") {
+    response.end(JSON.stringify({ model: "test-model" }));
   } else if (request.url?.endsWith("/state")) {
     stateReads += 1;
     response.end(

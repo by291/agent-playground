@@ -1,7 +1,9 @@
 package com.agentplayground.core.conversation
 
+import com.agentplayground.core.model.ConversationModel
 import com.agentplayground.core.model.ConversationPersistence
 import com.agentplayground.core.model.ConversationSnapshot
+import com.agentplayground.core.model.ExternalTask
 import com.agentplayground.core.model.PendingSubmission
 import com.agentplayground.core.model.RunRecord
 import com.agentplayground.core.model.SavedConversation
@@ -17,12 +19,522 @@ import com.agui.core.types.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.test.*
-import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.*
 import org.junit.Assert.*
 import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class SessionTest {
+    @Test
+    fun `completed review resume releases model selection despite historical interrupted run`() =
+        runTest {
+            val api =
+                ControlledApi().apply {
+                    snapshot =
+                        emptySnapshot.copy(
+                            modelId = "deepseek",
+                            runs =
+                                listOf(
+                                    RunRecord("old", status = "interrupted", modelId = "deepseek"),
+                                    RunRecord("resume", status = "completed", modelId = "deepseek"),
+                                ),
+                        )
+                }
+            val session =
+                ConversationSession(
+                    api,
+                    MemoryPersistence(),
+                    backgroundScope,
+                    SavedConversation("thread", empty = false),
+                )
+            session.restore()
+
+            session.selectModel("qwen")
+
+            assertEquals(listOf("qwen"), api.modelChanges)
+            assertEquals("qwen", session.state.value.modelId)
+            assertTrue(session.state.value.canSelectModel)
+            session.close()
+        }
+
+    @Test
+    fun `lost model response reconciles committed selection before releasing admission`() =
+        runTest {
+            val saved =
+                SavedConversation("thread", empty = false, modelId = "deepseek", draft = "Draft")
+            val persistence = MemoryPersistence(saved)
+            val api = ControlledApi().apply { snapshot = emptySnapshot.copy(modelId = "deepseek") }
+            val session = ConversationSession(api, persistence, backgroundScope, saved)
+            session.restore()
+            val committed = CompletableDeferred<Unit>()
+            val release = CompletableDeferred<Unit>()
+            api.beforeModelChange = {
+                api.snapshot = emptySnapshot.copy(modelId = "qwen")
+                committed.complete(Unit)
+                release.await()
+                throw java.io.IOException("Response lost")
+            }
+            val changing = launch { session.selectModel("qwen") }
+            committed.await()
+            session.refresh()
+            assertEquals("deepseek", session.state.value.modelId)
+            session.send("Too early")
+            release.complete(Unit)
+            changing.join()
+
+            assertEquals("qwen", session.state.value.modelId)
+            assertEquals("qwen", persistence.saved!!.modelId)
+            assertEquals("Draft", session.state.value.draft)
+            assertTrue(api.inputs.isEmpty())
+            assertTrue(session.state.value.canSend)
+            assertFalse(session.state.value.modelSelectionPending)
+            session.close()
+        }
+
+    @Test
+    fun `ambiguous model failure stays blocked until later canonical recovery succeeds`() =
+        runTest {
+            val saved =
+                SavedConversation("thread", empty = false, modelId = "deepseek", draft = "Draft")
+            val persistence = MemoryPersistence(saved)
+            val api = ControlledApi().apply { snapshot = emptySnapshot.copy(modelId = "deepseek") }
+            val session = ConversationSession(api, persistence, backgroundScope, saved)
+            session.restore()
+            api.beforeModelChange = {
+                api.snapshot = emptySnapshot.copy(modelId = "qwen")
+                api.beforeSnapshot = { error("Recovery temporarily unavailable") }
+                throw java.io.IOException("Response lost")
+            }
+
+            session.selectModel("qwen")
+            session.send("Must wait")
+            runCurrent()
+
+            assertFalse(session.state.value.canSend)
+            assertFalse(session.state.value.canSelectModel)
+            assertTrue(session.state.value.modelSelectionPending)
+            assertEquals("deepseek", session.state.value.modelId)
+            assertEquals("Draft", session.state.value.draft)
+            assertTrue(api.inputs.isEmpty())
+
+            api.beforeSnapshot = {}
+            session.recoverPending()
+
+            assertEquals("qwen", session.state.value.modelId)
+            assertEquals("qwen", persistence.saved!!.modelId)
+            assertTrue(session.state.value.canSend)
+            assertFalse(session.state.value.modelSelectionPending)
+            session.close()
+        }
+
+    @Test
+    fun `review without a current interrupted run omits unverified model selection`() = runTest {
+        val api =
+            ControlledApi().apply {
+                snapshot =
+                    emptySnapshot.copy(modelId = "qwen", interrupts = listOf(workflowReview()))
+            }
+        val session =
+            ConversationSession(
+                api,
+                MemoryPersistence(),
+                backgroundScope,
+                SavedConversation("thread", empty = false, modelId = "qwen"),
+            )
+        session.setDefaultModel("qwen")
+        session.restore()
+
+        session.review("pause", "accept")
+        runCurrent()
+
+        assertFalse(api.inputs.single().forwardedProps.jsonObject.containsKey("modelId"))
+        session.close()
+    }
+
+    @Test
+    fun `closed session cannot publish or journal a late model response`() = runTest {
+        val saved = SavedConversation("thread", empty = false, modelId = "deepseek")
+        val persistence = MemoryPersistence(saved)
+        val api = ControlledApi().apply { snapshot = emptySnapshot.copy(modelId = "deepseek") }
+        val session = ConversationSession(api, persistence, backgroundScope, saved)
+        session.restore()
+        val requested = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        api.beforeModelChange = {
+            requested.complete(Unit)
+            release.await()
+        }
+        val changing = launch { session.selectModel("qwen") }
+        requested.await()
+
+        session.close()
+        release.complete(Unit)
+        changing.join()
+
+        assertEquals("deepseek", persistence.saved!!.modelId)
+        assertEquals("deepseek", session.state.value.modelId)
+    }
+
+    @Test
+    fun `review and feedback inherit the interrupted run model after selection and default drift`() =
+        runTest {
+            for (feedback in listOf(false, true)) {
+                val api =
+                    ControlledApi().apply {
+                        snapshot =
+                            emptySnapshot.copy(
+                                modelId = "qwen",
+                                interrupts = listOf(workflowReview()),
+                                runs =
+                                    listOf(
+                                        RunRecord(
+                                            "paused",
+                                            status = "interrupted",
+                                            modelId = "deepseek",
+                                        )
+                                    ),
+                            )
+                    }
+                val session =
+                    ConversationSession(
+                        api,
+                        MemoryPersistence(),
+                        backgroundScope,
+                        SavedConversation("thread", empty = false, modelId = "qwen"),
+                    )
+                session.setDefaultModel("qwen")
+                session.restore()
+
+                if (feedback) {
+                    session.send("Clarify this plan")
+                } else {
+                    session.review("pause", "accept")
+                }
+                runCurrent()
+
+                assertEquals(
+                    "deepseek",
+                    api.inputs.single().forwardedProps.jsonObject.string("modelId"),
+                )
+                assertEquals("pause", api.inputs.single().resume!!.single().interruptId)
+                assertEquals("qwen", session.state.value.modelId)
+                session.close()
+            }
+        }
+
+    @Test
+    fun `legacy interrupted run omits explicit model instead of adopting the new default`() =
+        runTest {
+            val api =
+                ControlledApi().apply {
+                    snapshot =
+                        emptySnapshot.copy(
+                            modelId = "qwen",
+                            interrupts = listOf(workflowReview()),
+                            runs = listOf(RunRecord("paused", status = "interrupted")),
+                        )
+                }
+            val session =
+                ConversationSession(
+                    api,
+                    MemoryPersistence(),
+                    backgroundScope,
+                    SavedConversation("thread", empty = false, modelId = "qwen"),
+                )
+            session.setDefaultModel("qwen")
+            session.restore()
+
+            session.review("pause", "accept")
+            runCurrent()
+
+            assertFalse(api.inputs.single().forwardedProps.jsonObject.containsKey("modelId"))
+            session.close()
+        }
+
+    @Test
+    fun `snapshot model journal failure does not discard active recovery observations`() = runTest {
+        val api =
+            ControlledApi().apply {
+                snapshot =
+                    emptySnapshot.copy(
+                        modelId = "qwen",
+                        runs = listOf(RunRecord("remote", status = "running", modelId = "qwen")),
+                    )
+            }
+        val saved = SavedConversation("thread", empty = false, modelId = "deepseek")
+        val session =
+            ConversationSession(
+                api,
+                MemoryPersistence(saved, failWrite = true),
+                backgroundScope,
+                saved,
+            )
+
+        session.restore()
+
+        assertEquals("qwen", session.state.value.modelId)
+        assertTrue(session.state.value.busy)
+        assertFalse(session.state.value.canSelectModel)
+        assertEquals("remote", session.state.value.runs.single().runId)
+        session.close()
+    }
+
+    @Test
+    fun `attachment placeholder snapshot cannot replace unsent local selection`() = runTest {
+        val saved =
+            SavedConversation(
+                "thread",
+                draft = "Draft",
+                modelId = "qwen",
+                modelSelectionLocal = true,
+            )
+        val api = ControlledApi().apply { snapshot = emptySnapshot.copy(modelId = "deepseek") }
+        val persistence = MemoryPersistence(saved)
+        val session = ConversationSession(api, persistence, backgroundScope, saved)
+
+        session.restore()
+
+        assertEquals("qwen", session.state.value.modelId)
+        assertEquals("qwen", persistence.saved!!.modelId)
+        session.selectModel("deepseek")
+        assertTrue(api.modelChanges.isEmpty())
+        assertEquals("deepseek", persistence.saved!!.modelId)
+        session.close()
+    }
+
+    @Test
+    fun `accepted remote selection remains canonical when saving the journal fails`() = runTest {
+        val api = ControlledApi().apply { snapshot = emptySnapshot.copy(modelId = "deepseek") }
+        val saved = SavedConversation("thread", empty = false, modelId = "deepseek")
+        val persistence = MemoryPersistence(saved, failWrite = true)
+        val session = ConversationSession(api, persistence, backgroundScope, saved)
+        session.restore()
+
+        session.selectModel("qwen")
+
+        assertEquals("qwen", session.state.value.modelId)
+        assertNotNull(session.state.value.modelSelectionError)
+        assertFalse(session.state.value.modelSelectionPending)
+        session.close()
+    }
+
+    @Test
+    fun `new conversation model choice is journaled with draft before selected admission`() =
+        runTest {
+            val api = ControlledApi()
+            val persistence = MemoryPersistence()
+            val session =
+                ConversationSession(api, persistence, backgroundScope, SavedConversation("thread"))
+            session.restore()
+            session.editDraft("Keep my draft")
+
+            session.selectModel("qwen")
+            assertEquals("qwen", persistence.saved!!.modelId)
+            assertTrue(persistence.saved!!.modelSelectionLocal)
+            assertEquals("Keep my draft", persistence.saved!!.draft)
+            assertTrue(api.modelChanges.isEmpty())
+
+            session.send("Keep my draft")
+            runCurrent()
+
+            assertEquals("qwen", api.inputs.single().forwardedProps.jsonObject.string("modelId"))
+            assertEquals(api.inputs.single(), persistence.saved!!.pending!!.input)
+            assertFalse(persistence.saved!!.modelSelectionLocal)
+            assertFalse(session.state.value.canSelectModel)
+            session.close()
+        }
+
+    @Test
+    fun `restored unsent model choice survives an absent snapshot`() = runTest {
+        val saved =
+            SavedConversation(
+                "thread",
+                draft = "Draft",
+                modelId = "qwen",
+                modelSelectionLocal = true,
+            )
+        val persistence = MemoryPersistence(saved)
+        val session = ConversationSession(ControlledApi(), persistence, backgroundScope, saved)
+
+        session.restore()
+
+        assertEquals("qwen", session.state.value.modelId)
+        assertEquals("Draft", session.state.value.draft)
+        assertEquals("qwen", persistence.saved!!.modelId)
+        session.close()
+    }
+
+    @Test
+    fun `existing model change uses canonical response without losing the draft`() = runTest {
+        val api = ControlledApi().apply { snapshot = emptySnapshot.copy(modelId = "deepseek") }
+        val persistence = MemoryPersistence()
+        val session =
+            ConversationSession(
+                api,
+                persistence,
+                backgroundScope,
+                SavedConversation("thread", empty = false),
+            )
+        session.restore()
+        session.editDraft("Draft")
+
+        session.selectModel("qwen")
+
+        assertEquals(listOf("qwen"), api.modelChanges)
+        assertEquals("qwen", session.state.value.modelId)
+        assertEquals("qwen", persistence.saved!!.modelId)
+        assertFalse(persistence.saved!!.modelSelectionLocal)
+        assertEquals("Draft", session.state.value.draft)
+        assertEquals("Draft", persistence.saved!!.draft)
+        session.close()
+    }
+
+    @Test
+    fun `snapshot started before a model mutation cannot revert the selection`() = runTest {
+        val api = ControlledApi().apply { snapshot = emptySnapshot.copy(modelId = "deepseek") }
+        val persistence = MemoryPersistence()
+        val session =
+            ConversationSession(
+                api,
+                persistence,
+                backgroundScope,
+                SavedConversation("thread", empty = false),
+            )
+        session.restore()
+        val fetched = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        api.beforeSnapshot = {
+            fetched.complete(Unit)
+            release.await()
+        }
+        val refresh = launch { session.refresh() }
+        fetched.await()
+
+        session.selectModel("qwen")
+        release.complete(Unit)
+        refresh.join()
+
+        assertEquals("qwen", session.state.value.modelId)
+        assertEquals("qwen", persistence.saved!!.modelId)
+        session.close()
+    }
+
+    @Test
+    fun `restored request retries its original selected model even when snapshot choice differs`() =
+        runTest {
+            val original =
+                newSubmission("thread", "original", UserMessage("message", "Hello"))
+                    .copy(forwardedProps = buildJsonObject { put("modelId", "qwen") })
+            val saved =
+                SavedConversation(
+                    "thread",
+                    pending = PendingSubmission(original, "message"),
+                    empty = false,
+                    modelId = "qwen",
+                )
+            val persistence = MemoryPersistence(saved)
+            val api = ControlledApi().apply { snapshot = emptySnapshot.copy(modelId = "deepseek") }
+            val session = ConversationSession(api, persistence, backgroundScope, saved)
+
+            session.restore()
+            session.selectModel("deepseek")
+            runCurrent()
+
+            assertEquals(original, api.inputs.single())
+            assertEquals("qwen", session.state.value.modelId)
+            assertTrue(api.modelChanges.isEmpty())
+            session.close()
+        }
+
+    @Test
+    fun `model mutations block sends and another selection until persistence finishes`() = runTest {
+        val api = ControlledApi()
+        val persistence = MemoryPersistence()
+        val session =
+            ConversationSession(api, persistence, backgroundScope, SavedConversation("thread"))
+        session.restore()
+        val writing = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        persistence.beforeWrite = {
+            writing.complete(Unit)
+            release.await()
+        }
+        val selection = launch { session.selectModel("qwen") }
+        writing.await()
+
+        session.send("Too early")
+        session.selectModel("deepseek")
+        assertFalse(session.state.value.canSelectModel)
+        assertFalse(session.state.value.canSend)
+        release.complete(Unit)
+        selection.join()
+
+        assertTrue(api.inputs.isEmpty())
+        assertEquals("qwen", persistence.saved!!.modelId)
+        assertTrue(session.state.value.canSelectModel)
+        session.close()
+    }
+
+    @Test
+    fun `loading interrupted active and unknown states block model selection`() = runTest {
+        val blocked =
+            listOf(
+                emptySnapshot.copy(interrupts = listOf(Interrupt("pause", "human_approval"))),
+                emptySnapshot.copy(runs = listOf(RunRecord("running", status = "running"))),
+                emptySnapshot.copy(
+                    runs = listOf(RunRecord("uncertain", status = "submission_unknown"))
+                ),
+                emptySnapshot.copy(runs = listOf(RunRecord("paused", status = "interrupted"))),
+                emptySnapshot.copy(
+                    externalTasks =
+                        listOf(
+                            protocolJson.decodeFromString<ExternalTask>(
+                                """{"taskId":"report","workflowCallId":"call","label":"Report","revision":1,"status":"running","stage":"work","message":"Working","history":[]}"""
+                            )
+                        )
+                ),
+            )
+        for (snapshot in blocked) {
+            val api = ControlledApi().apply { this.snapshot = snapshot }
+            val session =
+                ConversationSession(
+                    api,
+                    MemoryPersistence(),
+                    backgroundScope,
+                    SavedConversation("thread", empty = false),
+                )
+            session.selectModel("qwen")
+            session.restore()
+            session.selectModel("qwen")
+
+            assertFalse(session.state.value.canSelectModel)
+            assertTrue(api.modelChanges.isEmpty())
+            session.close()
+        }
+    }
+
+    @Test
+    fun `failed model persistence keeps previous choice and draft`() = runTest {
+        val persistence = MemoryPersistence(failWrite = true)
+        val session =
+            ConversationSession(
+                ControlledApi(),
+                persistence,
+                backgroundScope,
+                SavedConversation("thread", modelId = "deepseek"),
+            )
+        session.restore()
+        session.editDraft("Draft")
+
+        session.selectModel("qwen")
+
+        assertEquals("deepseek", session.state.value.modelId)
+        assertEquals("Draft", session.state.value.draft)
+        assertTrue(session.state.value.canSelectModel)
+        assertNotNull(session.state.value.modelSelectionError)
+        session.close()
+    }
+
     @Test
     fun `rapid sends admit once and persist the exact input before network execution`() = runTest {
         val persistence = MemoryPersistence()
@@ -927,6 +1439,16 @@ class SessionTest {
                 ),
         )
 
+    private fun workflowReview() =
+        Interrupt(
+            "pause",
+            "human_approval",
+            metadata =
+                protocolJson.parseToJsonElement(
+                    """{"langgraph":{"raw":{"kind":"workflow_review","workflowCallId":"workflow","revision":1,"round":1,"outputStepId":"review","canAccept":true}}}"""
+                ),
+        )
+
     private val emptySnapshot =
         ConversationSnapshot(
             messages = emptyList(),
@@ -956,6 +1478,16 @@ class SessionTest {
 
     private class ControlledApi : ConversationApi {
         val inputs = mutableListOf<RunAgentInput>()
+        val modelChanges = mutableListOf<String>()
+        var beforeModelChange: suspend () -> Unit = {}
+
+        override suspend fun selectModel(threadId: String, modelId: String): ConversationModel {
+            modelChanges += modelId
+            beforeModelChange()
+
+            return ConversationModel(threadId, modelId)
+        }
+
         val events = MutableSharedFlow<BaseEvent>(extraBufferCapacity = 16)
         var snapshot: ConversationSnapshot? = null
         var beforeSnapshot: suspend () -> Unit = {}

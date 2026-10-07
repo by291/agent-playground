@@ -11,6 +11,7 @@ from agent_playground.db.schema import (
     workflow_outputs,
 )
 from agent_playground.db.workflow_outputs import _store
+from tests.agent_config import update_agent_config
 
 
 def test_old_outputs_are_rejected_and_current_outputs_are_idempotent(
@@ -22,7 +23,7 @@ def test_old_outputs_are_rejected_and_current_outputs_are_idempotent(
         "messages": [{"version": "v0.9.1"}],
     }
 
-    monkeypatch.setenv("APP_DATABASE_URL", postgres_database_url)
+    update_agent_config("database", application_url=postgres_database_url)
     app_engine.cache_clear()
     engine = app_engine()
 

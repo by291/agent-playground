@@ -25,6 +25,7 @@ export const conversations = pgTable(
       .default(sql`date_trunc('milliseconds', now())`),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
     contextUsage: jsonb("context_usage").$type<ContextUsage>(),
+    modelId: text("model_id"),
     nextSubmitSeq: bigint("next_submit_seq", { mode: "number" })
       .notNull()
       .default(1),
@@ -52,6 +53,7 @@ export const conversationRuns = pgTable(
     submitSeq: bigint("submit_seq", { mode: "number" }).notNull(),
     messageId: text("message_id").notNull(),
     request: jsonb("request").$type<RunAgentInput>().notNull(),
+    modelId: text("model_id"),
     aegraRunId: text("aegra_run_id"),
     status: text("status", { enum: runStatuses }).notNull(),
     checkpointSynced: boolean("checkpoint_synced").notNull().default(false),

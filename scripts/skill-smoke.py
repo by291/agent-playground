@@ -12,7 +12,7 @@ from agent_playground.skills.sandbox import SandboxSettings, SkillSession
 
 
 async def main():
-    settings = SandboxSettings.from_environment()
+    settings = SandboxSettings.from_config()
     catalog = SkillCatalog(Path("skills"))
 
     async with SkillSession(catalog, settings) as session:

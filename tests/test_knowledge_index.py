@@ -25,6 +25,8 @@ from agent_playground.knowledge.documents import split_document
 from agent_playground.knowledge.store import EmbeddingConfig, open_store
 from agent_playground.knowledge.tools import retrieve
 from agent_playground.knowledge.worker import index_job
+from tests.agent_config import update_agent_config
+from tests.model_config import ModelConfigFile
 
 
 def create_knowledge_schema(connection: psycopg.Connection) -> None:
@@ -39,7 +41,7 @@ def embedding_requests() -> list[list[str]]:
 
 @pytest.fixture(autouse=True)
 def embedding_environment(embedding_redis_url: str, monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setenv("REDIS_URL", embedding_redis_url)
+    update_agent_config("redis", url=embedding_redis_url)
 
 
 @pytest.fixture
@@ -142,7 +144,7 @@ def embedding_api(embedding_requests: list[list[str]]) -> Iterator[str]:
 def test_index_retrieve_reindex_and_deleted_generation(
     postgres_database_url: str, embedding_api: str, monkeypatch: pytest.MonkeyPatch
 ):
-    monkeypatch.setenv("APP_DATABASE_URL", postgres_database_url)
+    update_agent_config("database", application_url=postgres_database_url)
     with psycopg.connect(postgres_database_url) as connection:
         create_knowledge_schema(connection)
 
@@ -337,18 +339,16 @@ def test_empty_pdf_is_actionable():
 def test_embedding_requests_respect_provider_batch_limits(
     postgres_database_url: str,
     embedding_api: str,
-    monkeypatch: pytest.MonkeyPatch,
+    model_config: ModelConfigFile,
     batch_size: str | None,
     limit: int,
 ):
-    monkeypatch.setenv("RAG_EMBEDDING_BASE_URL", embedding_api)
-    monkeypatch.setenv("RAG_EMBEDDING_MODEL", f"batch-limit-{limit}")
-    monkeypatch.setenv("RAG_EMBEDDING_API_KEY", "test-key")
-
-    if batch_size:
-        monkeypatch.setenv("RAG_EMBEDDING_BATCH_SIZE", batch_size)
-    else:
-        monkeypatch.delenv("RAG_EMBEDDING_BATCH_SIZE", raising=False)
+    model_config.embedding(
+        base_url=embedding_api,
+        model=f"batch-limit-{limit}",
+        api_key="test-key",
+        batch_size=int(batch_size) if batch_size else 10,
+    )
 
     with psycopg.connect(postgres_database_url) as connection:
         create_knowledge_schema(connection)
@@ -359,7 +359,7 @@ def test_embedding_requests_respect_provider_batch_limits(
     ]
 
     async def run():
-        async with open_store(EmbeddingConfig.from_env(), postgres_database_url) as (
+        async with open_store(EmbeddingConfig.from_config(), postgres_database_url) as (
             _store,
             embeddings,
             _pool,
@@ -443,7 +443,7 @@ def test_deleted_document_stops_embedding_after_its_source_download(
     embedding_requests: list[list[str]],
     monkeypatch: pytest.MonkeyPatch,
 ):
-    monkeypatch.setenv("APP_DATABASE_URL", postgres_database_url)
+    update_agent_config("database", application_url=postgres_database_url)
     data = b"Returns within 30 days."
     document_id = str(uuid4())
 
@@ -490,7 +490,7 @@ def test_index_deadline_includes_slow_source_download(
     embedding_api: str,
     monkeypatch: pytest.MonkeyPatch,
 ):
-    monkeypatch.setenv("APP_DATABASE_URL", postgres_database_url)
+    update_agent_config("database", application_url=postgres_database_url)
     data = b"Returns within 30 days."
 
     with psycopg.connect(postgres_database_url) as connection:

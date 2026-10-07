@@ -43,6 +43,8 @@ from agent_playground.db.connection import close_app_store, prepare_app_store
 from agent_playground.services.a2a.agent import DemoAgentExecutor
 from agent_playground.services.a2a.protocol import AgentRole, remote_task_id
 from agent_playground.services.a2a.server import DurableRequestHandler, create_a2a_app
+from tests.agent_config import update_agent_config
+from tests.model_config import ModelConfigFile
 
 
 @pytest.fixture
@@ -50,8 +52,8 @@ def durable_store(
     postgres_database_url: str, monkeypatch: pytest.MonkeyPatch
 ) -> Iterator[PostgresTaskStore]:
     close_app_store()
-    monkeypatch.setenv("APP_DATABASE_URL", postgres_database_url)
-    monkeypatch.setenv("A2A_DEMO_MODE", "scripted")
+    update_agent_config("database", application_url=postgres_database_url)
+    update_agent_config("a2a", mode="scripted")
     prepare_app_store()
 
     try:
@@ -436,6 +438,7 @@ def test_disconnected_http_stream_continues_and_retry_subscribes(
 
 def test_configured_model_chunks_are_coalesced_and_stream_is_closed(
     monkeypatch: pytest.MonkeyPatch,
+    model_config: ModelConfigFile,
 ) -> None:
     model_arguments: dict[str, object] = {}
     closed = False
@@ -456,9 +459,9 @@ def test_configured_model_chunks_are_coalesced_and_stream_is_closed(
             finally:
                 closed = True
 
-    monkeypatch.setenv("DEEPSEEK_MODEL", "configured-model")
+    model_config.chat(model="deepseek-v4-flash", thinking="disabled")
     monkeypatch.setattr(
-        "agent_playground.services.a2a.agent.ChatDeepSeek", StreamingModel
+        "agent_playground.model_adapters.DeepSeekChatModel", StreamingModel
     )
     executor = DemoAgentExecutor("planner", mode="model")
 
@@ -466,7 +469,7 @@ def test_configured_model_chunks_are_coalesced_and_stream_is_closed(
         chunks = [chunk async for chunk in executor._stream_text("Plan a workshop")]
         assert "".join(chunks) == "word " * 45
         assert 2 < len(chunks) < 10
-        assert model_arguments["model"] == "configured-model"
+        assert model_arguments["model"] == "deepseek-v4-flash"
         assert model_arguments["extra_body"] == {"thinking": {"type": "disabled"}}
         assert closed
 

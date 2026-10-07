@@ -86,6 +86,7 @@ export function Composer({
   const {
     running,
     recovering,
+    changingModel,
     waitingForReview,
     waitingForExternalTask,
     discussionPlaceholder,
@@ -99,13 +100,16 @@ export function Composer({
     uploading ||
     responding ||
     recovering ||
+    changingModel ||
     waitingForReview ||
     waitingForExternalTask;
 
   let placeholder = "Describe a task or ask a question…";
   let sendLabel = responding ? "Agent is responding" : "Send message";
 
-  if (uploading) {
+  if (changingModel) {
+    sendLabel = "Changing model";
+  } else if (uploading) {
     sendLabel = "Uploading files";
   } else if (submitting && !responding) {
     sendLabel = "Sending message";
@@ -368,7 +372,7 @@ export function Composer({
                 )}
               </InputGroupText>
               <div className="ml-auto flex min-w-0 items-center gap-2">
-                <ContextIndicator />
+                <ContextIndicator disabled={disabled} />
                 <InputGroupButton
                   type="submit"
                   variant="default"

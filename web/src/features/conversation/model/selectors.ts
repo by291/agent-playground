@@ -1,6 +1,7 @@
 import type { ConversationState } from "./state";
 import { parseExternalWait } from "@shared/external-task";
 import { parseWorkflowReview } from "@shared/workflow-review";
+import { isRunFinished } from "@shared/run-status";
 
 export function isRunning(state: ConversationState) {
   return state.lifecycle.execution !== "idle";
@@ -16,6 +17,29 @@ export function isEmpty(state: ConversationState) {
     state.messages.length === 0 &&
     state.surfaces.length === 0 &&
     state.pendingInterrupts.length === 0
+  );
+}
+
+export function canSelectModel(state: ConversationState) {
+  const latest = state.runs.at(-1);
+  const unfinishedRun =
+    latest && latest.status !== "completed" && latest.status !== "failed";
+  const unfinishedExternalTask = state.externalTasks.some(
+    (task) =>
+      task.status === "queued" ||
+      task.status === "running" ||
+      task.status === "input_required" ||
+      !task.continuationStatus ||
+      !isRunFinished(task.continuationStatus),
+  );
+
+  return (
+    !isRestoring(state) &&
+    !isRunning(state) &&
+    !state.modelSwitching &&
+    state.pendingInterrupts.length === 0 &&
+    !unfinishedRun &&
+    !unfinishedExternalTask
   );
 }
 
@@ -37,6 +61,7 @@ export function composerState(state: ConversationState) {
     waitingForExternalTask,
     running: isRunning(state),
     recovering: isRestoring(state),
+    changingModel: state.modelSwitching,
     waitingForReview:
       state.pendingInterrupts.some(
         (interrupt) => !parseExternalWait(interrupt),

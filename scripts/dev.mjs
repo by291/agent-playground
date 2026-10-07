@@ -189,15 +189,7 @@ function developmentCommands(observability) {
       name: "agent",
       command: "uv",
       args: ["run", "agent"],
-      env: observability
-        ? {
-            HOST: "0.0.0.0",
-            OTEL_SERVICE_NAME: "agent-playground-agent",
-            OTEL_TARGETS: "GENERIC",
-            OTEL_EXPORTER_OTLP_ENDPOINT: "http://127.0.0.1:4318/v1/traces",
-            ENABLE_PROMETHEUS_METRICS: "true",
-          }
-        : {},
+      env: {},
     },
     {
       name: "server",
@@ -216,21 +208,17 @@ function developmentCommands(observability) {
   ];
 }
 
-function a2aCommands() {
-  return ["planner", "reviewer"].map((role, index) => ({
+export function a2aCommands() {
+  return ["planner", "reviewer"].map((role) => ({
     name: `a2a-${role}`,
     command: "uv",
     args: [
       "run",
-      "--env-file",
-      ".env",
       "python",
       "-m",
       "agent_playground.services.a2a.server",
       "--role",
       role,
-      "--port",
-      String(2031 + index),
     ],
     env: {},
   }));

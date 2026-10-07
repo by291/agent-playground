@@ -4,7 +4,7 @@
 
 ## Prerequisites and first start
 
-Use Docker with a running daemon, Python 3.12 with uv, pnpm, Node.js and Make. The repository declares its pnpm version in [package.json](../package.json); CI uses Node.js 26 and Python 3.12. A DeepSeek API key is needed for live agent conversations. Tests with controlled models do not need that key.
+Use Docker with a running daemon, Python 3.12 with uv, pnpm, Node.js and Make. The repository declares its pnpm version in [package.json](../package.json); CI uses Node.js 26 and Python 3.12. A configured DeepSeek or Qwen API key is needed for live agent conversations. Tests with controlled models do not need that key.
 
 The same Make targets work in PowerShell and CMD on Windows with native GNU Make. Keep Node.js, uv, pnpm and Docker on `PATH`; Git Bash is not required. Use Docker Desktop with Linux containers. Make selects CMD for Windows recipes and `gradlew.bat` for Android targets, while the Node scripts handle environment-file creation and application launch settings.
 
@@ -12,7 +12,7 @@ The same Make targets work in PowerShell and CMD on Windows with native GNU Make
 
 ```sh
 make setup
-# Set DEEPSEEK_API_KEY in the root .env created by setup.
+# Set chat.models.deepseek.api_key in models.yaml created by setup.
 make dev
 ```
 
@@ -34,7 +34,7 @@ On Linux and macOS, managed applications receive `SIGTERM`. Windows stops each m
 
 For separate terminals, run `make infra-up` once, then run each of `make agent`, `make server` and `make web` in its own terminal. `make help` lists all shortcuts.
 
-After Python agent, prompt, Skill or root environment changes, restart the agent. To restart the managed applications with already-running infrastructure:
+After Python agent, prompt, Skill or `agent.yaml` or `models.yaml` changes, restart the agent. To restart the managed applications with already-running infrastructure:
 
 ```sh
 make dev-stop
@@ -61,17 +61,18 @@ Application processes run on the host; supporting services run in Docker. Skills
 
 These defaults come from [compose.yaml](../compose.yaml) and the three environment examples. OpenSandbox's dynamic execution ports are also configured to publish on loopback; see [Skills](skills.md).
 
-## Environment ownership
+## Configuration ownership
 
-`make setup` creates missing environment files without replacing existing ones. Each application reads its own file; all three are ignored by Git. When updating an existing checkout, merge new settings from the matching example rather than expecting setup to update them automatically.
+`make setup` creates missing private configuration files without replacing existing ones. Each application reads its own files; all four are ignored by Git. When updating an existing checkout, merge new settings from the matching example rather than expecting setup to update them automatically.
 
-| File          | Settings                                                                                          | Source                                        |
-| ------------- | ------------------------------------------------------------------------------------------------- | --------------------------------------------- |
-| Root `.env`   | DeepSeek, Aegra, database/broker, internal application URL/token, Skill execution and embeddings. | [.env.example](../.env.example)               |
-| `server/.env` | Hono/Aegra addresses, application database, internal token, S3 and logging.                       | [server/.env.example](../server/.env.example) |
-| `web/.env`    | Vite's `BACKEND_URL` and browser tracing flag.                                                    | [web/.env.example](../web/.env.example)       |
+| File          | Settings                                                                          | Source                                        |
+| ------------- | --------------------------------------------------------------------------------- | --------------------------------------------- |
+| `agent.yaml`  | Agent HTTP, databases, Redis, callback/token, services, Skills and observability. | [agent.example.yaml](../agent.example.yaml)   |
+| `models.yaml` | Chat/A2A models, provider keys, context and independent embedding settings.       | [models.example.yaml](../models.example.yaml) |
+| `server/.env` | Hono/Aegra addresses, application database, internal token, S3 and logging.       | [server/.env.example](../server/.env.example) |
+| `web/.env`    | Vite's `BACKEND_URL` and browser tracing flag.                                    | [web/.env.example](../web/.env.example)       |
 
-`make setup` uses `scripts/setup-env.mjs` to copy missing environment files from their matching examples and generate the same random `WORKFLOW_API_TOKEN` in the root and server environment files. Existing files and configured tokens are preserved. For an existing checkout:
+`make setup` uses `scripts/setup-env.mjs` to copy missing configuration files from their matching examples and share a generated token between `workflow.api_token` in `agent.yaml` and `WORKFLOW_API_TOKEN` in `server/.env`. Existing files and configured tokens are preserved. For an existing checkout:
 
 ```sh
 node scripts/setup-env.mjs
@@ -79,11 +80,11 @@ node scripts/setup-env.mjs
 
 Conflicting existing tokens are rejected. Internal external-task registration, Skill transfers and knowledge downloads share this credential; the browser does not receive it.
 
-The chat model uses `ChatDeepSeek` and defaults to `deepseek-flash`. Configure `DEEPSEEK_API_KEY`, optionally `DEEPSEEK_MODEL` and a custom `DEEPSEEK_API_BASE`, in the root environment. Older `OPENAI_*` chat settings must be replaced with the DeepSeek settings. Embeddings are independently configured in the [knowledge guide](knowledge.md).
+The Agent reads `agent.yaml` for runtime settings and `models.yaml` for models and provider keys. Setup creates private local copies of the checked-in examples. The launcher exports YAML values before calling native `aegra serve`, so the CLI's dotenv loading does not override them. DeepSeek remains the default; enable Qwen by filling `chat.models.qwen.api_key`, and set `chat.default: qwen` when it should be the default. Web and Android can select a model per conversation for the next normal turn. See [Agent configuration](agent-configuration.md) for sections and deployment file paths, [model selection](model-selection.md) for persistence/recovery, and [knowledge](knowledge.md) for independent embeddings.
 
-`APP_API_URL` is the Python-to-TypeScript base URL, defaulting to `http://127.0.0.1:3000`. It replaced `WORKFLOW_API_URL`; update existing environment files. `SQL_DEMO_API_URL` and `REPORT_DEMO_API_URL` point to the Python demonstration services if Aegra uses another address. Vite's `BACKEND_URL` must point to the Hono server.
+`workflow.app_api_url` in `agent.yaml` is the Python-to-TypeScript base URL, defaulting to `http://127.0.0.1:3000`. `services.sql_demo_url` and `services.report_demo_url` point to the Python demonstration services if Aegra uses another address. Vite's `BACKEND_URL` must point to the Hono server.
 
-`make dev` also starts the independent A2A planner/reviewer services. The [A2A guide](a2a-demo.md) documents their root configuration, scripted mode, additional-input/cancel controls and recovery limits. `make a2a` starts only those services; they share the Python application's root environment and application database.
+`make dev` also starts the independent A2A planner/reviewer services. The [A2A guide](a2a-demo.md) documents their root configuration, scripted mode, additional-input/cancel controls and recovery limits. `make a2a` starts only those services; they share the Python application's YAML configuration and application database.
 
 ## S3-compatible storage
 
@@ -104,12 +105,12 @@ The AWS SDK uses its standard credential chain, including an optional `AWS_SESSI
 
 ## Database and data ownership
 
-| Store                                     | Owner and contents                                                                                                                                                                        |
-| ----------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| PostgreSQL `aegra` schema                 | Aegra service tables, Alembic history, checkpoints and store; root `DATABASE_URL` uses the `aegra` role.                                                                                  |
-| PostgreSQL `public` schema                | Conversation runs/messages, workflow outputs, demo receipts/jobs, file/document metadata and pgvector chunks; each application has its own `APP_DATABASE_URL` using the application role. |
-| S3 / `skill_storage_data` volume          | Original documents, conversation inputs and published script outputs.                                                                                                                     |
-| OpenSandbox / `skill_sandbox_data` volume | Control-service state; execution workspaces expire and are not conversation storage.                                                                                                      |
+| Store                                     | Owner and contents                                                                                                                                                                                                                                |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| PostgreSQL `aegra` schema                 | Aegra service tables, Alembic history, checkpoints and store; `database.aegra_url` in `agent.yaml` uses the `aegra` role.                                                                                                                         |
+| PostgreSQL `public` schema                | Conversation runs/messages, workflow outputs, demo receipts/jobs, file/document metadata and pgvector chunks; Python uses `database.application_url` in `agent.yaml`; the server uses its own `APP_DATABASE_URL`, both with the application role. |
+| S3 / `skill_storage_data` volume          | Original documents, conversation inputs and published script outputs.                                                                                                                                                                             |
+| OpenSandbox / `skill_sandbox_data` volume | Control-service state; execution workspaces expire and are not conversation storage.                                                                                                                                                              |
 
 The TypeScript server applies Drizzle migrations at startup. Python prepares its application repositories, while Aegra manages its own schema. Compose initializes the local `aegra` role and its search path only when creating a new PostgreSQL volume.
 
@@ -167,10 +168,10 @@ Version updates do not enable Dependabot security alerts or security updates. Th
 | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
 | Compose or Testcontainers cannot start  | Docker daemon availability, image downloads and occupied ports. Check `docker compose ps`.                                                  |
 | UI reports an offline gateway           | `.dev/server.log`, server `/health`, `web/.env` proxy target and Aegra address.                                                             |
-| Internal file/task requests fail        | Root and server `WORKFLOW_API_TOKEN` match; `APP_API_URL` points to the running server.                                                     |
+| Internal file/task requests fail        | `workflow.api_token` in `agent.yaml` matches server `WORKFLOW_API_TOKEN`; `workflow.app_api_url` points to the running server.              |
 | Attachments or document uploads fail    | Server S3 settings, bucket existence and object permissions; local `skill-storage` health.                                                  |
 | Indexing fails with `BadRequestError`   | Embedding base URL/model, provider batch limit and unsupported `dimensions`; see [knowledge troubleshooting](knowledge.md#troubleshooting). |
-| Changes do not affect agent behavior    | Restart the agent after prompt, Skill or root environment edits.                                                                            |
+| Changes do not affect agent behavior    | Restart the agent after prompt, Skill or `agent.yaml` or `models.yaml` edits.                                                               |
 | Submission remains `submission_unknown` | Mapping recovery cannot establish the upstream run; do not blindly resend. See [conversation recovery](conversations.md#recovery).          |
 
 The application currently uses a shared workspace without user authentication or tenant ownership. Compose credentials and host bindings are local-development configuration; deployment requires its own access controls, credentials and network setup.

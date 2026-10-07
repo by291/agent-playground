@@ -16,6 +16,8 @@ from a2a.types import (
     TaskStatus,
 )
 
+from tests.agent_config import update_agent_config
+
 
 def test_child_prompts_separate_draft_review_and_revision() -> None:
     from agent_playground.db.a2a_jobs import CollaborationJob
@@ -140,7 +142,7 @@ def test_coordinator_registration_replay_and_control_are_durable(
     from agent_playground.db.connection import app_engine, prepare_app_store
     from agent_playground.services.a2a.models import CollaborationRequest
 
-    monkeypatch.setenv("APP_DATABASE_URL", postgres_database_url)
+    update_agent_config("database", application_url=postgres_database_url)
     app_engine.cache_clear()
     prepare_app_store()
 
@@ -259,8 +261,8 @@ def test_coordinator_runs_real_http_agents(
     from agent_playground.services.a2a.models import CollaborationRequest
 
     close_app_store()
-    monkeypatch.setenv("APP_DATABASE_URL", postgres_database_url)
-    monkeypatch.setenv("A2A_DEMO_MODE", "scripted")
+    update_agent_config("database", application_url=postgres_database_url)
+    update_agent_config("a2a", mode="scripted")
     prepare_app_store()
     events = []
     interrupted = False
@@ -352,8 +354,8 @@ def test_coordinator_runs_real_http_agents(
             running_server(PostgresTaskStore("planner")) as planner,
             running_server(PostgresTaskStore("reviewer")) as reviewer,
         ):
-            monkeypatch.setenv("A2A_PLANNER_URL", planner)
-            monkeypatch.setenv("A2A_REVIEWER_URL", reviewer)
+            update_agent_config("a2a", planner_url=planner)
+            update_agent_config("a2a", reviewer_url=reviewer)
             asyncio.run(asyncio.wait_for(run(), 30))
     finally:
         close_app_store()
@@ -387,8 +389,8 @@ def test_coordinator_reuses_saved_remote_prompt_after_upgrade(
     from agent_playground.services.a2a.models import CollaborationRequest
 
     close_app_store()
-    monkeypatch.setenv("APP_DATABASE_URL", postgres_database_url)
-    monkeypatch.setenv("A2A_DEMO_MODE", "scripted")
+    update_agent_config("database", application_url=postgres_database_url)
+    update_agent_config("a2a", mode="scripted")
     prepare_app_store()
     original_prompt_for = coordinator.prompt_for
     fresh_stages: list[int] = []
@@ -490,8 +492,8 @@ def test_coordinator_reuses_saved_remote_prompt_after_upgrade(
             running_server(PostgresTaskStore("planner")) as planner,
             running_server(PostgresTaskStore("reviewer")) as reviewer,
         ):
-            monkeypatch.setenv("A2A_PLANNER_URL", planner)
-            monkeypatch.setenv("A2A_REVIEWER_URL", reviewer)
+            update_agent_config("a2a", planner_url=planner)
+            update_agent_config("a2a", reviewer_url=reviewer)
             asyncio.run(asyncio.wait_for(run(), 15))
     finally:
         close_app_store()
@@ -519,7 +521,7 @@ def test_expired_lease_cannot_write_or_renew(
     from agent_playground.services.a2a.models import CollaborationRequest
 
     close_app_store()
-    monkeypatch.setenv("APP_DATABASE_URL", postgres_database_url)
+    update_agent_config("database", application_url=postgres_database_url)
     prepare_app_store()
 
     try:

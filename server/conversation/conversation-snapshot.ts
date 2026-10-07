@@ -15,6 +15,7 @@ export async function conversationSnapshot(threadId: string) {
       threadId: conversations.threadId,
       title: conversations.title,
       contextUsage: conversations.contextUsage,
+      modelId: conversations.modelId,
     })
     .from(conversations)
     .where(
@@ -36,6 +37,7 @@ export async function conversationSnapshot(threadId: string) {
         status: conversationRuns.status,
         messageId: conversationRuns.messageId,
         interrupts: conversationRuns.interrupts,
+        modelId: conversationRuns.modelId,
       })
       .from(conversationRuns)
       .where(eq(conversationRuns.threadId, threadId))
@@ -65,6 +67,7 @@ export async function conversationSnapshot(threadId: string) {
       messages.find((row) => row.message.role === "user")?.message,
     ),
     contextUsage: conversation.contextUsage,
+    modelId: conversation.modelId,
     messages: messages.map((row) => row.message),
     outputs: outputs.map((row) => ({
       id: row.id,
@@ -79,6 +82,7 @@ export async function conversationSnapshot(threadId: string) {
       aegraRunId: run.aegraRunId,
       status: run.status,
       messageId: run.messageId,
+      modelId: run.modelId,
     })),
     interrupts: runs.at(-1)?.interrupts ?? [],
   };

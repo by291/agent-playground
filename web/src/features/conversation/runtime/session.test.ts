@@ -16,6 +16,7 @@ import {
 } from "@ag-ui/client";
 import { createConversationSession } from "./session";
 import {
+  canSelectModel,
   composerState,
   conversationIssue,
   isRunning,
@@ -336,6 +337,232 @@ function streamingAgent(threadId: string) {
     },
   };
 }
+
+test("a draft model survives reload and is pinned in the first submission journal", async () => {
+  const unusedFetch = vi.fn();
+
+  vi.stubGlobal("fetch", unusedFetch);
+  const draft = createConversationSession(newConversation());
+  const closeDraft = connectSession(draft, () => Promise.resolve(null));
+
+  await draft.store.getState().selectModel("qwen");
+  const threadId = draft.store.getState().threadId!;
+  const saved = loadConversation(threadId);
+
+  assert.equal(saved.modelId, "qwen");
+  assert.equal(unusedFetch.mock.calls.length, 0);
+  closeDraft();
+
+  const stream = streamingAgent(threadId);
+  const restored = createConversationSession(saved, stream.agent);
+  const disconnect = connectSession(restored, () =>
+    Promise.resolve({ ...snapshot(), modelId: "qwen" }),
+  );
+
+  try {
+    restored.receiveSnapshot(null);
+    assert.equal(restored.store.getState().modelId, "qwen");
+    const run = restored.store.getState().send("Use my chosen model");
+    const input = await stream.requested;
+
+    assert.deepEqual(input.forwardedProps, { modelId: "qwen" });
+    assert.equal(loadConversation(threadId).pending?.modelId, "qwen");
+    stream.emit({ type: "RUN_STARTED", threadId, runId: input.runId });
+    stream.finish(input);
+    await run;
+  } finally {
+    disconnect();
+  }
+});
+
+test("an upload-created empty conversation retains its draft model after reload", async () => {
+  const threadId = "uploaded-model-draft";
+
+  saveConversation({ threadId, empty: true, modelId: "qwen" });
+  const stream = streamingAgent(threadId);
+  const restored = createConversationSession(
+    loadConversation(threadId),
+    stream.agent,
+  );
+  const uploaded: ConversationSnapshot = {
+    modelId: null,
+    messages: [],
+    interrupts: [],
+    outputs: [],
+    runs: [],
+  };
+  const disconnect = connectSession(restored, () => Promise.resolve(uploaded));
+
+  try {
+    restored.receiveSnapshot(uploaded);
+    assert.equal(restored.store.getState().modelId, "qwen");
+    assert.equal(loadConversation(threadId).modelId, "qwen");
+    const run = restored.store.getState().send("Retry after uploading");
+    const input = await stream.requested;
+
+    assert.deepEqual(input.forwardedProps, { modelId: "qwen" });
+    stream.emit({ type: "RUN_STARTED", threadId, runId: input.runId });
+    stream.finish(input);
+    await run;
+  } finally {
+    disconnect();
+  }
+});
+
+test("model changes wait for server acknowledgement and block concurrent sends", async () => {
+  const stream = streamingAgent("model-thread");
+  const session = createConversationSession(
+    { threadId: "model-thread" },
+    stream.agent,
+  );
+  const previous = { ...snapshot(), modelId: "deepseek" };
+  const disconnect = connectSession(session, () => Promise.resolve(previous));
+  let acknowledge: (response: Response) => void = () => undefined;
+  const request = vi.fn((_url: string, init: RequestInit) => {
+    assert.equal(init.method, "PATCH");
+    assert.deepEqual(JSON.parse(init.body as string), { modelId: "qwen" });
+
+    return new Promise<Response>((resolve) => {
+      acknowledge = resolve;
+    });
+  });
+
+  vi.stubGlobal("fetch", request);
+
+  try {
+    session.receiveSnapshot(previous);
+    const changing = session.store.getState().selectModel("qwen");
+
+    assert.equal(session.store.getState().modelSwitching, true);
+    assert.equal(session.store.getState().modelId, "deepseek");
+    await session.store.getState().send("Wait for model selection");
+    assert.equal(stream.requests, 0);
+    session.receiveSnapshot(previous);
+    acknowledge(Response.json({ threadId: "model-thread", modelId: "qwen" }));
+    await changing;
+
+    assert.equal(
+      request.mock.calls[0]?.[0],
+      "/conversations/model-thread/model",
+    );
+    assert.equal(session.store.getState().modelId, "qwen");
+    assert.equal(session.store.getState().modelSwitching, false);
+  } finally {
+    disconnect();
+  }
+});
+
+test.each(["running", "submission_unknown", "interrupted"] as const)(
+  "%s conversations cannot change models",
+  async (status) => {
+    const session = createConversationSession({ threadId: "busy-model" });
+    const disconnect = connectSession(session, () =>
+      Promise.resolve(snapshot("run", status)),
+    );
+    const request = vi.fn();
+
+    vi.stubGlobal("fetch", request);
+
+    try {
+      session.receiveSnapshot(snapshot("run", status));
+      await assert.rejects(
+        session.store.getState().selectModel("qwen"),
+        /finish/i,
+      );
+      assert.equal(request.mock.calls.length, 0);
+    } finally {
+      disconnect();
+    }
+  },
+);
+
+test("a reviewed external continuation allows model changes after its resume finishes", () => {
+  const session = createConversationSession({
+    threadId: "reviewed-continuation",
+  });
+  const reviewed: ConversationSnapshot = {
+    ...snapshot("continuation", "interrupted"),
+    externalTasks: [
+      {
+        taskId: "task",
+        workflowCallId: "call",
+        label: "Build artifact",
+        revision: 3,
+        status: "succeeded",
+        stage: "done",
+        message: "Ready",
+        history: [],
+        continuationStatus: "interrupted",
+      },
+    ],
+  };
+  const disconnect = connectSession(session, () => Promise.resolve(reviewed));
+
+  try {
+    session.receiveSnapshot(reviewed);
+    assert.equal(canSelectModel(session.store.getState()), false);
+    session.receiveSnapshot({
+      ...reviewed,
+      runs: [...reviewed.runs, { runId: "review-resume", status: "completed" }],
+    });
+    assert.equal(canSelectModel(session.store.getState()), true);
+  } finally {
+    disconnect();
+  }
+});
+
+test("a failed model change retains the canonical choice and releases its lock", async () => {
+  const session = createConversationSession({ threadId: "rejected-model" });
+  const previous = { ...snapshot(), modelId: "deepseek" };
+  const disconnect = connectSession(session, () => Promise.resolve(previous));
+
+  vi.stubGlobal("fetch", () =>
+    Promise.resolve(
+      Response.json(
+        {
+          error:
+            "Wait for conversation work to finish before changing its model",
+        },
+        { status: 409 },
+      ),
+    ),
+  );
+
+  try {
+    session.receiveSnapshot(previous);
+    await assert.rejects(
+      session.store.getState().selectModel("qwen"),
+      /Wait for conversation/,
+    );
+    assert.equal(session.store.getState().modelId, "deepseek");
+    assert.equal(session.store.getState().modelSwitching, false);
+  } finally {
+    disconnect();
+  }
+});
+
+test("disconnect aborts an outstanding model change", async () => {
+  const session = createConversationSession({ threadId: "cancelled-model" });
+  const disconnect = connectSession(session, () => Promise.resolve(snapshot()));
+  let signal: AbortSignal | null | undefined;
+
+  vi.stubGlobal("fetch", (_url: string, init: RequestInit) => {
+    signal = init.signal;
+
+    return new Promise<Response>((_resolve, reject) => {
+      signal?.addEventListener("abort", () =>
+        reject(new DOMException("Aborted", "AbortError")),
+      );
+    });
+  });
+  session.receiveSnapshot(snapshot());
+  const changing = session.store.getState().selectModel("qwen");
+  const rejected = assert.rejects(changing, /Aborted/);
+
+  disconnect();
+  await rejected;
+  assert.equal(signal?.aborted, true);
+});
 
 test("disconnect aborts the live HTTP transport after detaching SDK processing", async () => {
   let transportClosed = false;
