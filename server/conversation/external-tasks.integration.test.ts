@@ -22,6 +22,8 @@ let app: (typeof import("../app"))["app"];
 const creations = new Map<string, number>();
 const runs = new Map<string, object>();
 const completed = new Set<string>();
+const controls: { path: string; authorization: string; body: unknown }[] = [];
+let controlStatus = 202;
 const stalledResponses = new Map<string, ServerResponse>();
 const creationModes = new Map<
   string,
@@ -36,6 +38,30 @@ async function handleRequest(
   const pathname = new URL(request.url ?? "/", "http://fixture").pathname;
   const threadId = pathname.split("/")[2] ?? "";
 
+  if (request.method === "POST" && pathname.startsWith("/a2a-demo/jobs/")) {
+    let body = "";
+
+    for await (const chunk of request) {
+      body += String(chunk);
+    }
+
+    controls.push({
+      path: pathname,
+      authorization: request.headers.authorization ?? "",
+      body: body ? JSON.parse(body) : null,
+    });
+    response.statusCode = controlStatus;
+    response.end(
+      JSON.stringify(
+        controlStatus === 202
+          ? { accepted: true }
+          : { error: "Already completed" },
+      ),
+    );
+
+    return;
+  }
+
   if (request.method === "POST" && pathname.endsWith("/runs")) {
     let body = "";
 
@@ -44,12 +70,22 @@ async function handleRequest(
     }
 
     const input = JSON.parse(body) as {
-      command: { resume: Record<string, { taskId: string; status: string }> };
+      command: {
+        resume: Record<
+          string,
+          { taskId: string; status: string; kind: string }
+        >;
+      };
       config: { metadata: object };
     };
     const result = Object.values(input.command.resume)[0];
 
-    assert.ok(result?.status === "succeeded" || result?.status === "failed");
+    assert.ok(
+      result?.status === "succeeded" ||
+        result?.status === "failed" ||
+        result?.status === "cancelled",
+    );
+    assert.equal(result.kind, "external_task_result");
     creations.set(threadId, (creations.get(threadId) ?? 0) + 1);
     const run = {
       run_id: randomUUID(),
@@ -147,6 +183,8 @@ beforeEach(async () => {
   creations.clear();
   runs.clear();
   completed.clear();
+  controls.length = 0;
+  controlStatus = 202;
   await database.db.execute(sql`
     TRUNCATE external_task_events, external_tasks,
       conversation_messages, conversation_runs, conversations, workflow_outputs
@@ -282,6 +320,210 @@ test("task callbacks are authenticated, ordered and durable without exposing cre
   );
   assert.equal(JSON.stringify(snapshots).includes(task.token), false);
 });
+
+test("A2A snapshots keep latest child text while durable history stays bounded", async () => {
+  const task = await register();
+  const outputs = [
+    {
+      agent: "Planner",
+      step: "plan",
+      taskId: "remote-1",
+      contextId: "context-1",
+      status: "input_required",
+      text: "First second",
+    },
+  ];
+  const payload = {
+    revision: 1,
+    kind: "a2a",
+    status: "input_required",
+    stage: "plan",
+    message: "Audience?",
+    outputs,
+  };
+  const callback = (body: object) =>
+    app.request(`/external-tasks/${task.taskId}/events`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${task.token}`,
+      },
+      body: JSON.stringify(body),
+    });
+
+  assert.equal((await callback(payload)).status, 200);
+  assert.equal((await callback(payload)).status, 200);
+  const { externalTaskSnapshots } = await import("./external-tasks");
+  const { externalTaskEvents, externalTasks } =
+    await import("../db/external-task-schema");
+  const [snapshot] = await externalTaskSnapshots(task.threadId);
+  const [stored] = await database.db
+    .select()
+    .from(externalTasks)
+    .where(eq(externalTasks.taskId, task.taskId));
+  const events = await database.db
+    .select()
+    .from(externalTaskEvents)
+    .where(eq(externalTaskEvents.taskId, task.taskId));
+
+  assert.equal(snapshot?.kind, "a2a");
+  assert.deepEqual(snapshot?.outputs, outputs);
+  assert.deepEqual(stored?.update.outputs, outputs);
+  assert.equal(events.length, 1);
+  assert.equal(events[0]?.update.outputs, undefined);
+  assert.equal(JSON.stringify(snapshot).includes(task.token), false);
+  assert.equal(
+    (
+      await callback({
+        ...payload,
+        revision: 2,
+        status: "cancelled",
+        message: "Cancelled",
+      })
+    ).status,
+    200,
+  );
+  assert.equal(
+    (await callback({ ...payload, revision: 3, status: "running" })).status,
+    409,
+  );
+});
+
+test("A2A controls validate ownership and status, use private credentials and await callbacks", async ({
+  onTestFinished,
+}) => {
+  vi.stubEnv("A2A_DEMO_API_URL", " ");
+  onTestFinished(() => {
+    vi.unstubAllEnvs();
+  });
+
+  const task = await register();
+  const control = (action: string, input?: string) =>
+    app.request(`/external-tasks/${task.taskId}/${action}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      ...(input !== undefined ? { body: JSON.stringify({ input }) } : {}),
+    });
+  const callback = (revision: number, status: string) =>
+    app.request(`/external-tasks/${task.taskId}/events`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${task.token}`,
+      },
+      body: JSON.stringify({
+        revision,
+        kind: "a2a",
+        status,
+        stage: "plan",
+        message: "Planning",
+      }),
+    });
+
+  assert.equal((await control("cancel")).status, 409);
+  assert.equal((await control("input", " ")).status, 400);
+  assert.equal((await control("input", "x".repeat(4001))).status, 400);
+  assert.equal((await control("input", `x${" ".repeat(4000)}`)).status, 400);
+  assert.equal((await callback(1, "queued")).status, 200);
+  assert.equal((await control("input", "Engineering team")).status, 409);
+  const cancelled = await control("cancel");
+
+  assert.equal(cancelled.status, 202);
+  assert.deepEqual(await cancelled.json(), { accepted: true });
+  assert.deepEqual(controls[0], {
+    path: `/a2a-demo/jobs/${task.taskId}/cancel`,
+    authorization: `Bearer ${task.token}`,
+    body: null,
+  });
+  const { externalTaskSnapshots } = await import("./external-tasks");
+
+  assert.equal(
+    (await externalTaskSnapshots(task.threadId))[0]?.status,
+    "queued",
+  );
+  assert.equal((await callback(2, "input_required")).status, 200);
+  assert.equal((await control("input", "Engineering team")).status, 202);
+  assert.deepEqual(controls[1], {
+    path: `/a2a-demo/jobs/${task.taskId}/input`,
+    authorization: `Bearer ${task.token}`,
+    body: { input: "Engineering team" },
+  });
+  controlStatus = 409;
+  const completedRace = await control("cancel");
+
+  assert.equal(completedRace.status, 409);
+  assert.deepEqual(await completedRace.json(), { error: "Already completed" });
+  await database.db
+    .update(schema.conversations)
+    .set({ deletedAt: new Date() })
+    .where(eq(schema.conversations.threadId, task.threadId));
+  assert.equal((await control("input", "Engineering team")).status, 404);
+  assert.equal(controls.length, 3);
+});
+
+test("A2A callbacks accept six bounded international output snapshots", async () => {
+  const task = await register();
+  const response = await app.request(`/external-tasks/${task.taskId}/events`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${task.token}`,
+    },
+    body: JSON.stringify({
+      revision: 1,
+      kind: "a2a",
+      status: "running",
+      stage: "plan",
+      message: "Planning",
+      outputs: Array.from({ length: 6 }, (_, index) => ({
+        agent: "Planner",
+        step: `plan-${index}`,
+        taskId: `remote-${index}`,
+        contextId: "context-1",
+        status: "running",
+        text: "文".repeat(100000),
+      })),
+    }),
+  });
+
+  assert.equal(response.status, 200);
+});
+
+test.each(["succeeded", "cancelled"])(
+  "A2A %s resumes with the external task result discriminator",
+  async (status) => {
+    const task = await register();
+    const response = await app.request(
+      `/external-tasks/${task.taskId}/events`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${task.token}`,
+        },
+        body: JSON.stringify({
+          revision: 1,
+          kind: "a2a",
+          status,
+          stage: "done",
+          message: "Agents finished",
+          ...(status === "succeeded" ? { result: { proposal: "Ready" } } : {}),
+        }),
+      },
+    );
+
+    assert.equal(response.status, 200);
+    const { processExternalTasks } = await import("./external-task-worker");
+
+    await processExternalTasks();
+    await processExternalTasks();
+    assert.equal(creations.get(task.threadId), 1);
+    const { conversationSnapshot } = await import("./conversation-snapshot");
+    const snapshot = await conversationSnapshot(task.threadId);
+
+    assert.equal(snapshot?.runs.at(-1)?.status, "completed");
+  },
+);
 
 test("a completed external task resumes and archives a workflow with no browser", async () => {
   const task = await register();

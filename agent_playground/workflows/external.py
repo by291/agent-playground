@@ -25,7 +25,7 @@ class ExternalTaskResult(BaseModel):
     kind: Literal["external_task_result"]
     task_id: str = Field(alias="taskId")
     revision: int = Field(gt=0)
-    status: Literal["succeeded", "failed"]
+    status: Literal["succeeded", "failed", "cancelled"]
     result: dict[str, Any] | None = None
     error: str | None = None
 

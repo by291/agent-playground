@@ -16,7 +16,7 @@ make setup
 make dev
 ```
 
-Open <http://127.0.0.1:5173>. `make dev` builds the Skill runtime image, prepares OpenSandbox sidecar images, waits for Compose infrastructure and starts three background application processes. Logs and process IDs live in `.dev/`:
+Open <http://127.0.0.1:5173>. `make dev` builds the Skill runtime image, prepares OpenSandbox sidecar images, waits for Compose infrastructure and starts three application processes plus two independent A2A agents. Logs and process IDs live in `.dev/`; child agent logs are in `.dev/a2a/`:
 
 ```sh
 tail -f .dev/agent.log .dev/server.log .dev/web.log
@@ -52,6 +52,8 @@ Application processes run on the host; supporting services run in Docker. Skills
 | Vite         | `http://127.0.0.1:5173` | Web UI and API proxy.                                         |
 | Hono server  | `http://127.0.0.1:3000` | `POST /agent`, conversations, files and document APIs.        |
 | Aegra        | `http://127.0.0.1:2026` | Python agent and native Agent Protocol; SQL/report demo APIs. |
+| A2A planner  | `http://127.0.0.1:2031` | Independent planning/revision agent.                          |
+| A2A reviewer | `http://127.0.0.1:2032` | Independent proposal review agent.                            |
 | PostgreSQL   | `127.0.0.1:55432`       | Application tables, Aegra state and pgvector chunks.          |
 | Redis        | `127.0.0.1:56379`       | Aegra broker and execution queue.                             |
 | OpenSandbox  | `http://127.0.0.1:8080` | Skill execution control API.                                  |
@@ -80,6 +82,8 @@ Conflicting existing tokens are rejected. Internal external-task registration, S
 The chat model uses `ChatDeepSeek` and defaults to `deepseek-flash`. Configure `DEEPSEEK_API_KEY`, optionally `DEEPSEEK_MODEL` and a custom `DEEPSEEK_API_BASE`, in the root environment. Older `OPENAI_*` chat settings must be replaced with the DeepSeek settings. Embeddings are independently configured in the [knowledge guide](knowledge.md).
 
 `APP_API_URL` is the Python-to-TypeScript base URL, defaulting to `http://127.0.0.1:3000`. It replaced `WORKFLOW_API_URL`; update existing environment files. `SQL_DEMO_API_URL` and `REPORT_DEMO_API_URL` point to the Python demonstration services if Aegra uses another address. Vite's `BACKEND_URL` must point to the Hono server.
+
+`make dev` also starts the independent A2A planner/reviewer services. The [A2A guide](a2a-demo.md) documents their root configuration, scripted mode, additional-input/cancel controls and recovery limits. `make a2a` starts only those services; they share the Python application's root environment and application database.
 
 ## S3-compatible storage
 

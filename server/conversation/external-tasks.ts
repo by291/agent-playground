@@ -11,6 +11,16 @@ import {
 } from "../../shared/external-task";
 import { SubmissionError } from "./errors";
 import { notifyConversation } from "./changes";
+import { aegraUrl } from "../agent/client";
+
+function historyUpdate(update: ExternalTaskUpdate) {
+  const history = { ...update };
+
+  // Child text is a complete streamed snapshot; retain it only on the task row.
+  delete history.outputs;
+
+  return history;
+}
 
 export async function registerExternalTask(input: ExternalTaskRegistration) {
   return db.transaction(async (tx) => {
@@ -131,9 +141,11 @@ export async function updateExternalTask(
       throw new SubmissionError("External task is already terminal", 409);
     }
 
-    await tx
-      .insert(externalTaskEvents)
-      .values({ taskId, revision: update.revision, update });
+    await tx.insert(externalTaskEvents).values({
+      taskId,
+      revision: update.revision,
+      update: historyUpdate(update),
+    });
     await tx
       .update(externalTasks)
       .set({ revision: update.revision, status: update.status, update })
@@ -142,6 +154,62 @@ export async function updateExternalTask(
 
     return { accepted: true };
   });
+}
+
+export async function controlExternalTask(
+  taskId: string,
+  action: "input" | "cancel",
+  input?: string,
+) {
+  const [owned] = await db
+    .select({ task: externalTasks })
+    .from(externalTasks)
+    .innerJoin(
+      conversations,
+      eq(externalTasks.threadId, conversations.threadId),
+    )
+    .where(
+      and(eq(externalTasks.taskId, taskId), isNull(conversations.deletedAt)),
+    );
+
+  if (!owned) {
+    throw new SubmissionError("External task not found", 404);
+  }
+
+  const task = owned.task;
+
+  if (task.update.kind !== "a2a") {
+    throw new SubmissionError(
+      "External task does not support agent controls",
+      409,
+    );
+  }
+
+  if (isExternalTaskTerminal(task.status)) {
+    throw new SubmissionError("External task is already terminal", 409);
+  }
+
+  if (action === "input" && task.status !== "input_required") {
+    throw new SubmissionError("External task is not waiting for input", 409);
+  }
+
+  const coordinatorUrl =
+    process.env.A2A_DEMO_API_URL?.trim() || `${aegraUrl}/a2a-demo`;
+
+  // A callback may finish the task after this read; the coordinator arbitrates
+  // that race. Its callback, not this request, owns the persisted task status.
+  return fetch(
+    `${coordinatorUrl.replace(/\/$/, "")}/jobs/${encodeURIComponent(taskId)}/${action}`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${task.callbackToken}`,
+        "Content-Type": "application/json",
+      },
+      ...(action === "input" ? { body: JSON.stringify({ input }) } : {}),
+      signal: AbortSignal.timeout(10000),
+    },
+  );
 }
 
 export async function externalTaskSnapshots(threadId: string) {
@@ -177,6 +245,8 @@ export async function externalTaskSnapshots(threadId: string) {
     status: task.status,
     stage: task.update.stage,
     message: task.update.message,
+    ...(task.update.kind ? { kind: task.update.kind } : {}),
+    ...(task.update.outputs ? { outputs: task.update.outputs } : {}),
     ...(task.update.progress !== undefined
       ? { progress: task.update.progress }
       : {}),
@@ -188,6 +258,6 @@ export async function externalTaskSnapshots(threadId: string) {
           event.taskId === task.taskId &&
           event.update.revision <= task.revision,
       )
-      .map((event) => event.update),
+      .map((event) => historyUpdate(event.update)),
   }));
 }

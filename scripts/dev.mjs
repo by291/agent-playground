@@ -216,6 +216,26 @@ function developmentCommands(observability) {
   ];
 }
 
+function a2aCommands() {
+  return ["planner", "reviewer"].map((role, index) => ({
+    name: `a2a-${role}`,
+    command: "uv",
+    args: [
+      "run",
+      "--env-file",
+      ".env",
+      "python",
+      "-m",
+      "agent_playground.services.a2a.server",
+      "--role",
+      role,
+      "--port",
+      String(2031 + index),
+    ],
+    env: {},
+  }));
+}
+
 async function runForeground({ command, args, env }) {
   const child = spawnCommand(command, args, {
     cwd: projectRoot,
@@ -271,6 +291,7 @@ async function main() {
   }
 
   if (action === "stop") {
+    await stopProcesses(join(runtimeDirectory, "a2a"));
     const stopped = await stopProcesses(runtimeDirectory);
 
     console.log(
@@ -278,6 +299,20 @@ async function main() {
         ? "Stopped development apps."
         : "No development apps are running.",
     );
+
+    return;
+  }
+
+  if (action === "start-a2a" || action === "stop-a2a") {
+    const directory = join(runtimeDirectory, "a2a");
+    const processes =
+      action === "start-a2a"
+        ? await launchProcesses(directory, a2aCommands(), "a2a")
+        : await stopProcesses(directory);
+
+    for (const { name, pid, log } of processes) {
+      console.log(`${name}: pid ${pid}, log ${log}`);
+    }
 
     return;
   }
@@ -312,8 +347,13 @@ async function main() {
     commands,
     observability ? "observability" : "standard",
   );
+  const agents = await launchProcesses(
+    join(runtimeDirectory, "a2a"),
+    a2aCommands(),
+    "a2a",
+  );
 
-  for (const { name, pid, log } of started) {
+  for (const { name, pid, log } of [...started, ...agents]) {
     console.log(`${name}: pid ${pid}, log ${log}`);
   }
 }

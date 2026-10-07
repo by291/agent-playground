@@ -40,6 +40,12 @@ export function Welcome({ onSelect }: { onSelect: (prompt: string) => void }) {
           onSelect={onSelect}
         />
         <Suggestion
+          icon={<ListChecksIcon size={17} aria-hidden="true" />}
+          title="Collaborate with agents"
+          prompt="Use run_a2a_workflow to have agents plan, review, and revise an order analysis proposal."
+          onSelect={onSelect}
+        />
+        <Suggestion
           icon={<ChatCircleIcon size={17} aria-hidden="true" />}
           title="Explore a question"
           prompt="Help me think through a complex question."

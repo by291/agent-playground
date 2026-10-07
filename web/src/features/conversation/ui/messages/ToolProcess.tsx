@@ -33,6 +33,7 @@ const toolLabels: Record<string, string> = {
   run_experiment_workflow: "Build an experiment plan",
   run_sql_workflow: "Review SQL",
   run_report_workflow: "Generate report",
+  run_a2a_workflow: "Collaborate with agents",
 };
 
 function summary(steps: ToolStep[]) {

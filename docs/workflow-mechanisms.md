@@ -9,6 +9,7 @@
 | `run_experiment_workflow` | Send **"Create an experiment plan for testing an agent workflow."**                                      | Edit the plan and choose **Approve plan** or **Reject**; decide each parallel plan before **Continue workflow**.                |
 | `run_sql_workflow`        | Choose **Review SQL**, or send **"Use run_sql_workflow to calculate monthly revenue from paid orders."** | Request SQL changes/explanations in chat. **Accept and submit** requires a passing check; **Abandon** ends without submission.  |
 | `run_report_workflow`     | Choose **Generate report** and send; specify `outcome="failed"` to test failure.                         | About 12 seconds of simulated progress; background continuation completes without an open page, and reopening restores results. |
+| `run_a2a_workflow`        | Choose **Collaborate with agents** and send; use `require_input=True` for an additional-input example. | Planner, reviewer and revision output stream live; input/cancel and recovery are described in the [A2A guide](a2a-demo.md). |
 
 Welcome actions prepare editable messages; sending starts execution. Experiment plans show the current card, retaining earlier steps in tool history. Review results replace the editor in the original reply and survive reload.
 

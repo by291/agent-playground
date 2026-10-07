@@ -14,6 +14,7 @@ import {
   workflowReviewResponseSchema,
   type WorkflowReview,
 } from "../../../shared/workflow-review";
+import type { WorkflowOutputMetadata } from "../../../shared/workflow-output";
 
 const resumeSchema = z.object({
   decision: z.literal("approve"),
@@ -72,6 +73,7 @@ interface Thread {
   }[];
   release?: () => void;
   sql?: ControlledSqlWorkflow;
+  externalWorkflow?: "report" | "a2a";
 }
 
 // Only the Aegra HTTP boundary is controlled. The browser, adapter, server and
@@ -120,9 +122,12 @@ export function controlledAegra(database: typeof db) {
     stage: "review" | "reviewed",
     title: string,
     steps: string[],
+    presentation?: WorkflowOutputMetadata["presentation"],
   ) {
-    const surfaceId = `experiment-${callId}-${stage}`;
+    const surfaceId =
+      presentation?.surfaceId ?? `experiment-${callId}-${stage}`;
     const payload = {
+      ...(presentation ? { workflow: { presentation } } : {}),
       messages: [
         {
           version: "v0.9",
@@ -222,8 +227,46 @@ export function controlledAegra(database: typeof db) {
 
     const command = z.record(z.unknown()).parse(input.command?.resume);
     const result = z
-      .object({ taskId: z.string(), status: z.enum(["succeeded", "failed"]) })
+      .object({
+        kind: z.literal("external_task_result"),
+        taskId: z.string(),
+        status: z.enum(["succeeded", "failed", "cancelled"]),
+        result: z.record(z.unknown()).optional(),
+        error: z.string().optional(),
+      })
       .parse(command[wait.id]);
+    const workflow = thread.externalWorkflow ?? "report";
+    const replies = {
+      report: {
+        succeeded: "The report is ready.",
+        failed: "Report generation failed.",
+        cancelled: "Report generation cancelled.",
+      },
+      a2a: {
+        succeeded: "The A2A collaboration is ready.",
+        failed: "A2A collaboration failed.",
+        cancelled: "The A2A collaboration was cancelled.",
+      },
+    };
+    const titles = {
+      succeeded: "A2A collaboration completed",
+      failed: "A2A collaboration failed",
+      cancelled: "A2A collaboration cancelled",
+    };
+    let lines = ["The external service produced the report."];
+
+    if (workflow === "a2a") {
+      let receipt = result.error ?? "The agent collaboration failed.";
+
+      if (result.status === "succeeded") {
+        receipt = "The full revision is available in the agent output.";
+      } else if (result.status === "cancelled") {
+        receipt = "The agent collaboration was cancelled.";
+      }
+
+      lines = [receipt];
+    }
+
     const run = {
       run_id: randomUUID(),
       thread_id: threadId,
@@ -237,27 +280,31 @@ export function controlledAegra(database: typeof db) {
       type: "tool",
       role: "tool",
       tool_call_id: wait.value.workflowCallId,
-      name: "run_report_workflow",
+      name: workflow === "a2a" ? "run_a2a_workflow" : "run_report_workflow",
       content: "External task finished",
     });
     thread.messages.push({
       id: randomUUID(),
       type: "ai",
       role: "assistant",
-      content:
-        result.status === "succeeded"
-          ? "The report is ready."
-          : "Report generation failed.",
+      content: replies[workflow][result.status],
     });
     await publishCard(
       threadId,
       input.metadata.agui_run_id,
       wait.value.workflowCallId,
       "reviewed",
-      "Generated report",
-      ["The external service produced the report."],
+      workflow === "a2a" ? titles[result.status] : "Generated report",
+      lines,
+      workflow === "a2a"
+        ? {
+            surfaceId: `a2a-${wait.value.workflowCallId}-result`,
+            groupId: wait.value.workflowCallId,
+          }
+        : undefined,
     );
     thread.review = null;
+    delete thread.externalWorkflow;
 
     return context.json(run);
   });
@@ -523,9 +570,12 @@ export function controlledAegra(database: typeof db) {
             prompt.includes("run_sql_workflow") ||
             prompt.includes("SQL review workflow");
           const reportWorkflow = prompt.includes("report workflow");
+          const a2aWorkflow = prompt.includes("run_a2a_workflow");
           let name = "get_current_time";
 
-          if (reportWorkflow) {
+          if (a2aWorkflow) {
+            name = "run_a2a_workflow";
+          } else if (reportWorkflow) {
             name = "run_report_workflow";
           } else if (workflow) {
             name = "run_experiment_workflow";
@@ -549,7 +599,7 @@ export function controlledAegra(database: typeof db) {
             tool_calls: [{ id: callId, name, args: {} }],
           });
 
-          if (reportWorkflow) {
+          if (reportWorkflow || a2aWorkflow) {
             const { registerExternalTask } =
               await import("../../conversation/external-tasks");
             const taskId = randomUUID();
@@ -559,9 +609,10 @@ export function controlledAegra(database: typeof db) {
               threadId,
               runId: input.metadata.agui_run_id,
               workflowCallId: callId,
-              stepId: "report",
-              label: "Generate report",
+              stepId: a2aWorkflow ? "a2a" : "report",
+              label: a2aWorkflow ? "A2A collaboration" : "Generate report",
             });
+            thread.externalWorkflow = a2aWorkflow ? "a2a" : "report";
             thread.review = {
               id: randomUUID(),
               value: {

@@ -1,6 +1,6 @@
 """Workflow output DDL and the shared conversation table contracts.
 
-Python owns workflow_outputs, sql_demo_submissions and report_demo_jobs.
+Python owns workflow outputs, SQL/report demo jobs and A2A tasks/jobs.
 The TypeScript server owns conversations and conversation_runs; their columns
 here support queries.
 """
@@ -75,4 +75,28 @@ report_jobs = Table(
     Column(
         "created_at", DateTime(timezone=True), nullable=False, server_default=func.now()
     ),
+)
+
+a2a_tasks = Table(
+    "a2a_demo_tasks",
+    metadata,
+    Column("role", String, primary_key=True),
+    Column("id", String, primary_key=True),
+    Column("context_id", String, nullable=False),
+    Column("state", Integer, nullable=False),
+    Column("payload", JSONB, nullable=False),
+    Column(
+        "updated_at", DateTime(timezone=True), nullable=False, server_default=func.now()
+    ),
+)
+
+a2a_jobs = Table(
+    "a2a_demo_jobs",
+    metadata,
+    Column("id", String, primary_key=True),
+    Column("request", JSONB, nullable=False),
+    Column("state", JSONB, nullable=False),
+    Column("delivered_revision", Integer, nullable=False, server_default="0"),
+    Column("lease_owner", String),
+    Column("lease_until", DateTime(timezone=True)),
 )

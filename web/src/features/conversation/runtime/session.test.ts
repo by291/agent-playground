@@ -1895,6 +1895,7 @@ test("older task snapshots cannot replace newer progress or completed continuati
     taskId: "task",
     workflowCallId: "call",
     label: "Build artifact",
+    kind: "a2a" as const,
     revision: 3,
     status: "succeeded" as const,
     stage: "done",
@@ -1902,6 +1903,16 @@ test("older task snapshots cannot replace newer progress or completed continuati
     progress: 100,
     history: [],
     continuationStatus: "completed" as const,
+    outputs: [
+      {
+        agent: "Planner",
+        step: "plan",
+        taskId: "remote-1",
+        contextId: "context-1",
+        status: "succeeded" as const,
+        text: "Full proposal",
+      },
+    ],
   };
   const disconnect = connectSession(session, () => Promise.resolve(saved));
 
@@ -1910,7 +1921,13 @@ test("older task snapshots cannot replace newer progress or completed continuati
     session.receiveSnapshot({
       ...saved,
       externalTasks: [
-        { ...task, revision: 2, status: "running", message: "Building" },
+        {
+          ...task,
+          revision: 2,
+          status: "running",
+          message: "Building",
+          outputs: [{ ...task.outputs[0]!, status: "running", text: "Draft" }],
+        },
       ],
     });
     session.receiveSnapshot({
@@ -1918,6 +1935,10 @@ test("older task snapshots cannot replace newer progress or completed continuati
       externalTasks: [{ ...task, continuationStatus: null }],
     });
     assert.equal(session.store.getState().externalTasks[0]?.message, "Ready");
+    assert.equal(
+      session.store.getState().externalTasks[0]?.outputs?.[0]?.text,
+      "Full proposal",
+    );
     assert.equal(
       session.store.getState().externalTasks[0]?.continuationStatus,
       "completed",

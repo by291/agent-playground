@@ -1,5 +1,5 @@
 import type { ExternalTaskSnapshot } from "@shared/external-task";
-import type { A2UISurfaceView } from "@/features/a2ui";
+import { workflowCatalog, type A2UISurfaceView } from "@/features/a2ui";
 import { isRunActive } from "@shared/run-status";
 import { parsePlanReview } from "./planReview";
 import { hasMessageText } from "./presentation";
@@ -13,6 +13,64 @@ type ViewInput = Pick<
   "messages" | "runs" | "surfaces" | "pendingInterrupts"
 > & { externalTasks?: ExternalTaskSnapshot[] };
 
+function isDuplicateA2aResult(
+  view: A2UISurfaceView,
+  tasks: ExternalTaskSnapshot[],
+) {
+  const task = tasks.find(
+    (candidate) =>
+      candidate.kind === "a2a" && candidate.workflowCallId === view.toolCallId,
+  );
+  const revision = task?.outputs?.find(
+    (output) =>
+      output.step === "revise" &&
+      output.status === "succeeded" &&
+      output.text.trim(),
+  );
+  const legacySurface =
+    task &&
+    view.surface.id === `a2a-${task.workflowCallId}-result` &&
+    view.surface.catalog.id === workflowCatalog.id;
+
+  if (!legacySurface || !revision) {
+    return false;
+  }
+
+  const steps = view.surface.componentsModel.get("steps");
+  const children: unknown = steps?.properties.children;
+
+  if (steps?.type !== "WorkflowSteps" || !Array.isArray(children)) {
+    return false;
+  }
+
+  const lines: string[] = [];
+
+  for (const childId of children as unknown[]) {
+    if (typeof childId !== "string") {
+      return false;
+    }
+
+    const component = view.surface.componentsModel.get(childId);
+    const role: unknown = component?.properties.role;
+    const text: unknown = component?.properties.text;
+
+    if (
+      component?.type !== "WorkflowText" ||
+      role !== "step" ||
+      typeof text !== "string"
+    ) {
+      return false;
+    }
+
+    lines.push(text);
+  }
+
+  return (
+    lines.join("\n").replace(/\r\n?/g, "\n").trim() ===
+    revision.text.replace(/\r\n?/g, "\n").trim()
+  );
+}
+
 export function conversationView({
   messages,
   runs,
@@ -20,6 +78,11 @@ export function conversationView({
   pendingInterrupts,
   externalTasks = [],
 }: ViewInput) {
+  const duplicateA2aResults = new Set(
+    surfaces
+      .filter((view) => isDuplicateA2aResult(view, externalTasks))
+      .map((view) => view.id),
+  );
   const reviews = pendingInterrupts.flatMap((interrupt) => {
     const review = parsePlanReview(interrupt);
 
@@ -113,6 +176,16 @@ export function conversationView({
         (view) => view.toolCallId && callIds.has(view.toolCallId),
       ),
     );
+
+    // Keep protocol/archive surfaces and presentation ownership intact. Only the
+    // rendered composition omits legacy result text already owned by a child.
+    artifacts.current = artifacts.current.filter(
+      (view) => !duplicateA2aResults.has(view.id),
+    );
+    artifacts.history = artifacts.history.filter(
+      (view) => !duplicateA2aResults.has(view.id),
+    );
+
     const hasReply =
       turn.messages.some(
         (message) =>
@@ -145,7 +218,7 @@ export function conversationView({
     ...[...latest]
       .filter(([groupId]) => !owners.has(groupId))
       .map(([, view]) => view),
-  ];
+  ].filter((view) => !duplicateA2aResults.has(view.id));
 
   return {
     turns: replies,

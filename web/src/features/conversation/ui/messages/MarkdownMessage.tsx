@@ -87,7 +87,7 @@ function StreamingBlock(props: BlockProps) {
   );
 }
 
-const MarkdownContent = memo(function MarkdownContent({
+export const MarkdownContent = memo(function MarkdownContent({
   text,
   streaming,
   animated,

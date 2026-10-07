@@ -9,6 +9,8 @@ from agent_playground.config import configured_model_name
 from agent_playground.db.async_operations import run_database_operation
 from agent_playground.db.connection import close_app_store, prepare_app_store
 from agent_playground.knowledge.worker import run_knowledge_worker
+from agent_playground.services.a2a.coordinator import run_a2a_worker
+from agent_playground.services.a2a.routes import router as a2a_router
 from agent_playground.services.report.routes import router as report_router
 from agent_playground.services.report.worker import run_report_worker
 from agent_playground.services.sql.routes import router as sql_router
@@ -23,6 +25,7 @@ async def lifespan(app: FastAPI):
         workers = [
             asyncio.create_task(run_report_worker()),
             asyncio.create_task(run_knowledge_worker()),
+            asyncio.create_task(run_a2a_worker()),
         ]
 
         yield
@@ -46,6 +49,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Agent Playground", lifespan=lifespan)
 app.include_router(sql_router)
 app.include_router(report_router)
+app.include_router(a2a_router)
 
 
 @app.get("/agent-info")

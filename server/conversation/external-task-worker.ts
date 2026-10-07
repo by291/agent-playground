@@ -92,9 +92,9 @@ export async function processExternalTasks(
               interruptId: wait.interruptId,
               status: "resolved",
               payload: {
+                ...task.update,
                 kind: "external_task_result",
                 taskId: task.taskId,
-                ...task.update,
               },
             },
           ],

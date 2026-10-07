@@ -10,6 +10,7 @@ The guides below describe the current implementation. Start with [local developm
 | [Android client](../android/README.md) | Native setup, feature mapping, architecture, HTTP/SSE recovery and Android checks.               |
 | [Conversations](conversations.md)      | First submission, history, recovery, tools, preferences and context compaction.                  |
 | [Workflows](workflow-mechanisms.md)    | Experiment, SQL and report examples; common review, durable output and external-task mechanisms. |
+| [A2A collaboration](a2a-demo.md)       | Independent planner/reviewer agents, streaming child output, multi-turn input, cancellation and recovery. |
 | [Shared knowledge](knowledge.md)       | Document upload, OpenAI-compatible embeddings, indexing, source citations and cleanup.           |
 | [Agent Skills](skills.md)              | Published bundles, Docker execution, attachments, outputs and runtime limits.                    |
 | [Observability](observability.md)      | Optional tracing, Langfuse, metrics, local accounts and deployment settings.                     |

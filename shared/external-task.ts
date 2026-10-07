@@ -1,10 +1,35 @@
 import { z } from "zod";
 import { runStatuses } from "./run-status";
 
+const externalTaskStatusSchema = z.enum([
+  "queued",
+  "running",
+  "input_required",
+  "succeeded",
+  "failed",
+  "cancelled",
+]);
+const externalTaskOutputsSchema = z
+  .array(
+    z
+      .object({
+        agent: z.string().min(1).max(200),
+        step: z.string().min(1).max(200),
+        taskId: z.string().min(1).max(200),
+        contextId: z.string().min(1).max(200),
+        status: externalTaskStatusSchema,
+        text: z.string().max(100000),
+      })
+      .strict(),
+  )
+  .max(6);
+
 export const externalTaskUpdateSchema = z
   .object({
     revision: z.number().int().positive(),
-    status: z.enum(["queued", "running", "succeeded", "failed"]),
+    status: externalTaskStatusSchema,
+    kind: z.literal("a2a").optional(),
+    outputs: externalTaskOutputsSchema.optional(),
     stage: z.string().min(1).max(100),
     message: z.string().min(1).max(2000),
     progress: z.number().min(0).max(100).optional(),
@@ -47,7 +72,9 @@ export const externalTaskSnapshotSchema = z.object({
   workflowCallId: z.string(),
   label: z.string(),
   revision: z.number().int().nonnegative(),
-  status: z.enum(["queued", "running", "succeeded", "failed"]),
+  status: externalTaskStatusSchema,
+  kind: z.literal("a2a").optional(),
+  outputs: externalTaskOutputsSchema.optional(),
   stage: z.string(),
   message: z.string(),
   progress: z.number().optional(),
@@ -79,5 +106,7 @@ export function parseExternalWait(interrupt: {
 }
 
 export function isExternalTaskTerminal(status: ExternalTaskUpdate["status"]) {
-  return status === "succeeded" || status === "failed";
+  return (
+    status === "succeeded" || status === "failed" || status === "cancelled"
+  );
 }

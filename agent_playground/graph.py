@@ -24,6 +24,7 @@ from agent_playground.prompts import SYSTEM_PROMPT
 from agent_playground.skills.catalog import SkillCatalog
 from agent_playground.skills.sandbox import skill_execution
 from agent_playground.skills.tools import default_catalog, skill_tools
+from agent_playground.workflows.a2a.tool import run_a2a_workflow
 from agent_playground.workflows.experiment.tool import run_experiment_workflow
 from agent_playground.workflows.report.tool import run_report_workflow
 from agent_playground.workflows.sql.tool import sql_workflow_tool
@@ -71,6 +72,7 @@ def make_graph(
         *(mcp_tools or []),
         run_experiment_workflow,
         run_report_workflow,
+        run_a2a_workflow,
         sql_workflow_tool(model),
         *skill_tools(catalog),
     ]

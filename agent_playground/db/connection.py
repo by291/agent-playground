@@ -3,10 +3,12 @@
 import os
 from functools import lru_cache
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
 
 from agent_playground.db.schema import (
+    a2a_jobs,
+    a2a_tasks,
     metadata,
     report_jobs,
     sql_demo_submissions,
@@ -35,9 +37,24 @@ def app_engine() -> Engine:
 
 def prepare_app_store() -> None:
     try:
-        metadata.create_all(
-            app_engine(), tables=[report_jobs, workflow_outputs, sql_demo_submissions]
-        )
+        with app_engine().begin() as connection:
+            # Independent agent processes can start together. Serialize both the
+            # existence checks and DDL so checkfirst cannot race another creator.
+            connection.execute(
+                text(
+                    "SELECT pg_advisory_xact_lock(hashtextextended('agent_playground_python_schema', 0))"
+                )
+            )
+            metadata.create_all(
+                connection,
+                tables=[
+                    report_jobs,
+                    workflow_outputs,
+                    sql_demo_submissions,
+                    a2a_tasks,
+                    a2a_jobs,
+                ],
+            )
     except Exception:
         close_app_store()
         raise

@@ -176,7 +176,7 @@ export async function validateExternalContinuation(
     .from(externalTasks)
     .where(eq(externalTasks.taskId, taskId));
   const expected = task
-    ? { kind: "external_task_result", taskId, ...task.update }
+    ? { ...task.update, kind: "external_task_result", taskId }
     : null;
 
   if (

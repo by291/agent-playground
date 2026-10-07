@@ -10,11 +10,13 @@ endif
 
 .PHONY: help setup infra-up infra-down skills-smoke agent server web dev dev-stop observability-up dev-observability agent-observability server-observability web-observability typecheck lint format format-check test build check
 .PHONY: android-format android-format-check android-lint android-check
+.PHONY: a2a a2a-stop
 
 help:
 	@echo "Setup:   make setup, make infra-up, make infra-down"
 	@echo "Run:     make dev, make dev-stop, make agent, make server, make web"
 	@echo "Skills:  make skills-smoke"
+	@echo "A2A:     make a2a, make a2a-stop"
 	@echo "Observe: make observability-up, make dev-observability"
 	@echo "Quality: make check, make typecheck, make lint, make format, make format-check, make test, make build"
 	@echo "Android: make android-check, make android-lint, make android-format, make android-format-check"
@@ -50,6 +52,12 @@ dev: infra-up
 
 dev-stop:
 	node scripts/dev.mjs stop
+
+a2a:
+	node scripts/dev.mjs start-a2a
+
+a2a-stop:
+	node scripts/dev.mjs stop-a2a
 
 observability-up:
 	docker compose --profile observability up -d --wait

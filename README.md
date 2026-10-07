@@ -34,6 +34,7 @@ A native Jetpack Compose client is available in [`android/`](android/README.md).
 | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Conversations     | Streaming Markdown/reasoning, persisted history, review recovery and automatic context compaction. Thread IDs are allocated on the first valid submission. [Guide](docs/conversations.md). |
 | Workflows         | Experiment-plan approval, conversational SQL review and asynchronous reports that continue without an open browser. [Guide](docs/workflow-mechanisms.md).                                  |
+| A2A collaboration | Independent planner/reviewer agents, live child output, revision handoff, additional input, cancellation and recovery. [Guide](docs/a2a-demo.md). |
 | Shared knowledge  | Upload documents for retrieval across conversations; inline footnotes open the exact retrieved passage. Shared-document deletion requires confirmation. [Guide](docs/knowledge.md).        |
 | Agent Skills      | Published `SKILL.md` bundles, Python/Bash/Node scripts in Docker, chat attachments and downloadable outputs. [Guide](docs/skills.md).                                                      |
 | Development tools | Live protocol Activity and an A2UI/Monaco component gallery, excluded from production builds. [Guide](docs/frontend-architecture.md#components-and-development-tools).                     |
