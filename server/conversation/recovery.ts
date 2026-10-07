@@ -2,7 +2,7 @@ import type { Client, Run } from "@langchain/langgraph-sdk";
 import { aegra } from "../agent/client";
 import type { RunRow } from "../db/schema";
 import { isRunFinished, type RunStatus } from "../../shared/run-status";
-import { saveRunObservation } from "./run-store";
+import { hasRunDispatchOwner, saveRunObservation } from "./run-store";
 
 function externalRunId(run: Run): unknown {
   const stored = run as Run & {
@@ -60,9 +60,12 @@ export async function reconcileRun(
   }
 
   if (!aegraRunId) {
+    const outcomeUnknown =
+      row.status === "dispatching" && !hasRunDispatchOwner(row.aguiRunId);
+
     return saveRunObservation(row, {
       aegraRunId: null,
-      status: row.status === "dispatching" ? "submission_unknown" : row.status,
+      status: outcomeUnknown ? "submission_unknown" : row.status,
     });
   }
 

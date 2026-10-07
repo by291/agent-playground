@@ -961,5 +961,13 @@ class SessionTest {
         }
 
         override fun changes(threadId: String): Flow<ServerEvent> = emptyFlow()
+
+        override suspend fun submitExternalTaskInput(taskId: String, input: String) {
+            error("Unexpected external input")
+        }
+
+        override suspend fun cancelExternalTask(taskId: String) {
+            error("Unexpected external cancellation")
+        }
     }
 }

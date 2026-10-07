@@ -32,6 +32,10 @@ interface ConversationApi {
     fun run(input: RunAgentInput): Flow<BaseEvent>
 
     fun changes(threadId: String): Flow<ServerEvent>
+
+    suspend fun submitExternalTaskInput(taskId: String, input: String)
+
+    suspend fun cancelExternalTask(taskId: String)
 }
 
 class PlaygroundApi(baseUrl: String) : ConversationApi, AutoCloseable {
@@ -91,6 +95,29 @@ class PlaygroundApi(baseUrl: String) : ConversationApi, AutoCloseable {
 
         return request(Request.Builder().url(url("conversations", threadId)).patch(body).build())
             .use { decode(it) }
+    }
+
+    override suspend fun submitExternalTaskInput(taskId: String, input: String) {
+        val trimmed = input.trim()
+
+        require(input.length <= 4000 && trimmed.isNotEmpty()) {
+            "Provide additional information up to 4000 characters."
+        }
+
+        val body = buildJsonObject { put("input", trimmed) }.toString().toRequestBody(JSON)
+
+        request(Request.Builder().url(url("external-tasks", taskId, "input")).post(body).build())
+            .use { checkResponse(it) }
+    }
+
+    override suspend fun cancelExternalTask(taskId: String) {
+        request(
+                Request.Builder()
+                    .url(url("external-tasks", taskId, "cancel"))
+                    .post(ByteArray(0).toRequestBody())
+                    .build()
+            )
+            .use { checkResponse(it) }
     }
 
     suspend fun deleteConversation(threadId: String) = delete(url("conversations", threadId))

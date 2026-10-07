@@ -116,7 +116,7 @@ class ConversationSession(
                 if (
                     state.value.busy ||
                         state.value.error != null ||
-                        state.value.externalTasks.any { it.status in setOf("queued", "running") } ||
+                        state.value.externalTasks.any { isExternalTaskActive(it.status) } ||
                         outputBuffer.missingSequence != null
                 ) {
                     recoverPending()
@@ -139,6 +139,100 @@ class ConversationSession(
         settling = false
 
         mutableState.update { it.copy(streaming = false) }
+    }
+
+    fun submitExternalTaskInput(taskId: String, input: String) {
+        controlExternalTask(taskId, ExternalTaskAction.Input, input)
+    }
+
+    fun cancelExternalTask(taskId: String) {
+        controlExternalTask(taskId, ExternalTaskAction.Cancel)
+    }
+
+    private fun controlExternalTask(
+        taskId: String,
+        action: ExternalTaskAction,
+        input: String = "",
+    ) {
+        val task = state.value.externalTasks.find { it.taskId == taskId }
+
+        if (
+            closed ||
+                task?.kind != "a2a" ||
+                !isExternalTaskActive(task.status) ||
+                state.value.externalTaskControls[taskId]?.pending != null ||
+                (action == ExternalTaskAction.Input && task.status != "input_required")
+        ) {
+            return
+        }
+
+        if (action == ExternalTaskAction.Input && (input.isBlank() || input.length > 4000)) {
+            mutableState.update {
+                it.copy(
+                    externalTaskControls =
+                        it.externalTaskControls +
+                            (taskId to
+                                ExternalTaskControl(
+                                    error = "Provide additional information up to 4000 characters."
+                                ))
+                )
+            }
+
+            return
+        }
+
+        // Lock before dispatch so rapid input/cancel taps cannot reserve two requests. The
+        // session lifetime owns the HTTP request; snapshots alone confirm remote task state.
+        mutableState.update {
+            it.copy(
+                externalTaskControls =
+                    it.externalTaskControls + (taskId to ExternalTaskControl(pending = action))
+            )
+        }
+
+        scope.launch {
+            var accepted = false
+
+            try {
+                when (action) {
+                    ExternalTaskAction.Input -> api.submitExternalTaskInput(taskId, input.trim())
+                    ExternalTaskAction.Cancel -> api.cancelExternalTask(taskId)
+                }
+                accepted = true
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                if (!closed) {
+                    mutableState.update {
+                        it.copy(
+                            externalTaskControls =
+                                it.externalTaskControls +
+                                    (taskId to
+                                        ExternalTaskControl(
+                                            error =
+                                                error.message
+                                                    ?: "Agent control failed. Please retry."
+                                        ))
+                        )
+                    }
+                }
+            } finally {
+                if (!closed) {
+                    mutableState.update {
+                        val control = it.externalTaskControls[taskId] ?: ExternalTaskControl()
+
+                        it.copy(
+                            externalTaskControls =
+                                it.externalTaskControls + (taskId to control.copy(pending = null))
+                        )
+                    }
+                }
+            }
+
+            if (accepted && !closed) {
+                refresh()
+            }
+        }
     }
 
     suspend fun send(text: String) {
@@ -407,7 +501,11 @@ class ConversationSession(
                             } else {
                                 current.interrupts
                             },
-                        externalTasks = snapshot?.externalTasks ?: current.externalTasks,
+                        externalTasks =
+                            mergeExternalTasks(
+                                current.externalTasks,
+                                snapshot?.externalTasks.orEmpty(),
+                            ),
                         runs = snapshot?.runs ?: current.runs,
                         executionStatus =
                             if (useCanonicalMessages) null else current.executionStatus,

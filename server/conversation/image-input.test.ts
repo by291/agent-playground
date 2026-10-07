@@ -18,7 +18,7 @@ vi.mock("./checkpoint-sync", () => ({
 }));
 vi.mock("./run-store", () => ({
   admitRun: mocks.admit,
-  claimPrepared: mocks.claim,
+  claimPreparedDispatch: mocks.claim,
   recordAegraRun: vi.fn(),
 }));
 
@@ -30,7 +30,7 @@ const png = Buffer.from(
 
 beforeEach(() => {
   vi.resetAllMocks();
-  mocks.claim.mockResolvedValue(true);
+  mocks.claim.mockResolvedValue(vi.fn());
 });
 
 function submission(files: { id: string; name: string }[] = []): RunAgentInput {
@@ -63,7 +63,7 @@ test("uploaded images reach the official multimodal adapter while admission keep
         : { ...csv, data: Buffer.from("amount\n20") },
     ),
   );
-  const prepared = await prepareConversationRun(input);
+  const { input: prepared } = await prepareConversationRun(input);
 
   assert.deepEqual(prepared.messages[0]?.content, [
     { type: "text", text: input.messages[0]?.content },
@@ -93,7 +93,7 @@ test("only the latest user turn loads images; previous archived references are n
   const input = submission();
 
   input.messages.unshift(...old.messages);
-  const prepared = await prepareConversationRun(input);
+  const { input: prepared } = await prepareConversationRun(input);
 
   assert.equal(mocks.readFile.mock.calls.length, 0);
   assert.deepEqual(prepared.messages, input.messages);
@@ -104,7 +104,7 @@ test("ordinary file attachments and text stay text-only", async () => {
   const input = submission([csv]);
 
   mocks.readFile.mockResolvedValue({ ...csv, data: Buffer.from("amount\n20") });
-  const prepared = await prepareConversationRun(input);
+  const { input: prepared } = await prepareConversationRun(input);
 
   assert.equal(prepared.messages[0]?.content, input.messages[0]?.content);
 });
@@ -116,7 +116,9 @@ test.each(["jpeg", "png", "gif", "webp"] as const)(
     const data = await sharp(png).toFormat(format).toBuffer();
 
     mocks.readFile.mockResolvedValue({ ...file, data });
-    const prepared = await prepareConversationRun(submission([file]));
+    const { input: prepared } = await prepareConversationRun(
+      submission([file]),
+    );
 
     assert.ok(Array.isArray(prepared.messages[0]?.content));
     assert.deepEqual(prepared.messages[0].content[1], {

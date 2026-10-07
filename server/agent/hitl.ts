@@ -1,7 +1,26 @@
 import type { Interrupt, ResumeEntry } from "@ag-ui/client";
-import { LangGraphAgent } from "@ag-ui/langgraph";
+import { LangGraphAgent, type LangGraphAgentConfig } from "@ag-ui/langgraph";
 import { workflowReviewResponseSchema } from "../../shared/workflow-review";
+
 export class ReviewLangGraphAgent extends LangGraphAgent {
+  constructor(
+    config: LangGraphAgentConfig,
+    private readonly onProducerSettled?: () => Promise<void>,
+  ) {
+    super(config);
+  }
+
+  override async runAgentStream(
+    ...args: Parameters<LangGraphAgent["runAgentStream"]>
+  ): Promise<void> {
+    try {
+      await super.runAgentStream(...args);
+    } finally {
+      // The SDK producer can outlive an unsubscribed HTTP consumer.
+      await this.onProducerSettled?.();
+    }
+  }
+
   protected override buildCommandResumeFromAgui(
     entries: readonly ResumeEntry[],
     context: { openInterrupts: Interrupt[] },

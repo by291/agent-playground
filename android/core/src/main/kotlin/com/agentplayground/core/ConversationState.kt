@@ -11,6 +11,7 @@ data class SessionState(
     val interrupts: List<Interrupt> = emptyList(),
     val outputs: List<WorkflowOutput> = emptyList(),
     val externalTasks: List<ExternalTask> = emptyList(),
+    val externalTaskControls: Map<String, ExternalTaskControl> = emptyMap(),
     val runs: List<RunRecord> = emptyList(),
     val contextUsage: ContextUsage? = null,
     val activity: List<ActivityEntry> = emptyList(),
@@ -29,6 +30,7 @@ data class SessionState(
         get() =
             !busy &&
                 !loading &&
+                externalTasks.none { it.kind == "a2a" && isExternalTaskActive(it.status) } &&
                 (interrupts.isEmpty() ||
                     interrupts.singleOrNull()?.let(Review::from)?.let {
                         it.kind == "workflow_review" && !it.expired

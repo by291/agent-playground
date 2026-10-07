@@ -26,6 +26,7 @@ import com.agentplayground.app.data.AppPreferences
 import com.agentplayground.app.design.*
 import com.agentplayground.core.Review
 import com.agentplayground.core.externalWaitCallId
+import com.agentplayground.core.isExternalTaskActive
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -68,8 +69,14 @@ fun Composer(
         when {
             state.uploading -> "Uploading files…"
             session.loading -> "Restoring conversation…"
+            session.externalTasks.any { it.kind == "a2a" && it.status == "input_required" } ->
+                "Add the requested information above to continue."
+
             session.busy -> "Agent is working…"
             review?.kind == "workflow_review" -> review.placeholder
+            session.externalTasks.any { it.kind == "a2a" && isExternalTaskActive(it.status) } ->
+                "Agents are collaborating. You can return later."
+
             session.interrupts.any { externalWaitCallId(it) != null } ->
                 "The external task is running. You can return later."
 

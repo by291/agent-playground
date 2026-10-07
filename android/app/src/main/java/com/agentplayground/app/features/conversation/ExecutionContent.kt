@@ -337,6 +337,7 @@ private fun toolLabel(name: String): String =
         "run_experiment_workflow" -> "Build an experiment plan"
         "run_sql_workflow" -> "Review SQL"
         "run_report_workflow" -> "Generate report"
+        "run_a2a_workflow" -> "A2A collaboration"
         else -> name.replace('_', ' ').replaceFirstChar { it.uppercase() }
     }
 

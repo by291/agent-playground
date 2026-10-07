@@ -163,6 +163,8 @@ fun ConversationScreen(
                         compactHeight,
                         vm::attachmentPresentation,
                         vm::loadAttachmentImage,
+                        onSubmitExternalTaskInput = vm::submitExternalTaskInput,
+                        onCancelExternalTask = vm::cancelExternalTask,
                     )
                 }
             }

@@ -46,6 +46,8 @@ internal fun ConversationTimeline(
         MessageAttachment(attachment.name)
     },
     loadImage: AttachmentImageLoader = { _, _ -> null },
+    onSubmitExternalTaskInput: (String, String) -> Unit = { _, _ -> },
+    onCancelExternalTask: (String) -> Unit = {},
 ) {
     val list = rememberLazyListState()
     val scope = rememberCoroutineScope()
@@ -134,6 +136,9 @@ internal fun ConversationTimeline(
                                 onDownload,
                                 onLink,
                                 reviews,
+                                state.externalTaskControls,
+                                onSubmitExternalTaskInput,
+                                onCancelExternalTask,
                             )
                         }
                     )
@@ -153,7 +158,18 @@ internal fun ConversationTimeline(
                 )
             }
             timeline.standaloneTasks.forEach { task ->
-                add(TimelineEntry("task:${task.taskId}") { ExternalTaskPanel(task) })
+                add(
+                    TimelineEntry("task:${task.taskId}") {
+                        ExternalTaskPanel(
+                            task,
+                            control =
+                                state.externalTaskControls[task.taskId] ?: ExternalTaskControl(),
+                            onSubmitInput = onSubmitExternalTaskInput,
+                            onCancel = onCancelExternalTask,
+                            onLink = onLink,
+                        )
+                    }
+                )
             }
 
             if (timeline.turns.isEmpty() && visibleInterrupts.isNotEmpty()) {

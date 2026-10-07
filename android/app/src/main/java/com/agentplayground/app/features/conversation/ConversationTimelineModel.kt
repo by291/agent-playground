@@ -86,6 +86,7 @@ internal fun conversationTimelineModel(
     val pendingPlans = visibleInterrupts.filter {
         Review.from(it)?.kind == "experiment_plan_review"
     }
+    val duplicateA2aResults = duplicateA2aResultSurfaces(state)
 
     val timelineTurns = turns.mapIndexed { index, turn ->
         val ownedCards = presentations.filter {
@@ -102,6 +103,8 @@ internal fun conversationTimelineModel(
                     .filter { it.toolCallId in callIds }
                     .map { it.workflow!!.presentation!!.surfaceId } + legacyHistory.map { it.id })
                 .distinct()
+        val duplicateTurnSurfaces =
+            duplicateA2aResults.filter { it.second in callIds }.map { it.first }.toSet()
         val hasReviews = index == turns.lastIndex && visibleInterrupts.isNotEmpty()
         val showReply =
             turn.messages.isNotEmpty() ||
@@ -111,12 +114,16 @@ internal fun conversationTimelineModel(
                 tasks.isNotEmpty() ||
                 hasReviews
 
+        // Compatibility affects composition only; ownership and archived output identities stay
+        // intact.
         ConversationTimelineTurn(
             turn,
-            ownedCards,
-            legacyCards,
+            ownedCards.filter {
+                (it.workflow!!.presentation!!.surfaceId to it.toolCallId) !in duplicateA2aResults
+            },
+            legacyCards.filter { (it.id to it.toolCallId) !in duplicateA2aResults },
             tasks,
-            previousSurfaces,
+            previousSurfaces.filter { it !in duplicateTurnSurfaces },
             hasReviews,
             showReply,
         )
@@ -133,8 +140,13 @@ internal fun conversationTimelineModel(
 
     return ConversationTimelineModel(
         timelineTurns,
-        presentations.filter { it.workflow!!.presentation!!.groupId !in owners },
-        legacy.current.filter { it.toolCallId !in attachedCalls },
+        presentations.filter {
+            it.workflow!!.presentation!!.groupId !in owners &&
+                (it.workflow!!.presentation!!.surfaceId to it.toolCallId) !in duplicateA2aResults
+        },
+        legacy.current.filter {
+            it.toolCallId !in attachedCalls && (it.id to it.toolCallId) !in duplicateA2aResults
+        },
         state.externalTasks.filter { it.workflowCallId !in attachedCalls },
         visibleInterrupts,
         pendingPlans,

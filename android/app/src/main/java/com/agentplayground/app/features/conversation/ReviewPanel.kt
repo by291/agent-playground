@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
@@ -236,7 +237,13 @@ private fun ReviewContent(
 }
 
 @Composable
-fun ExternalTaskPanel(task: ExternalTask) {
+fun ExternalTaskPanel(
+    task: ExternalTask,
+    control: ExternalTaskControl = ExternalTaskControl(),
+    onSubmitInput: (String, String) -> Unit = { _, _ -> },
+    onCancel: (String) -> Unit = {},
+    onLink: (String) -> Unit = {},
+) {
     ReplyEntrance("task:${task.taskId}") {
         SectionCard {
             Text(task.label, style = MaterialTheme.typography.titleMedium)
@@ -257,9 +264,95 @@ fun ExternalTaskPanel(task: ExternalTask) {
             Reveal(task.continuationStatus in setOf("submission_unknown", "failed")) {
                 Text("The task finished, but workflow continuation requires reconciliation.")
             }
+
+            if (task.kind == "a2a") {
+                AgentTaskOutputs(task, onLink)
+                ExternalTaskControls(task, control, onSubmitInput, onCancel)
+            }
+
             com.agentplayground.app.design.Details("Task history") {
                 task.history.forEach { Text(it.string("message").orEmpty()) }
             }
         }
+    }
+}
+
+@Composable
+private fun ExternalTaskControls(
+    task: ExternalTask,
+    control: ExternalTaskControl,
+    onSubmitInput: (String, String) -> Unit,
+    onCancel: (String) -> Unit,
+) {
+    var input by rememberSaveable(task.taskId) { mutableStateOf("") }
+    val waitingForInput = task.status == "input_required"
+    val pending = control.pending != null
+    val inputTooLong = input.length > 4000
+    val canSubmit = !pending && input.isNotBlank() && !inputTooLong
+
+    LaunchedEffect(task.status) {
+        if (!waitingForInput) {
+            input = ""
+        }
+    }
+
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        if (waitingForInput) {
+            OutlinedTextField(
+                value = input,
+                onValueChange = { input = it },
+                label = { Text("Additional information") },
+                enabled = !pending,
+                isError = inputTooLong,
+                supportingText = {
+                    if (inputTooLong) {
+                        Text("Use 4000 characters or fewer.")
+                    }
+                },
+                minLines = 2,
+                maxLines = 5,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+
+        if (isExternalTaskActive(task.status)) {
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                if (waitingForInput) {
+                    Button(
+                        onClick = { onSubmitInput(task.taskId, input.trim()) },
+                        enabled = canSubmit,
+                    ) {
+                        Text("Continue agents")
+                    }
+                }
+
+                OutlinedButton(onClick = { onCancel(task.taskId) }, enabled = !pending) {
+                    Text("Cancel agents")
+                }
+            }
+        }
+
+        if (pending) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
+                Text(
+                    if (control.pending == ExternalTaskAction.Input) {
+                        "Sending additional information…"
+                    } else {
+                        "Cancelling agents…"
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+
+        control.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
     }
 }

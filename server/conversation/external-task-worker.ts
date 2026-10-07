@@ -9,7 +9,7 @@ import {
 } from "../../shared/external-task";
 import {
   admitRun,
-  claimPrepared,
+  claimPreparedDispatch,
   latestRun,
   recordAegraRun,
 } from "./run-store";
@@ -112,35 +112,42 @@ export async function processExternalTasks(
         run = admitted.row;
       }
 
-      if (
-        signal?.aborted ||
-        run.status !== "prepared" ||
-        !(await claimPrepared(run.aguiRunId))
-      ) {
+      if (signal?.aborted || run.status !== "prepared") {
         continue;
       }
 
-      const entry = run.request.resume?.[0];
+      const releaseDispatch = await claimPreparedDispatch(run.aguiRunId);
 
-      if (!entry) {
-        throw new Error("External continuation has no resume entry");
+      if (!releaseDispatch) {
+        continue;
       }
 
-      // A durable admission precedes upstream creation. Unknown outcomes use the
-      // existing mapping reconciliation, never an unconfirmed second creation.
-      const payload: unknown = entry.payload;
-      const config = {
-        configurable: {},
-        metadata: { agui_run_id: run.aguiRunId },
-      };
-      const created = await client.runs.create(task.threadId, "agent", {
-        command: { resume: { [entry.interruptId]: payload } },
-        config,
-        metadata: { agui_run_id: run.aguiRunId },
-        multitaskStrategy: "reject",
-      });
+      try {
+        const entry = run.request.resume?.[0];
 
-      await recordAegraRun(run.aguiRunId, created.run_id);
+        if (!entry) {
+          throw new Error("External continuation has no resume entry");
+        }
+
+        // A durable admission precedes upstream creation. Unknown outcomes use the
+        // existing mapping reconciliation, never an unconfirmed second creation.
+        const payload: unknown = entry.payload;
+        const config = {
+          configurable: {},
+          metadata: { agui_run_id: run.aguiRunId },
+        };
+        const created = await client.runs.create(task.threadId, "agent", {
+          command: { resume: { [entry.interruptId]: payload } },
+          config,
+          metadata: { agui_run_id: run.aguiRunId },
+          multitaskStrategy: "reject",
+        });
+
+        await recordAegraRun(run.aguiRunId, created.run_id);
+      } finally {
+        releaseDispatch();
+      }
+
       await synchronizeConversation(task.threadId, client);
       await notifyConversation(db, task.threadId);
     } catch (error) {

@@ -1,12 +1,19 @@
 import type { RunAgentInput } from "@ag-ui/client";
 import { runAgent, type AgentExecution } from "../agent/run";
-import { admitRun, claimPrepared, recordAegraRun } from "./run-store";
+import { admitRun, claimPreparedDispatch, recordAegraRun } from "./run-store";
 import { synchronizeConversation } from "./checkpoint-sync";
 import { SubmissionError } from "./errors";
 import { workflowFeedbackMessage } from "./reviews";
 import { prepareImageInput } from "./image-input";
 
-export async function prepareConversationRun(input: RunAgentInput) {
+export interface PreparedConversationRun {
+  input: RunAgentInput;
+  releaseDispatch: () => void;
+}
+
+export async function prepareConversationRun(
+  input: RunAgentInput,
+): Promise<PreparedConversationRun> {
   // Only the server selects Aegra metadata, graph and disconnect behavior.
   const trustedInput = { ...input };
 
@@ -40,41 +47,64 @@ export async function prepareConversationRun(input: RunAgentInput) {
     isResume,
   });
 
-  if (!(await claimPrepared(trustedInput.runId))) {
+  const releaseDispatch = await claimPreparedDispatch(trustedInput.runId);
+
+  if (!releaseDispatch) {
     throw new SubmissionError("Submission already dispatched", 409);
   }
 
-  return modelInput;
+  return { input: modelInput, releaseDispatch };
 }
 
 export function executeConversationRun(
-  input: RunAgentInput,
+  prepared: PreparedConversationRun,
   onRunCreated: (id: string) => void,
 ): AgentExecution {
+  const { input, releaseDispatch } = prepared;
   let mappingWrite = Promise.resolve();
   let mappingError: Error | undefined;
-  const events = runAgent(input, (id) => {
-    onRunCreated(id);
-    // The callback cannot await. Retain its failure until execution settles.
-    mappingWrite = recordAegraRun(input.runId, id).catch((error: unknown) => {
-      mappingError =
-        error instanceof Error
-          ? error
-          : new Error("Unable to save Aegra run mapping", { cause: error });
-    });
-  });
 
-  return {
-    events,
+  try {
+    const events = runAgent(
+      input,
+      (id) => {
+        onRunCreated(id);
+        // The callback cannot await. Retain its failure until execution settles.
+        mappingWrite = recordAegraRun(input.runId, id)
+          .then(releaseDispatch)
+          .catch((error: unknown) => {
+            mappingError =
+              error instanceof Error
+                ? error
+                : new Error("Unable to save Aegra run mapping", {
+                    cause: error,
+                  });
+          });
+      },
+      async () => {
+        try {
+          await mappingWrite;
+        } finally {
+          releaseDispatch();
+        }
+      },
+    );
 
-    async settle() {
-      await mappingWrite;
+    return {
+      events,
 
-      if (mappingError !== undefined) {
-        throw mappingError;
-      }
+      async settle() {
+        await mappingWrite;
 
-      await synchronizeConversation(input.threadId);
-    },
-  };
+        if (mappingError !== undefined) {
+          throw mappingError;
+        }
+
+        await synchronizeConversation(input.threadId);
+      },
+    };
+  } catch (error) {
+    releaseDispatch();
+    throw error;
+  }
 }

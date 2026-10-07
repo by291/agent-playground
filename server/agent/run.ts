@@ -5,15 +5,19 @@ import { ReviewLangGraphAgent } from "./hitl";
 export function runAgent(
   input: RunAgentInput,
   onRunCreated: (id: string) => void,
+  onProducerSettled: () => Promise<void>,
 ) {
   // Adapter state belongs to one request; the stateless SDK client can be shared.
-  const agent = new ReviewLangGraphAgent({
-    graphId: "agent",
-    deploymentUrl: aegraUrl,
-    client: aegra,
-    emitInterruptOutcome: true,
-    enableLegacyOnInterruptEvent: false,
-  });
+  const agent = new ReviewLangGraphAgent(
+    {
+      graphId: "agent",
+      deploymentUrl: aegraUrl,
+      client: aegra,
+      emitInterruptOutcome: true,
+      enableLegacyOnInterruptEvent: false,
+    },
+    onProducerSettled,
+  );
 
   return agent.run({
     ...input,

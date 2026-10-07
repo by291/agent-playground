@@ -5,6 +5,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.key
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -22,6 +23,9 @@ internal fun TimelineTurnContent(
     onDownload: (Download) -> Unit,
     onLink: (String) -> Unit,
     reviews: @Composable () -> Unit,
+    externalTaskControls: Map<String, ExternalTaskControl> = emptyMap(),
+    onSubmitExternalTaskInput: (String, String) -> Unit = { _, _ -> },
+    onCancelExternalTask: (String) -> Unit = {},
 ) {
     AssistantTurnContent(
         row.turn,
@@ -42,7 +46,17 @@ internal fun TimelineTurnContent(
             }
         },
     ) {
-        row.tasks.forEach { ExternalTaskPanel(it) }
+        row.tasks.forEach { task ->
+            key(task.taskId) {
+                ExternalTaskPanel(
+                    task,
+                    control = externalTaskControls[task.taskId] ?: ExternalTaskControl(),
+                    onSubmitInput = onSubmitExternalTaskInput,
+                    onCancel = onCancelExternalTask,
+                    onLink = onLink,
+                )
+            }
+        }
         row.presentations.forEach { WorkflowPresentation(it, renderer) }
         row.legacySurfaces.forEach { WorkflowSurface(renderer, it.id) }
 
@@ -59,6 +73,25 @@ internal fun TimelineNotices(
     visible: Boolean,
     onRecover: () -> Unit,
 ) {
+    val completingWorkflow =
+        state.externalTasks.any {
+            it.status in setOf("succeeded", "failed", "cancelled") &&
+                it.continuationStatus in setOf("prepared", "dispatching", "running")
+        }
+    val needsRecovery =
+        errors.isNotEmpty() ||
+            state.missingOutputSequence != null ||
+            state.runs.lastOrNull()?.status == "submission_unknown"
+    // Server-owned continuations have no client output stream. That alone is normal execution,
+    // not evidence of a disconnected request or an uncertain submission.
+    val progress =
+        when {
+            state.streaming -> "Agent is responding…"
+            needsRecovery -> "Recovering agent progress…"
+            completingWorkflow -> "Agent is completing the workflow…"
+            else -> "Agent is working…"
+        }
+
     Reveal(visible) {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Reveal(state.loading) { LinearProgressIndicator(Modifier.fillMaxWidth()) }
@@ -76,13 +109,9 @@ internal fun TimelineNotices(
             Reveal(state.busy) {
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
-                    ChangingContent(state.streaming) { streaming ->
+                    ChangingContent(progress) { label ->
                         Text(
-                            if (streaming) {
-                                "Agent is responding…"
-                            } else {
-                                "Recovering agent progress…"
-                            },
+                            label,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
@@ -143,6 +172,12 @@ internal fun TimelineWelcome(compactHeight: Boolean, onSuggestion: (String) -> U
                 Icons.Outlined.Checklist,
                 "Make a plan",
                 "Create an experiment plan for a task I describe.",
+                onSuggestion,
+            )
+            SuggestionRow(
+                Icons.Outlined.GroupWork,
+                "Collaborate with agents",
+                "Use run_a2a_workflow to have agents plan, review, and revise an order analysis proposal.",
                 onSuggestion,
             )
         }

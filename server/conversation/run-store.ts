@@ -28,6 +28,8 @@ interface RunSubmission {
   externalTaskId?: string;
 }
 
+const dispatchOwners = new Map<string, symbol>();
+
 export async function admitRun({
   threadId,
   runId,
@@ -186,6 +188,42 @@ export async function claimPrepared(runId: string): Promise<boolean> {
     .returning({ id: conversationRuns.aguiRunId });
 
   return rows.length === 1;
+}
+
+export async function claimPreparedDispatch(
+  runId: string,
+): Promise<(() => void) | null> {
+  if (dispatchOwners.has(runId)) {
+    return null;
+  }
+
+  const owner = Symbol(runId);
+
+  // Register before the claim commits so recovery cannot see an ownerless live dispatch.
+  dispatchOwners.set(runId, owner);
+
+  const release = () => {
+    if (dispatchOwners.get(runId) === owner) {
+      dispatchOwners.delete(runId);
+    }
+  };
+
+  try {
+    if (!(await claimPrepared(runId))) {
+      release();
+
+      return null;
+    }
+
+    return release;
+  } catch (error) {
+    release();
+    throw error;
+  }
+}
+
+export function hasRunDispatchOwner(runId: string): boolean {
+  return dispatchOwners.has(runId);
 }
 
 export async function recordAegraRun(

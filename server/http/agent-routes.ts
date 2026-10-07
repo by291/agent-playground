@@ -7,6 +7,7 @@ import { SubmissionError } from "../conversation/errors";
 import {
   executeConversationRun,
   prepareConversationRun,
+  type PreparedConversationRun,
 } from "../conversation/service";
 import { observeRequest } from "../observability/http";
 import { logger } from "../observability/logger";
@@ -37,13 +38,18 @@ agentRoutes.post(
       return context.json({ error: "Invalid AG-UI input" }, 400);
     }
 
-    try {
-      const input = await prepareConversationRun(parsed.data);
+    let prepared: PreparedConversationRun | undefined;
 
-      return streamAgent(context, input, (onRunCreated) =>
-        executeConversationRun(input, onRunCreated),
+    try {
+      prepared = await prepareConversationRun(parsed.data);
+      const submission = prepared;
+
+      return streamAgent(context, submission.input, (onRunCreated) =>
+        executeConversationRun(submission, onRunCreated),
       );
     } catch (error) {
+      prepared?.releaseDispatch();
+
       if (error instanceof SubmissionError) {
         return context.json({ error: error.message }, error.status);
       }

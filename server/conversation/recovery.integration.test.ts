@@ -680,11 +680,77 @@ test("an identical prepared review submission can be claimed after restart", asy
     userMessage: null,
     isResume: true,
   });
-  await prepareConversationRun(input);
+  const prepared = await prepareConversationRun(input);
+
+  try {
+    assert.equal(
+      (await runStore.latestRun(input.threadId))?.status,
+      "dispatching",
+    );
+  } finally {
+    prepared.releaseDispatch();
+  }
+});
+
+test("competing dispatch claims retain the winner until its explicit release", async () => {
+  const input = inputFor("dispatch-ownership");
+  const { synchronizeConversation } = await import("./checkpoint-sync");
+
+  await runStore.admitRun({
+    threadId: input.threadId,
+    runId: input.runId,
+    messageId: input.messages[0]!.id,
+    request: input,
+    userMessage: input.messages[0]!,
+    isResume: false,
+  });
+  const claims = await Promise.all([
+    runStore.claimPreparedDispatch(input.runId),
+    runStore.claimPreparedDispatch(input.runId),
+  ]);
+
+  try {
+    assert.equal(claims.filter(Boolean).length, 1);
+    assert.equal(runStore.hasRunDispatchOwner(input.runId), true);
+    await synchronizeConversation(input.threadId);
+    assert.equal(
+      (await runStore.latestRun(input.threadId))?.status,
+      "dispatching",
+    );
+    listedRuns = [
+      {
+        run_id: "upstream-run",
+        config: { metadata: { agui_run_id: input.runId } },
+      },
+    ];
+    await synchronizeConversation(input.threadId);
+    assert.equal((await runStore.latestRun(input.threadId))?.status, "running");
+    assert.equal(runStore.hasRunDispatchOwner(input.runId), true);
+  } finally {
+    listedRuns = [];
+
+    for (const release of claims) {
+      release?.();
+      release?.();
+    }
+  }
+
+  assert.equal(runStore.hasRunDispatchOwner(input.runId), false);
+});
+
+test("a persisted orphan dispatch remains recoverable as submission unknown after restart", async () => {
+  const run = await admit("orphan-dispatch");
+  const { synchronizeConversation } = await import("./checkpoint-sync");
+
+  assert.equal(runStore.hasRunDispatchOwner(run.aguiRunId), false);
+  await synchronizeConversation(run.threadId);
+
   assert.equal(
-    (await runStore.latestRun(input.threadId))?.status,
-    "dispatching",
+    (await runStore.latestRun(run.threadId))?.status,
+    "submission_unknown",
   );
+  assert.equal(await runStore.claimPreparedDispatch(run.aguiRunId), null);
+  assert.equal(runStore.hasRunDispatchOwner(run.aguiRunId), false);
 });
 
 test("an unknown submission can recover its newest confirmed native mapping", async () => {

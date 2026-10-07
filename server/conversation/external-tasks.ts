@@ -193,8 +193,12 @@ export async function controlExternalTask(
     throw new SubmissionError("External task is not waiting for input", 409);
   }
 
-  const coordinatorUrl =
-    process.env.A2A_DEMO_API_URL?.trim() || `${aegraUrl}/a2a-demo`;
+  const configuredCoordinatorUrl = process.env.A2A_DEMO_API_URL?.trim();
+  let coordinatorUrl = `${aegraUrl}/a2a-demo`;
+
+  if (configuredCoordinatorUrl) {
+    coordinatorUrl = configuredCoordinatorUrl;
+  }
 
   // A callback may finish the task after this read; the coordinator arbitrates
   // that race. Its callback, not this request, owns the persisted task status.

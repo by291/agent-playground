@@ -257,6 +257,14 @@ class ConversationViewModel(
         viewModelScope.launch { action { session?.submitPlanReviews(planInterruptIds) } }
     }
 
+    fun submitExternalTaskInput(taskId: String, input: String) {
+        session?.submitExternalTaskInput(taskId, input)
+    }
+
+    fun cancelExternalTask(taskId: String) {
+        session?.cancelExternalTask(taskId)
+    }
+
     fun clearActivity() {
         session?.clearActivity()
     }

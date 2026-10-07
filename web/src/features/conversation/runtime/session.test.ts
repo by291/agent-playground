@@ -15,7 +15,12 @@ import {
   type RunAgentInput,
 } from "@ag-ui/client";
 import { createConversationSession } from "./session";
-import { isRunning, isRestoring } from "../model/selectors";
+import {
+  composerState,
+  conversationIssue,
+  isRunning,
+  isRestoring,
+} from "../model/selectors";
 import { snapshotPolicy } from "../model/lifecycle";
 import type { ConversationSnapshot } from "../api/contracts";
 import {
@@ -1942,6 +1947,77 @@ test("older task snapshots cannot replace newer progress or completed continuati
     assert.equal(
       session.store.getState().externalTasks[0]?.continuationStatus,
       "completed",
+    );
+  } finally {
+    disconnect();
+  }
+});
+
+test("completed A2A stages keep server continuation executing without a restoration notice", () => {
+  const stream = streamingAgent("a2a-continuation");
+  const session = createConversationSession(
+    { threadId: "a2a-continuation" },
+    stream.agent,
+  );
+  const saved = snapshot("original", "interrupted");
+  const task = {
+    taskId: "task",
+    workflowCallId: "call",
+    label: "A2A collaboration",
+    kind: "a2a" as const,
+    revision: 4,
+    status: "succeeded" as const,
+    stage: "done",
+    message: "Completed",
+    history: [],
+    continuationStatus: null,
+    outputs: ["plan", "review", "revise"].map((step) => ({
+      agent: step === "review" ? "Reviewer" : "Planner",
+      step,
+      taskId: step,
+      contextId: "context",
+      status: "succeeded" as const,
+      text: `Complete ${step}`,
+    })),
+  };
+  const disconnect = connectSession(session, () => Promise.resolve(saved));
+
+  try {
+    session.receiveSnapshot({ ...saved, externalTasks: [task] });
+
+    for (const status of ["prepared", "dispatching", "running"] as const) {
+      session.receiveSnapshot({
+        ...saved,
+        runs: [...saved.runs, { runId: "continuation", status }],
+        externalTasks: [{ ...task, continuationStatus: status }],
+      });
+
+      const state = session.store.getState();
+
+      assert.equal(isRunning(state), true);
+      assert.equal(isRestoring(state), false);
+      assert.equal(composerState(state).recovering, false);
+      assert.equal(conversationIssue(state), null);
+      assert.equal(snapshotPolicy(state.lifecycle).polling, true);
+    }
+
+    session.receiveSnapshot({
+      ...saved,
+      runs: [...saved.runs, { runId: "continuation", status: "completed" }],
+      externalTasks: [{ ...task, continuationStatus: "completed" }],
+      messages: [
+        ...saved.messages,
+        { id: "final", role: "assistant", content: "Collaboration completed." },
+      ],
+    });
+
+    assert.equal(isRunning(session.store.getState()), false);
+    assert.equal(isRestoring(session.store.getState()), false);
+    assert.equal(session.store.getState().messages.at(-1)?.id, "final");
+    assert.equal(
+      stream.requests,
+      0,
+      "Observing server continuation never submits another agent run",
     );
   } finally {
     disconnect();

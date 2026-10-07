@@ -29,6 +29,15 @@ const creationModes = new Map<
   string,
   "lost-response" | "unconfirmed" | "stall" | "stall-read"
 >();
+const creationGates = new Map<
+  string,
+  {
+    entered: () => void;
+    release: Promise<void>;
+    finish?: Promise<void>;
+    finished?: () => void;
+  }
+>();
 
 async function handleRequest(
   request: IncomingMessage,
@@ -37,6 +46,93 @@ async function handleRequest(
   response.setHeader("Content-Type", "application/json");
   const pathname = new URL(request.url ?? "/", "http://fixture").pathname;
   const threadId = pathname.split("/")[2] ?? "";
+
+  if (pathname === "/assistants/search") {
+    response.end(
+      JSON.stringify([
+        { assistant_id: "agent", graph_id: "agent", config: {} },
+      ]),
+    );
+
+    return;
+  }
+
+  if (pathname === "/assistants/agent/schemas") {
+    response.end("{}");
+
+    return;
+  }
+
+  if (pathname === "/assistants/agent/graph") {
+    response.end(JSON.stringify({ nodes: [{ id: "agent" }], edges: [] }));
+
+    return;
+  }
+
+  if (request.method === "GET" && pathname === `/threads/${threadId}`) {
+    response.end(JSON.stringify({ thread_id: threadId, metadata: {} }));
+
+    return;
+  }
+
+  if (request.method === "POST" && pathname.endsWith("/runs/stream")) {
+    let body = "";
+
+    for await (const chunk of request) {
+      body += String(chunk);
+    }
+
+    const input = JSON.parse(body) as { config: { metadata: object } };
+    const gate = creationGates.get(threadId);
+
+    assert.ok(gate);
+    creations.set(threadId, (creations.get(threadId) ?? 0) + 1);
+    gate.entered();
+    await gate.release;
+
+    if (creationModes.get(threadId) === "unconfirmed") {
+      response.destroy();
+      gate.finished?.();
+
+      return;
+    }
+
+    const run = {
+      run_id: randomUUID(),
+      thread_id: threadId,
+      status: "pending",
+      config: input.config,
+    };
+
+    runs.set(threadId, run);
+
+    if (creationModes.get(threadId) === "lost-response") {
+      run.status = "success";
+      completed.add(threadId);
+      response.destroy();
+      gate.finished?.();
+
+      return;
+    }
+
+    response.setHeader("Content-Type", "text/event-stream");
+    response.setHeader(
+      "Content-Location",
+      `/threads/${threadId}/runs/${run.run_id}`,
+    );
+    response.write(
+      `event: metadata\ndata: ${JSON.stringify({ run_id: run.run_id })}\n\n`,
+    );
+    await gate.finish;
+    run.status = "success";
+    completed.add(threadId);
+    response.end(
+      `event: values\ndata: ${JSON.stringify({ messages: [] })}\n\n`,
+    );
+    gate.finished?.();
+
+    return;
+  }
 
   if (request.method === "POST" && pathname.startsWith("/a2a-demo/jobs/")) {
     let body = "";
@@ -93,6 +189,12 @@ async function handleRequest(
       status: "success",
       config: input.config,
     };
+    const gate = creationGates.get(threadId);
+
+    if (gate) {
+      gate.entered();
+      await gate.release;
+    }
 
     if (creationModes.get(threadId) === "unconfirmed") {
       response.destroy();
@@ -180,6 +282,7 @@ beforeEach(async () => {
 
   stalledResponses.clear();
   creationModes.clear();
+  creationGates.clear();
   creations.clear();
   runs.clear();
   completed.clear();
@@ -674,6 +777,156 @@ test("an accepted continuation with a lost response is recovered without a secon
   assert.equal(creations.get(task.threadId), 1);
   assert.equal(snapshot?.runs.at(-1)?.status, "completed");
 });
+
+test.each(["accepted", "unconfirmed"] as const)(
+  "an in-flight %s continuation stays dispatching during concurrent snapshot recovery",
+  async (outcome) => {
+    const task = await register();
+    let signalEntered!: () => void;
+    let releaseCreation!: () => void;
+    const entered = new Promise<void>((resolve) => {
+      signalEntered = resolve;
+    });
+    const release = new Promise<void>((resolve) => {
+      releaseCreation = resolve;
+    });
+
+    creationGates.set(task.threadId, { entered: signalEntered, release });
+
+    if (outcome === "unconfirmed") {
+      creationModes.set(task.threadId, "unconfirmed");
+    }
+
+    await update(task.taskId, task.token, 1, "succeeded");
+    const { processExternalTasks } = await import("./external-task-worker");
+    const { synchronizeConversation } = await import("./checkpoint-sync");
+    const { conversationSnapshot } = await import("./conversation-snapshot");
+    const worker = processExternalTasks();
+
+    try {
+      await entered;
+      assert.equal(runs.has(task.threadId), false);
+      await synchronizeConversation(task.threadId);
+      const response = await app.request(`/conversations/${task.threadId}`);
+      const snapshot = (await response.json()) as Awaited<
+        ReturnType<typeof conversationSnapshot>
+      >;
+
+      assert.equal(response.status, 200);
+      assert.equal(snapshot?.runs.at(-1)?.aegraRunId, null);
+      assert.equal(snapshot?.runs.at(-1)?.status, "dispatching");
+      assert.equal(
+        snapshot?.externalTasks[0]?.continuationStatus,
+        "dispatching",
+      );
+      await processExternalTasks();
+      assert.equal(creations.get(task.threadId), 1);
+    } finally {
+      releaseCreation();
+      await worker;
+      creationGates.delete(task.threadId);
+    }
+
+    await synchronizeConversation(task.threadId);
+    await processExternalTasks();
+    const settled = await conversationSnapshot(task.threadId);
+
+    assert.equal(creations.get(task.threadId), 1);
+    assert.equal(
+      settled?.runs.at(-1)?.status,
+      outcome === "accepted" ? "completed" : "submission_unknown",
+    );
+  },
+);
+
+test.each(["accepted", "lost-response", "unconfirmed"] as const)(
+  "a disconnected HTTP consumer preserves its %s producer dispatch until creation settles",
+  async (outcome) => {
+    const threadId = randomUUID();
+    const runId = randomUUID();
+    let signalEntered!: () => void;
+    let releaseCreation!: () => void;
+    let finishStream!: () => void;
+    let signalFinished!: () => void;
+    const entered = new Promise<void>((resolve) => {
+      signalEntered = resolve;
+    });
+    const release = new Promise<void>((resolve) => {
+      releaseCreation = resolve;
+    });
+    const finish = new Promise<void>((resolve) => {
+      finishStream = resolve;
+    });
+    const finished = new Promise<void>((resolve) => {
+      signalFinished = resolve;
+    });
+
+    creationGates.set(threadId, {
+      entered: signalEntered,
+      release,
+      finish,
+      finished: signalFinished,
+    });
+
+    if (outcome !== "accepted") {
+      creationModes.set(threadId, outcome);
+    }
+
+    const { synchronizeConversation } = await import("./checkpoint-sync");
+    const { conversationSnapshot } = await import("./conversation-snapshot");
+    const { hasRunDispatchOwner, latestRun } = await import("./run-store");
+    const response = await app.request("/agent", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        threadId,
+        runId,
+        messages: [{ id: randomUUID(), role: "user", content: "Hello" }],
+        tools: [],
+        context: [],
+        state: {},
+      }),
+    });
+    const reader = response.body?.getReader();
+
+    try {
+      assert.equal(response.status, 200);
+      assert.ok(reader);
+      await entered;
+      await reader.read();
+      await reader.cancel();
+      assert.equal(hasRunDispatchOwner(runId), true);
+      await synchronizeConversation(threadId);
+      const pending = await conversationSnapshot(threadId);
+
+      assert.equal(pending?.runs.at(-1)?.status, "dispatching");
+      assert.equal(pending?.runs.at(-1)?.aegraRunId, null);
+      releaseCreation();
+      await vi.waitUntil(() => !hasRunDispatchOwner(runId));
+
+      if (outcome === "accepted") {
+        assert.ok((await latestRun(threadId))?.aegraRunId);
+        assert.equal(completed.has(threadId), false);
+      }
+    } finally {
+      releaseCreation();
+      finishStream();
+      await finished;
+      await vi.waitUntil(() => !hasRunDispatchOwner(runId));
+      reader?.releaseLock();
+      creationGates.delete(threadId);
+    }
+
+    await synchronizeConversation(threadId);
+    const settled = await conversationSnapshot(threadId);
+
+    assert.equal(creations.get(threadId), 1);
+    assert.equal(
+      settled?.runs.at(-1)?.status,
+      outcome === "unconfirmed" ? "submission_unknown" : "completed",
+    );
+  },
+);
 
 test("an unconfirmed continuation stays unknown and is never blindly re-created", async () => {
   const task = await register();
