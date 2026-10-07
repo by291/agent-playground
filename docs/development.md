@@ -147,6 +147,16 @@ GitHub Actions runs Python, server and web tests on both Linux and Windows for p
 
 Linux additionally runs all Python/server container integration tests, full browser E2E, static formatting checks and Android verification. The PostgreSQL/Redis/S3 images require a Linux Docker daemon; the hosted Windows jobs do not provision one. Native Windows browser E2E remains available locally with Docker Desktop in Linux-container mode. Formatting and strict code conventions are defined in [AGENTS.md](../AGENTS.md) and the checked-in tool configuration.
 
+## Dependency updates
+
+[Dependabot](../.github/dependabot.yml) checks for version updates every Monday at 09:00 in `Asia/Shanghai`. Its configuration takes effect when it reaches the repository's default branch. It covers the root pnpm workspace and lockfile, Python's `pyproject.toml` and `uv.lock`, Android's Gradle builds/version catalog/wrapper, GitHub Actions, both Compose manifests and the Skill runtime Dockerfile's base image. Packages installed directly by `RUN pip install` or `apt-get` in the Dockerfile need manual maintenance.
+
+Minor and patch releases are grouped by ecosystem, while major releases get separate pull requests. Each ecosystem has a limit of three open version-update pull requests. Updates use `chore:` commit titles and run the existing pull-request CI; review and merge them after the relevant checks pass. Container updates also need checks against the affected local service or Skill runtime because CI does not exercise every Compose service.
+
+`yet-another-react-lightbox` is excluded from automatic updates while its version-specific [pnpm patch](../patches/yet-another-react-lightbox@3.32.2.patch) is needed. Upgrade it manually, rebase or remove the patch, and run the image gesture regressions in `web/tests/e2e/regression/images.spec.ts`. Remove the exclusion when the upstream release contains the required fixes. Keep both YAML documents in the pnpm lockfile when updating the workspace with pnpm 12.
+
+Version updates do not enable Dependabot security alerts or security updates. Those settings are managed separately in GitHub's repository security settings; see the [Dependabot setup guide](https://docs.github.com/en/code-security/how-tos/secure-your-supply-chain/secure-your-dependencies/configure-version-updates).
+
 ## Troubleshooting
 
 | Symptom                                 | Check                                                                                                                                       |
