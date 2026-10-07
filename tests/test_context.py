@@ -16,6 +16,23 @@ from pydantic import PrivateAttr
 from agent_playground.graph import make_graph
 
 
+def test_image_token_estimate_uses_deepseek_upper_bound_not_base64_length():
+    from agent_playground.context import estimate_tokens
+
+    text = HumanMessage(content=[{"type": "text", "text": "Read this image."}])
+    image = HumanMessage(
+        content=[
+            {"type": "text", "text": "Read this image."},
+            {
+                "type": "image_url",
+                "image_url": {"url": "data:image/png;base64," + "A" * 100000},
+            },
+        ]
+    )
+
+    assert estimate_tokens([image]) - estimate_tokens([text]) == 1024
+
+
 class RecordingModel(FakeMessagesListChatModel):
     _inputs: list[list[BaseMessage]] = PrivateAttr(default_factory=list)
 
@@ -44,6 +61,38 @@ class RecordingModel(FakeMessagesListChatModel):
         **kwargs: Any,
     ) -> ChatResult:
         return self._generate(messages, stop=stop, run_manager=run_manager, **kwargs)
+
+
+@pytest.mark.parametrize("asynchronous", [False, True])
+def test_image_pixels_survive_checkpoint_and_followup(asynchronous: bool):
+    image_content: list[str | dict[str, Any]] = [
+        {"type": "text", "text": "Describe this image."},
+        {"type": "image_url", "image_url": {"url": "data:image/png;base64,cGl4ZWxz"}},
+    ]
+    model = RecordingModel(responses=[AIMessage(content="A red square.")])
+    saver = InMemorySaver()
+    config = {"configurable": {"thread_id": "image-history"}}
+    graph = make_graph(model=model, checkpointer=saver)
+    inputs = {"messages": [HumanMessage(content=image_content)]}
+
+    if asynchronous:
+        asyncio.run(graph.ainvoke(inputs, config))
+    else:
+        graph.invoke(inputs, config)
+
+    recreated = make_graph(model=model, checkpointer=saver)
+    followup = {"messages": [HumanMessage(content="What color was the square?")]}
+
+    if asynchronous:
+        asyncio.run(recreated.ainvoke(followup, config))
+    else:
+        recreated.invoke(followup, config)
+
+    humans = [
+        message for message in model._inputs[-1] if isinstance(message, HumanMessage)
+    ]
+    assert humans[0].content == image_content
+    assert humans[-1].content == "What color was the square?"
 
 
 @pytest.mark.parametrize("asynchronous", [False, True])

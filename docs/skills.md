@@ -43,6 +43,8 @@ Restart the agent after adding or editing a Skill because the catalog and graph 
 
 The TypeScript server writes bytes to S3. PostgreSQL stores object keys, digests, sizes, publication state and conversation ownership. Upload failures preserve the draft and selected files. Retrying the same ID/content is supported; conflicting content returns `409`. Incomplete uploads cannot be downloaded until a retry succeeds or the conversation is deleted.
 
+Regular chat also sends supported image attachments directly to the model, while keeping their file IDs available for scripts. See [image input and limits](conversations.md). Non-image files still require a published Skill that can process their format.
+
 Scripts receive current-conversation file IDs through `input_files`, at `/workspace/inputs/<id>/<name>`. `output_files` declares paths relative to `/workspace`. Published files appear as downloads and recover after reload. Tool results report the actual exit code, logs, errors and successfully published files.
 
 Internal transfers use `WORKFLOW_API_TOKEN` and `APP_API_URL`. Inputs are checked against conversation ownership; outputs must also belong to an existing run. S3 settings are shared with knowledge documents; see [storage configuration](development.md#s3-compatible-storage). S3 credentials are not sent to the browser or scripts.

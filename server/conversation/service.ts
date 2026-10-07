@@ -4,6 +4,7 @@ import { admitRun, claimPrepared, recordAegraRun } from "./run-store";
 import { synchronizeConversation } from "./checkpoint-sync";
 import { SubmissionError } from "./errors";
 import { workflowFeedbackMessage } from "./reviews";
+import { prepareImageInput } from "./image-input";
 
 export async function prepareConversationRun(input: RunAgentInput) {
   // Only the server selects Aegra metadata, graph and disconnect behavior.
@@ -23,6 +24,11 @@ export async function prepareConversationRun(input: RunAgentInput) {
     throw new SubmissionError("Submission needs a user message", 400);
   }
 
+  // Resolve only this turn before admission so file errors preserve the client draft.
+  const modelInput = userMessage
+    ? await prepareImageInput(trustedInput, userMessage)
+    : trustedInput;
+
   // Refresh only the current run; admission does not need the full conversation history.
   await synchronizeConversation(trustedInput.threadId);
   await admitRun({
@@ -38,7 +44,7 @@ export async function prepareConversationRun(input: RunAgentInput) {
     throw new SubmissionError("Submission already dispatched", 409);
   }
 
-  return trustedInput;
+  return modelInput;
 }
 
 export function executeConversationRun(

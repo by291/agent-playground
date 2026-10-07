@@ -27,6 +27,7 @@ import {
 import { AnimatePresence } from "motion/react";
 import { AnimatedDiv } from "@/components/ui/motion";
 import { maxSkillFileBytes, skillFilenameSchema } from "@shared/skill-files";
+import { uploadedFileMessage } from "@shared/uploaded-files";
 import { uploadFile } from "../api/files";
 import { useShallow } from "zustand/react/shallow";
 import {
@@ -154,11 +155,7 @@ export function Composer({
           return;
         }
 
-        const references = uploaded.map(
-          (file) => `${JSON.stringify(file.name)} — File ID: ${file.id}`,
-        );
-
-        content = `${message}\n\nUploaded files:\n${references.join("\n")}`;
+        content = uploadedFileMessage(message, uploaded);
       }
 
       await onSend(content, () => {

@@ -3,6 +3,7 @@ import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import { sql } from "drizzle-orm";
 import { z } from "zod";
+import type { HumanMessage } from "@langchain/langgraph-sdk";
 import {
   LangGraphEventTypes,
   type LangGraphPlatformMessage,
@@ -22,7 +23,23 @@ const resumeSchema = z.object({
 const requestSchema = z.object({
   input: z
     .object({
-      messages: z.array(z.object({ id: z.string(), content: z.string() })),
+      messages: z.array(
+        z.object({
+          id: z.string(),
+          content: z.union([
+            z.string(),
+            z.array(
+              z.discriminatedUnion("type", [
+                z.object({ type: z.literal("text"), text: z.string() }),
+                z.object({
+                  type: z.literal("image_url"),
+                  image_url: z.object({ url: z.string() }),
+                }),
+              ]),
+            ),
+          ]),
+        }),
+      ),
     })
     .optional(),
   command: z.object({ resume: z.unknown() }).optional(),
@@ -30,7 +47,7 @@ const requestSchema = z.object({
 });
 
 interface Thread {
-  messages: LangGraphPlatformMessage[];
+  messages: (LangGraphPlatformMessage | HumanMessage)[];
   review: {
     id: string;
     value:
@@ -408,9 +425,54 @@ export function controlledAegra(database: typeof db) {
           throw new Error("Fixture requires a user message");
         }
 
-        thread.messages.push({ ...message, type: "human", role: "user" });
+        thread.messages.push({ ...message, type: "human" });
 
-        if (message.content === "Compare approaches with reasoning.") {
+        const prompt =
+          typeof message.content === "string"
+            ? message.content
+            : message.content
+                .flatMap((part) =>
+                  part.type === "text" && typeof part.text === "string"
+                    ? [part.text]
+                    : [],
+                )
+                .join("\n");
+
+        if (Array.isArray(message.content)) {
+          const images = message.content.filter(
+            (part) => part.type === "image_url",
+          );
+          const source = z
+            .object({ url: z.string() })
+            .parse(images[0]?.image_url);
+          const expected =
+            "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC";
+
+          if (images.length !== 1 || source.url !== expected) {
+            throw new Error("Fixture received unexpected image bytes");
+          }
+
+          await reply("The uploaded PNG pixel data reached the model.");
+        } else if (prompt === "Is the previous image still available?") {
+          const previousImage = thread.messages.some(
+            (message) =>
+              message.type === "human" &&
+              Array.isArray(message.content) &&
+              message.content.some(
+                (part) =>
+                  typeof part === "object" &&
+                  part !== null &&
+                  "type" in part &&
+                  part.type === "image_url",
+              ),
+          );
+
+          if (!previousImage) {
+            throw new Error("Fixture lost the image from checkpoint history");
+          }
+
+          await reply("The previous image is still in model history.");
+        } else if (prompt === "Compare approaches with reasoning.") {
           const messageId = randomUUID();
           const reasoning =
             "First, compare the constraints. Then check the tradeoffs.";
@@ -442,12 +504,12 @@ export function controlledAegra(database: typeof db) {
             content: "Approach A is simpler. Approach B is more flexible.",
             additional_kwargs: { reasoning_content: reasoning },
           });
-        } else if (message.content.startsWith("Stream a code sample.")) {
+        } else if (prompt.startsWith("Stream a code sample.")) {
           await reply(
             "Here is a C example.\n\n```c\nint main(void) {\n  return 0;\n}\n```",
             true,
           );
-        } else if (message.content === "Write a long reply.") {
+        } else if (prompt === "Write a long reply.") {
           const paragraphs = Array.from(
             { length: 8 },
             (_, index) =>
@@ -456,11 +518,11 @@ export function controlledAegra(database: typeof db) {
 
           await reply([...paragraphs, "End of the long reply."].join("\n\n"));
         } else {
-          const workflow = message.content.includes("run_experiment_workflow");
+          const workflow = prompt.includes("run_experiment_workflow");
           const sqlWorkflow =
-            message.content.includes("run_sql_workflow") ||
-            message.content.includes("SQL review workflow");
-          const reportWorkflow = message.content.includes("report workflow");
+            prompt.includes("run_sql_workflow") ||
+            prompt.includes("SQL review workflow");
+          const reportWorkflow = prompt.includes("report workflow");
           let name = "get_current_time";
 
           if (reportWorkflow) {

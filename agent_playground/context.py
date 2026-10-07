@@ -81,7 +81,10 @@ class ContextSettings(BaseModel):
 
 def estimate_tokens(messages: Iterable[MessageLikeRepresentation]) -> int:
     # A conservative character ratio also accommodates the playground's Chinese text.
-    return count_tokens_approximately(messages, chars_per_token=2.0)
+    # DeepSeek caps each resized image at 1,024 tokens; base64 length is not tokens.
+    return count_tokens_approximately(
+        messages, chars_per_token=2.0, tokens_per_image=1024
+    )
 
 
 def recoverable_responses(state: ContextState) -> list[AIMessage | ToolMessage]:

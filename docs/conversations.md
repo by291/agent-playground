@@ -12,6 +12,10 @@ Attachment upload intents can reserve server-side storage before message admissi
 
 The composer retains text and selected attachments until admission is confirmed. Upload, validation and critical local-journal failures leave the input available for correction or retry. SQL review feedback over 10,000 characters reports a validation error and preserves the draft.
 
+For image questions, attach JPEG, PNG, GIF or WebP files and describe what to inspect. Regular chat sends their pixel data to the configured model; the default `deepseek-flash` supports image understanding. Web and Android use the same server path. Each message can include at most four files, up to 10 MiB each, with images totaling at most 32 MiB and dimensions at most 8192 pixels per side. Image formats are identified from file contents and pixels are decoded before admission. Unsupported, truncated or unrecognized images are rejected while preserving the draft. Workflow review feedback currently accepts text; image attachments there report a validation error.
+
+The chat archive and retry journal retain file references. Image pixels remain in the agent checkpoint for follow-up questions until context compaction replaces older history with a text summary. Summaries retain discussed findings rather than the original pixels. DeepSeek's 48 MiB request-body limit also applies to the accumulated image history; use smaller images or a new conversation when many large images exceed it. Image generation, audio/video input and OCR for shared knowledge documents are separate capabilities.
+
 ## History and management
 
 The sidebar orders conversations by their latest submission, loads older pages at the end and provides explicit retry, rename and delete actions. Opening a saved row restores its transcript, tool process, outputs, pending review and external tasks. Copy `/c/<threadId>` to open a saved discussion in another browser with access to the same server. Refresh, Back and Forward restore the addressed conversation; `/` continues to mean a blank draft. A production web server must serve the SPA entry point for `/c/*`.
