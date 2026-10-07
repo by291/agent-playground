@@ -159,8 +159,6 @@ jobs:
         with:
           name: android-reports
           path: |
-            android/app/build/reports/
-            android/core/build/reports/
-            android/app/build/test-results/
-            android/core/build/test-results/
+            android/**/build/reports/
+            android/**/build/test-results/
           retention-days: 14

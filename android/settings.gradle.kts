@@ -17,4 +17,6 @@ dependencyResolutionManagement {
 
 rootProject.name = "AgentPlaygroundAndroid"
 
-include(":core", ":app")
+include(":app", ":core", ":data", ":ui")
+
+include(":feature:conversation", ":feature:knowledge", ":feature:settings")

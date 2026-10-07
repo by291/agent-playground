@@ -4,7 +4,7 @@ A native Jetpack Compose client for the existing Agent Playground server. It run
 
 ## Build and run
 
-Open this directory as a project in Android Studio. Use JDK 21, Android SDK **37.1**, and the checked-in Gradle wrapper. Runtime support starts at Android 8.0 / API 26. The current AndroidX A2UI alpha renderer requires SDK 37.1 and pulls Compose 1.13 alpha runtime/UI dependencies; it is isolated in `features/workflow/`.
+Open this directory as a project in Android Studio. Use JDK 21, Android SDK **37.1**, and the checked-in Gradle wrapper. Runtime support starts at Android 8.0 / API 26. The current AndroidX A2UI alpha renderer requires SDK 37.1 and pulls Compose 1.13 alpha runtime/UI dependencies; it is isolated in `feature/conversation/` under `ui/workflow/`.
 
 ```sh
 cd android
@@ -40,10 +40,10 @@ If the emulator cannot reach the host alias, run `adb reverse tcp:3000 tcp:3000`
 | Workflows            | Official Compose A2UI runtime with WorkflowPanel, WorkflowText, WorkflowSteps and WorkflowSql; earlier presentations remain expandable.                                              |
 | Human review         | Editable plans with immediate single decisions and explicit final confirmation for multiple plans; workflow accept/abandon and conversational feedback with revision/round identity. |
 | Reports              | External task status, progress, errors and history; server-owned continuation survives client absence.                                                                               |
-| A2A collaboration    | Three-step draft/review/revision handoffs, live child Markdown, expandable intermediate results, clarification input and confirmed cancellation.                                      |
+| A2A collaboration    | Three-step draft/review/revision handoffs, live child Markdown, expandable intermediate results, clarification input and confirmed cancellation.                                     |
 | Files                | System document picker; four attachments per message, 10 MiB each; system save dialog for outputs/originals.                                                                         |
 | Knowledge            | Validated TXT/Markdown/text PDFs; original-ID upload retry/resume after restart; status/chunks/errors, reindex, confirmed delete and save original.                                  |
-| Sources              | Reply-scoped numbered citations; a partial bottom sheet expands to full height, with exact passage navigation, PDF page and original-document download.                           |
+| Sources              | Reply-scoped numbered citations; a partial bottom sheet expands to full height, with exact passage navigation, PDF page and original-document download.                              |
 | Preferences          | Light/dark/system theme, reply animation and hardware keyboard send shortcut.                                                                                                        |
 
 The web-only Monaco/A2UI development gallery and browser telemetry bootstrap are not Android screens. There is no client-side agent execution, offline execution or background Android worker. A2A tasks expose the existing server's input/cancel controls; ordinary conversation runs have no cancellation control. Leaving the app does not cancel the server run. Streaming observation recovers from snapshots rather than a durable event replay log. Reply animation controls one-time entrances for new messages/review/task cards and smooth jumping to the latest message. Streaming text updates and restored history remain immediate; the client does not reproduce the browser's text-draining animation.
@@ -64,7 +64,7 @@ The history drawer on phones and the persistent sidebar on wide screens follow t
 
 Opening or switching conversations starts at their newest content. Streaming follows the latest reply while the reader remains at the bottom; scrolling upward pauses following and exposes a jump control. Physical send shortcuts preserve IME composition and Shift/Alt newline entry.
 
-Motion is defined in `design/Motion.kt`: short feedback fades, disclosure expansion with rotating chevrons, coordinated page transitions and interpolation between reported progress values. All Compose animations inherit Android's system duration scale, including disabled animations. Drawer selection installs the target page before the foreground settles; activity and the phone source reader support directional navigation and predictive Back previews. Attachments and input height animate without replacing the text field, changing its selection or requesting focus. Stable list keys animate localized insertions, removals and placement changes; live activity events have no entrance fades. Streaming Markdown and A2UI bindings do not replay content animations. Theme changes interpolate the existing palette while preserving the composition. Animation completion never controls server execution, admission or persistence.
+Motion is defined in `ui/src/main/kotlin/com/agentplayground/ui/Motion.kt`: short feedback fades, disclosure expansion with rotating chevrons, coordinated page transitions and interpolation between reported progress values. All Compose animations inherit Android's system duration scale, including disabled animations. Drawer selection installs the target page before the foreground settles; activity and the phone source reader support directional navigation and predictive Back previews. Attachments and input height animate without replacing the text field, changing its selection or requesting focus. Stable list keys animate localized insertions, removals and placement changes; live activity events have no entrance fades. Streaming Markdown and A2UI bindings do not replay content animations. Theme changes interpolate the existing palette while preserving the composition. Animation completion never controls server execution, admission or persistence.
 
 Agent activity is a secondary full-screen page with native Back navigation. Chat observation continues while it is open, and returning preserves the reading position and draft. It shows event time/run groups, merged or individual streaming events, full SDK payloads and copy/clear controls. A rolling window retains up to 300 events and reports both received and retained counts; clearing affects the client log. Past events are not restored from server snapshots.
 
@@ -72,61 +72,28 @@ Knowledge groups upload guidance and document status, with save/reindex/delete i
 
 ## Architecture
 
+The Android client has seven Gradle modules:
+
 ```text
-app (Android)
-  MainActivity            System bars, theme and the Android entry point
-  PlaygroundApp           Connection gating and settings entry
-  ServerGraph             Activity-retained, server-scoped ViewModels/resources
-  PlaygroundWorkspace     Typed destinations, saved screens and drawer/sidebar layout
-  WorkspaceLifecycle      AndroidX lifecycle effects for visible observation
-  data/        DataStore preferences and per-server conversation journal
-  files/       ContentResolver document access and bounded reads
-  network/     Android local-network permission and connection gating
-  design/      Material 3 theme and shared UI
-  features/
-    conversation/  Session coordination, history repository, pure timeline model and UI
-    knowledge/     ViewModel, document operations and status polling
-    settings/      Connection ViewModel, permission bridge and user preferences
-    workflow/      AndroidX A2UI catalog and composition-owned renderer
-        ↓
-core (JVM)
-  Contracts.kt / *Contracts.kt  Application REST/persistence contracts by responsibility
-  PlaygroundApi.kt        OkHttp REST and library SSE transport
-  ConversationSession.kt  Run lifecycle and StateFlow, independent of Android UI
-  ConversationEvents.kt   Pure event projection and application payload decoding
-  ConversationState.kt    Conversation state and send/review eligibility
-  ReviewPolicy.kt         Pure single/batch review validation and selection
-  Review.kt               Review payload adaptation and response contracts
-  Submission.kt           Admission input and pending-message restoration
-  FileValidation.kt       Shared file boundaries
-  Recovery.kt             Pending identity and checkpoint reconciliation
-  OutputBuffer.kt         Sequenced envelope deduplication/gap detection
-        ↓
-Existing TypeScript HTTP/AG-UI server → Aegra → Python agent
+app                   Entry points, dependency assembly, navigation and lifecycle
+feature/conversation  Conversation UI/state and official A2UI workflow rendering
+feature/knowledge     Knowledge UI/state and foreground status observation
+feature/settings      Settings UI/state and permission/connection coordination
+data                  Repositories, preferences/journals and platform file/image access
+ui                    Shared Compose design, brand resources and permission bridges
+core                  JVM models, HTTP/SSE, conversation runtime and pure presentation
 ```
 
-Activity-retained ViewModels own API clients and session jobs, preserving attachments and transfers through configuration recreation. Pending save targets use saved state. Server changes dispose the previous ViewModel graph. Conversation observation is attached while chat or activity is started; knowledge polls only while visible and indexing is pending. Renderer actors run in composition-owned coroutines. The core module uses official AG-UI protocol types; application REST types correspond to `shared/` and the web snapshot contract.
+Features depend on data and shared UI; app assembles them. ViewModels coordinate screen state and repositories. Routes collect state with AndroidX lifecycle APIs and retain system permission/file-picker interactions at the UI boundary. Rendering components receive data and action callbacks. Repositories own transport and platform data access; `ConversationSession` retains sole ownership of conversation run state. Each repository is closed by its owning ViewModel when the server-scoped graph is released.
 
-`ConversationSession` owns per-thread run-state transitions and draft/pending persistence. Its event projection and review policies are pure transformations, leaving admission, recovery and ordered output delivery in the session. The history repository separately coordinates pagination and coalesced refreshes; the conversation ViewModel owns session selection and journal selection/removal. The pure timeline model resolves current cards, original-tool history and visible reviews before Compose renders them. Message/source renderers receive download callbacks rather than resource-owning API clients.
-
-`SettingsViewModel` coordinates connection checks and preference writes; the screen owns Android permission launchers and displays state. Leaving the settings screen cancels its connection check; the server-address draft remains in saved state. Preference updates transform the latest DataStore record atomically and change only their requested fields, so a delayed connection check preserves concurrent theme and keyboard changes. Standard ViewModel factories and visible observation use AndroidX factory/lifecycle APIs. Connection clients are closed by their transaction, and server-scoped model clients are closed when their retained graph is released.
-
-Each thread's draft/pending input is stored separately under its normalized server URL. A request is saved before POST, including the original run and message IDs. An unobserved admission or server `prepared` admission is retried with exactly the saved payload; dispatched/running/unknown submissions are watched until a canonical checkpoint confirms them. Local streaming messages are protected from snapshots fetched before newer stream events and from older unfinished checkpoints. Admission remains locked through persistence and stream settlement. Plan drafts and decisions are session-owned; edits invalidate a prior decision and all plans are revalidated before batching. Workflow output envelopes are applied in contiguous sequence order, detect conflicting duplicates and wait for missing predecessors. The official A2UI processor handles protocol validation, component registry and dynamic binding.
-
-Files use the Storage Access Framework without broad storage permissions. Attachment selections and unfinished knowledge-upload queues survive screen rotation but are not persisted across process death. After restarting, a server document still marked uploading exposes Resume upload: reselect the original name/size/type to transfer under its original document ID. Unknown-length streams are bounded during reads. Failed uploads retain the draft and selected attachments, and retries reuse file IDs. Knowledge upload retries retain their original document IDs and provide explicit retry/discard controls. Knowledge documents and generated files remain backend resources; native downloads copy into the user-selected destination.
-
-User messages show their authored text and compact attachment cards. Only complete trailing upload envelopes with valid filenames and UUIDs are rendered as attachments; malformed references remain visible as text. JPEG, PNG, GIF and WebP selections show local thumbnails before sending, with a separate remove control. Sent images use the server's validated 320-pixel thumbnail and 2048-pixel full preview resources. This presentation does not change stored message content, admission identities, retry payloads or the requirement to enter text before sending.
-
-Images open in a dark full-screen gallery with their original aspect ratio, a filename/count overlay and an original-file download. Swipe horizontally among images from the same message or current selection. A single tap toggles controls; pinch or double-tap zooms, and panning stays within the fitted image's bounds. Zoom disables page swipes and downward dismissal; returning to fit restores both. A short downward drag returns to rest and a longer drag dismisses. System Back and the close control also dismiss the gallery, with accessible close, zoom/reset and page actions. Page changes reset zoom and controls. Preview loading and errors remain visible with close/download available; incomplete loads are cancelled when paging or closing. Viewer transitions follow the system animation duration setting.
-
-The conversation ViewModel owns the image decoder and its 16 MiB memory cache. Rendering receives image descriptors and a cancellable loading callback; leaving a preview or attachment composition cancels its request. Private image previews are never cached to disk, and disposing the server-scoped ViewModel releases the decoder and memory cache. Coil core is pinned to 3.3.0 to match the project's Kotlin 2.2 compiler.
+See the [Android architecture guide](../docs/android-architecture.md) for package entry points, the dependency graph, resource lifetimes, admission/recovery guarantees and verification ownership. Storage keys, server contracts, original admission identities and user behavior are preserved by the module structure.
 
 ## Verification
 
 - `spotlessApply` / `spotlessCheck`: format or check all Kotlin source/tests and Gradle Kotlin scripts with pinned Spotless + ktfmt, using four-space Kotlin language style. Generated build files are outside the formatter targets. `.editorconfig` uses matching Kotlin indentation.
-- `:core:lint` / `:app:lintDebug`: Android Lint analyzes the JVM core and Android app, including test sources. Warnings and errors fail the build; HTML/XML/SARIF reports are written under each module's `build/reports/`. Only dependency upgrade advisories (`GradleDependency` and `NewerVersionAvailable`) are disabled: pinned dependency upgrades are reviewed separately, so a new remote release cannot change the quality gate.
+- `lintCheck`: Android Lint analyzes every Android module and the JVM core, including test sources. Warnings and errors fail the build; HTML/XML/SARIF reports are written under each module's `build/reports/`. Only dependency upgrade advisories (`GradleDependency`, `NewerVersionAvailable` and `AndroidGradlePluginVersion`) are disabled: pinned dependency upgrades are reviewed separately, so a new remote release cannot change the quality gate.
 - `:core:test`: protocol inputs, public reasoning compatibility, individual edited/expired reviews, output ordering/gap gates, prepared recovery, concurrent admission/draft persistence, stream settlement, visibility, stale checkpoints, real HTTP/SSE fixtures and file boundaries.
-- `:app:testDebugUnitTest`: Robolectric native Compose rendering of the official v0.9 workflow catalog, editable review UI, configuration recreation, save-target serialization, original-ID upload retry/resume and validation, initial/cross-thread scrolling, history mutation guards, Markdown/source controls, image gallery selection and gestures, bounded zoom/pan, loading cancellation, interruptible disclosure motion, zero-duration behavior, reported progress interpolation, snapshot-aware message entrances, drawer handoff, activity navigation preserving live observation/reading state, and a complete conversation screen through real HTTP/SSE fixtures.
+- `:feature:conversation:testDebugUnitTest`, `:feature:knowledge:testDebugUnitTest`, `:feature:settings:testDebugUnitTest`, `:data:testDebugUnitTest`, `:ui:testDebugUnitTest` and `:app:testDebugUnitTest`: Robolectric native Compose rendering of the official v0.9 workflow catalog, editable review UI, configuration recreation, save-target serialization, original-ID upload retry/resume and validation, initial/cross-thread scrolling, history mutation guards, Markdown/source controls, image gallery selection and gestures, bounded zoom/pan, loading cancellation, interruptible disclosure motion, zero-duration behavior, reported progress interpolation, snapshot-aware message entrances, drawer handoff, activity navigation preserving live observation/reading state, and a complete conversation screen through real HTTP/SSE fixtures.
 - `:app:assembleDebug`: installable debug build.
 - `:app:assembleRelease`: optimized R8/resource-shrunk build; unsigned until a release signing configuration is supplied.
 

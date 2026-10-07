@@ -107,7 +107,7 @@ android-format-check:
 	$(GRADLEW) -p android spotlessCheck
 
 android-lint:
-	$(GRADLEW) -p android :core:lint :app:lintDebug
+	$(GRADLEW) -p android lintCheck
 
 android-check:
 	$(GRADLEW) -p android qualityCheck

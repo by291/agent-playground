@@ -8,9 +8,8 @@ lint {
     abortOnError = true
     warningsAsErrors = true
     checkTestSources = true
-    sarifReport = true
     // Dependency upgrades are reviewed separately from code correctness.
-    disable += setOf("GradleDependency", "NewerVersionAvailable")
+    disable += setOf("GradleDependency", "NewerVersionAvailable", "AndroidGradlePluginVersion")
 }
 
 kotlin {

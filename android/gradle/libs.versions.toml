@@ -15,8 +15,10 @@ spotless = "8.9.0"
 ktfmt = "0.63"
 highlights = "1.1.0"
 coil = "3.3.0"
+androidx-core = "1.19.0"
 
 [libraries]
+androidx-core = { module = "androidx.core:core", version.ref = "androidx-core" }
 compose-bom = { module = "androidx.compose:compose-bom", version.ref = "compose" }
 compose-ui = { module = "androidx.compose.ui:ui" }
 compose-tooling = { module = "androidx.compose.ui:ui-tooling" }
@@ -47,6 +49,7 @@ robolectric = { module = "org.robolectric:robolectric", version = "4.16.1" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
+android-library = { id = "com.android.library", version.ref = "agp" }
 android-lint = { id = "com.android.lint", version.ref = "agp" }
 spotless = { id = "com.diffplug.spotless", version.ref = "spotless" }
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
