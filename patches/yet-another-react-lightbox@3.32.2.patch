@@ -1,0 +1,30 @@
+diff --git a/dist/plugins/zoom/index.js b/dist/plugins/zoom/index.js
+index 79d76a1cd56e3364e43a711e44db91cddd55067e..35cefe83198ec2f13a504796d6eeada8ff851c1b 100644
+--- a/dist/plugins/zoom/index.js
++++ b/dist/plugins/zoom/index.js
+@@ -235,6 +235,7 @@ function useZoomSensors(zoom, minZoom, maxZoom, disabled, zoomIn, zoomOut, chang
+         }
+         const { timeStamp } = event;
+         if (pointers.length === 0 &&
++            lastPointerDown.current > 0 &&
+             timeStamp - lastPointerDown.current < (event.pointerType === "touch" ? doubleTapDelay : doubleClickDelay)) {
+             lastPointerDown.current = 0;
+             const targetZoom = zoom >= 1
+@@ -251,6 +252,7 @@ function useZoomSensors(zoom, minZoom, maxZoom, disabled, zoomIn, zoomOut, chang
+         }
+         replacePointer(event);
+         if (pointers.length === 2) {
++            lastPointerDown.current = 0;
+             const initialDistance = distance(pointers[0], pointers[1]);
+             pinchZoom.current = {
+                 previousDistance: initialDistance,
+@@ -262,6 +264,9 @@ function useZoomSensors(zoom, minZoom, maxZoom, disabled, zoomIn, zoomOut, chang
+     const onPointerMove = useEventCallback((event) => {
+         const pointers = activePointers.current;
+         const activePointer = pointers.find((p) => p.pointerId === event.pointerId);
++        if (activePointer) {
++            lastPointerDown.current = 0;
++        }
+         if (pointers.length === 2 && pinchZoom.current) {
+             event.stopPropagation();
+             replacePointer(event);

@@ -14,6 +14,7 @@ markwon = "4.6.2"
 spotless = "8.9.0"
 ktfmt = "0.63"
 highlights = "1.1.0"
+coil = "3.3.0"
 
 [libraries]
 compose-bom = { module = "androidx.compose:compose-bom", version.ref = "compose" }
@@ -40,6 +41,7 @@ markwon-core = { module = "io.noties.markwon:core", version.ref = "markwon" }
 markwon-tables = { module = "io.noties.markwon:ext-tables", version.ref = "markwon" }
 markwon-strikethrough = { module = "io.noties.markwon:ext-strikethrough", version.ref = "markwon" }
 highlights = { module = "dev.snipme:highlights", version.ref = "highlights" }
+coil-core = { module = "io.coil-kt.coil3:coil-core", version.ref = "coil" }
 junit = { module = "junit:junit", version = "4.13.2" }
 robolectric = { module = "org.robolectric:robolectric", version = "4.16.1" }
 

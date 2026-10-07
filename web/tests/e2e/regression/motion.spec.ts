@@ -303,7 +303,7 @@ test.describe("normal motion", () => {
       await settings.evaluate(
         (element) => getComputedStyle(element).animationName,
       ),
-    ).toBe("popup-in");
+    ).toBe("dialog-in");
     await settings.getByRole("combobox", { name: "Appearance" }).click();
     expect(
       await page
@@ -334,8 +334,8 @@ test.describe("normal motion", () => {
     await expect(remove).toBeVisible();
     const exiting = await remove.evaluate(async (element) => {
       const chip = element.closest<HTMLElement>(
-        '[data-slot="attachment"]',
-      )?.parentElement;
+        '[data-slot="composer-attachment"]',
+      );
 
       if (!chip) {
         throw new Error("Attachment chip is missing");
@@ -346,7 +346,7 @@ test.describe("normal motion", () => {
 
       return { inert: chip.inert, hidden: chip.getAttribute("aria-hidden") };
     });
-    const chip = page.locator('[data-slot="attachment"]').locator("..");
+    const chip = page.locator('[data-slot="composer-attachment"]');
 
     expect(exiting).toEqual({ inert: true, hidden: "true" });
     await expect(chip).toHaveCount(0);

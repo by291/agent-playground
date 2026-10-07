@@ -100,30 +100,12 @@ fun Composer(
                         },
                         label = "attachments",
                     ) { attachments ->
-                        FlowRow(
-                            Modifier.padding(horizontal = 8.dp),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            attachments.forEach { file ->
-                                key(file.id) {
-                                    InputChip(
-                                        selected = false,
-                                        enabled = !state.uploading,
-                                        onClick = { vm.removeAttachment(file.id) },
-                                        label = {
-                                            Text(
-                                                file.name,
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis,
-                                            )
-                                        },
-                                        trailingIcon = {
-                                            Icon(Icons.Outlined.Close, "Remove ${file.name}")
-                                        },
-                                    )
-                                }
-                            }
-                        }
+                        SelectedAttachments(
+                            attachments,
+                            state.uploading,
+                            vm::removeAttachment,
+                            vm::loadAttachmentImage,
+                        )
                     }
                     BasicTextField(
                         value = field,

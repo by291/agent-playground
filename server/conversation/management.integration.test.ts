@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { eq, sql } from "drizzle-orm";
 import type { RunAgentInput } from "@ag-ui/client";
 import { conversationPageSchema } from "../../shared/conversation";
+import { uploadedFileMessage } from "../../shared/uploaded-files";
 import { cp, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -184,6 +185,38 @@ test("management validates titles, cursors and missing conversations", async () 
   assert.equal(
     (await app.request("/conversations/missing", { method: "DELETE" })).status,
     404,
+  );
+});
+
+test("attachment references stay out of new and legacy automatic titles", async () => {
+  const content = uploadedFileMessage("Describe this image.", [
+    { id: "9c6146a4-be1a-471e-b804-9fe97ab5eaaf", name: "screen.png" },
+  ]);
+  const input = inputFor("image-title", content);
+
+  await admit(input);
+  const [row] = await database.db
+    .select()
+    .from(schema.conversations)
+    .where(eq(schema.conversations.threadId, input.threadId));
+
+  assert.equal(row?.title, "Describe this image.");
+  await database.db
+    .update(schema.conversations)
+    .set({
+      title: Array.from(content.replace(/\s+/g, " ").trim())
+        .slice(0, 100)
+        .join(""),
+    })
+    .where(eq(schema.conversations.threadId, input.threadId));
+  const page = conversationPageSchema.parse(
+    await (await app.request("/conversations")).json(),
+  );
+
+  assert.equal(
+    page.conversations.find((entry) => entry.threadId === input.threadId)
+      ?.title,
+    "Describe this image.",
   );
 });
 

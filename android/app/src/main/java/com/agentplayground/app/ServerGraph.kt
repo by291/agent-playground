@@ -10,6 +10,7 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.agentplayground.app.features.conversation.ConversationViewModel
 import com.agentplayground.app.features.knowledge.KnowledgeViewModel
+import com.agentplayground.app.files.AttachmentImages
 import com.agentplayground.app.files.DocumentAccess
 import com.agentplayground.core.PlaygroundApi
 
@@ -34,6 +35,7 @@ internal fun rememberWorkspaceModels(
                         PlaygroundApi(serverUrl),
                         application.preferences.conversations(serverUrl),
                         files,
+                        AttachmentImages(application),
                     )
                 }
             }

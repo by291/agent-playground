@@ -6,3 +6,5 @@ allowBuilds:
   esbuild: true
   protobufjs: false
   ssh2: false
+patchedDependencies:
+  yet-another-react-lightbox@3.32.2: patches/yet-another-react-lightbox@3.32.2.patch

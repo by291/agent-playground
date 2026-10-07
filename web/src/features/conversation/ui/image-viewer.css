@@ -1,0 +1,106 @@
+.attachment-image-viewer {
+  color: #f4f5f7;
+  background: #0b0d10;
+  --yarl__color_backdrop: #0b0d10;
+  --yarl__color_button: #f4f5f7;
+  --yarl__color_button_disabled: #70747d;
+  --yarl__toolbar_padding: 12px;
+  --yarl__button_padding: 10px;
+  --yarl__button_filter: none;
+  --yarl__thumbnails_container_padding: 12px;
+  --yarl__thumbnails_thumbnail_background: #171b22;
+  --yarl__thumbnails_thumbnail_border_color: transparent;
+  --yarl__thumbnails_thumbnail_active_border_color: #f4f5f7;
+}
+
+.attachment-image-viewer .yarl__toolbar {
+  z-index: 3;
+  align-items: center;
+  gap: 2px;
+}
+
+/* The inline carousel normally permits page scrolling. This modal owns touch
+   gestures, including vertical panning of a magnified image. */
+.attachment-image-viewer .yarl__container,
+.attachment-image-viewer .yarl__slide_image {
+  touch-action: none;
+}
+
+.image-viewer-header {
+  position: absolute;
+  z-index: 2;
+  inset: 0 0 auto;
+  height: 96px;
+  background: linear-gradient(#0b0d10e6, transparent);
+  pointer-events: none;
+}
+
+.image-viewer-heading {
+  position: absolute;
+  top: 15px;
+  left: 24px;
+  max-width: calc(100% - 280px);
+  pointer-events: none;
+}
+
+.image-viewer-heading h2 {
+  overflow: hidden;
+  font-size: 14px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.image-viewer-heading p {
+  margin-top: 4px;
+  color: #a5a9b1;
+  font-size: 12px;
+}
+
+.attachment-image-viewer .yarl__button {
+  display: inline-flex;
+  min-width: 40px;
+  min-height: 40px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+}
+
+.attachment-image-viewer .yarl__button:enabled:hover,
+.attachment-image-viewer a.yarl__button:hover {
+  background: #ffffff14;
+}
+
+.attachment-image-viewer .yarl__button:focus-visible {
+  outline: 2px solid #e2e6ef;
+  outline-offset: -2px;
+}
+
+.attachment-image-viewer .yarl__button[aria-disabled="true"] {
+  color: #70747d;
+  cursor: default;
+}
+
+.attachment-image-viewer .image-viewer-fit {
+  min-width: 56px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.image-viewer-error {
+  color: #a5a9b1;
+  font-size: 14px;
+}
+
+@media (max-width: 640px) {
+  .attachment-image-viewer {
+    --yarl__toolbar_padding: 8px;
+    --yarl__button_padding: 8px;
+  }
+
+  .image-viewer-heading {
+    top: 12px;
+    left: 16px;
+    max-width: calc(100% - 268px);
+  }
+}

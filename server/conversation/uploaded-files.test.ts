@@ -4,6 +4,7 @@ import { test } from "vitest";
 import {
   uploadedFileMessage,
   uploadedFileReferences,
+  uploadedMessageContent,
 } from "../../shared/uploaded-files";
 
 test("uploaded references preserve quoted and non-ASCII filenames", () => {
@@ -16,6 +17,26 @@ test("uploaded references preserve quoted and non-ASCII filenames", () => {
     uploadedFileReferences(uploadedFileMessage("Read these", files)),
     files,
   );
+});
+
+test("presentation separates attachments without altering ordinary or malformed text", () => {
+  const files = [{ id: randomUUID(), name: "screen.png" }];
+  const body = "First paragraph.\n\nSecond paragraph.";
+
+  assert.deepEqual(uploadedMessageContent(uploadedFileMessage(body, files)), {
+    text: body,
+    files,
+  });
+  assert.deepEqual(uploadedMessageContent(uploadedFileMessage("", files)), {
+    text: "",
+    files,
+  });
+  const malformed = `${body}\n\nUploaded files:\nThis is prose, not an attachment.`;
+
+  assert.deepEqual(uploadedMessageContent(malformed), {
+    text: malformed,
+    files: [],
+  });
 });
 
 test("file IDs in prose, partial envelopes or invalid filenames never trigger file reads", () => {

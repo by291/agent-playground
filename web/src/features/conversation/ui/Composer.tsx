@@ -8,22 +8,9 @@ import {
   type SubmitEvent,
 } from "react";
 import { PaperclipIcon } from "@phosphor-icons/react/dist/csr/Paperclip";
-import { XIcon } from "@phosphor-icons/react/dist/csr/X";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import {
-  Attachment,
-  AttachmentAction,
-  AttachmentActions,
-  AttachmentContent,
-  AttachmentTitle,
-} from "@/components/ui/attachment";
 import { Kbd } from "@/components/ui/kbd";
 import { Spinner } from "@/components/ui/spinner";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 import { AnimatePresence } from "motion/react";
 import { AnimatedDiv } from "@/components/ui/motion";
 import { maxSkillFileBytes, skillFilenameSchema } from "@shared/skill-files";
@@ -40,6 +27,7 @@ import {
 import { useConversation } from "../ConversationProvider";
 import { useReplyPresentationBusy } from "./ReplyPresentation";
 import { ContextIndicator } from "./ContextIndicator";
+import { isImageAttachment, SelectedAttachment } from "./Attachments";
 import { useUserPreferences } from "@/lib/preferences";
 
 export function Composer({
@@ -49,7 +37,10 @@ export function Composer({
   prompt: string;
   onPromptChange: (prompt: string) => void;
 }) {
-  const [files, setFiles] = useState<{ id: string; file: File }[]>([]);
+  const [files, setFiles] = useState<
+    { id: string; file: File; preview?: string }[]
+  >([]);
+  const previews = useRef(new Map<string, string>());
   const [uploading, setUploading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
@@ -64,12 +55,32 @@ export function Composer({
 
   useEffect(() => {
     mounted.current = true;
+    const ownedPreviews = previews.current;
 
     return () => {
       mounted.current = false;
       upload.current?.abort();
+
+      for (const url of ownedPreviews.values()) {
+        URL.revokeObjectURL(url);
+      }
+
+      ownedPreviews.clear();
     };
   }, []);
+
+  function removeFiles(ids: Set<string>) {
+    for (const id of ids) {
+      const url = previews.current.get(id);
+
+      if (url) {
+        URL.revokeObjectURL(url);
+        previews.current.delete(id);
+      }
+    }
+
+    setFiles((previous) => previous.filter(({ id }) => !ids.has(id)));
+  }
 
   const { preferences } = useUserPreferences();
   const {
@@ -168,9 +179,7 @@ export function Composer({
           onPromptChange("");
         }
 
-        setFiles((previous) =>
-          previous.filter(({ id }) => !submittedFileIds.has(id)),
-        );
+        removeFiles(submittedFileIds);
         setUploading(false);
         setSubmitting(false);
         setUploadError(null);
@@ -249,21 +258,30 @@ export function Composer({
               }
 
               setUploadError(null);
-              setFiles((previous) => [
-                ...previous,
-                ...selected.map((file) => ({
-                  id: crypto.randomUUID(),
-                  file,
-                })),
-              ]);
+              const attachments = selected.map((file) => {
+                const id = crypto.randomUUID();
+
+                if (!isImageAttachment(file.name)) {
+                  return { id, file };
+                }
+
+                const preview = URL.createObjectURL(file);
+
+                previews.current.set(id, preview);
+
+                return { id, file, preview };
+              });
+
+              setFiles((previous) => [...previous, ...attachments]);
             }}
           />
           <InputGroup className="h-auto flex-col items-stretch gap-1 rounded-xl border-line bg-surface p-3 shadow-[0_3px_12px_rgba(32,36,44,0.04)] transition-colors duration-150 focus-within:border-accent sm:p-4">
             <div className="flex flex-wrap gap-2 px-1 empty:hidden">
               <AnimatePresence initial={false}>
-                {files.map(({ id, file }) => (
+                {files.map(({ id, file, preview }) => (
                   <AnimatedDiv
                     key={id}
+                    data-slot="composer-attachment"
                     layout="position"
                     exit={{
                       opacity: 0,
@@ -275,36 +293,26 @@ export function Composer({
                     }}
                     className="max-w-full min-w-0 overflow-hidden"
                   >
-                    <Attachment
-                      size="xs"
-                      state={uploading ? "uploading" : "idle"}
-                      className="min-w-0 flex-nowrap border-line"
-                    >
-                      <AttachmentContent className="max-w-52">
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <AttachmentTitle tabIndex={disabled ? -1 : 0}>
-                              {file.name}
-                            </AttachmentTitle>
-                          </TooltipTrigger>
-                          <TooltipContent>{file.name}</TooltipContent>
-                        </Tooltip>
-                      </AttachmentContent>
-                      <AttachmentActions>
-                        <AttachmentAction
-                          type="button"
-                          aria-label={`Remove ${file.name}`}
-                          disabled={disabled}
-                          onClick={() =>
-                            setFiles((previous) =>
-                              previous.filter((item) => item.id !== id),
-                            )
-                          }
-                        >
-                          <XIcon size={14} aria-hidden="true" />
-                        </AttachmentAction>
-                      </AttachmentActions>
-                    </Attachment>
+                    <SelectedAttachment
+                      file={file}
+                      preview={preview}
+                      images={files.flatMap(
+                        ({ file: imageFile, preview: imagePreview }) =>
+                          imagePreview
+                            ? [
+                                {
+                                  name: imageFile.name,
+                                  alt: imageFile.name,
+                                  src: imagePreview,
+                                  thumbnail: imagePreview,
+                                },
+                              ]
+                            : [],
+                      )}
+                      uploading={uploading}
+                      disabled={disabled}
+                      onRemove={() => removeFiles(new Set([id]))}
+                    />
                   </AnimatedDiv>
                 ))}
               </AnimatePresence>

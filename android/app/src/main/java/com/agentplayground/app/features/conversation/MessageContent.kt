@@ -21,6 +21,13 @@ import com.agui.core.types.*
 fun MessageContent(
     message: Message,
     onLink: (String) -> Unit,
+    attachmentPresentation: (UploadedAttachment) -> MessageAttachment = {
+        MessageAttachment(it.name)
+    },
+    onDownload: (Download) -> Unit = {},
+    loadImage: suspend (String, Int) -> androidx.compose.ui.graphics.ImageBitmap? = { _, _ ->
+        null
+    },
 ) {
     when (message) {
         is UserMessage ->
@@ -38,12 +45,26 @@ fun MessageContent(
                     border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                     modifier = Modifier.widthIn(max = 560.dp),
                 ) {
-                    SelectionContainer {
-                        Text(
-                            message.content,
-                            Modifier.padding(horizontal = 18.dp, vertical = 12.dp),
-                            style = MaterialTheme.typography.bodyLarge,
-                        )
+                    val presentation =
+                        remember(message.content) { userMessagePresentation(message.content) }
+
+                    Column(
+                        Modifier.padding(horizontal = 18.dp, vertical = 12.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        if (presentation.text.isNotEmpty()) {
+                            SelectionContainer {
+                                Text(presentation.text, style = MaterialTheme.typography.bodyLarge)
+                            }
+                        }
+
+                        if (presentation.attachments.isNotEmpty()) {
+                            MessageAttachments(
+                                presentation.attachments.map(attachmentPresentation),
+                                onDownload,
+                                loadImage,
+                            )
+                        }
                     }
                 }
             }

@@ -24,10 +24,18 @@ export function uploadedFileMessage(
 }
 
 export function uploadedFileReferences(content: string): FileReference[] {
+  return uploadedMessageContent(content).files;
+}
+
+export function uploadedMessageContent(content: string): {
+  text: string;
+  files: FileReference[];
+} {
   const start = content.lastIndexOf(marker);
+  const plain = { text: content, files: [] };
 
   if (start < 0) {
-    return [];
+    return plain;
   }
 
   const references: FileReference[] = [];
@@ -38,7 +46,7 @@ export function uploadedFileReferences(content: string): FileReference[] {
     const match = /^(".*") — File ID: ([\da-f-]+)$/i.exec(line);
 
     if (!match) {
-      return [];
+      return plain;
     }
 
     let name: unknown;
@@ -46,17 +54,17 @@ export function uploadedFileReferences(content: string): FileReference[] {
     try {
       name = JSON.parse(match[1]!);
     } catch {
-      return [];
+      return plain;
     }
 
     const parsed = referenceSchema.safeParse({ name, id: match[2] });
 
     if (!parsed.success) {
-      return [];
+      return plain;
     }
 
     references.push(parsed.data);
   }
 
-  return references;
+  return { text: content.slice(0, start), files: references };
 }

@@ -54,7 +54,17 @@ test("uploaded files go through the real backend and recovered tool outputs down
   expect(await bytes.text()).toBe("amount\n20\n");
   await expect(
     page.getByRole("region", { name: "Messages" }).getByText(/Uploaded files:/),
-  ).toBeVisible();
+  ).toHaveCount(0);
+  const attachment = page.getByRole("link", {
+    name: "Download orders.csv",
+    exact: true,
+  });
+
+  await expect(attachment).toBeVisible();
+  const inputDownload = page.waitForEvent("download");
+
+  await attachment.click();
+  expect((await inputDownload).suggestedFilename()).toBe("orders.csv");
   const threadId = await createCompletedConversation(request, "Skill recovery");
   const fileResponse = await request.post(
     `http://127.0.0.1:4300/conversations/${threadId}/files`,

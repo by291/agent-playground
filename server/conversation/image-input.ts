@@ -1,82 +1,10 @@
 import type { InputContent, Message, RunAgentInput } from "@ag-ui/client";
-import sharp from "sharp";
+import { imageMimeType, validateImage } from "./images";
 import { uploadedFileReferences } from "../../shared/uploaded-files";
 import { SubmissionError } from "./errors";
 import { readSkillFile } from "./skill-files";
 
 const maxImageBatchBytes = 32 * 1024 * 1024;
-const maxImageDimension = 8192;
-
-function imageMimeType(data: Buffer): string | null {
-  if (
-    data.length >= 24 &&
-    data.subarray(0, 8).equals(Buffer.from("89504e470d0a1a0a", "hex")) &&
-    data.toString("ascii", 12, 16) === "IHDR"
-  ) {
-    return "image/png";
-  }
-
-  if (
-    data.length >= 4 &&
-    data[0] === 0xff &&
-    data[1] === 0xd8 &&
-    data[2] === 0xff
-  ) {
-    return "image/jpeg";
-  }
-
-  const header = data.toString("ascii", 0, 6);
-
-  if (data.length >= 13 && (header === "GIF87a" || header === "GIF89a")) {
-    return "image/gif";
-  }
-
-  if (
-    data.length >= 20 &&
-    data.toString("ascii", 0, 4) === "RIFF" &&
-    data.toString("ascii", 8, 12) === "WEBP"
-  ) {
-    return "image/webp";
-  }
-
-  return null;
-}
-
-async function validateImage(data: Buffer): Promise<void> {
-  const image = sharp(data, {
-    failOn: "warning",
-    limitInputPixels: maxImageDimension * maxImageDimension,
-    sequentialRead: true,
-  });
-
-  try {
-    const metadata = await image.metadata();
-
-    if (
-      !metadata.width ||
-      !metadata.height ||
-      metadata.width > maxImageDimension ||
-      metadata.height > maxImageDimension
-    ) {
-      throw new SubmissionError(
-        "Image dimensions must be at most 8192 pixels per side",
-        400,
-      );
-    }
-
-    // Metadata alone can accept truncated data. Decode pixels before admission.
-    await image.stats();
-  } catch (error) {
-    if (error instanceof SubmissionError) {
-      throw error;
-    }
-
-    throw new SubmissionError(
-      "Attach a valid JPEG, PNG, GIF or WebP image",
-      400,
-    );
-  }
-}
 
 export async function prepareImageInput(
   input: RunAgentInput,

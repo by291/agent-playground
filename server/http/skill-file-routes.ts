@@ -8,6 +8,7 @@ import {
 } from "../../shared/skill-files";
 import { SubmissionError } from "../conversation/errors";
 import { readSkillFile, storeSkillFile } from "../conversation/skill-files";
+import { imagePreview } from "../conversation/images";
 import { logger } from "../observability/logger";
 import { workflowAuth } from "./workflow-auth";
 
@@ -117,6 +118,26 @@ skillFileRoutes.get("/internal/skill-files/:fileId", async (context) => {
     "Cache-Control": "no-store",
   });
 });
+
+skillFileRoutes.get(
+  "/conversations/:threadId/files/:fileId/preview",
+  async (context) => {
+    const file = await readSkillFile(
+      context.req.param("threadId"),
+      context.req.param("fileId"),
+    );
+    const data = await imagePreview(
+      file.data,
+      context.req.query("size") === "thumbnail",
+    );
+
+    return context.body(new Uint8Array(data), 200, {
+      "Content-Type": "image/webp",
+      "X-Content-Type-Options": "nosniff",
+      "Cache-Control": "no-store",
+    });
+  },
+);
 
 skillFileRoutes.get(
   "/conversations/:threadId/files/:fileId",

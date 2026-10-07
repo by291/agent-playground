@@ -59,6 +59,34 @@ function page(
   );
 }
 
+test("the composer owns local image URLs and releases them on removal or unmount", () => {
+  const create = vi
+    .spyOn(URL, "createObjectURL")
+    .mockReturnValueOnce("blob:first")
+    .mockReturnValueOnce("blob:second");
+  const revoke = vi.spyOn(URL, "revokeObjectURL");
+
+  vi.stubGlobal("fetch", () =>
+    Promise.resolve(Response.json({ model: "test-model" })),
+  );
+  const view = page();
+
+  fireEvent.change(view.getByLabelText("Choose files"), {
+    target: {
+      files: [new File(["one"], "first.png"), new File(["two"], "second.png")],
+    },
+  });
+  expect(create).toHaveBeenCalledTimes(2);
+  expect(view.getByRole("img", { name: "first.png" })).toHaveAttribute(
+    "src",
+    "blob:first",
+  );
+  fireEvent.click(view.getByRole("button", { name: "Remove first.png" }));
+  expect(revoke).toHaveBeenCalledWith("blob:first");
+  view.unmount();
+  expect(revoke).toHaveBeenCalledWith("blob:second");
+});
+
 test("a draft allocates its thread only on send and retries uploads with the same identity", async () => {
   const threads: string[] = [];
   const uploads: { url: string; fileId: string | null }[] = [];

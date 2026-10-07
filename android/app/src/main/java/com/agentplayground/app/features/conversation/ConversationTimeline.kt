@@ -42,6 +42,10 @@ internal fun ConversationTimeline(
     documentDownload: (String, String) -> Download,
     onSuggestion: (String) -> Unit,
     compactHeight: Boolean,
+    attachmentPresentation: (String, UploadedAttachment) -> MessageAttachment = { _, attachment ->
+        MessageAttachment(attachment.name)
+    },
+    loadImage: AttachmentImageLoader = { _, _ -> null },
 ) {
     val list = rememberLazyListState()
     val scope = rememberCoroutineScope()
@@ -104,7 +108,19 @@ internal fun ConversationTimeline(
                 val turn = row.turn
 
                 turn.user?.let { message ->
-                    add(TimelineEntry("user:${turn.id}") { MessageContent(message, onLink) })
+                    add(
+                        TimelineEntry("user:${turn.id}") {
+                            MessageContent(
+                                message,
+                                onLink,
+                                { attachment ->
+                                    attachmentPresentation(state.threadId, attachment)
+                                },
+                                onDownload,
+                                loadImage,
+                            )
+                        }
+                    )
                 }
 
                 if (row.showReply) {

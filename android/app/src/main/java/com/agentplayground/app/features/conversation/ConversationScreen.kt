@@ -161,6 +161,8 @@ fun ConversationScreen(
                         vm::documentDownload,
                         vm::editDraft,
                         compactHeight,
+                        vm::attachmentPresentation,
+                        vm::loadAttachmentImage,
                     )
                 }
             }

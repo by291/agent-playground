@@ -146,8 +146,20 @@ class PlaygroundApi(baseUrl: String) : ConversationApi, AutoCloseable {
         return document
     }
 
-    fun filePath(file: SkillFile): String =
-        url("conversations", file.threadId, "files", file.id).toString()
+    fun filePath(file: SkillFile): String = filePath(file.threadId, file.id)
+
+    fun filePath(threadId: String, fileId: String): String =
+        url("conversations", threadId, "files", fileId).toString()
+
+    fun filePreviewPath(threadId: String, fileId: String, thumbnail: Boolean): String {
+        val preview = url("conversations", threadId, "files", fileId, "preview").newBuilder()
+
+        if (thumbnail) {
+            preview.addQueryParameter("size", "thumbnail")
+        }
+
+        return preview.build().toString()
+    }
 
     fun documentPath(id: String): String =
         url("api", "knowledge", "documents", id, "file").toString()

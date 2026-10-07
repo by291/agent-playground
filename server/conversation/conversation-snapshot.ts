@@ -7,6 +7,7 @@ import {
 } from "../db/schema";
 import { externalTaskSnapshots } from "./external-tasks";
 import { workflowOutputs } from "../db/workflow-schema";
+import { presentConversationTitle } from "./titles";
 
 export async function conversationSnapshot(threadId: string) {
   const [conversation] = await db
@@ -59,7 +60,10 @@ export async function conversationSnapshot(threadId: string) {
   return {
     threadId,
     externalTasks,
-    title: conversation.title,
+    title: presentConversationTitle(
+      conversation.title,
+      messages.find((row) => row.message.role === "user")?.message,
+    ),
     contextUsage: conversation.contextUsage,
     messages: messages.map((row) => row.message),
     outputs: outputs.map((row) => ({

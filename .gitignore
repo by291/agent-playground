@@ -3,6 +3,7 @@ node_modules/
 .env
 dist/
 .dev/
+*.log
 coverage/
 playwright-report/
 test-results/

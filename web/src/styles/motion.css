@@ -52,6 +52,30 @@
     }
   }
 
+  /* Centered dialogs own their translate for positioning. Animate scale and
+     opacity without replacing it during either entrance or exit. */
+  @keyframes dialog-in {
+    from {
+      opacity: 0;
+      scale: 0.98;
+    }
+    to {
+      opacity: 1;
+      scale: 1;
+    }
+  }
+
+  @keyframes dialog-out {
+    from {
+      opacity: 1;
+      scale: 1;
+    }
+    to {
+      opacity: 0;
+      scale: 0.98;
+    }
+  }
+
   @keyframes sheet-in {
     from {
       opacity: 0;
@@ -100,7 +124,20 @@
 
   :is(
     [data-slot="dialog-content"],
-    [data-slot="alert-dialog-content"],
+    [data-slot="alert-dialog-content"]
+  )[data-state="open"] {
+    animation: dialog-in var(--motion-panel) var(--motion-enter-ease);
+  }
+
+  :is(
+    [data-slot="dialog-content"],
+    [data-slot="alert-dialog-content"]
+  )[data-state="closed"] {
+    animation: dialog-out var(--motion-exit) var(--motion-exit-ease);
+    pointer-events: none;
+  }
+
+  :is(
     [data-slot="popover-content"],
     [data-slot="dropdown-menu-content"],
     [data-slot="dropdown-menu-sub-content"],
@@ -111,8 +148,6 @@
   }
 
   :is(
-    [data-slot="dialog-content"],
-    [data-slot="alert-dialog-content"],
     [data-slot="popover-content"],
     [data-slot="dropdown-menu-content"],
     [data-slot="dropdown-menu-sub-content"],

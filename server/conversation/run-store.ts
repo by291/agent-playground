@@ -16,6 +16,7 @@ import {
 } from "../../shared/run-status";
 import { validateReview, validateExternalContinuation } from "./reviews";
 import { externalTasks } from "../db/external-task-schema";
+import { defaultConversationTitle } from "./titles";
 
 interface RunSubmission {
   threadId: string;
@@ -170,17 +171,6 @@ export async function admitRun({
 
     return { row };
   });
-}
-
-function defaultConversationTitle(message: Message) {
-  if (typeof message.content !== "string") {
-    return "Untitled conversation";
-  }
-
-  const title = message.content.replace(/\s+/g, " ").trim();
-  const shortened = Array.from(title).slice(0, 100).join("");
-
-  return shortened || "Untitled conversation";
 }
 
 export async function claimPrepared(runId: string): Promise<boolean> {

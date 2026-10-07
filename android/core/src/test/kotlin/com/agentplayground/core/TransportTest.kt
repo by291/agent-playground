@@ -10,6 +10,34 @@ import org.junit.Test
 
 class TransportTest {
     @Test
+    fun `file previews preserve server prefixes and choose thumbnail or full resources`() =
+        runBlocking {
+            MockWebServer().use { server ->
+                server.enqueue(MockResponse().setBody("thumbnail"))
+                server.enqueue(MockResponse().setBody("preview"))
+
+                PlaygroundApi(server.url("/workspace/").toString()).use { api ->
+                    val thumbnail = java.io.ByteArrayOutputStream()
+                    val preview = java.io.ByteArrayOutputStream()
+
+                    api.download(api.filePreviewPath("thread", "file", thumbnail = true), thumbnail)
+                    api.download(api.filePreviewPath("thread", "file", thumbnail = false), preview)
+
+                    assertEquals(
+                        "/workspace/conversations/thread/files/file/preview?size=thumbnail",
+                        server.takeRequest().path,
+                    )
+                    assertEquals(
+                        "/workspace/conversations/thread/files/file/preview",
+                        server.takeRequest().path,
+                    )
+                    assertEquals("thumbnail", thumbnail.toString("UTF-8"))
+                    assertEquals("preview", preview.toString("UTF-8"))
+                }
+            }
+        }
+
+    @Test
     fun `rename accepts the title response without list metadata`() = runBlocking {
         val server = MockWebServer()
         server.start()

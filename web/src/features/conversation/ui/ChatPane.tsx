@@ -53,6 +53,7 @@ export function ChatPane({
   onSelectPrompt,
 }: { onSelectPrompt?: (prompt: string) => void } = {}) {
   const {
+    threadId,
     messages,
     externalTasks,
     runs,
@@ -68,6 +69,7 @@ export function ChatPane({
     onWorkflowReview,
   } = useConversation(
     useShallow((state) => ({
+      threadId: state.threadId,
       messages: state.messages,
       externalTasks: state.externalTasks,
       runs: state.runs,
@@ -154,7 +156,10 @@ export function ChatPane({
                                   : undefined
                               }
                             >
-                              <MessageRow message={turn.user} />
+                              <MessageRow
+                                message={turn.user}
+                                threadId={threadId}
+                              />
                             </div>
                           </MessageScrollerItem>
                         )}

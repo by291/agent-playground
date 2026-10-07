@@ -1,10 +1,12 @@
 package com.agentplayground.app.features.conversation
 
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.agentplayground.app.data.PreferenceStore
 import com.agentplayground.app.files.*
 import com.agentplayground.core.*
+import java.io.ByteArrayOutputStream
 import java.util.UUID
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
@@ -13,6 +15,7 @@ class ConversationViewModel(
     private val api: PlaygroundApi,
     private val journal: PreferenceStore.ConversationJournal,
     private val files: DocumentAccess,
+    private val images: AttachmentImages? = null,
 ) : ViewModel() {
     private var session: ConversationSession? = null
     private var sessionCollector: Job? = null
@@ -376,6 +379,32 @@ class ConversationViewModel(
 
     fun fileDownload(file: SkillFile): Download = Download(api.filePath(file), file.name)
 
+    fun attachmentPresentation(
+        threadId: String,
+        attachment: UploadedAttachment,
+    ): MessageAttachment =
+        MessageAttachment(
+            attachment.name,
+            Download(api.filePath(threadId, attachment.id), attachment.name),
+            if (attachment.isImage) {
+                ImagePreview(
+                    attachment.name,
+                    api.filePreviewPath(threadId, attachment.id, thumbnail = true),
+                    api.filePreviewPath(threadId, attachment.id, thumbnail = false),
+                )
+            } else {
+                null
+            },
+        )
+
+    suspend fun loadAttachmentImage(source: String, maxDimension: Int): ImageBitmap? =
+        images?.load(source, maxDimension) { address ->
+            val bytes = ByteArrayOutputStream()
+            api.download(address, bytes)
+
+            bytes.toByteArray()
+        }
+
     fun documentDownload(id: String, name: String): Download = Download(api.documentPath(id), name)
 
     private suspend fun action(block: suspend () -> Unit) {
@@ -395,6 +424,7 @@ class ConversationViewModel(
     override fun onCleared() {
         history.close()
         session?.close()
+        images?.close()
         api.close()
     }
 }

@@ -10,13 +10,17 @@ import {
 } from "@/components/ui/message";
 import { hasMessageText, messageText } from "../../model/presentation";
 import MarkdownMessage from "./MarkdownMessage";
+import { uploadedMessageContent } from "@shared/uploaded-files";
+import { UploadedAttachments } from "../Attachments";
 
 export function MessageRow({
   message,
   streaming = false,
+  threadId,
 }: {
   message: Message;
   streaming?: boolean;
+  threadId?: string | null;
 }) {
   const text = messageText(message);
 
@@ -25,18 +29,25 @@ export function MessageRow({
   }
 
   if (message.role === "user") {
+    const content = uploadedMessageContent(text);
+
     return (
       <ConversationMessage align="end">
         <MessageContent>
-          <Bubble
-            variant="secondary"
-            align="end"
-            className="max-w-[85%] sm:max-w-[75%]"
-          >
-            <BubbleContent className="rounded-lg border-line px-4 py-3 text-[15px]/7 whitespace-pre-wrap">
-              {text}
-            </BubbleContent>
-          </Bubble>
+          {content.text.trim() && (
+            <Bubble
+              variant="secondary"
+              align="end"
+              className="max-w-[85%] sm:max-w-[75%]"
+            >
+              <BubbleContent className="rounded-lg border-line px-4 py-3 text-[15px]/7 whitespace-pre-wrap">
+                {content.text}
+              </BubbleContent>
+            </Bubble>
+          )}
+          {threadId && content.files.length > 0 && (
+            <UploadedAttachments threadId={threadId} files={content.files} />
+          )}
         </MessageContent>
       </ConversationMessage>
     );

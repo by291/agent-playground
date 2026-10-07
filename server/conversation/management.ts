@@ -1,5 +1,6 @@
 import { and, asc, desc, eq, exists, isNull, lt, or, sql } from "drizzle-orm";
 import { z } from "zod";
+import type { Message } from "@ag-ui/client";
 import { db } from "../db/database";
 import {
   conversationMessages,
@@ -8,6 +9,7 @@ import {
 } from "../db/schema";
 import { isRunActive, type RunStatus } from "../../shared/run-status";
 import { SubmissionError } from "./errors";
+import { presentConversationTitle } from "./titles";
 
 const cursorSchema = z.object({
   updatedAt: z.string().datetime(),
@@ -54,6 +56,22 @@ export async function listConversations(
     .select({ id: conversationMessages.messageId })
     .from(conversationMessages)
     .where(eq(conversationMessages.threadId, conversations.threadId));
+  const firstMessage = db
+    .select({ message: conversationMessages.message })
+    .from(conversationMessages)
+    .where(
+      and(
+        eq(conversationMessages.threadId, conversations.threadId),
+        sql`${conversationMessages.message}->>'role' = 'user'`,
+      ),
+    )
+    .orderBy(
+      asc(conversationMessages.submitSeq),
+      asc(conversationMessages.messageOrder),
+      asc(conversationMessages.createdAt),
+    )
+    .limit(1);
+
   const rows = await db
     .select({
       threadId: conversations.threadId,
@@ -61,6 +79,7 @@ export async function listConversations(
       createdAt: conversations.createdAt,
       updatedAt: conversations.updatedAt,
       status: sql<RunStatus | null>`(${latestStatus})`,
+      firstMessage: sql<Message | null>`(${firstMessage})`,
     })
     .from(conversations)
     .where(
@@ -68,7 +87,12 @@ export async function listConversations(
     )
     .orderBy(desc(conversations.updatedAt), desc(conversations.threadId))
     .limit(pageSize + 1);
-  const page = rows.slice(0, pageSize);
+  const page = rows
+    .slice(0, pageSize)
+    .map(({ firstMessage: message, ...row }) => ({
+      ...row,
+      title: presentConversationTitle(row.title, message),
+    }));
   const last = page.at(-1);
 
   return {
