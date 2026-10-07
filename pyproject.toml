@@ -5,17 +5,17 @@ description = "A small LangChain agent served by Aegra"
 requires-python = ">=3.12,<3.14"
 dependencies = [
   "a2a-sdk[http-server]==1.2.2",
-  "a2ui-core>=0.1.1,<0.2.0",
+  "a2ui-core>=0.2.0,<0.3.0",
   "aegra-cli",
   "async-lru>=2.3.0",
-  "charset-normalizer>=3.5,<4",
-  "fastapi>=0.141.1",
+  "charset-normalizer>=3.5.2,<4",
+  "fastapi>=0.142.2",
   "httpx>=0.28.1",
   "langchain",
-  "langchain-core>=1.6.4",
+  "langchain-core>=1.6.6",
   "langchain-deepseek>=1.1.1",
   "langchain-mcp-adapters>=0.3.2",
-  "langchain-openai>=1.6.6",
+  "langchain-openai>=1.6.7",
   "langchain-postgres>=0.0.18,<0.1",
   "langchain-qwq>=0.3.5",
   "langchain-text-splitters>=1,<2",
@@ -23,7 +23,7 @@ dependencies = [
   "langgraph-checkpoint-postgres",
   "limits>=5.8,<6",
   "mcp>=1.30.0,<2",
-  "openai>=3.19,<4",
+  "openai>=3.24.0,<4",
   "opensandbox>=0.1.14,<0.2",
   "opentelemetry-api>=1.45.0",
   "psycopg[binary,pool]>=3.3.6",
@@ -31,7 +31,7 @@ dependencies = [
   "pypdf>=6,<7",
   "pyyaml>=6,<7",
   "redis>=8.1,<9",
-  "sqlalchemy>=2.1.1",
+  "sqlalchemy>=2.1.3",
   "sqlglot>=30.21.0",
   "structlog>=26.1.0",
 ]
@@ -48,7 +48,7 @@ module-root = ""
 
 [dependency-groups]
 dev = [
-    "pyrefly>=1.3.1",
+    "pyrefly>=1.3.2",
     "pytest",
     "ruff",
     "testcontainers[postgres]>=4.15.0",
