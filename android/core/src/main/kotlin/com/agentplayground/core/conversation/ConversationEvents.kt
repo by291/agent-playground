@@ -9,7 +9,11 @@ import com.agui.core.types.*
 import kotlinx.serialization.json.*
 
 /** Projects official protocol events without changing admission or recovery ownership. */
-internal fun reduceConversationEvent(current: SessionState, event: BaseEvent): SessionState =
+internal fun reduceConversationEvent(
+    current: SessionState,
+    event: BaseEvent,
+    receivedAt: String? = null,
+): SessionState =
     when (event) {
         is RunStartedEvent ->
             current.copy(streaming = true, busy = true, executionStatus = "running")
@@ -32,7 +36,15 @@ internal fun reduceConversationEvent(current: SessionState, event: BaseEvent): S
             )
 
         is TextMessageStartEvent ->
-            current.copy(messages = upsert(current.messages, AssistantMessage(event.messageId, "")))
+            current.copy(
+                messages = upsert(current.messages, AssistantMessage(event.messageId, "")),
+                messageTimestamps =
+                    if (receivedAt != null && event.messageId !in current.messageTimestamps) {
+                        current.messageTimestamps + (event.messageId to receivedAt)
+                    } else {
+                        current.messageTimestamps
+                    },
+            )
 
         is TextMessageContentEvent ->
             current.copy(

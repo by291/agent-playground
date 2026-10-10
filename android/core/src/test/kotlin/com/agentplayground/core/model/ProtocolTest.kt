@@ -13,6 +13,24 @@ import org.junit.Test
 
 class ProtocolTest {
     @Test
+    fun `snapshot preserves message timestamps separately from official message fields`() {
+        val snapshot =
+            protocolJson.decodeFromString<ConversationSnapshot>(
+                """{"messages":[{"id":"user","role":"user","content":"Hello"}],"interrupts":[],"outputs":[],"runs":[],"messageTimestamps":{"user":"2026-10-11T02:30:00Z"}}"""
+            )
+        val wire =
+            protocolJson.encodeToJsonElement(ConversationSnapshot.serializer(), snapshot).jsonObject
+
+        assertEquals(
+            "2026-10-11T02:30:00Z",
+            wire["messageTimestamps"]?.jsonObject?.get("user")?.jsonPrimitive?.content,
+        )
+        assertFalse(
+            wire.getValue("messages").jsonArray.single().jsonObject.containsKey("createdAt")
+        )
+    }
+
+    @Test
     fun `model metadata and saved selection survive serialization without exposing configuration`() {
         val info =
             protocolJson.decodeFromString<AgentInfo>(

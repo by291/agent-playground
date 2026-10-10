@@ -16,6 +16,7 @@ data class SessionState(
     val title: String = "New conversation",
     val draft: String = "",
     val messages: List<Message> = emptyList(),
+    val messageTimestamps: Map<String, String> = emptyMap(),
     val interrupts: List<Interrupt> = emptyList(),
     val outputs: List<WorkflowOutput> = emptyList(),
     val externalTasks: List<ExternalTask> = emptyList(),

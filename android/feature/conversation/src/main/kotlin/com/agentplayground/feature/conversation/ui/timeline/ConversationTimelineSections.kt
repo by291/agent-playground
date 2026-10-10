@@ -35,6 +35,7 @@ internal fun TimelineTurnContent(
     externalTaskControls: Map<String, ExternalTaskControl> = emptyMap(),
     onSubmitExternalTaskInput: (String, String) -> Unit = { _, _ -> },
     onCancelExternalTask: (String) -> Unit = {},
+    messageTimestamps: Map<String, String> = emptyMap(),
 ) {
     AssistantTurnContent(
         row.turn,
@@ -54,6 +55,7 @@ internal fun TimelineTurnContent(
                 }
             }
         },
+        messageTimestamps = messageTimestamps,
     ) {
         row.tasks.forEach { task ->
             key(task.taskId) {

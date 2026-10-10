@@ -100,6 +100,11 @@ class MarkdownSelectionTest {
                             { id, name -> Download("/documents/$id", name) },
                             {},
                             {},
+                            messageTimestamps =
+                                mapOf(
+                                    "first" to "2026-10-11T02:30:00Z",
+                                    "last" to "2026-10-11T02:31:00Z",
+                                ),
                         )
                     }
                 }

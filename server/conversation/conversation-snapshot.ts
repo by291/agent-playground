@@ -8,6 +8,7 @@ import {
 import { externalTaskSnapshots } from "./external-tasks";
 import { workflowOutputs } from "../db/workflow-schema";
 import { presentConversationTitle } from "./titles";
+import { workflowReplyMessages } from "../../shared/workflow-output";
 
 export async function conversationSnapshot(threadId: string) {
   const [conversation] = await db
@@ -43,7 +44,10 @@ export async function conversationSnapshot(threadId: string) {
       .where(eq(conversationRuns.threadId, threadId))
       .orderBy(asc(conversationRuns.submitSeq)),
     db
-      .select({ message: conversationMessages.message })
+      .select({
+        message: conversationMessages.message,
+        createdAt: conversationMessages.createdAt,
+      })
       .from(conversationMessages)
       .where(eq(conversationMessages.threadId, threadId))
       .orderBy(
@@ -69,6 +73,16 @@ export async function conversationSnapshot(threadId: string) {
     contextUsage: conversation.contextUsage,
     modelId: conversation.modelId,
     messages: messages.map((row) => row.message),
+    messageTimestamps: Object.fromEntries<string>([
+      ...messages.map(
+        (row) => [row.message.id, row.createdAt.toISOString()] as const,
+      ),
+      ...outputs.flatMap((row) =>
+        workflowReplyMessages(row.payload).map(
+          (reply) => [reply.id, row.createdAt.toISOString()] as const,
+        ),
+      ),
+    ]),
     outputs: outputs.map((row) => ({
       id: row.id,
       aguiRunId: row.aguiRunId,

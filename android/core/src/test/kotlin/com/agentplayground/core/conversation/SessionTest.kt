@@ -26,6 +26,91 @@ import org.junit.Test
 @OptIn(ExperimentalCoroutinesApi::class)
 class SessionTest {
     @Test
+    fun `restored workflow replies without timestamp metadata do not acquire reload times`() =
+        runTest {
+            val api =
+                ControlledApi().apply {
+                    snapshot =
+                        emptySnapshot.copy(
+                            outputs =
+                                listOf(
+                                    protocolJson.decodeFromString<WorkflowOutput>(
+                                        """{"id":"old-output","outputSeq":1,"messages":[],"workflow":{"reply":{"id":"old-reply","content":"Archived answer"}}}"""
+                                    )
+                                )
+                        )
+                }
+            val session =
+                ConversationSession(
+                    api,
+                    MemoryPersistence(),
+                    backgroundScope,
+                    SavedConversation("thread", empty = false),
+                )
+
+            session.restore()
+
+            assertEquals("Archived answer", session.state.value.messages.single().content)
+            assertFalse(session.state.value.messageTimestamps.containsKey("old-reply"))
+            session.close()
+        }
+
+    @Test
+    fun `message times survive replay and restore with canonical server timestamps`() = runTest {
+        var clock = java.time.Instant.parse("2026-10-11T02:30:00Z")
+        val api = ControlledApi()
+        val persistence = MemoryPersistence()
+        val session =
+            ConversationSession(
+                api,
+                persistence,
+                backgroundScope,
+                SavedConversation("thread"),
+                now = { clock },
+            )
+
+        session.send("Hello")
+        runCurrent()
+        val user = session.state.value.messages.single()
+        assertEquals("2026-10-11T02:30:00Z", session.state.value.messageTimestamps[user.id])
+        assertEquals("2026-10-11T02:30:00Z", persistence.saved?.pending?.submittedAt)
+
+        clock = java.time.Instant.parse("2026-10-11T02:31:00Z")
+        api.events.emit(TextMessageStartEvent("answer", timestamp = clock.toEpochMilli()))
+        runCurrent()
+        clock = java.time.Instant.parse("2026-10-11T02:32:00Z")
+        api.events.emit(TextMessageStartEvent("answer"))
+        runCurrent()
+        assertEquals("2026-10-11T02:31:00Z", session.state.value.messageTimestamps["answer"])
+        session.close()
+
+        val pendingRestore =
+            ConversationSession(api, MemoryPersistence(), backgroundScope, persistence.saved!!)
+        assertEquals("2026-10-11T02:30:00Z", pendingRestore.state.value.messageTimestamps[user.id])
+        pendingRestore.close()
+
+        api.snapshot =
+            emptySnapshot.copy(
+                messages = listOf(user, AssistantMessage("answer", "Hi")),
+                messageTimestamps =
+                    mapOf(user.id to "2026-10-11T02:30:02Z", "answer" to "2026-10-11T02:31:03Z"),
+            )
+        val restored =
+            ConversationSession(
+                api,
+                MemoryPersistence(),
+                backgroundScope,
+                SavedConversation("thread", empty = false),
+            )
+        restored.restore()
+        assertEquals("2026-10-11T02:30:02Z", restored.state.value.messageTimestamps[user.id])
+        assertEquals("2026-10-11T02:31:03Z", restored.state.value.messageTimestamps["answer"])
+        restored.refresh()
+        assertEquals("2026-10-11T02:31:03Z", restored.state.value.messageTimestamps["answer"])
+        restored.close()
+    }
+
+    @Test
     fun `completed review resume releases model selection despite historical interrupted run`() =
         runTest {
             val api =

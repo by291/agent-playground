@@ -378,8 +378,8 @@ test("generic workflow reply metadata is archived once before the parent reply",
 
   await runStore.recordAegraRun(run.aguiRunId, "upstream-run");
   await database.db.execute(sql`
-    INSERT INTO workflow_outputs (id, thread_id, agui_run_id, workflow_call_id, step_id, output_seq, payload)
-    VALUES ('copy-output', ${run.threadId}, ${run.aguiRunId}, 'copy-call', 'review:1', 1, ${JSON.stringify(payload)}::jsonb)
+    INSERT INTO workflow_outputs (id, thread_id, agui_run_id, workflow_call_id, step_id, output_seq, payload, created_at)
+    VALUES ('copy-output', ${run.threadId}, ${run.aguiRunId}, 'copy-call', 'review:1', 1, ${JSON.stringify(payload)}::jsonb, '2026-10-11T02:31:00Z')
   `);
   await database.db
     .update(schema.conversationRuns)
@@ -399,6 +399,10 @@ test("generic workflow reply metadata is archived once before the parent reply",
     ],
   );
   assert.equal(snapshot?.messages[1]?.content, "Revised copy");
+  assert.equal(
+    snapshot?.messageTimestamps["copy-reply"],
+    "2026-10-11T02:31:00.000Z",
+  );
 });
 
 test("a late creation callback preserves an already completed run", async () => {
@@ -515,6 +519,18 @@ test("a completed checkpoint is synchronized once and only adds missing messages
   assert.deepEqual(
     snapshot?.messages.map((message) => message.id),
     [`${run.threadId}-message`, "checkpoint-reply", "checkpoint-followup"],
+  );
+  assert.equal(
+    snapshot?.messageTimestamps["checkpoint-reply"],
+    "2030-01-01T00:00:00.000Z",
+  );
+  assert.deepEqual(
+    Object.keys(snapshot?.messageTimestamps ?? {}).sort(),
+    [
+      `${run.threadId}-message`,
+      "checkpoint-reply",
+      "checkpoint-followup",
+    ].sort(),
   );
 });
 

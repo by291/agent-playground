@@ -96,6 +96,8 @@ The model control beside the send button opens estimated token usage and a break
 
 ### Checkpoint history and public transcript
 
+Conversation snapshots expose a `messageTimestamps` map keyed by message ID, separate from official AG-UI message fields. Times are ISO 8601 values from the archived message rows; workflow replies retain the corresponding output's publication time. Android displays these dates in the device's local timezone below user and agent messages. Each agent answer also has a Copy all action that copies its original Markdown, available after the turn finishes. Live submission/event times are provisional until the server snapshot supplies the saved timestamps.
+
 The browser sends only the newest user message for a normal turn. Aegra's checkpoint owns model history; archived chat is not reintroduced after compaction. The complete public transcript is kept separately in the application database. Internal summaries and compressed message snapshots do not replace that transcript. Current-run replies are kept in checkpoint state until synchronization so compaction during a tool loop cannot erase recoverable replies. Context usage is synchronized with the latest finished or interrupted checkpoint and recovered after reload without extra upstream reads on every poll.
 
 ## Direct AG-UI request

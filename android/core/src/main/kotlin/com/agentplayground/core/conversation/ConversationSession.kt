@@ -77,6 +77,12 @@ class ConversationSession(
                 modelSelectionLocal = saved.modelSelectionLocal,
                 pendingSubmission = saved.pending != null,
                 messages = pendingMessage(saved.pending)?.let { listOf(it) }.orEmpty(),
+                messageTimestamps =
+                    saved.pending
+                        ?.let { pending ->
+                            pending.submittedAt?.let { mapOf(pending.messageId to it) }
+                        }
+                        .orEmpty(),
                 loading = !saved.empty || saved.pending != null,
             )
         )
@@ -377,6 +383,7 @@ class ConversationSession(
                     modelId = submissionModelId(!resume.isNullOrEmpty()),
                 ),
                 message.id,
+                submittedAt = now().toString(),
             ),
             message,
         )
@@ -521,6 +528,13 @@ class ConversationSession(
                         it.messages + message
                     } else {
                         it.messages
+                    },
+                messageTimestamps =
+                    if (message != null) {
+                        it.messageTimestamps +
+                            (message.id to (submission.submittedAt ?: now().toString()))
+                    } else {
+                        it.messageTimestamps
                     },
                 interrupts = emptyList(),
                 planDecisions = emptyMap(),
@@ -674,6 +688,8 @@ class ConversationSession(
 
                     current.copy(
                         title = snapshot?.title ?: current.title,
+                        messageTimestamps =
+                            current.messageTimestamps + snapshot?.messageTimestamps.orEmpty(),
                         messages =
                             if (useCanonicalMessages) {
                                 addOutputReplies(result.messages, current.outputs)
@@ -749,13 +765,17 @@ class ConversationSession(
         val activityEntry =
             ActivityEntry(++activitySequence, now().toEpochMilli(), activityRunId, event)
 
-        mutableState.update { reduceConversationEvent(it, event) }
+        val messageTime =
+            event.timestamp?.let(java.time.Instant::ofEpochMilli)?.toString()
+                ?: java.time.Instant.ofEpochMilli(activityEntry.receivedAt).toString()
+
+        mutableState.update { reduceConversationEvent(it, event, messageTime) }
 
         try {
             val output = decodeWorkflowOutput(event)
 
             if (output != null) {
-                ingestOutputs(listOf(output))
+                ingestOutputs(listOf(output), receivedAt = messageTime)
             }
         } catch (error: Exception) {
             mutableState.update {
@@ -775,15 +795,26 @@ class ConversationSession(
         mutableState.update { it.copy(activity = emptyList(), receivedEventCount = 0) }
     }
 
-    private fun ingestOutputs(outputs: List<WorkflowOutput>) {
+    private fun ingestOutputs(outputs: List<WorkflowOutput>, receivedAt: String? = null) {
         val delivery = outputBuffer.ingest(outputs)
 
         mutableState.update {
             val combined = it.outputs + delivery.ready
+            val messages = addOutputReplies(it.messages, combined)
+            val existingIds = it.messages.mapTo(mutableSetOf()) { message -> message.id }
+            val added = messages.filter { message -> message.id !in existingIds }
+            // Snapshot recovery uses canonical metadata; missing dates must stay unknown.
+            val addedTimestamps =
+                if (receivedAt != null) {
+                    added.associate { message -> message.id to receivedAt }
+                } else {
+                    emptyMap()
+                }
 
             it.copy(
                 outputs = combined,
-                messages = addOutputReplies(it.messages, combined),
+                messages = messages,
+                messageTimestamps = addedTimestamps + it.messageTimestamps,
                 outputError = delivery.error,
                 missingOutputSequence = outputBuffer.missingSequence,
             )

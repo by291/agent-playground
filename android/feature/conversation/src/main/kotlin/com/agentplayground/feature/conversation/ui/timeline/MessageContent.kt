@@ -9,6 +9,7 @@ import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -40,52 +41,66 @@ internal fun MessageContent(
     loadImage: suspend (String, Int) -> androidx.compose.ui.graphics.ImageBitmap? = { _, _ ->
         null
     },
+    timestamp: String? = null,
 ) {
     when (message) {
         is UserMessage ->
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                Surface(
-                    shape =
-                        RoundedCornerShape(
-                            topStart = 18.dp,
-                            topEnd = 18.dp,
-                            bottomStart = 18.dp,
-                            bottomEnd = 6.dp,
-                        ),
-                    color = MaterialTheme.colorScheme.surfaceContainerHighest,
-                    contentColor = MaterialTheme.colorScheme.onSurface,
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-                    modifier = Modifier.widthIn(max = 560.dp),
-                ) {
-                    val presentation =
-                        remember(message.content) { userMessagePresentation(message.content) }
-
-                    Column(
-                        Modifier.padding(horizontal = 18.dp, vertical = 12.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp),
+            Column(
+                Modifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.End,
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    Surface(
+                        shape =
+                            RoundedCornerShape(
+                                topStart = 18.dp,
+                                topEnd = 18.dp,
+                                bottomStart = 18.dp,
+                                bottomEnd = 6.dp,
+                            ),
+                        color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                        contentColor = MaterialTheme.colorScheme.onSurface,
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                        modifier = Modifier.widthIn(max = 560.dp),
                     ) {
-                        if (presentation.text.isNotEmpty()) {
-                            SelectionContainer {
-                                Text(presentation.text, style = MaterialTheme.typography.bodyLarge)
-                            }
-                        }
+                        val presentation =
+                            remember(message.content) { userMessagePresentation(message.content) }
 
-                        if (presentation.attachments.isNotEmpty()) {
-                            MessageAttachments(
-                                presentation.attachments.map(attachmentPresentation),
-                                onDownload,
-                                loadImage,
-                            )
+                        Column(
+                            Modifier.padding(horizontal = 18.dp, vertical = 12.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp),
+                        ) {
+                            if (presentation.text.isNotEmpty()) {
+                                SelectionContainer {
+                                    Text(
+                                        presentation.text,
+                                        style = MaterialTheme.typography.bodyLarge,
+                                    )
+                                }
+                            }
+
+                            if (presentation.attachments.isNotEmpty()) {
+                                MessageAttachments(
+                                    presentation.attachments.map(attachmentPresentation),
+                                    onDownload,
+                                    loadImage,
+                                )
+                            }
                         }
                     }
                 }
+                MessageTimestamp(timestamp, Modifier.padding(end = 6.dp))
             }
 
         is AssistantMessage -> {
             if (isReasoning(message)) {
                 Details("Reasoning") { Markdown(message.content.orEmpty(), onLink) }
             } else {
-                Markdown(message.content.orEmpty(), onLink)
+                Column {
+                    Markdown(message.content.orEmpty(), onLink)
+                    AssistantMessageFooter(message.id, message.content.orEmpty(), timestamp, true)
+                }
             }
         }
 
@@ -105,6 +120,7 @@ internal fun AssistantTurnContent(
     onDownload: (Download) -> Unit,
     onLink: (String) -> Unit,
     processDetails: @Composable () -> Unit = {},
+    messageTimestamps: Map<String, String> = emptyMap(),
     children: @Composable () -> Unit = {},
 ) {
     val active = isActiveRun(turn.status)
@@ -163,20 +179,28 @@ internal fun AssistantTurnContent(
             MarkdownSelection {
                 Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     answers.forEach { message ->
-                        Markdown(
-                            message.content.orEmpty(),
-                            replyLink,
-                            settled = !active,
-                            citations = turn.sources,
-                            onTextVisible = {
-                                if (
-                                    turn.messages.indexOf(message) > lastReasoningIndex &&
-                                        message.toolCalls.isNullOrEmpty()
-                                ) {
-                                    visibleAnswerPhase = reasoning.size
-                                }
-                            },
-                        )
+                        Column {
+                            Markdown(
+                                message.content.orEmpty(),
+                                replyLink,
+                                settled = !active,
+                                citations = turn.sources,
+                                onTextVisible = {
+                                    if (
+                                        turn.messages.indexOf(message) > lastReasoningIndex &&
+                                            message.toolCalls.isNullOrEmpty()
+                                    ) {
+                                        visibleAnswerPhase = reasoning.size
+                                    }
+                                },
+                            )
+                            AssistantMessageFooter(
+                                message.id,
+                                message.content.orEmpty(),
+                                messageTimestamps[message.id],
+                                !active,
+                            )
+                        }
                     }
                 }
             }

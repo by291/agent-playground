@@ -40,6 +40,7 @@ data class ConversationSnapshot(
     val contextUsage: ContextUsage? = null,
     val externalTasks: List<ExternalTask> = emptyList(),
     val modelId: String? = null,
+    val messageTimestamps: Map<String, String> = emptyMap(),
 )
 
 @Serializable
@@ -67,7 +68,12 @@ data class AgentModel(val id: String, val label: String, val model: String, val 
 
 @Serializable data class ConversationModel(val threadId: String, val modelId: String)
 
-@Serializable data class PendingSubmission(val input: RunAgentInput, val messageId: String)
+@Serializable
+data class PendingSubmission(
+    val input: RunAgentInput,
+    val messageId: String,
+    val submittedAt: String? = null,
+)
 
 @Serializable
 data class SavedConversation(

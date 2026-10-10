@@ -132,6 +132,7 @@ internal fun ConversationTimeline(
                                 },
                                 onDownload,
                                 loadImage,
+                                timestamp = state.messageTimestamps[message.id],
                             )
                         }
                     )
@@ -151,6 +152,7 @@ internal fun ConversationTimeline(
                                 state.externalTaskControls,
                                 onSubmitExternalTaskInput,
                                 onCancelExternalTask,
+                                messageTimestamps = state.messageTimestamps,
                             )
                         }
                     )
