@@ -10,8 +10,8 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.withLink
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.em
-import com.agentplayground.core.presentation.ReplySources
-import com.agentplayground.core.presentation.knowledgeCitationId
+import com.agentplayground.domain.presentation.ReplySources
+import com.agentplayground.domain.presentation.knowledgeCitationId
 import com.mikepenz.markdown.annotator.DefaultAnnotatorSettings
 import com.mikepenz.markdown.annotator.buildMarkdownAnnotatedString
 import com.mikepenz.markdown.model.MarkdownAnnotator

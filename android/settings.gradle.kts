@@ -1,4 +1,5 @@
 pluginManagement {
+    includeBuild("build-logic")
     repositories {
         google()
         mavenCentral()
@@ -8,7 +9,6 @@ pluginManagement {
 
 dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
-
     repositories {
         google()
         mavenCentral()
@@ -17,6 +17,6 @@ dependencyResolutionManagement {
 
 rootProject.name = "AgentPlaygroundAndroid"
 
-include(":app", ":core", ":data", ":ui")
+include(":app", ":core:domain", ":core:data", ":core:design", ":core:ui")
 
 include(":feature:conversation", ":feature:knowledge", ":feature:memory", ":feature:settings")

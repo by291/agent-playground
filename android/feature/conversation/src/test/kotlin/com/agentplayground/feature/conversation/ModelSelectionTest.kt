@@ -4,11 +4,9 @@ import android.os.Looper
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.ViewModelStore
-import com.agentplayground.core.model.SavedConversation
-import com.agentplayground.core.network.PlaygroundApi
-import com.agentplayground.data.PreferencesRepository
-import com.agentplayground.data.conversation.ConversationRepository
-import com.agentplayground.data.files.DocumentAccess
+import com.agentplayground.data.RepositoryFactory
+import com.agentplayground.domain.model.SavedConversation
+import com.agentplayground.domain.repository.ConversationJournal
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.runBlocking
@@ -108,7 +106,7 @@ class ModelSelectionTest {
             (
                 MockWebServer,
                 ConversationViewModel,
-                PreferencesRepository.ConversationJournal,
+                ConversationJournal,
                 AtomicInteger,
                 AtomicInteger,
             ) -> Unit,
@@ -156,7 +154,8 @@ class ModelSelectionTest {
                 }
             server.start()
             val context = RuntimeEnvironment.getApplication()
-            val journal = PreferencesRepository(context).conversations(server.url("/").toString())
+            val journal =
+                RepositoryFactory(context).preferences.conversations(server.url("/").toString())
             runBlocking {
                 journal.write(SavedConversation("thread", empty = false))
                 journal.select("thread")
@@ -171,11 +170,7 @@ class ModelSelectionTest {
                             modelClass: Class<T>
                         ): T =
                             ConversationViewModel(
-                                ConversationRepository(
-                                    PlaygroundApi(server.url("/").toString()),
-                                    journal,
-                                    DocumentAccess(context.contentResolver),
-                                )
+                                RepositoryFactory(context).conversation(server.url("/").toString())
                             )
                                 as T
                     },

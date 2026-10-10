@@ -9,22 +9,22 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
-import com.agentplayground.core.conversation.PlanDraft
-import com.agentplayground.core.conversation.Review
-import com.agentplayground.core.model.ExternalTask
-import com.agentplayground.core.model.ExternalTaskAction
-import com.agentplayground.core.model.ExternalTaskControl
-import com.agentplayground.core.model.isExternalTaskActive
-import com.agentplayground.core.model.string
+import com.agentplayground.design.ChangingContent
+import com.agentplayground.design.Details
+import com.agentplayground.design.Reveal
+import com.agentplayground.design.RevealValue
+import com.agentplayground.design.SectionCard
+import com.agentplayground.design.StatusTag
+import com.agentplayground.design.reportedProgress
+import com.agentplayground.domain.conversation.PlanDraft
+import com.agentplayground.domain.conversation.Review
+import com.agentplayground.domain.model.ExternalTask
+import com.agentplayground.domain.model.ExternalTaskAction
+import com.agentplayground.domain.model.ExternalTaskControl
+import com.agentplayground.domain.model.isExternalTaskActive
+import com.agentplayground.domain.model.string
 import com.agentplayground.feature.conversation.ui.timeline.AgentTaskOutputs
 import com.agentplayground.feature.conversation.ui.timeline.ReplyEntrance
-import com.agentplayground.ui.ChangingContent
-import com.agentplayground.ui.Details
-import com.agentplayground.ui.Reveal
-import com.agentplayground.ui.RevealValue
-import com.agentplayground.ui.SectionCard
-import com.agentplayground.ui.StatusTag
-import com.agentplayground.ui.reportedProgress
 import com.agui.core.types.Interrupt
 
 @Composable
@@ -284,7 +284,7 @@ internal fun ExternalTaskPanel(
                 ExternalTaskControls(task, control, onSubmitInput, onCancel)
             }
 
-            com.agentplayground.ui.Details("Task history") {
+            com.agentplayground.design.Details("Task history") {
                 task.history.forEach { Text(it.string("message").orEmpty()) }
             }
         }

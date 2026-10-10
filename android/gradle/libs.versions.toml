@@ -1,6 +1,6 @@
 [versions]
 agp = "9.3.3"
-kotlin = "2.2.10"
+kotlin = "2.4.20"
 compose = "2026.08.00"
 activity = "1.12.4"
 lifecycle = "2.10.0"
@@ -17,6 +17,12 @@ ktfmt = "0.63"
 highlights = "1.1.0"
 coil = "3.3.0"
 androidx-core = "1.19.0"
+
+hilt = "2.60.1"
+hiltCompose = "1.4.0"
+ksp = "2.3.12"
+navigation = "1.2.0"
+retrofit = "3.0.0"
 
 [libraries]
 androidx-core = { module = "androidx.core:core", version.ref = "androidx-core" }
@@ -50,6 +56,17 @@ coil-core = { module = "io.coil-kt.coil3:coil-core", version.ref = "coil" }
 junit = { module = "junit:junit", version = "4.13.2" }
 robolectric = { module = "org.robolectric:robolectric", version = "4.16.1" }
 
+hilt-android = { module = "com.google.dagger:hilt-android", version.ref = "hilt" }
+hilt-compiler = { module = "com.google.dagger:hilt-compiler", version.ref = "hilt" }
+hilt-compose = { module = "androidx.hilt:hilt-lifecycle-viewmodel-compose", version.ref = "hiltCompose" }
+
+navigation-runtime = { module = "androidx.navigation3:navigation3-runtime", version.ref = "navigation" }
+navigation-ui = { module = "androidx.navigation3:navigation3-ui", version.ref = "navigation" }
+lifecycle-navigation = { module = "androidx.lifecycle:lifecycle-viewmodel-navigation3", version.ref = "lifecycle" }
+
+retrofit-core = { module = "com.squareup.retrofit2:retrofit", version.ref = "retrofit" }
+retrofit-serialization = { module = "com.squareup.retrofit2:converter-kotlinx-serialization", version.ref = "retrofit" }
+
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
 android-library = { id = "com.android.library", version.ref = "agp" }
@@ -58,3 +75,5 @@ spotless = { id = "com.diffplug.spotless", version.ref = "spotless" }
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
 kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
+hilt = { id = "com.google.dagger.hilt.android", version.ref = "hilt" }
+ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }

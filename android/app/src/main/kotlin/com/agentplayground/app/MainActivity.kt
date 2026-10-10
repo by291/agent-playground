@@ -11,20 +11,24 @@ import androidx.compose.ui.graphics.luminance
 import androidx.core.view.WindowCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.agentplayground.app.navigation.PlaygroundApp
-import com.agentplayground.ui.PlaygroundTheme
+import com.agentplayground.design.PlaygroundTheme
+import com.agentplayground.domain.repository.PreferencesRepository
+import dagger.hilt.android.AndroidEntryPoint
+import javax.inject.Inject
 
+@AndroidEntryPoint
 class MainActivity : ComponentActivity() {
+    @Inject lateinit var preferences: PreferencesRepository
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
-        val application = application as PlaygroundApplication
-
         setContent {
-            val preferences by
-                application.preferences.preferences.collectAsStateWithLifecycle(initialValue = null)
+            val currentPreferences by
+                preferences.preferences.collectAsStateWithLifecycle(initialValue = null)
 
-            preferences?.let { value ->
+            currentPreferences?.let { value ->
                 PlaygroundTheme(value.theme) {
                     val lightBars = MaterialTheme.colorScheme.surface.luminance() > 0.5f
 
@@ -35,7 +39,7 @@ class MainActivity : ComponentActivity() {
                         }
                     }
 
-                    PlaygroundApp(application, value)
+                    PlaygroundApp(value)
                 }
             }
         }

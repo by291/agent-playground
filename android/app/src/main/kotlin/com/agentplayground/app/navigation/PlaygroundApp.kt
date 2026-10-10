@@ -7,28 +7,30 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.LifecycleResumeEffect
-import com.agentplayground.app.PlaygroundApplication
 import com.agentplayground.app.di.rememberWorkspaceModels
-import com.agentplayground.data.AppPreferences
+import com.agentplayground.domain.settings.AppPreferences
 import com.agentplayground.feature.settings.SettingsRoute
 import com.agentplayground.ui.network.ServerNetworkAccess
 import com.agentplayground.ui.network.rememberServerNetworkAccess
 import kotlinx.coroutines.launch
 
 @Composable
-internal fun PlaygroundApp(application: PlaygroundApplication, preferences: AppPreferences) {
+internal fun PlaygroundApp(preferences: AppPreferences) {
     val networkAccess = rememberServerNetworkAccess()
 
-    ServerConnectionGate(application, preferences, networkAccess) {
-        val models = rememberWorkspaceModels(application, preferences.serverUrl)
+    ServerConnectionGate(preferences, networkAccess) {
+        val models = rememberWorkspaceModels(preferences.serverUrl)
 
-        PlaygroundWorkspace(application.preferences, preferences, networkAccess, models)
+        PlaygroundWorkspace(
+            preferences,
+            networkAccess,
+            models,
+        )
     }
 }
 
 @Composable
 internal fun ServerConnectionGate(
-    application: PlaygroundApplication,
     preferences: AppPreferences,
     networkAccess: ServerNetworkAccess,
     content: @Composable () -> Unit,
@@ -55,7 +57,6 @@ internal fun ServerConnectionGate(
         false ->
             SettingsRoute(
                 preferences = preferences,
-                store = application.preferences,
                 onClear = null,
                 conversationBusy = false,
                 conversationError = null,

@@ -7,11 +7,11 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createComposeRule
-import com.agentplayground.core.model.ImagePreview
-import com.agentplayground.core.model.MessageAttachment
+import com.agentplayground.design.Details
+import com.agentplayground.design.PlaygroundTheme
+import com.agentplayground.domain.model.ImagePreview
+import com.agentplayground.domain.model.MessageAttachment
 import com.agentplayground.feature.conversation.ui.attachments.AttachmentImageViewer
-import com.agentplayground.ui.Details
-import com.agentplayground.ui.PlaygroundTheme
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith

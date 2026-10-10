@@ -3,9 +3,12 @@ package com.agentplayground.feature.settings
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.agentplayground.core.network.normalizeServerUrl
-import com.agentplayground.data.PreferencesRepository
-import com.agentplayground.data.server.ServerRepository
+import com.agentplayground.domain.repository.PreferencesRepository
+import com.agentplayground.domain.repository.ServerRepository
+import dagger.assisted.Assisted
+import dagger.assisted.AssistedFactory
+import dagger.assisted.AssistedInject
+import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
@@ -15,22 +18,20 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-internal data class SettingsState(
-    val server: String,
-    val pending: Boolean = false,
-    val permissionRequest: String? = null,
-    val permissionDenied: Boolean = false,
-    val error: String? = null,
-    val status: String? = null,
-    val connectedServerUrl: String? = null,
-)
-
-internal class SettingsViewModel(
+@HiltViewModel(assistedFactory = SettingsViewModel.Factory::class)
+internal class SettingsViewModel
+@AssistedInject
+constructor(
     private val store: PreferencesRepository,
     private val savedState: SavedStateHandle,
-    serverUrl: String,
-    private val checkConnection: suspend (String) -> String = ServerRepository()::checkConnection,
+    @Assisted serverUrl: String,
+    private val server: ServerRepository,
 ) : ViewModel() {
+    @AssistedFactory
+    interface Factory {
+        fun create(serverUrl: String): SettingsViewModel
+    }
+
     private val mutableState =
         MutableStateFlow(SettingsState(server = savedState["server"] ?: serverUrl))
     val state = mutableState.asStateFlow()
@@ -67,7 +68,7 @@ internal class SettingsViewModel(
         }
 
         try {
-            val server = normalizeServerUrl(state.value.server)
+            val server = server.normalizeUrl(state.value.server)
 
             mutableState.update {
                 it.copy(pending = true, permissionRequest = server, error = null, status = null)
@@ -96,7 +97,7 @@ internal class SettingsViewModel(
                 val activeJob = coroutineContext[Job]
 
                 try {
-                    val model = checkConnection(serverUrl)
+                    val model = server.checkConnection(serverUrl)
 
                     coroutineContext.ensureActive()
                     store.updateServerUrl(serverUrl)

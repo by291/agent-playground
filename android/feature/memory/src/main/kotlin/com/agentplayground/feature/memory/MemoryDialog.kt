@@ -12,8 +12,8 @@ import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.DialogProperties
-import com.agentplayground.core.model.MemoryRecord
-import com.agentplayground.ui.ErrorNotice
+import com.agentplayground.design.ErrorNotice
+import com.agentplayground.domain.model.MemoryRecord
 
 @Composable
 internal fun MemoryDialog(

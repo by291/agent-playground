@@ -2,15 +2,32 @@ package com.agentplayground.feature.memory
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.agentplayground.core.model.MemoryRecord
-import com.agentplayground.core.model.validateMemoryText
-import com.agentplayground.core.network.ApiException
-import com.agentplayground.data.memory.MemoryRepository
+import com.agentplayground.domain.model.ApiException
+import com.agentplayground.domain.model.MemoryRecord
+import com.agentplayground.domain.model.validateMemoryText
+import com.agentplayground.domain.repository.MemoryRepository
+import com.agentplayground.domain.repository.RepositoryProvider
+import dagger.assisted.Assisted
+import dagger.assisted.AssistedFactory
+import dagger.assisted.AssistedInject
+import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 
+@HiltViewModel(assistedFactory = MemoryViewModel.Factory::class)
 class MemoryViewModel(private val repository: MemoryRepository) : ViewModel() {
+    @AssistedInject
+    constructor(
+        repositories: RepositoryProvider,
+        @Assisted serverUrl: String,
+    ) : this(repositories.memory(serverUrl))
+
+    @AssistedFactory
+    interface Factory {
+        fun create(serverUrl: String): MemoryViewModel
+    }
+
     private val mutable = MutableStateFlow(MemoryUiState())
     val state = mutable.asStateFlow()
     private var loadedPages = 1
@@ -229,32 +246,4 @@ class MemoryViewModel(private val repository: MemoryRepository) : ViewModel() {
     override fun onCleared() {
         repository.close()
     }
-}
-
-enum class MemoryAction {
-    Correct,
-    Forget,
-}
-
-data class MemoryDialogState(
-    val action: MemoryAction,
-    val memory: MemoryRecord,
-    val draft: String = memory.text,
-    val conflict: Boolean = false,
-    val error: String? = null,
-)
-
-data class MemoryUiState(
-    val memories: List<MemoryRecord> = emptyList(),
-    val nextOffset: Int? = null,
-    val loaded: Boolean = false,
-    val loading: Boolean = false,
-    val loadingMore: Boolean = false,
-    val mutating: Boolean = false,
-    val error: String? = null,
-    val moreError: String? = null,
-    val dialog: MemoryDialogState? = null,
-) {
-    val busy: Boolean
-        get() = loading || loadingMore || mutating
 }

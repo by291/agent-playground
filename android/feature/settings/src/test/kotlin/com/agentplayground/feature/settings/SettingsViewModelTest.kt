@@ -6,8 +6,10 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
-import com.agentplayground.data.AppPreferences
-import com.agentplayground.data.PreferencesRepository
+import com.agentplayground.data.RepositoryFactory
+import com.agentplayground.domain.repository.PreferencesRepository
+import com.agentplayground.domain.repository.ServerRepository
+import com.agentplayground.domain.settings.AppPreferences
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.NonCancellable
@@ -27,7 +29,7 @@ import org.robolectric.annotation.Config
 class SettingsViewModelTest {
     @Test
     fun `denied permission never checks the server and retry saves only after successful check`() {
-        val preferences = PreferencesRepository(RuntimeEnvironment.getApplication())
+        val preferences = RepositoryFactory(RuntimeEnvironment.getApplication()).preferences
         val models = ViewModelStore()
         var checks = 0
         val model =
@@ -65,7 +67,7 @@ class SettingsViewModelTest {
 
     @Test
     fun `failed connection retains stored server and allows another attempt`() {
-        val preferences = PreferencesRepository(RuntimeEnvironment.getApplication())
+        val preferences = RepositoryFactory(RuntimeEnvironment.getApplication()).preferences
         val models = ViewModelStore()
         var attempts = 0
         val model =
@@ -101,7 +103,7 @@ class SettingsViewModelTest {
 
     @Test
     fun `draft survives saved state and disposing the model cancels the connection check`() {
-        val preferences = PreferencesRepository(RuntimeEnvironment.getApplication())
+        val preferences = RepositoryFactory(RuntimeEnvironment.getApplication()).preferences
         val savedState = SavedStateHandle()
         val models = ViewModelStore()
         val started = AtomicBoolean()
@@ -127,7 +129,13 @@ class SettingsViewModelTest {
 
             val restoredState =
                 SavedStateHandle(mapOf("server" to savedState.get<String>("server")))
-            val restored = SettingsViewModel(preferences, restoredState, AppPreferences().serverUrl)
+            val restored =
+                SettingsViewModel(
+                    preferences,
+                    restoredState,
+                    AppPreferences().serverUrl,
+                    RepositoryFactory(RuntimeEnvironment.getApplication()).server,
+                )
 
             assertEquals(serverUrl, restored.state.value.server)
             assertFalse(restored.state.value.pending)
@@ -146,7 +154,7 @@ class SettingsViewModelTest {
 
     @Test
     fun `leaving settings cancels an outstanding permission request and allows a fresh attempt`() {
-        val preferences = PreferencesRepository(RuntimeEnvironment.getApplication())
+        val preferences = RepositoryFactory(RuntimeEnvironment.getApplication()).preferences
         val models = ViewModelStore()
         var checks = 0
         val model =
@@ -180,7 +188,7 @@ class SettingsViewModelTest {
 
     @Test
     fun `cancelled checker finishing after a retry cannot save or finalize the new attempt`() {
-        val preferences = PreferencesRepository(RuntimeEnvironment.getApplication())
+        val preferences = RepositoryFactory(RuntimeEnvironment.getApplication()).preferences
         val models = ViewModelStore()
         val oldResult = CompletableDeferred<String>()
         val oldCleanup = CompletableDeferred<Unit>()
@@ -262,7 +270,15 @@ class SettingsViewModelTest {
                         preferences,
                         savedState,
                         AppPreferences().serverUrl,
-                        checkConnection,
+                        object : ServerRepository {
+                            override fun normalizeUrl(value: String) =
+                                RepositoryFactory(RuntimeEnvironment.getApplication())
+                                    .server
+                                    .normalizeUrl(value)
+
+                            override suspend fun checkConnection(serverUrl: String): String =
+                                checkConnection(serverUrl)
+                        },
                     )
                 }
             },

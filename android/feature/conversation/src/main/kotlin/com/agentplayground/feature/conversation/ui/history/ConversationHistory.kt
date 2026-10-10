@@ -22,14 +22,14 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
-import com.agentplayground.core.model.ConversationSummary
-import com.agentplayground.core.model.isActiveRun
+import com.agentplayground.design.AgentMark
+import com.agentplayground.design.ConfirmDelete
+import com.agentplayground.design.ErrorNotice
+import com.agentplayground.design.Motion
+import com.agentplayground.design.Reveal
+import com.agentplayground.domain.model.ConversationSummary
+import com.agentplayground.domain.model.isActiveRun
 import com.agentplayground.feature.conversation.ConversationUiState
-import com.agentplayground.ui.AgentMark
-import com.agentplayground.ui.ConfirmDelete
-import com.agentplayground.ui.ErrorNotice
-import com.agentplayground.ui.Motion
-import com.agentplayground.ui.Reveal
 
 @Composable
 internal fun ConversationHistory(

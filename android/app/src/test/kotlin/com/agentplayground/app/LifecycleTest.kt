@@ -5,8 +5,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import com.agentplayground.app.di.ServerGraph
 import com.agentplayground.app.navigation.WorkspaceDestination
-import com.agentplayground.core.model.Download
+import com.agentplayground.domain.model.Download
 import com.agentplayground.ui.DownloadSaver
+import kotlinx.serialization.json.Json
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -60,14 +61,12 @@ class LifecycleTest {
 
     @Test
     fun `workspace destinations survive saved state serialization`() {
-        val scope = androidx.compose.runtime.saveable.SaverScope { true }
-
-        with(WorkspaceDestination.saver) {
-            WorkspaceDestination.entries.forEach { destination ->
-                val saved = with(scope) { save(destination) }!!
-
-                assertEquals(destination, restore(saved))
-            }
+        WorkspaceDestination.entries.forEach { destination ->
+            val saved = Json.encodeToString(WorkspaceDestination.serializer(), destination)
+            assertEquals(
+                destination,
+                Json.decodeFromString(WorkspaceDestination.serializer(), saved),
+            )
         }
     }
 

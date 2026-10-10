@@ -5,15 +5,12 @@ import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.ViewModelStore
-import com.agentplayground.core.model.ConversationSnapshot
-import com.agentplayground.core.model.SavedConversation
-import com.agentplayground.core.model.protocolJson
-import com.agentplayground.core.network.PlaygroundApi
-import com.agentplayground.data.AppPreferences
-import com.agentplayground.data.PreferencesRepository
-import com.agentplayground.data.conversation.ConversationRepository
-import com.agentplayground.data.files.DocumentAccess
-import com.agentplayground.ui.PlaygroundTheme
+import com.agentplayground.data.RepositoryFactory
+import com.agentplayground.design.PlaygroundTheme
+import com.agentplayground.domain.model.ConversationSnapshot
+import com.agentplayground.domain.model.SavedConversation
+import com.agentplayground.domain.model.protocolJson
+import com.agentplayground.domain.settings.AppPreferences
 import com.agui.core.types.*
 import kotlinx.coroutines.runBlocking
 import okhttp3.mockwebserver.*
@@ -115,7 +112,8 @@ class ConversationScrollTest {
             server.start()
 
             val context = RuntimeEnvironment.getApplication()
-            val journal = PreferencesRepository(context).conversations(server.url("/").toString())
+            val journal =
+                RepositoryFactory(context).preferences.conversations(server.url("/").toString())
 
             runBlocking {
                 journal.write(SavedConversation("a", empty = false))
@@ -132,11 +130,7 @@ class ConversationScrollTest {
                             modelClass: Class<T>
                         ): T =
                             ConversationViewModel(
-                                ConversationRepository(
-                                    PlaygroundApi(server.url("/").toString()),
-                                    journal,
-                                    DocumentAccess(context.contentResolver),
-                                )
+                                RepositoryFactory(context).conversation(server.url("/").toString())
                             )
                                 as T
                     },

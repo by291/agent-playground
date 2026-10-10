@@ -1,13 +1,13 @@
 package com.agentplayground.feature.conversation
 
-import com.agentplayground.core.conversation.SessionState
-import com.agentplayground.core.model.AgentOutput
-import com.agentplayground.core.model.ExternalTask
-import com.agentplayground.core.model.RunRecord
-import com.agentplayground.core.model.WorkflowMetadata
-import com.agentplayground.core.model.WorkflowOutput
-import com.agentplayground.core.model.WorkflowPresentation
-import com.agentplayground.core.presentation.LegacyWorkflowSurface
+import com.agentplayground.domain.conversation.SessionState
+import com.agentplayground.domain.model.AgentOutput
+import com.agentplayground.domain.model.ExternalTask
+import com.agentplayground.domain.model.RunRecord
+import com.agentplayground.domain.model.WorkflowMetadata
+import com.agentplayground.domain.model.WorkflowOutput
+import com.agentplayground.domain.model.WorkflowPresentation
+import com.agentplayground.domain.presentation.LegacyWorkflowSurface
 import com.agentplayground.feature.conversation.ui.timeline.conversationTimelineModel
 import com.agui.core.types.*
 import kotlinx.serialization.json.*

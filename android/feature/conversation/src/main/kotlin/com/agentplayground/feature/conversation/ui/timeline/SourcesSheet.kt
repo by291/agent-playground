@@ -21,9 +21,9 @@ import androidx.compose.ui.semantics.paneTitle
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.agentplayground.core.model.Download
-import com.agentplayground.core.presentation.ReplySources
-import com.agentplayground.ui.Motion
+import com.agentplayground.design.Motion
+import com.agentplayground.domain.model.Download
+import com.agentplayground.domain.presentation.ReplySources
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)

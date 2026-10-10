@@ -8,8 +8,8 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.agentplayground.core.model.KnowledgeDocument
-import com.agentplayground.ui.ErrorNotice
+import com.agentplayground.design.ErrorNotice
+import com.agentplayground.domain.model.KnowledgeDocument
 
 private val textEncodings =
     listOf(

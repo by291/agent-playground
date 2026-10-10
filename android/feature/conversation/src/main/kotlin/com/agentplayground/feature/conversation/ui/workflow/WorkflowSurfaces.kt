@@ -6,7 +6,7 @@ import androidx.a2ui.compose.ui.A2uiMessageProcessor
 import androidx.a2ui.model.protocol.A2uiCreateSurfaceMessage
 import androidx.a2ui.model.protocol.A2uiDeleteSurfaceMessage
 import androidx.compose.runtime.*
-import com.agentplayground.core.model.WorkflowOutput
+import com.agentplayground.domain.model.WorkflowOutput
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.*
 

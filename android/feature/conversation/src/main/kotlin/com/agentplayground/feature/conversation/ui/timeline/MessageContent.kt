@@ -13,21 +13,21 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.agentplayground.core.model.Download
-import com.agentplayground.core.model.MessageAttachment
-import com.agentplayground.core.model.SkillFile
-import com.agentplayground.core.model.isActiveRun
-import com.agentplayground.core.model.isReasoning
-import com.agentplayground.core.presentation.ConversationTurn
-import com.agentplayground.core.presentation.ExecutionKind
-import com.agentplayground.core.presentation.UploadedAttachment
-import com.agentplayground.core.presentation.executionGroups
-import com.agentplayground.core.presentation.skillFiles
-import com.agentplayground.core.presentation.userMessagePresentation
+import com.agentplayground.design.Details
+import com.agentplayground.domain.model.Download
+import com.agentplayground.domain.model.MessageAttachment
+import com.agentplayground.domain.model.SkillFile
+import com.agentplayground.domain.model.isActiveRun
+import com.agentplayground.domain.model.isReasoning
+import com.agentplayground.domain.presentation.ConversationTurn
+import com.agentplayground.domain.presentation.ExecutionKind
+import com.agentplayground.domain.presentation.UploadedAttachment
+import com.agentplayground.domain.presentation.executionGroups
+import com.agentplayground.domain.presentation.skillFiles
+import com.agentplayground.domain.presentation.userMessagePresentation
 import com.agentplayground.feature.conversation.ui.attachments.MessageAttachments
 import com.agentplayground.feature.conversation.ui.markdown.Markdown
 import com.agentplayground.feature.conversation.ui.markdown.MarkdownSelection
-import com.agentplayground.ui.Details
 import com.agui.core.types.*
 
 @Composable

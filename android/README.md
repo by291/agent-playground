@@ -70,7 +70,7 @@ The model control in the composer opens the conversation's model picker. Select 
 
 Opening or switching conversations starts at their newest content. Streaming follows the latest reply while the reader remains at the bottom; scrolling upward pauses following and exposes a jump control. Physical send shortcuts preserve IME composition and Shift/Alt newline entry.
 
-Motion is defined in `ui/src/main/kotlin/com/agentplayground/ui/Motion.kt`: short feedback fades, disclosure expansion with rotating chevrons, coordinated page transitions and interpolation between reported progress values. All Compose animations inherit Android's system duration scale, including disabled animations. Drawer selection installs the target page before the foreground settles; activity and the phone source reader support directional navigation and predictive Back previews. Attachments and input height animate without replacing the text field, changing its selection or requesting focus. Stable list keys animate localized insertions, removals and placement changes; live activity events have no entrance fades. Streaming Markdown and A2UI bindings do not replay content animations. Theme changes interpolate the existing palette while preserving the composition. Animation completion never controls server execution, admission or persistence.
+Motion is defined in `core/design/src/main/kotlin/com/agentplayground/design/Motion.kt`: short feedback fades, disclosure expansion with rotating chevrons, coordinated page transitions and interpolation between reported progress values. All Compose animations inherit Android's system duration scale, including disabled animations. Drawer selection installs the target page before the foreground settles; activity and the phone source reader support directional navigation and predictive Back previews. Attachments and input height animate without replacing the text field, changing its selection or requesting focus. Stable list keys animate localized insertions, removals and placement changes; live activity events have no entrance fades. Streaming Markdown and A2UI bindings do not replay content animations. Theme changes interpolate the existing palette while preserving the composition. Animation completion never controls server execution, admission or persistence.
 
 Agent activity is a secondary full-screen page with native Back navigation. Chat observation continues while it is open, and returning preserves the reading position and draft. It shows event time/run groups, merged or individual streaming events, full SDK payloads and copy/clear controls. A rolling window retains up to 300 events and reports both received and retained counts; clearing affects the client log. Past events are not restored from server snapshots.
 
@@ -78,20 +78,22 @@ Knowledge groups upload guidance and document status, with save/reindex/delete i
 
 ## Architecture
 
-The Android client has eight Gradle modules:
+The Android client has nine Gradle modules:
 
 ```text
-app                   Entry points, dependency assembly, navigation and lifecycle
-feature/conversation  Conversation UI/state and official A2UI workflow rendering
-feature/knowledge     Knowledge UI/state and foreground status observation
-feature/memory        Memory list, correction/forget state and revision-conflict review
-feature/settings      Settings UI/state and permission/connection coordination
-data                  Repositories, preferences/journals and platform file/image access
-ui                    Shared Compose design, brand resources and permission bridges
-core                  JVM models, HTTP/SSE, conversation runtime and pure presentation
+app                   Android entry points, Hilt assembly, Navigation 3 and lifecycle
+core/domain           Pure JVM contracts, repository interfaces, session/recovery and projection
+core/data             Retrofit REST, OkHttp SSE, repository implementations, DataStore and files
+core/design           Domain-independent Compose theme, components, motion and brand resources
+core/ui               Permissions, saved UI adapters and Coil image decoding
+feature/conversation  Conversation Route/Screen/ViewModel/UiState and official A2UI rendering
+feature/knowledge     Document Route/Screen/ViewModel/UiState and foreground observation
+feature/memory        Memory Route/Screen/ViewModel/UiState and revision-conflict review
+feature/settings      Settings Route/Screen/ViewModel/State and permission/connection coordination
+build-logic           Shared Gradle conventions (included build)
 ```
 
-Features depend on data and shared UI; app assembles them. ViewModels coordinate screen state and repositories. Routes collect state with AndroidX lifecycle APIs and retain system permission/file-picker interactions at the UI boundary. Rendering components receive data and action callbacks. Repositories own transport and platform data access; `ConversationSession` retains sole ownership of conversation run state. Each repository is closed by its owning ViewModel when the server-scoped graph is released.
+Features depend on domain interfaces, design and UI. Hilt provides ViewModels and repository ports; the server-scoped graph retains conversation, knowledge and memory across Activity recreation. Navigation 3 owns primary stacks, activity back navigation and entry saved state. Routes bind lifecycle state and system launchers; Screens receive state and callbacks. Repository owners close their clients when released. `ConversationSession` keeps sole ownership of conversation run state. Coil decoders belong to the visible UI. Retrofit handles REST conversion/cancellation; OkHttp's EventSource handles SSE. DataStore retains the existing local schema.
 
 See the [Android architecture guide](../docs/android-architecture.md) for package entry points, the dependency graph, resource lifetimes, admission/recovery guarantees and verification ownership. Storage keys, server contracts, original admission identities and user behavior are preserved by the module structure.
 
@@ -99,13 +101,14 @@ See the [Android architecture guide](../docs/android-architecture.md) for packag
 
 - `spotlessApply` / `spotlessCheck`: format or check all Kotlin source/tests and Gradle Kotlin scripts with pinned Spotless + ktfmt, using four-space Kotlin language style. Generated build files are outside the formatter targets. `.editorconfig` uses matching Kotlin indentation.
 - `lintCheck`: Android Lint analyzes every Android module and the JVM core, including test sources. Warnings and errors fail the build; HTML/XML/SARIF reports are written under each module's `build/reports/`. Only dependency upgrade advisories (`GradleDependency`, `NewerVersionAvailable` and `AndroidGradlePluginVersion`) are disabled: pinned dependency upgrades are reviewed separately, so a new remote release cannot change the quality gate.
-- `:core:test`: protocol inputs, public reasoning compatibility, individual edited/expired reviews, output ordering/gap gates, prepared recovery, selected-model admission/retry/review inheritance, concurrent model/draft persistence, stale model snapshots, stream settlement, visibility, stale checkpoints, real HTTP/SSE fixtures and file boundaries.
-- `:feature:conversation:testDebugUnitTest`, `:feature:knowledge:testDebugUnitTest`, `:feature:settings:testDebugUnitTest`, `:data:testDebugUnitTest`, `:ui:testDebugUnitTest` and `:app:testDebugUnitTest`: Robolectric native Compose rendering of the official v0.9 workflow catalog, editable review UI, configuration recreation, save-target serialization, original-ID upload retry/resume and validation, initial/cross-thread scrolling, history mutation guards, Markdown/source controls, image gallery selection and gestures, bounded zoom/pan, loading cancellation, interruptible disclosure motion, zero-duration behavior, reported progress interpolation, snapshot-aware message entrances, drawer handoff, activity navigation preserving live observation/reading state, model picker availability/blocking and draft/focus preservation, canonical selection across metadata refresh and server conflicts, and a complete conversation screen through real HTTP/SSE fixtures.
+- `architectureCheck`: enforce production module edges, feature/data boundaries and pure JVM domain ownership.
+- `:core:domain:test`: protocol inputs, public reasoning compatibility, individual edited/expired reviews, output ordering/gap gates, prepared recovery, selected-model admission/retry/review inheritance, concurrent model/draft persistence, stale model snapshots, stream settlement, visibility, stale checkpoints, history coordination and attachment presentation contracts.
+- `:feature:conversation:testDebugUnitTest`, `:feature:knowledge:testDebugUnitTest`, `:feature:settings:testDebugUnitTest`, `:core:data:testDebugUnitTest`, `:core:ui:testDebugUnitTest` and `:app:testDebugUnitTest`: Robolectric native Compose rendering of the official v0.9 workflow catalog, editable review UI, configuration recreation, save-target serialization, original-ID upload retry/resume and validation, initial/cross-thread scrolling, history mutation guards, Markdown/source controls, image gallery selection and gestures, bounded zoom/pan, loading cancellation, interruptible disclosure motion, zero-duration behavior, reported progress interpolation, snapshot-aware message entrances, drawer handoff, activity navigation preserving live observation/reading state, model picker availability/blocking and draft/focus preservation, canonical selection across metadata refresh and server conflicts, and a complete conversation screen through real HTTP/SSE fixtures.
 - `:feature:memory:testDebugUnitTest`: pagination, revision conflicts, committed mutations after refresh errors and native correction/forget dialogs.
 - `:app:assembleDebug`: installable debug build.
 - `:app:assembleRelease`: optimized R8/resource-shrunk build; unsigned until a release signing configuration is supplied.
 
-`./gradlew qualityCheck` runs all checks above, including both builds. From the repository root, use `make android-format`, `make android-format-check`, `make android-lint` or `make android-check`. Android checks require JDK 21 and the Android SDK; the existing Python/TypeScript `make check` remains independent.
+`./gradlew qualityCheck` runs all checks above, including architecture rules and both builds. From the repository root, use `make android-format`, `make android-format-check`, `make android-lint` or `make android-check`. Android checks require JDK 21 and the Android SDK; the existing Python/TypeScript `make check` remains independent.
 
 The Android job in `.github/workflows/ci.yml` runs on pull requests and pushes to `main`. It sets up Temurin 21, SDK platform 37.1 and Build Tools 36.0.0, validates the Gradle wrapper through `setup-gradle`, and executes `qualityCheck`. Gradle task-output caching is enabled locally and in CI. GitHub Actions restores Gradle dependencies and cached build outputs from the latest compatible commit, falls back to earlier dependency state when build configuration changes, and saves updated state after a successful job. Test and lint reports are retained as a CI artifact for 14 days, including when verification fails. CI uses JVM/Robolectric tests without an emulator or a live backend.
 

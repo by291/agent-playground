@@ -3,7 +3,7 @@ package com.agentplayground.feature.conversation.ui.markdown
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
-import com.agentplayground.ui.codeSyntaxTheme
+import com.agentplayground.design.codeSyntaxTheme
 import dev.snipme.highlights.Highlights
 import dev.snipme.highlights.model.ColorHighlight
 import dev.snipme.highlights.model.SyntaxLanguage

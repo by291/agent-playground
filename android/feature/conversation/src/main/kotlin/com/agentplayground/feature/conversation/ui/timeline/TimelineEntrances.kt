@@ -1,7 +1,7 @@
 package com.agentplayground.feature.conversation.ui.timeline
 
 import androidx.compose.runtime.*
-import com.agentplayground.ui.EntryAppearance
+import com.agentplayground.design.EntryAppearance
 
 internal val LocalTimelineEntrances = staticCompositionLocalOf<TimelineEntrances?> { null }
 internal val LocalReplyAnimation = staticCompositionLocalOf { false }

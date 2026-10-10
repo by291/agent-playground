@@ -1,13 +1,12 @@
 package com.agentplayground.app
 
-import androidx.activity.ComponentActivity
 import androidx.compose.material3.Text
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.lifecycle.Lifecycle
 import com.agentplayground.app.navigation.ServerConnectionGate
-import com.agentplayground.data.AppPreferences
-import com.agentplayground.ui.PlaygroundTheme
+import com.agentplayground.design.PlaygroundTheme
+import com.agentplayground.domain.settings.AppPreferences
 import com.agentplayground.ui.network.ServerNetworkAccess
 import kotlinx.coroutines.CompletableDeferred
 import org.junit.Assert.*
@@ -15,7 +14,6 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
-import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
@@ -23,7 +21,7 @@ import org.robolectric.annotation.GraphicsMode
 @Config(sdk = [35], application = PlaygroundApplication::class, qualifiers = "w360dp-h740dp-xxhdpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class ServerConnectionGateTest {
-    @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+    @get:Rule val compose = createAndroidComposeRule<ArchitectureTestActivity>()
 
     @Test
     fun `first launch waits for permission before creating the connected workspace`() {
@@ -107,11 +105,10 @@ class ServerConnectionGateTest {
     }
 
     private fun fixture(access: ServerNetworkAccess) {
-        val application = RuntimeEnvironment.getApplication() as PlaygroundApplication
 
         compose.setContent {
             PlaygroundTheme("light") {
-                ServerConnectionGate(application, AppPreferences(), access) {
+                ServerConnectionGate(AppPreferences(), access) {
                     Text("Connected workspace")
                 }
             }

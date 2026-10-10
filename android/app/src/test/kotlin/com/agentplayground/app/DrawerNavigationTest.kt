@@ -7,14 +7,14 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.test.*
-import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.unit.dp
 import com.agentplayground.app.navigation.PlaygroundApp
-import com.agentplayground.core.model.ConversationSnapshot
-import com.agentplayground.core.model.SavedConversation
-import com.agentplayground.core.model.protocolJson
-import com.agentplayground.data.AppPreferences
-import com.agentplayground.ui.PlaygroundTheme
+import com.agentplayground.design.PlaygroundTheme
+import com.agentplayground.domain.model.ConversationSnapshot
+import com.agentplayground.domain.model.SavedConversation
+import com.agentplayground.domain.model.protocolJson
+import com.agentplayground.domain.settings.AppPreferences
 import com.agui.core.types.*
 import kotlinx.coroutines.runBlocking
 import okhttp3.mockwebserver.*
@@ -32,7 +32,7 @@ import org.robolectric.annotation.GraphicsMode
 @Config(sdk = [35], application = PlaygroundApplication::class, qualifiers = "w360dp-h740dp-xxhdpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class DrawerNavigationTest {
-    @get:Rule val compose = createComposeRule()
+    @get:Rule val compose = createAndroidComposeRule<ArchitectureTestActivity>()
 
     @Test
     fun `destination is installed before the drawer finishes closing`() {
@@ -260,10 +260,10 @@ class DrawerNavigationTest {
                 PlaygroundTheme("light") {
                     if (compact) {
                         Box(Modifier.width(700.dp).height(360.dp)) {
-                            PlaygroundApp(application, preferences)
+                            PlaygroundApp(preferences)
                         }
                     } else {
-                        PlaygroundApp(application, preferences)
+                        PlaygroundApp(preferences)
                     }
                 }
             }

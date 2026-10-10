@@ -1,30 +1,39 @@
 package com.agentplayground.feature.conversation
 
-import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.agentplayground.core.conversation.ConversationSession
-import com.agentplayground.core.conversation.PlanDraft
-import com.agentplayground.core.conversation.SessionState
-import com.agentplayground.core.model.AgentInfo
-import com.agentplayground.core.model.AgentModel
-import com.agentplayground.core.model.ConversationSummary
-import com.agentplayground.core.model.Download
-import com.agentplayground.core.model.MessageAttachment
-import com.agentplayground.core.model.SavedConversation
-import com.agentplayground.core.model.SkillFile
-import com.agentplayground.core.model.isActiveRun
-import com.agentplayground.core.model.protocolJson
-import com.agentplayground.core.presentation.UploadedAttachment
-import com.agentplayground.data.conversation.ConversationHistoryRepository
-import com.agentplayground.data.conversation.ConversationRepository
-import com.agentplayground.data.files.PickedFile
+import com.agentplayground.domain.conversation.ConversationHistoryLoader
+import com.agentplayground.domain.conversation.ConversationSession
+import com.agentplayground.domain.conversation.PlanDraft
+import com.agentplayground.domain.model.Download
+import com.agentplayground.domain.model.MessageAttachment
+import com.agentplayground.domain.model.SavedConversation
+import com.agentplayground.domain.model.SkillFile
+import com.agentplayground.domain.presentation.UploadedAttachment
+import com.agentplayground.domain.presentation.messageWithAttachments
+import com.agentplayground.domain.repository.ConversationRepository
+import com.agentplayground.domain.repository.RepositoryProvider
+import dagger.assisted.Assisted
+import dagger.assisted.AssistedFactory
+import dagger.assisted.AssistedInject
+import dagger.hilt.android.lifecycle.HiltViewModel
 import java.util.UUID
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 
+@HiltViewModel(assistedFactory = ConversationViewModel.Factory::class)
 class ConversationViewModel(private val repository: ConversationRepository) : ViewModel() {
+    @AssistedInject
+    constructor(
+        repositories: RepositoryProvider,
+        @Assisted serverUrl: String,
+    ) : this(repositories.conversation(serverUrl))
+
+    @AssistedFactory
+    interface Factory {
+        fun create(serverUrl: String): ConversationViewModel
+    }
+
     private var session: ConversationSession? = null
     private var sessionCollector: Job? = null
     private var selectionJob: Job? = null
@@ -35,7 +44,7 @@ class ConversationViewModel(private val repository: ConversationRepository) : Vi
     private val mutable = MutableStateFlow(ConversationUiState())
     val state = mutable.asStateFlow()
 
-    private val history = ConversationHistoryRepository(viewModelScope, repository::conversations)
+    private val history = ConversationHistoryLoader(viewModelScope, repository::conversations)
 
     init {
         viewModelScope.launch {
@@ -196,7 +205,7 @@ class ConversationViewModel(private val repository: ConversationRepository) : Vi
 
         viewModelScope.launch {
             action {
-                val added = repository.inspectAttachments(uris)
+                val added = repository.inspectAttachments(uris.map { it.toString() })
 
                 require(mutable.value.attachments.size + added.size <= 4) {
                     "Attach up to four files."
@@ -230,7 +239,7 @@ class ConversationViewModel(private val repository: ConversationRepository) : Vi
                 // Selected files retain their IDs after failure, so retries reuse server resources.
                 val uploaded = repository.uploadAttachments(current.threadId, state.attachments)
 
-                current.send(attachmentMessage(text, uploaded))
+                current.send(messageWithAttachments(text, uploaded))
 
                 if (session === current && current.state.value.draft.isEmpty()) {
                     mutable.update { it.copy(attachments = emptyList()) }
@@ -409,7 +418,7 @@ class ConversationViewModel(private val repository: ConversationRepository) : Vi
     }
 
     fun save(download: Download, uri: android.net.Uri) {
-        viewModelScope.launch { action { repository.save(download, uri) } }
+        viewModelScope.launch { action { repository.save(download, uri.toString()) } }
     }
 
     fun fileDownload(file: SkillFile): Download = repository.fileDownload(file)
@@ -419,8 +428,7 @@ class ConversationViewModel(private val repository: ConversationRepository) : Vi
         attachment: UploadedAttachment,
     ): MessageAttachment = repository.attachmentPresentation(threadId, attachment)
 
-    suspend fun loadAttachmentImage(source: String, maxDimension: Int): ImageBitmap? =
-        repository.loadAttachmentImage(source, maxDimension)?.asImageBitmap()
+    suspend fun attachmentBytes(source: String): ByteArray = repository.attachmentBytes(source)
 
     fun documentDownload(id: String, name: String): Download = repository.documentDownload(id, name)
 
@@ -444,59 +452,3 @@ class ConversationViewModel(private val repository: ConversationRepository) : Vi
         repository.close()
     }
 }
-
-private fun attachmentMessage(text: String, files: List<SkillFile>): String {
-    if (files.isEmpty()) {
-        return text
-    }
-
-    val references =
-        files.joinToString("\n") {
-            "${protocolJson.encodeToString(kotlinx.serialization.serializer<String>(), it.name)} — File ID: ${it.id}"
-        }
-
-    return "$text\n\nUploaded files:\n$references"
-}
-
-data class ConversationUiState(
-    val draftRevision: Long = 0,
-    val session: SessionState? = null,
-    val history: List<ConversationSummary> = emptyList(),
-    val nextCursor: String? = null,
-    val historyLoading: Boolean = false,
-    val historyError: String? = null,
-    val model: String? = null,
-    val agentInfo: AgentInfo? = null,
-    val attachments: List<PickedFile> = emptyList(),
-    val uploading: Boolean = false,
-    val error: String? = null,
-    val historyMutation: HistoryMutation? = null,
-) {
-    val selectedModel: AgentModel?
-        get() = agentInfo?.models?.find { it.id == (session?.modelId ?: agentInfo.defaultModelId) }
-
-    val currentModel: String?
-        get() =
-            selectedModel?.model
-                ?: if (session?.modelId == null) agentInfo?.model ?: model else session.modelId
-
-    val modelLabel: String?
-        get() = selectedModel?.label ?: currentModel
-
-    val canSelectModel: Boolean
-        get() = session?.canSelectModel == true && !uploading
-
-    fun deletionBlocked(threadId: String): Boolean =
-        history.any { it.threadId == threadId && isActiveRun(it.status) } ||
-            (session?.threadId == threadId && (session.busy || session.loading || uploading))
-
-    val clearBlocked: Boolean
-        get() =
-            uploading ||
-                session?.busy == true ||
-                session?.loading == true ||
-                history.any { isActiveRun(it.status) } ||
-                historyMutation != null
-}
-
-data class HistoryMutation(val kind: String, val threadId: String?)

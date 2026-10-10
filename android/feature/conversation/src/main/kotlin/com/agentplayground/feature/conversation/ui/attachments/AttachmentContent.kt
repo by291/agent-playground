@@ -15,11 +15,11 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.agentplayground.core.model.Download
-import com.agentplayground.core.model.ImagePreview
-import com.agentplayground.core.model.MessageAttachment
-import com.agentplayground.core.presentation.isPreviewImage
-import com.agentplayground.data.files.PickedFile
+import com.agentplayground.domain.files.PickedFile
+import com.agentplayground.domain.model.Download
+import com.agentplayground.domain.model.ImagePreview
+import com.agentplayground.domain.model.MessageAttachment
+import com.agentplayground.domain.presentation.isPreviewImage
 import kotlinx.coroutines.CancellationException
 
 internal typealias AttachmentImageLoader = suspend (String, Int) -> ImageBitmap?
@@ -128,7 +128,7 @@ internal fun SelectedAttachments(
             key(file.id) {
                 val preview =
                     if (isPreviewImage(file.name)) {
-                        ImagePreview(file.name, file.uri.toString())
+                        ImagePreview(file.name, file.uri)
                     } else {
                         null
                     }
@@ -181,7 +181,7 @@ internal fun SelectedAttachments(
     selected?.let { id ->
         AttachmentImageViewer(
             images.map { file ->
-                MessageAttachment(file.name, preview = ImagePreview(file.name, file.uri.toString()))
+                MessageAttachment(file.name, preview = ImagePreview(file.name, file.uri))
             },
             images.indexOfFirst { it.id == id },
             {},

@@ -11,12 +11,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
-import com.agentplayground.core.model.string
-import com.agentplayground.ui.Details
-import com.agentplayground.ui.Motion
-import com.agentplayground.ui.RevealValue
-import com.agentplayground.ui.SectionCard
-import com.agentplayground.ui.StatusTag
+import com.agentplayground.design.Details
+import com.agentplayground.design.Motion
+import com.agentplayground.design.RevealValue
+import com.agentplayground.design.SectionCard
+import com.agentplayground.design.StatusTag
+import com.agentplayground.domain.model.string
 
 private val childrenProperty = A2uiProperty.childList("children", required = true)
 

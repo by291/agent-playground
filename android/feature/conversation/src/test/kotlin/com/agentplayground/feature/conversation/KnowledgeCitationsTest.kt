@@ -6,8 +6,8 @@ import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLinkStyles
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.BaselineShift
-import com.agentplayground.core.presentation.KnowledgeSource
-import com.agentplayground.core.presentation.ReplySources
+import com.agentplayground.domain.presentation.KnowledgeSource
+import com.agentplayground.domain.presentation.ReplySources
 import com.agentplayground.feature.conversation.ui.markdown.replyMarkdownAnnotator
 import com.mikepenz.markdown.annotator.DefaultAnnotatorSettings
 import com.mikepenz.markdown.annotator.buildMarkdownAnnotatedString

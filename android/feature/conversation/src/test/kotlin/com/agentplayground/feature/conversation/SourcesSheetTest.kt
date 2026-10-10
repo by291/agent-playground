@@ -8,11 +8,11 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createComposeRule
-import com.agentplayground.core.model.Download
-import com.agentplayground.core.presentation.KnowledgeSource
-import com.agentplayground.core.presentation.ReplySources
+import com.agentplayground.design.PlaygroundTheme
+import com.agentplayground.domain.model.Download
+import com.agentplayground.domain.presentation.KnowledgeSource
+import com.agentplayground.domain.presentation.ReplySources
 import com.agentplayground.feature.conversation.ui.timeline.SourcesSheet
-import com.agentplayground.ui.PlaygroundTheme
 import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test

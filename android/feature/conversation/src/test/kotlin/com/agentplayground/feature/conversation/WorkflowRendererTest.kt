@@ -4,8 +4,8 @@ import androidx.a2ui.compose.runtime.A2uiMessageParser
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createComposeRule
-import com.agentplayground.core.model.WorkflowOutput
-import com.agentplayground.core.model.protocolJson
+import com.agentplayground.domain.model.WorkflowOutput
+import com.agentplayground.domain.model.protocolJson
 import com.agentplayground.feature.conversation.ui.workflow.WorkflowSurface
 import com.agentplayground.feature.conversation.ui.workflow.rememberWorkflowRenderer
 import kotlinx.serialization.json.*

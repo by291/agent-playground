@@ -9,19 +9,19 @@ import androidx.compose.runtime.key
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.agentplayground.core.conversation.SessionState
-import com.agentplayground.core.model.Download
-import com.agentplayground.core.model.ExternalTaskControl
-import com.agentplayground.core.model.SkillFile
-import com.agentplayground.core.model.WorkflowOutput
+import com.agentplayground.design.AgentMark
+import com.agentplayground.design.ChangingContent
+import com.agentplayground.design.ErrorNotice
+import com.agentplayground.design.Reveal
+import com.agentplayground.design.RevealValue
+import com.agentplayground.domain.conversation.SessionState
+import com.agentplayground.domain.model.Download
+import com.agentplayground.domain.model.ExternalTaskControl
+import com.agentplayground.domain.model.SkillFile
+import com.agentplayground.domain.model.WorkflowOutput
 import com.agentplayground.feature.conversation.ui.review.ExternalTaskPanel
 import com.agentplayground.feature.conversation.ui.workflow.WorkflowRenderer
 import com.agentplayground.feature.conversation.ui.workflow.WorkflowSurface
-import com.agentplayground.ui.AgentMark
-import com.agentplayground.ui.ChangingContent
-import com.agentplayground.ui.ErrorNotice
-import com.agentplayground.ui.Reveal
-import com.agentplayground.ui.RevealValue
 
 @Composable
 internal fun TimelineTurnContent(

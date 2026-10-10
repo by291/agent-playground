@@ -3,7 +3,7 @@ package com.agentplayground.feature.conversation
 import android.view.KeyEvent as NativeKeyEvent
 import androidx.compose.ui.input.key.KeyEvent
 import androidx.compose.ui.text.TextRange
-import com.agentplayground.core.model.ContextUsage
+import com.agentplayground.domain.model.ContextUsage
 import com.agentplayground.feature.conversation.ui.composer.modelContext
 import com.agentplayground.feature.conversation.ui.composer.sendsFromKeyboard
 import org.junit.Assert.*

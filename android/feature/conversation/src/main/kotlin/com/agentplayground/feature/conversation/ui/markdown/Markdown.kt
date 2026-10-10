@@ -42,8 +42,8 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
-import com.agentplayground.core.presentation.ReplySources
-import com.agentplayground.ui.ChangingContent
+import com.agentplayground.design.ChangingContent
+import com.agentplayground.domain.presentation.ReplySources
 import com.mikepenz.markdown.annotator.annotatorSettings
 import com.mikepenz.markdown.annotator.buildMarkdownAnnotatedString
 import com.mikepenz.markdown.compose.Markdown as ComposeMarkdown

@@ -1,6 +1,6 @@
 package com.agentplayground.feature.conversation.ui.timeline
 
-import com.agentplayground.core.conversation.SessionState
+import com.agentplayground.domain.conversation.SessionState
 import com.agentplayground.feature.conversation.ui.workflow.workflowCatalog
 import kotlinx.serialization.json.*
 

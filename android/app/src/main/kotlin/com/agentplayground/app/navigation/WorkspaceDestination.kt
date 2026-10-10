@@ -1,8 +1,10 @@
 package com.agentplayground.app.navigation
 
-import androidx.compose.runtime.saveable.Saver
+import androidx.navigation3.runtime.NavKey
+import kotlinx.serialization.Serializable
 
-internal enum class WorkspaceDestination(val route: String) {
+@Serializable
+internal enum class WorkspaceDestination(val route: String) : NavKey {
     Chat("chat"),
     Activity("activity"),
     Knowledge("knowledge"),
@@ -11,12 +13,4 @@ internal enum class WorkspaceDestination(val route: String) {
 
     val observesConversation: Boolean
         get() = this == Chat || this == Activity
-
-    companion object {
-        val saver =
-            Saver<WorkspaceDestination, String>(
-                save = { it.route },
-                restore = { route -> entries.firstOrNull { it.route == route } },
-            )
-    }
 }

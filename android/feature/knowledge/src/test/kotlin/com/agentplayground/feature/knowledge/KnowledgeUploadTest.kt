@@ -11,9 +11,7 @@ import androidx.activity.ComponentActivity
 import androidx.core.net.toUri
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.ViewModelStore
-import com.agentplayground.core.network.PlaygroundApi
-import com.agentplayground.data.files.DocumentAccess
-import com.agentplayground.data.knowledge.KnowledgeRepository
+import com.agentplayground.data.RepositoryFactory
 import java.io.ByteArrayInputStream
 import java.util.concurrent.TimeUnit
 import okhttp3.mockwebserver.MockResponse
@@ -79,7 +77,7 @@ class KnowledgeUploadTest {
 
             assertEquals(id, fixture.vm.state.value.documents.single().id)
             assertEquals(id, fixture.vm.state.value.pendingUploads.single().id)
-            assertEquals(fixture.uri, fixture.vm.state.value.pendingUploads.single().uri)
+            assertEquals(fixture.uri.toString(), fixture.vm.state.value.pendingUploads.single().uri)
             assertTrue(fixture.vm.state.value.error!!.contains("Response unavailable"))
             assertEquals("POST", upload.method)
             assertEquals("GET", fixture.request().method)
@@ -123,7 +121,7 @@ class KnowledgeUploadTest {
             await { !fixture.vm.state.value.busy }
 
             assertTrue(fixture.vm.state.value.error!!.contains("nonempty"))
-            assertEquals(fixture.uri, fixture.vm.state.value.pendingUploads.single().uri)
+            assertEquals(fixture.uri.toString(), fixture.vm.state.value.pendingUploads.single().uri)
             assertEquals(0, fixture.server.requestCount)
         }
     }
@@ -272,7 +270,7 @@ class KnowledgeUploadTest {
             await { !fixture.vm.state.value.busy }
 
             assertTrue(fixture.vm.state.value.error!!.contains("Response unavailable"))
-            assertEquals(fixture.uri, fixture.vm.state.value.pendingUploads.single().uri)
+            assertEquals(fixture.uri.toString(), fixture.vm.state.value.pendingUploads.single().uri)
             assertEquals("POST", fixture.request().method)
             assertEquals("GET", fixture.request().method)
         }
@@ -369,8 +367,6 @@ class KnowledgeUploadTest {
                 ByteArrayInputStream(content)
             }
 
-            val api = PlaygroundApi(server.url("/").toString())
-
             vm =
                 ViewModelProvider(
                     store,
@@ -379,7 +375,10 @@ class KnowledgeUploadTest {
                         override fun <T : androidx.lifecycle.ViewModel> create(
                             modelClass: Class<T>
                         ): T =
-                            KnowledgeViewModel(KnowledgeRepository(api, DocumentAccess(resolver)))
+                            KnowledgeViewModel(
+                                RepositoryFactory(RuntimeEnvironment.getApplication())
+                                    .knowledge(server.url("/").toString())
+                            )
                                 as T
                     },
                 )[KnowledgeViewModel::class.java]

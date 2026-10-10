@@ -25,16 +25,16 @@ import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.agentplayground.core.conversation.Review
-import com.agentplayground.core.conversation.externalWaitCallId
-import com.agentplayground.core.model.isExternalTaskActive
-import com.agentplayground.data.AppPreferences
+import com.agentplayground.design.ChangingContent
+import com.agentplayground.design.Motion
+import com.agentplayground.design.Reveal
+import com.agentplayground.domain.conversation.Review
+import com.agentplayground.domain.conversation.externalWaitCallId
+import com.agentplayground.domain.model.isExternalTaskActive
+import com.agentplayground.domain.settings.AppPreferences
 import com.agentplayground.feature.conversation.ConversationUiState
 import com.agentplayground.feature.conversation.ui.attachments.AttachmentImageLoader
 import com.agentplayground.feature.conversation.ui.attachments.SelectedAttachments
-import com.agentplayground.ui.ChangingContent
-import com.agentplayground.ui.Motion
-import com.agentplayground.ui.Reveal
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

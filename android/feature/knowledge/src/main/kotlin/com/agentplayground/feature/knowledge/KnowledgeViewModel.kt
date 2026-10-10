@@ -3,17 +3,33 @@ package com.agentplayground.feature.knowledge
 import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.agentplayground.core.model.Download
-import com.agentplayground.core.model.KnowledgeDocument
-import com.agentplayground.data.files.PickedFile
-import com.agentplayground.data.knowledge.KnowledgeRepository
+import com.agentplayground.domain.model.Download
+import com.agentplayground.domain.model.KnowledgeDocument
+import com.agentplayground.domain.repository.KnowledgeRepository
+import com.agentplayground.domain.repository.RepositoryProvider
+import dagger.assisted.Assisted
+import dagger.assisted.AssistedFactory
+import dagger.assisted.AssistedInject
+import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlin.time.Duration.Companion.milliseconds
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
+@HiltViewModel(assistedFactory = KnowledgeViewModel.Factory::class)
 class KnowledgeViewModel(private val repository: KnowledgeRepository) : ViewModel() {
+    @AssistedInject
+    constructor(
+        repositories: RepositoryProvider,
+        @Assisted serverUrl: String,
+    ) : this(repositories.knowledge(serverUrl))
+
+    @AssistedFactory
+    interface Factory {
+        fun create(serverUrl: String): KnowledgeViewModel
+    }
+
     private val mutable = MutableStateFlow(KnowledgeUiState())
     val state = mutable.asStateFlow()
 
@@ -121,7 +137,7 @@ class KnowledgeViewModel(private val repository: KnowledgeRepository) : ViewMode
 
         viewModelScope.launch {
             action(refreshOnFailure = false) {
-                val picked = repository.inspectUploads(uris, resumed)
+                val picked = repository.inspectUploads(uris.map { it.toString() }, resumed)
 
                 mutable.update { it.copy(pendingUploads = picked) }
 
@@ -200,7 +216,7 @@ class KnowledgeViewModel(private val repository: KnowledgeRepository) : ViewMode
 
     fun save(download: Download, uri: Uri) {
         mutate("Saving ${download.name}…", refreshOnFailure = false) {
-            repository.save(download, uri)
+            repository.save(download, uri.toString())
         }
     }
 
@@ -239,13 +255,3 @@ class KnowledgeViewModel(private val repository: KnowledgeRepository) : ViewMode
         repository.close()
     }
 }
-
-data class KnowledgeUiState(
-    val documents: List<KnowledgeDocument> = emptyList(),
-    val loading: Boolean = false,
-    val busy: Boolean = false,
-    val operation: String? = null,
-    val error: String? = null,
-    val pendingUploads: List<PickedFile> = emptyList(),
-    val resumeDocument: KnowledgeDocument? = null,
-)

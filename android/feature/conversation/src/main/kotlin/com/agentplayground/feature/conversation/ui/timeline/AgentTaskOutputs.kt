@@ -9,13 +9,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
-import com.agentplayground.core.model.AgentOutput
-import com.agentplayground.core.model.ExternalTask
-import com.agentplayground.core.model.isExternalTaskActive
+import com.agentplayground.design.DisclosureChevron
+import com.agentplayground.design.Reveal
+import com.agentplayground.design.StatusTag
+import com.agentplayground.domain.model.AgentOutput
+import com.agentplayground.domain.model.ExternalTask
+import com.agentplayground.domain.model.isExternalTaskActive
 import com.agentplayground.feature.conversation.ui.markdown.Markdown
-import com.agentplayground.ui.DisclosureChevron
-import com.agentplayground.ui.Reveal
-import com.agentplayground.ui.StatusTag
 
 private data class CollaborationStep(
     val id: String,

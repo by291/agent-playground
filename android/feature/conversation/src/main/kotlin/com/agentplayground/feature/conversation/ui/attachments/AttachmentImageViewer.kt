@@ -43,9 +43,9 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.window.DialogWindowProvider
 import androidx.core.view.WindowCompat
-import com.agentplayground.core.model.Download
-import com.agentplayground.core.model.MessageAttachment
-import com.agentplayground.ui.Motion
+import com.agentplayground.design.Motion
+import com.agentplayground.domain.model.Download
+import com.agentplayground.domain.model.MessageAttachment
 import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlinx.coroutines.Job

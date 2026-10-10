@@ -4,8 +4,7 @@ import android.os.Looper
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.ViewModelStore
-import com.agentplayground.core.network.PlaygroundApi
-import com.agentplayground.data.memory.MemoryRepository
+import com.agentplayground.data.RepositoryFactory
 import java.util.concurrent.TimeUnit
 import kotlinx.serialization.json.*
 import okhttp3.mockwebserver.*
@@ -13,6 +12,7 @@ import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.RuntimeEnvironment
 import org.robolectric.Shadows
 import org.robolectric.annotation.Config
 
@@ -269,7 +269,9 @@ class MemoryViewModelTest {
 
         init {
             server.start()
-            val repository = MemoryRepository(PlaygroundApi(server.url("/").toString()))
+            val repository =
+                RepositoryFactory(RuntimeEnvironment.getApplication())
+                    .memory(server.url("/").toString())
             vm =
                 ViewModelProvider(
                     store,

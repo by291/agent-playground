@@ -1,15 +1,15 @@
 package com.agentplayground.feature.conversation.ui.timeline
 
-import com.agentplayground.core.conversation.Review
-import com.agentplayground.core.conversation.SessionState
-import com.agentplayground.core.conversation.externalWaitCallId
-import com.agentplayground.core.model.ExternalTask
-import com.agentplayground.core.model.WorkflowOutput
-import com.agentplayground.core.model.string
-import com.agentplayground.core.presentation.ConversationTurn
-import com.agentplayground.core.presentation.LegacyWorkflowSurface
-import com.agentplayground.core.presentation.conversationTurns
-import com.agentplayground.core.presentation.legacyWorkflowArtifacts
+import com.agentplayground.domain.conversation.Review
+import com.agentplayground.domain.conversation.SessionState
+import com.agentplayground.domain.conversation.externalWaitCallId
+import com.agentplayground.domain.model.ExternalTask
+import com.agentplayground.domain.model.WorkflowOutput
+import com.agentplayground.domain.model.string
+import com.agentplayground.domain.presentation.ConversationTurn
+import com.agentplayground.domain.presentation.LegacyWorkflowSurface
+import com.agentplayground.domain.presentation.conversationTurns
+import com.agentplayground.domain.presentation.legacyWorkflowArtifacts
 import com.agui.core.types.Interrupt
 
 internal data class ConversationTimelineModel(

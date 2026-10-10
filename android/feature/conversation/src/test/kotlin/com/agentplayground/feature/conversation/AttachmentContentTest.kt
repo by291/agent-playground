@@ -4,15 +4,14 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createComposeRule
-import androidx.core.net.toUri
-import com.agentplayground.core.model.Download
-import com.agentplayground.core.model.ImagePreview
-import com.agentplayground.core.model.MessageAttachment
-import com.agentplayground.data.files.PickedFile
+import com.agentplayground.design.PlaygroundTheme
+import com.agentplayground.domain.files.PickedFile
+import com.agentplayground.domain.model.Download
+import com.agentplayground.domain.model.ImagePreview
+import com.agentplayground.domain.model.MessageAttachment
 import com.agentplayground.feature.conversation.ui.attachments.MessageAttachments
 import com.agentplayground.feature.conversation.ui.attachments.SelectedAttachments
 import com.agentplayground.feature.conversation.ui.timeline.MessageContent
-import com.agentplayground.ui.PlaygroundTheme
 import com.agui.core.types.UserMessage
 import kotlinx.coroutines.awaitCancellation
 import org.junit.Assert.*
@@ -142,8 +141,7 @@ class AttachmentContentTest {
 
     @Test
     fun `selected local images stay visible and removal uses the original file identity`() {
-        val file =
-            PickedFile("content://documents/photo".toUri(), "photo.webp", 120, "selected-file")
+        val file = PickedFile("content://documents/photo", "photo.webp", 120, "selected-file")
         var files by mutableStateOf(listOf(file))
         var removed: String? = null
 
@@ -175,8 +173,7 @@ class AttachmentContentTest {
 
     @Test
     fun `removal remains available for ordinary files and is disabled during upload`() {
-        val file =
-            PickedFile("content://documents/notes".toUri(), "notes.txt", 120, "selected-file")
+        val file = PickedFile("content://documents/notes", "notes.txt", 120, "selected-file")
         var uploading by mutableStateOf(false)
         var removed: String? = null
 

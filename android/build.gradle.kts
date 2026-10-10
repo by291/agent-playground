@@ -5,52 +5,33 @@ plugins {
     alias(libs.plugins.kotlin.jvm) apply false
     alias(libs.plugins.kotlin.serialization) apply false
     alias(libs.plugins.kotlin.compose) apply false
+    alias(libs.plugins.ksp) apply false
+    alias(libs.plugins.hilt) apply false
     alias(libs.plugins.spotless)
 }
 
+apply(from = "architecture.gradle.kts")
+
 val androidLibraries =
     listOf(
-        ":data",
-        ":ui",
+        ":core:data",
+        ":core:design",
+        ":core:ui",
         ":feature:conversation",
         ":feature:knowledge",
         ":feature:memory",
         ":feature:settings",
     )
 
-subprojects {
-    plugins.withId("com.android.library") {
-        extensions.configure<com.android.build.api.dsl.LibraryExtension> {
-            compileSdk = 37
-            compileSdkMinor = 1
-
-            defaultConfig { minSdk = 26 }
-
-            compileOptions {
-                sourceCompatibility = JavaVersion.VERSION_17
-                targetCompatibility = JavaVersion.VERSION_17
-            }
-
-            testOptions { unitTests.isIncludeAndroidResources = true }
-
-            lint {
-                abortOnError = true
-                warningsAsErrors = true
-                checkTestSources = true
-                disable +=
-                    setOf("GradleDependency", "NewerVersionAvailable", "AndroidGradlePluginVersion")
-            }
-        }
-    }
-}
-
 spotless {
     kotlin {
-        target("*/src/**/*.kt", "feature/*/src/**/*.kt")
+        target("**/src/**/*.kt")
+        targetExclude("**/build/**", ".gradle/**")
         ktfmt(libs.versions.ktfmt.get()).kotlinlangStyle()
     }
     kotlinGradle {
-        target("*.gradle.kts", "*/build.gradle.kts", "feature/*/build.gradle.kts")
+        target("**/*.gradle.kts")
+        targetExclude("**/build/**", ".gradle/**")
         ktfmt(libs.versions.ktfmt.get()).kotlinlangStyle()
     }
 }
@@ -58,23 +39,21 @@ spotless {
 tasks.register("lintCheck") {
     group = "verification"
     description = "Checks lint in every Android and JVM module, including tests."
-
-    dependsOn(":core:lint", ":app:lintDebug")
+    dependsOn(":core:domain:lint", ":app:lintDebug")
     dependsOn(androidLibraries.map { "$it:lintDebug" })
 }
 
 tasks.register("qualityCheck") {
     group = "verification"
-    description = "Checks formatting, lint, tests and debug/release builds."
-
+    description = "Checks architecture, formatting, lint, tests and debug/release builds."
     dependsOn(
+        "architectureCheck",
         "spotlessCheck",
         "lintCheck",
-        ":core:test",
+        ":core:domain:test",
         ":app:testDebugUnitTest",
         ":app:assembleDebug",
         ":app:assembleRelease",
     )
-
     dependsOn(androidLibraries.map { "$it:testDebugUnitTest" })
 }

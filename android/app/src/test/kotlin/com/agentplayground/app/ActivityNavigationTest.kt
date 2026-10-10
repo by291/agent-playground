@@ -2,14 +2,14 @@ package com.agentplayground.app
 
 import android.os.Looper
 import androidx.compose.ui.test.*
-import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import com.agentplayground.app.navigation.PlaygroundApp
-import com.agentplayground.core.model.ConversationSnapshot
-import com.agentplayground.core.model.RunRecord
-import com.agentplayground.core.model.SavedConversation
-import com.agentplayground.core.model.protocolJson
-import com.agentplayground.data.AppPreferences
-import com.agentplayground.ui.PlaygroundTheme
+import com.agentplayground.design.PlaygroundTheme
+import com.agentplayground.domain.model.ConversationSnapshot
+import com.agentplayground.domain.model.RunRecord
+import com.agentplayground.domain.model.SavedConversation
+import com.agentplayground.domain.model.protocolJson
+import com.agentplayground.domain.settings.AppPreferences
 import com.agui.core.types.*
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.runBlocking
@@ -27,7 +27,7 @@ import org.robolectric.annotation.GraphicsMode
 @Config(sdk = [35], application = PlaygroundApplication::class, qualifiers = "w360dp-h740dp-xxhdpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class ActivityNavigationTest {
-    @get:Rule val compose = createComposeRule()
+    @get:Rule val compose = createAndroidComposeRule<ArchitectureTestActivity>()
 
     @Test
     fun `event page observes the running reply and back preserves reading position and draft`() {
@@ -114,7 +114,7 @@ class ActivityNavigationTest {
             }
 
             compose.setContent {
-                PlaygroundTheme("light") { PlaygroundApp(application, preferences) }
+                PlaygroundTheme("light") { PlaygroundApp(preferences) }
             }
 
             await {

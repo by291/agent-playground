@@ -3,13 +3,10 @@ package com.agentplayground.feature.conversation
 import android.os.Looper
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.ViewModelStore
-import com.agentplayground.core.model.ConversationSnapshot
-import com.agentplayground.core.model.SavedConversation
-import com.agentplayground.core.model.protocolJson
-import com.agentplayground.core.network.PlaygroundApi
-import com.agentplayground.data.PreferencesRepository
-import com.agentplayground.data.conversation.ConversationRepository
-import com.agentplayground.data.files.DocumentAccess
+import com.agentplayground.data.RepositoryFactory
+import com.agentplayground.domain.model.ConversationSnapshot
+import com.agentplayground.domain.model.SavedConversation
+import com.agentplayground.domain.model.protocolJson
 import com.agui.core.types.UserMessage
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
@@ -76,7 +73,8 @@ class ConversationHistoryMutationTest {
             server.start()
 
             val context = RuntimeEnvironment.getApplication()
-            val journal = PreferencesRepository(context).conversations(server.url("/").toString())
+            val journal =
+                RepositoryFactory(context).preferences.conversations(server.url("/").toString())
 
             runBlocking {
                 journal.write(SavedConversation("thread", empty = false))
@@ -93,11 +91,7 @@ class ConversationHistoryMutationTest {
                             modelClass: Class<T>
                         ): T =
                             ConversationViewModel(
-                                ConversationRepository(
-                                    PlaygroundApi(server.url("/").toString()),
-                                    journal,
-                                    DocumentAccess(context.contentResolver),
-                                )
+                                RepositoryFactory(context).conversation(server.url("/").toString())
                             )
                                 as T
                     },

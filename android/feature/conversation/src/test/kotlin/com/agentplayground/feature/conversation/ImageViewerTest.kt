@@ -7,13 +7,13 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createComposeRule
-import com.agentplayground.core.model.Download
-import com.agentplayground.core.model.ImagePreview
-import com.agentplayground.core.model.MessageAttachment
+import com.agentplayground.design.PlaygroundTheme
+import com.agentplayground.domain.model.Download
+import com.agentplayground.domain.model.ImagePreview
+import com.agentplayground.domain.model.MessageAttachment
 import com.agentplayground.feature.conversation.ui.attachments.AttachmentImageLoader
 import com.agentplayground.feature.conversation.ui.attachments.AttachmentImageViewer
 import com.agentplayground.feature.conversation.ui.attachments.MessageAttachments
-import com.agentplayground.ui.PlaygroundTheme
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.awaitCancellation
 import org.junit.Assert.*

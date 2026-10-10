@@ -11,9 +11,10 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
-import com.agentplayground.data.AppPreferences
-import com.agentplayground.data.PreferencesRepository
-import com.agentplayground.ui.PlaygroundTheme
+import com.agentplayground.data.RepositoryFactory
+import com.agentplayground.design.PlaygroundTheme
+import com.agentplayground.domain.repository.ServerRepository
+import com.agentplayground.domain.settings.AppPreferences
 import com.agentplayground.ui.network.ServerNetworkAccess
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -62,7 +63,7 @@ class SettingsConnectionTest {
             server.start()
 
             val application = RuntimeEnvironment.getApplication()
-            val store = PreferencesRepository(application)
+            val store = RepositoryFactory(application).preferences
             val initial = AppPreferences(serverUrl = "https://old.example/")
             val access = ServerNetworkAccess(35, { true }, { error("No permission needed") })
 
@@ -71,13 +72,28 @@ class SettingsConnectionTest {
                 store.updateServerUrl(initial.serverUrl)
             }
 
+            val model =
+                ViewModelProvider(
+                    compose.activity,
+                    viewModelFactory {
+                        initializer {
+                            SettingsViewModel(
+                                store,
+                                SavedStateHandle(),
+                                initial.serverUrl,
+                                RepositoryFactory(application).server,
+                            )
+                        }
+                    },
+                )[SettingsViewModel::class.java]
+
             compose.setContent {
                 val preferences by store.preferences.collectAsStateWithLifecycle(initial)
 
                 PlaygroundTheme("light") {
                     SettingsRoute(
+                        model,
                         preferences,
-                        store,
                         onClear = null,
                         conversationBusy = false,
                         conversationError = null,
@@ -124,7 +140,7 @@ class SettingsConnectionTest {
     @Test
     fun `leaving settings cancels a delayed connection without switching the saved server`() {
         val application = RuntimeEnvironment.getApplication()
-        val store = PreferencesRepository(application)
+        val store = RepositoryFactory(application).preferences
         val initial = AppPreferences(serverUrl = "https://old.example/")
         val access = ServerNetworkAccess(35, { true }, { error("No permission needed") })
         val visible = mutableStateOf(true)
@@ -143,15 +159,24 @@ class SettingsConnectionTest {
                 compose.activity,
                 viewModelFactory {
                     initializer {
-                        SettingsViewModel(store, SavedStateHandle(), initial.serverUrl) {
-                            started.complete(Unit)
+                        SettingsViewModel(
+                            store,
+                            SavedStateHandle(),
+                            initial.serverUrl,
+                            object : ServerRepository {
+                                override fun normalizeUrl(value: String) =
+                                    RepositoryFactory(application).server.normalizeUrl(value)
 
-                            try {
-                                finish.await()
-                            } finally {
-                                released.complete(Unit)
-                            }
-                        }
+                                override suspend fun checkConnection(serverUrl: String): String {
+                                    started.complete(Unit)
+                                    try {
+                                        return finish.await()
+                                    } finally {
+                                        released.complete(Unit)
+                                    }
+                                }
+                            },
+                        )
                     }
                 },
             )[SettingsViewModel::class.java]
@@ -162,8 +187,8 @@ class SettingsConnectionTest {
             PlaygroundTheme("light") {
                 if (visible.value) {
                     SettingsRoute(
+                        model,
                         preferences,
-                        store,
                         onClear = null,
                         conversationBusy = false,
                         conversationError = null,

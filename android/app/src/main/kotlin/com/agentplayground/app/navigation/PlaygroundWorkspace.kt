@@ -8,41 +8,60 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.navigation3.rememberViewModelStoreNavEntryDecorator
+import androidx.navigation3.runtime.NavEntry
+import androidx.navigation3.runtime.rememberDecoratedNavEntries
+import androidx.navigation3.runtime.rememberNavBackStack
+import androidx.navigation3.runtime.rememberSaveableStateHolderNavEntryDecorator
+import androidx.navigation3.ui.NavDisplay
 import com.agentplayground.app.di.WorkspaceModels
-import com.agentplayground.data.AppPreferences
-import com.agentplayground.data.PreferencesRepository
+import com.agentplayground.design.Motion
+import com.agentplayground.design.RevealNavigationDrawer
+import com.agentplayground.domain.settings.AppPreferences
 import com.agentplayground.feature.conversation.ConversationHistoryRoute
 import com.agentplayground.feature.conversation.ConversationRoute
 import com.agentplayground.feature.conversation.ui.activity.ActivityScreen
 import com.agentplayground.feature.knowledge.KnowledgeRoute
 import com.agentplayground.feature.memory.MemoryRoute
 import com.agentplayground.feature.settings.SettingsRoute
-import com.agentplayground.ui.Motion
-import com.agentplayground.ui.RevealNavigationDrawer
 import com.agentplayground.ui.network.ServerNetworkAccess
 import kotlinx.coroutines.launch
 
 @Composable
 internal fun PlaygroundWorkspace(
-    store: PreferencesRepository,
     preferences: AppPreferences,
     networkAccess: ServerNetworkAccess,
     models: WorkspaceModels,
 ) {
-    var destination by
-        rememberSaveable(stateSaver = WorkspaceDestination.saver) {
-            mutableStateOf(WorkspaceDestination.Chat)
+    val chatStack = rememberNavBackStack(WorkspaceDestination.Chat)
+    val knowledgeStack = rememberNavBackStack(WorkspaceDestination.Knowledge)
+    val memoryStack = rememberNavBackStack(WorkspaceDestination.Memory)
+    val settingsStack = rememberNavBackStack(WorkspaceDestination.Settings)
+    val stacks = listOf(chatStack, knowledgeStack, memoryStack, settingsStack)
+    val primaryDestinations =
+        listOf(
+            WorkspaceDestination.Chat,
+            WorkspaceDestination.Knowledge,
+            WorkspaceDestination.Memory,
+            WorkspaceDestination.Settings,
+        )
+    var selected by rememberSaveable { mutableIntStateOf(0) }
+    val stack = stacks[selected]
+    val destination = stack.last() as WorkspaceDestination
+    val back: () -> Unit = {
+        if (stack.size > 1) {
+            stack.removeLastOrNull()
+        } else {
+            selected = 0
         }
-    val savedScreens = rememberSaveableStateHolder()
-
-    BackHandler(enabled = destination != WorkspaceDestination.Chat) {
-        destination = WorkspaceDestination.Chat
     }
+
+    // NavDisplay owns nested back navigation; primary destinations return to chat.
+    BackHandler(enabled = stack.size == 1 && selected != 0, onBack = back)
 
     val chat = models.conversation
     val knowledge = models.knowledge
@@ -78,7 +97,12 @@ internal fun PlaygroundWorkspace(
             val navigate: (WorkspaceDestination) -> Unit = { route ->
                 // Install the destination before drawer settlement so the new page is revealed
                 // underneath.
-                destination = route
+                selected = primaryDestinations.indexOf(route)
+                if (route == WorkspaceDestination.Chat) {
+                    while (chatStack.size > 1) {
+                        chatStack.removeLastOrNull()
+                    }
+                }
                 scope.launch { drawer.close() }
             }
             val sidebar: @Composable () -> Unit = {
@@ -102,99 +126,110 @@ internal fun PlaygroundWorkspace(
             }
 
             val screen: @Composable (WorkspaceDestination) -> Unit = { route ->
-                savedScreens.SaveableStateProvider("${preferences.serverUrl}:${route.route}") {
-                    when (route) {
-                        WorkspaceDestination.Activity ->
-                            ActivityScreen(
-                                chatState.session,
-                                { destination = WorkspaceDestination.Chat },
-                                chat::clearActivity,
-                            )
+                when (route) {
+                    WorkspaceDestination.Activity ->
+                        ActivityScreen(
+                            chatState.session,
+                            back,
+                            chat::clearActivity,
+                        )
 
-                        WorkspaceDestination.Knowledge -> KnowledgeRoute(knowledge, openNavigation)
+                    WorkspaceDestination.Knowledge -> KnowledgeRoute(knowledge, openNavigation)
 
-                        WorkspaceDestination.Memory ->
-                            MemoryRoute(
-                                models.memory,
-                                onOpenSource = { threadId ->
-                                    if (threadId != chatState.session?.threadId) {
-                                        chat.select(threadId)
-                                    }
+                    WorkspaceDestination.Memory ->
+                        MemoryRoute(
+                            models.memory,
+                            onOpenSource = { threadId ->
+                                if (threadId != chatState.session?.threadId) {
+                                    chat.select(threadId)
+                                }
 
-                                    navigate(WorkspaceDestination.Chat)
-                                },
-                                onOpenNavigation = openNavigation,
-                            )
+                                navigate(WorkspaceDestination.Chat)
+                            },
+                            onOpenNavigation = openNavigation,
+                        )
 
-                        WorkspaceDestination.Settings ->
-                            SettingsRoute(
-                                preferences,
-                                store,
-                                chat::clear,
-                                chatState.clearBlocked,
-                                chatState.error,
-                                openNavigation,
-                                networkAccess,
-                            )
+                    WorkspaceDestination.Settings ->
+                        SettingsRoute(
+                            preferences,
+                            chat::clear,
+                            chatState.clearBlocked,
+                            chatState.error,
+                            openNavigation,
+                            networkAccess,
+                        )
 
-                        WorkspaceDestination.Chat ->
-                            ConversationRoute(chat, preferences, openNavigation) {
-                                keyboard?.hide()
-                                destination = WorkspaceDestination.Activity
+                    WorkspaceDestination.Chat ->
+                        ConversationRoute(chat, preferences, openNavigation) {
+                            keyboard?.hide()
+                            if (chatStack.last() != WorkspaceDestination.Activity) {
+                                chatStack.add(WorkspaceDestination.Activity)
                             }
-                    }
+                        }
                 }
             }
 
-            AnimatedContent(
-                targetState = destination,
-                modifier = Modifier.fillMaxSize(),
-                transitionSpec = {
-                    when {
-                        targetState == WorkspaceDestination.Activity ->
-                            (slideInHorizontally(tween(Motion.Page)) { it / 8 } +
-                                fadeIn(tween(Motion.Expand))) togetherWith
-                                (slideOutHorizontally(tween(Motion.Page)) { -it / 12 } +
-                                    fadeOut(tween(Motion.Exit)))
-
-                        initialState == WorkspaceDestination.Activity ->
-                            (slideInHorizontally(tween(Motion.Page)) { -it / 12 } +
-                                fadeIn(tween(Motion.Expand))) togetherWith
-                                (slideOutHorizontally(tween(Motion.Page)) { it / 8 } +
-                                    fadeOut(tween(Motion.Exit)))
-
-                        !expanded && (drawer.isOpen || drawer.targetValue == DrawerValue.Open) ->
+            val decoratedStacks = stacks.mapIndexed { index, backStack ->
+                key(preferences.serverUrl, index) {
+                    rememberDecoratedNavEntries(
+                        backStack = backStack,
+                        entryDecorators =
+                            listOf(
+                                rememberSaveableStateHolderNavEntryDecorator(),
+                                rememberViewModelStoreNavEntryDecorator(),
+                            ),
+                        entryProvider = { route ->
+                            NavEntry(route, contentKey = "${preferences.serverUrl}:$index:$route") {
+                                screen(it as WorkspaceDestination)
+                            }
+                        },
+                    )
+                }
+            }
+            val display: @Composable () -> Unit = {
+                NavDisplay(
+                    entries = decoratedStacks[selected],
+                    onBack = back,
+                    modifier = Modifier.fillMaxSize(),
+                    transitionSpec = {
+                        if (
+                            !expanded && (drawer.isOpen || drawer.targetValue == DrawerValue.Open)
+                        ) {
                             EnterTransition.None togetherWith ExitTransition.None
-
-                        else ->
+                        } else {
                             fadeIn(tween(Motion.Feedback)) togetherWith
                                 fadeOut(tween(Motion.Feedback))
-                    }
-                },
-                label = "workspace-page",
-            ) { route ->
-                when {
-                    route == WorkspaceDestination.Activity -> screen(route)
-
-                    expanded ->
-                        Row(Modifier.fillMaxSize()) {
-                            Surface(
-                                Modifier.width(280.dp).fillMaxHeight(),
-                                color = MaterialTheme.colorScheme.surface,
-                            ) {
-                                sidebar()
-                            }
-                            VerticalDivider()
-                            Box(Modifier.weight(1f)) { screen(route) }
                         }
+                    },
+                    popTransitionSpec = {
+                        fadeIn(tween(Motion.Feedback)) togetherWith fadeOut(tween(Motion.Feedback))
+                    },
+                    predictivePopTransitionSpec = { _ ->
+                        slideInHorizontally { -it / 12 } togetherWith
+                            slideOutHorizontally { it / 8 }
+                    },
+                )
+            }
 
-                    else ->
-                        RevealNavigationDrawer(
-                            drawerState = drawer,
-                            drawerContent = sidebar,
-                            content = { screen(route) },
-                        )
-                }
+            when {
+                destination == WorkspaceDestination.Activity -> display()
+                expanded ->
+                    Row(Modifier.fillMaxSize()) {
+                        Surface(
+                            Modifier.width(280.dp).fillMaxHeight(),
+                            color = MaterialTheme.colorScheme.surface,
+                        ) {
+                            sidebar()
+                        }
+                        VerticalDivider()
+                        Box(Modifier.weight(1f)) { display() }
+                    }
+                else ->
+                    RevealNavigationDrawer(
+                        drawerState = drawer,
+                        drawerContent = sidebar,
+                        content = display,
+                    )
             }
         }
     }

@@ -1,20 +1,15 @@
 plugins {
-    alias(libs.plugins.android.library)
-    alias(libs.plugins.kotlin.compose)
+    id("playground.android.compose")
+    id("playground.android.hilt")
 }
 
-android {
-    namespace = "com.agentplayground.feature.memory"
-    buildFeatures { compose = true }
-}
+android { namespace = "com.agentplayground.feature.memory" }
 
 dependencies {
-    implementation(project(":data"))
-    implementation(project(":ui"))
-    implementation(platform(libs.compose.bom))
-    implementation(libs.compose.ui)
-    implementation(libs.compose.material3)
-    implementation(libs.compose.icons)
+    implementation(project(":core:domain"))
+    implementation(project(":core:design"))
+    implementation(project(":core:ui"))
+    testImplementation(project(":core:data"))
     implementation(libs.lifecycle.compose)
     implementation(libs.lifecycle.viewmodel)
     implementation(libs.coroutines.android)

@@ -19,23 +19,23 @@ import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
-import com.agentplayground.core.conversation.PlanDraft
-import com.agentplayground.core.conversation.SessionState
-import com.agentplayground.core.model.Download
-import com.agentplayground.core.model.ExternalTaskControl
-import com.agentplayground.core.model.MessageAttachment
-import com.agentplayground.core.model.SkillFile
-import com.agentplayground.core.presentation.LegacyWorkflowSurface
-import com.agentplayground.core.presentation.UploadedAttachment
-import com.agentplayground.data.AppPreferences
+import com.agentplayground.design.EntryAppearance
+import com.agentplayground.design.Motion
+import com.agentplayground.domain.conversation.PlanDraft
+import com.agentplayground.domain.conversation.SessionState
+import com.agentplayground.domain.model.Download
+import com.agentplayground.domain.model.ExternalTaskControl
+import com.agentplayground.domain.model.MessageAttachment
+import com.agentplayground.domain.model.SkillFile
+import com.agentplayground.domain.presentation.LegacyWorkflowSurface
+import com.agentplayground.domain.presentation.UploadedAttachment
+import com.agentplayground.domain.settings.AppPreferences
 import com.agentplayground.feature.conversation.ui.attachments.AttachmentImageLoader
 import com.agentplayground.feature.conversation.ui.review.ExternalTaskPanel
 import com.agentplayground.feature.conversation.ui.review.PlanReviewPanel
 import com.agentplayground.feature.conversation.ui.review.ReviewPanel
 import com.agentplayground.feature.conversation.ui.workflow.WorkflowSurface
 import com.agentplayground.feature.conversation.ui.workflow.rememberWorkflowRenderer
-import com.agentplayground.ui.EntryAppearance
-import com.agentplayground.ui.Motion
 import kotlinx.coroutines.launch
 
 @Composable

@@ -1,28 +1,16 @@
 plugins {
-    alias(libs.plugins.android.application)
-    alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.kotlin.serialization)
+    id("playground.android.application")
+    id("playground.android.hilt")
 }
 
 android {
     namespace = "com.agentplayground.app"
-    compileSdk = 37
-    compileSdkMinor = 1
-
     defaultConfig {
         applicationId = "com.agentplayground.android"
-        minSdk = 26
-        targetSdk = 37
         versionCode = 1
         versionName = "0.1.0"
     }
-
-    buildFeatures { compose = true }
-
-    compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_17
-        targetCompatibility = JavaVersion.VERSION_17
-    }
-
     buildTypes {
         release {
             isMinifyEnabled = true
@@ -30,20 +18,19 @@ android {
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"))
         }
     }
-    testOptions { unitTests.isIncludeAndroidResources = true }
-
-    lint {
-        abortOnError = true
-        warningsAsErrors = true
-        checkTestSources = true
-        // Dependency upgrades are reviewed separately from code correctness.
-        disable += setOf("GradleDependency", "NewerVersionAvailable", "AndroidGradlePluginVersion")
-    }
 }
 
 dependencies {
-    implementation(project(":data"))
-    implementation(project(":ui"))
+    implementation(libs.navigation.runtime)
+    implementation(libs.navigation.ui)
+    implementation(libs.lifecycle.navigation)
+    implementation(libs.serialization)
+    implementation(project(":core:domain"))
+    implementation(project(":core:data"))
+    implementation(project(":core:design"))
+    implementation(project(":core:ui"))
+    implementation(libs.hilt.compose)
+    implementation(libs.coroutines)
     implementation(project(":feature:conversation"))
     implementation(project(":feature:knowledge"))
     implementation(project(":feature:memory"))

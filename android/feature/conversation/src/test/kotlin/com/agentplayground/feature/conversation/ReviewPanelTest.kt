@@ -9,9 +9,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createComposeRule
-import com.agentplayground.core.conversation.PlanDraft
-import com.agentplayground.core.model.ExternalTask
-import com.agentplayground.core.model.protocolJson
+import com.agentplayground.domain.conversation.PlanDraft
+import com.agentplayground.domain.model.ExternalTask
+import com.agentplayground.domain.model.protocolJson
 import com.agentplayground.feature.conversation.ui.review.ExternalTaskPanel
 import com.agentplayground.feature.conversation.ui.review.PlanReviewPanel
 import com.agentplayground.feature.conversation.ui.review.ReviewPanel

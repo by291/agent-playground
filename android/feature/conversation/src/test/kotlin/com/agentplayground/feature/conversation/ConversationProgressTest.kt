@@ -5,10 +5,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.*
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
-import com.agentplayground.core.conversation.SessionState
-import com.agentplayground.core.model.AgentOutput
-import com.agentplayground.core.model.ExternalTask
-import com.agentplayground.core.model.RunRecord
+import com.agentplayground.domain.conversation.SessionState
+import com.agentplayground.domain.model.AgentOutput
+import com.agentplayground.domain.model.ExternalTask
+import com.agentplayground.domain.model.RunRecord
 import com.agentplayground.feature.conversation.ui.timeline.TimelineNotices
 import org.junit.Rule
 import org.junit.Test

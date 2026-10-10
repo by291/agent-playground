@@ -14,9 +14,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
-import com.agentplayground.core.model.MemoryRecord
-import com.agentplayground.ui.SectionCard
-import com.agentplayground.ui.StatusTag
+import com.agentplayground.design.SectionCard
+import com.agentplayground.design.StatusTag
+import com.agentplayground.domain.model.MemoryRecord
 
 @Composable
 internal fun MemoryRow(

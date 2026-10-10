@@ -17,12 +17,12 @@ import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.unit.dp
-import com.agentplayground.core.model.Download
-import com.agentplayground.core.model.RunRecord
-import com.agentplayground.core.presentation.conversationTurns
+import com.agentplayground.design.PlaygroundTheme
+import com.agentplayground.domain.model.Download
+import com.agentplayground.domain.model.RunRecord
+import com.agentplayground.domain.presentation.conversationTurns
 import com.agentplayground.feature.conversation.ui.markdown.Markdown
 import com.agentplayground.feature.conversation.ui.timeline.AssistantTurnContent
-import com.agentplayground.ui.PlaygroundTheme
 import com.agui.core.types.AssistantMessage
 import com.agui.core.types.UserMessage
 import kotlinx.coroutines.channels.Channel
