@@ -15,12 +15,14 @@ export function AssistantReply({
   children,
   processDetails,
   externalWaitCallIds = [],
+  messageTimestamps = {},
 }: {
   turn: ChatTurn;
   animatedMessageId: string | null;
   children?: ReactNode;
   processDetails?: ReactNode;
   externalWaitCallIds?: readonly string[];
+  messageTimestamps?: Record<string, string>;
 }) {
   const [visibleAnswers, setVisibleAnswers] = useState(() => new Set<string>());
   const reportVisibleAnswer = useCallback((messageId: string) => {
@@ -90,6 +92,8 @@ export function AssistantReply({
             message={message}
             streaming={active && animatedMessageId === message.id}
             onTextVisible={reportVisibleAnswer}
+            settled={!active}
+            timestamp={messageTimestamps[message.id]}
           />
         ))}
       </KnowledgeSources>

@@ -28,6 +28,7 @@ export function KnowledgeCitation({ chunkId }: { chunkId: string }) {
       <Tooltip>
         <TooltipTrigger asChild>
           <sup
+            data-markdown-href={`#knowledge-source-${chunkId}`}
             className="mx-0.5 rounded text-xs text-muted focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none"
             tabIndex={0}
             aria-label="Source unavailable"
@@ -47,7 +48,7 @@ export function KnowledgeCitation({ chunkId }: { chunkId: string }) {
   }
 
   return (
-    <sup className="mx-0.5">
+    <sup className="mx-0.5" data-markdown-href={`#knowledge-source-${chunkId}`}>
       <Tooltip>
         <TooltipTrigger asChild>
           <button

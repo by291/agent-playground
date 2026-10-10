@@ -2,6 +2,7 @@ import {
   createContext,
   memo,
   useContext,
+  useLayoutEffect,
   useMemo,
   useState,
   type ComponentProps,
@@ -19,10 +20,12 @@ import { compactStreamingText, segmentStreamingText } from "./streamingText";
 import { textReveal, usePacedText } from "./usePacedText";
 import { useReportReplyPresentation } from "../ReplyPresentation";
 import { knowledgeCitations, KnowledgeCitation } from "./knowledgeCitations";
+import { markdownCopyAnnotations } from "./markdownSelection";
 
 interface MarkdownProps {
   text: string;
   streaming: boolean;
+  onStreamingChange?: ((streaming: boolean) => void) | undefined;
 }
 
 interface MarkdownContentProps extends MarkdownProps {
@@ -31,7 +34,7 @@ interface MarkdownContentProps extends MarkdownProps {
 
 const lastBlockContext = createContext(-1);
 const markdownPlugins = { code };
-const citationPlugins = [knowledgeCitations];
+const citationPlugins = [knowledgeCitations, markdownCopyAnnotations];
 const fadeOptions = {
   animation: "fadeIn",
   duration: textReveal.fadeDurationMs,
@@ -121,10 +124,18 @@ export const MarkdownContent = memo(function MarkdownContent({
   );
 });
 
-export default function MarkdownMessage({ text, streaming }: MarkdownProps) {
+export default function MarkdownMessage({
+  text,
+  streaming,
+  onStreamingChange,
+}: MarkdownProps) {
   const display = usePacedText(text, streaming);
 
   useReportReplyPresentation(display.streaming);
+  useLayoutEffect(
+    () => onStreamingChange?.(display.streaming),
+    [onStreamingChange, display.streaming],
+  );
 
   return <MarkdownContent {...display} />;
 }

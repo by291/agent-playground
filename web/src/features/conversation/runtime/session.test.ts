@@ -23,7 +23,10 @@ import {
   isRestoring,
 } from "../model/selectors";
 import { snapshotPolicy } from "../model/lifecycle";
-import type { ConversationSnapshot } from "../api/contracts";
+import {
+  conversationSnapshotSchema,
+  type ConversationSnapshot,
+} from "../api/contracts";
 import {
   loadConversation,
   newConversation,
@@ -337,6 +340,115 @@ function streamingAgent(threadId: string) {
     },
   };
 }
+
+test("snapshot timestamps survive schema parsing and include workflow replies", () => {
+  const saved = conversationSnapshotSchema.parse({
+    ...snapshot(),
+    messageTimestamps: {
+      "saved-message": "2026-10-10T18:00:00.000Z",
+      "workflow-reply": "2026-10-10T18:01:00.000Z",
+    },
+  });
+  const session = createConversationSession({ threadId: "saved-times" });
+  const disconnect = connectSession(session, () => Promise.resolve(saved));
+
+  try {
+    session.receiveSnapshot(saved);
+    assert.deepEqual(session.store.getState().messageTimestamps, {
+      "saved-message": "2026-10-10T18:00:00.000Z",
+      "workflow-reply": "2026-10-10T18:01:00.000Z",
+    });
+  } finally {
+    disconnect();
+  }
+});
+
+test("live timestamps remain stable until a current snapshot supplies saved times", async () => {
+  const stream = streamingAgent("live-times");
+  const session = createConversationSession(
+    { threadId: "live-times" },
+    stream.agent,
+  );
+  let saved = snapshot();
+  const disconnect = connectSession(session, () => Promise.resolve(saved));
+
+  try {
+    session.receiveSnapshot(saved);
+    const startedAt = Date.now();
+    const completion = session.store.getState().send("Show the time");
+    const input = await stream.requested;
+    const questionId = input.messages.at(-1)!.id;
+    const submittedAt = session.store.getState().messageTimestamps[questionId];
+
+    assert.ok(submittedAt && Date.parse(submittedAt) >= startedAt);
+    const journal = loadConversation(input.threadId);
+    const restored = createConversationSession(journal);
+
+    assert.equal(journal.pending?.submittedAt, submittedAt);
+    assert.equal(
+      restored.store.getState().messageTimestamps[questionId],
+      submittedAt,
+    );
+    stream.emit({
+      type: "RUN_STARTED",
+      threadId: input.threadId,
+      runId: input.runId,
+    });
+    stream.emit({
+      type: "TEXT_MESSAGE_START",
+      messageId: "live-reply",
+      role: "assistant",
+      timestamp: 1791655260000,
+    });
+    stream.emit({
+      type: "TEXT_MESSAGE_CONTENT",
+      messageId: "live-reply",
+      delta: "First",
+    });
+    await waitFor(
+      () => session.store.getState().messages.at(-1)?.content === "First",
+    );
+    assert.equal(
+      session.store.getState().messageTimestamps["live-reply"],
+      "2026-10-10T18:01:00.000Z",
+    );
+
+    session.receiveSnapshot({
+      ...snapshot(),
+      messageTimestamps: { "live-reply": "2020-01-01T00:00:00.000Z" },
+    });
+    assert.equal(
+      session.store.getState().messageTimestamps["live-reply"],
+      "2026-10-10T18:01:00.000Z",
+    );
+    stream.emit({
+      type: "TEXT_MESSAGE_CONTENT",
+      messageId: "live-reply",
+      delta: " reply",
+    });
+    stream.emit({ type: "TEXT_MESSAGE_END", messageId: "live-reply" });
+    saved = {
+      ...snapshot(input.runId),
+      messages: [
+        ...input.messages,
+        { id: "live-reply", role: "assistant", content: "First reply" },
+      ],
+      messageTimestamps: {
+        [questionId]: "2026-10-10T18:00:00.000Z",
+        "live-reply": "2026-10-10T18:02:00.000Z",
+      },
+    };
+    stream.finish(input);
+    await completion;
+
+    assert.deepEqual(
+      session.store.getState().messageTimestamps,
+      saved.messageTimestamps,
+    );
+  } finally {
+    disconnect();
+  }
+});
 
 test("a draft model survives reload and is pinned in the first submission journal", async () => {
   const unusedFetch = vi.fn();

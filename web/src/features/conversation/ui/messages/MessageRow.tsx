@@ -1,5 +1,5 @@
 import type { Message } from "@ag-ui/client";
-import { useLayoutEffect, useRef, type ReactNode } from "react";
+import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { StackIcon } from "@phosphor-icons/react/dist/csr/Stack";
 import { Bubble, BubbleContent } from "@/components/ui/bubble";
 import { Spinner } from "@/components/ui/spinner";
@@ -12,15 +12,19 @@ import { hasMessageText, messageText } from "../../model/presentation";
 import MarkdownMessage from "./MarkdownMessage";
 import { uploadedMessageContent } from "@shared/uploaded-files";
 import { UploadedAttachments } from "../Attachments";
+import { AssistantMessageFooter, MessageTimestamp } from "./MessageMetadata";
+import { copyMarkdownSelection } from "./markdownSelection";
 
 export function MessageRow({
   message,
   streaming = false,
   threadId,
+  timestamp,
 }: {
   message: Message;
   streaming?: boolean;
   threadId?: string | null;
+  timestamp?: string | undefined;
 }) {
   const text = messageText(message);
 
@@ -48,6 +52,7 @@ export function MessageRow({
           {threadId && content.files.length > 0 && (
             <UploadedAttachments threadId={threadId} files={content.files} />
           )}
+          <MessageTimestamp timestamp={timestamp} className="self-end" />
         </MessageContent>
       </ConversationMessage>
     );
@@ -55,7 +60,12 @@ export function MessageRow({
 
   return (
     <AssistantFrame>
-      <AssistantText message={message} streaming={streaming} />
+      <AssistantText
+        message={message}
+        streaming={streaming}
+        settled={!streaming}
+        timestamp={timestamp}
+      />
     </AssistantFrame>
   );
 }
@@ -92,12 +102,18 @@ export function AssistantText({
   message,
   streaming = false,
   onTextVisible,
+  settled = true,
+  timestamp,
 }: {
   message: Message;
   streaming?: boolean;
   onTextVisible?: (messageId: string) => void;
+  settled?: boolean;
+  timestamp?: string | undefined;
 }) {
   const content = useRef<HTMLDivElement>(null);
+  const [displaying, setDisplaying] = useState(streaming);
+  const markdown = messageText(message);
 
   useLayoutEffect(() => {
     const element = content.current;
@@ -128,18 +144,27 @@ export function AssistantText({
   }, [message.id, onTextVisible]);
 
   return (
-    <Bubble variant="ghost" className="w-full">
-      <BubbleContent
-        ref={content}
-        className="chat-markdown w-full overflow-visible text-ink"
-      >
-        <MarkdownMessage
-          key={message.id}
-          text={messageText(message)}
-          streaming={streaming}
-        />
-      </BubbleContent>
-    </Bubble>
+    <div className="space-y-1">
+      <Bubble variant="ghost" className="w-full">
+        <BubbleContent
+          ref={content}
+          className="chat-markdown w-full overflow-visible text-ink"
+          onCopy={copyMarkdownSelection}
+        >
+          <MarkdownMessage
+            key={message.id}
+            text={markdown}
+            streaming={streaming}
+            onStreamingChange={setDisplaying}
+          />
+        </BubbleContent>
+      </Bubble>
+      <AssistantMessageFooter
+        markdown={markdown}
+        timestamp={timestamp}
+        disabled={!settled || displaying}
+      />
+    </div>
   );
 }
 

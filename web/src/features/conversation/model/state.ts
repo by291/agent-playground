@@ -25,6 +25,7 @@ export interface ConversationState {
   externalTasks: ExternalTaskSnapshot[];
   runs: ConversationSnapshot["runs"];
   messages: Message[];
+  messageTimestamps: Record<string, string>;
   surfaces: A2UISurfaceView[];
   activity: Activity[];
   activityReceived: number;

@@ -13,6 +13,7 @@ import { selectConversationModelSchema } from "@shared/conversation";
 export const pendingSubmissionSchema = z.object({
   runId: z.string().min(1),
   messageId: z.string().min(1),
+  submittedAt: z.string().optional(),
   messages: MessageSchema.array(),
   state: z.record(z.unknown()),
   modelId: selectConversationModelSchema.shape.modelId.optional(),
@@ -28,6 +29,7 @@ export const conversationSnapshotSchema = z.object({
   contextUsage: contextUsageSchema.nullable().optional(),
   messages: MessageSchema.array(),
   interrupts: InterruptSchema.array(),
+  messageTimestamps: z.record(z.string()).optional(),
   outputs: z
     .unknown()
     .array()

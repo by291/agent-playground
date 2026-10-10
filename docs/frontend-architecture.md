@@ -96,6 +96,8 @@ The root route starts with an unallocated draft. The session allocates its threa
 
 `conversationView` groups assistant/tool messages by user turn, attaches surfaces once, preserves unattached surfaces and places pending review editors. `ChatPane` memoizes this work by the four relevant data arrays, so context/activity updates do not rebuild the view model.
 
+The session keeps message timestamps separately from official AG-UI messages. It records provisional submission/event times, preserves them on retry, and accepts saved timestamps only from current snapshots. Workflow-output replies use the same map. `AssistantText` tracks its own Markdown display buffer to enable Copy all after both execution and presentation settle. Selection copying uses Turndown with GFM support. It normalizes cloned Streamdown code, link and partial-table markup before conversion; the live renderer keeps its existing navigation and link-safety flow.
+
 ## Application and styling
 
 `app/config.ts` validates browser environment flags with Zod. `app/providers.tsx` creates the app's QueryClient. `PageBoundary` reports page rendering failures and presents a reload action. Individual A2UI rendering failures retain their surface-level boundary.

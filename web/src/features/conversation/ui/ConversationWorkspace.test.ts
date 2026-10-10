@@ -130,6 +130,9 @@ test("the composer waits for the display buffer and final fade after the run com
   const input = page.getByRole("textbox", {
     name: "Message",
   }) as HTMLTextAreaElement;
+  const replyText = () =>
+    page.getByLabelText("Assistant reply").querySelector(".chat-markdown")
+      ?.textContent;
 
   fireEvent.change(input, { target: { value: "Write an article" } });
   await act(async () => {
@@ -138,9 +141,7 @@ test("the composer waits for the display buffer and final fade after the run com
   });
   await act(() => Promise.resolve(emitText!()));
   clock.advance(68);
-  assert.ok(
-    page.getByLabelText("Assistant reply").textContent?.startsWith("清"),
-  );
+  assert.ok(replyText()?.startsWith("清"));
   const focusTarget = page.getAllByRole("button", {
     name: /^New conversation$/,
   })[0]!;
@@ -152,10 +153,7 @@ test("the composer waits for the display buffer and final fade after the run com
   });
   assert.equal(page.getByTestId("execution").textContent, "idle");
 
-  assert.ok(
-    (page.getByLabelText("Assistant reply").textContent?.length ?? 0) <
-      text.length,
-  );
+  assert.ok((replyText()?.length ?? 0) < text.length);
   assert.equal(
     input.disabled,
     true,
@@ -163,14 +161,14 @@ test("the composer waits for the display buffer and final fade after the run com
   );
 
   for (let frame = 0; frame < 90; frame++) {
-    if (page.getByLabelText("Assistant reply").textContent === text) {
+    if (replyText() === text) {
       break;
     }
 
     clock.advance(34);
   }
 
-  assert.equal(page.getByLabelText("Assistant reply").textContent, text);
+  assert.equal(replyText(), text);
 
   assert.equal(
     input.disabled,

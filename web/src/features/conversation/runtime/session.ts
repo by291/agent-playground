@@ -86,6 +86,9 @@ export function createConversationSession(
     externalTasks: [],
     runs: [],
     messages: [],
+    messageTimestamps: pending?.submittedAt
+      ? { [pending.messageId]: pending.submittedAt }
+      : {},
     surfaces: [],
     activity: [],
     activityReceived: 0,
@@ -115,9 +118,24 @@ export function createConversationSession(
         });
       }
 
+      const messageTimestamps = { ...store.getState().messageTimestamps };
+      const submittedMessage = pending?.messages.find(
+        (message) =>
+          message.id === pending?.messageId && message.role === "user",
+      );
+
+      if (
+        submittedMessage &&
+        pending?.submittedAt &&
+        !messageTimestamps[submittedMessage.id]
+      ) {
+        messageTimestamps[submittedMessage.id] = pending.submittedAt;
+      }
+
       store.setState({
         runs,
         messages: [...agent.messages],
+        messageTimestamps,
         lifecycle: transitionLifecycle(store.getState().lifecycle, {
           type: "submission-started",
         }),
@@ -159,7 +177,7 @@ export function createConversationSession(
     store.setState((state) => ({ issues: { ...state.issues, [kind]: issue } }));
   }
 
-  function receiveOutputs(outputs: A2UIOutput[]) {
+  function receiveOutputs(outputs: A2UIOutput[], receivedAt?: string) {
     const result = a2ui?.ingest(outputs);
 
     if (!result) {
@@ -176,6 +194,17 @@ export function createConversationSession(
     if (projection.replies.length) {
       agent.setMessages([...agent.messages, ...projection.replies]);
       store.setState({ messages: [...agent.messages] });
+
+      if (receivedAt) {
+        store.setState((state) => ({
+          messageTimestamps: {
+            ...Object.fromEntries(
+              projection.replies.map((reply) => [reply.id, receivedAt]),
+            ),
+            ...state.messageTimestamps,
+          },
+        }));
+      }
     }
 
     if (
@@ -281,6 +310,10 @@ export function createConversationSession(
           ? state.modelId
           : (snapshot?.modelId ?? null),
         messages: [...agent.messages],
+        messageTimestamps: {
+          ...state.messageTimestamps,
+          ...snapshot?.messageTimestamps,
+        },
         pendingInterrupts: result.interrupts,
         runs,
         issues: { ...store.getState().issues, run: result.issue },
@@ -427,6 +460,11 @@ export function createConversationSession(
 
       return runSubmission(pending, onAccepted);
     }
+
+    input = {
+      ...input,
+      submittedAt: input.submittedAt ?? new Date().toISOString(),
+    };
 
     // Save before sending so a reload can retry exactly the same admission.
     try {
@@ -696,6 +734,28 @@ export function createConversationSession(
           return;
         }
 
+        const eventDate = new Date(event.timestamp ?? Date.now());
+        const receivedAt = Number.isNaN(eventDate.getTime())
+          ? new Date().toISOString()
+          : eventDate.toISOString();
+
+        if (
+          (event.type === EventType.TEXT_MESSAGE_START ||
+            event.type === EventType.TEXT_MESSAGE_CONTENT) &&
+          typeof event.messageId === "string"
+        ) {
+          const messageId = event.messageId;
+
+          if (!store.getState().messageTimestamps[messageId]) {
+            store.setState((state) => ({
+              messageTimestamps: {
+                ...state.messageTimestamps,
+                [messageId]: receivedAt,
+              },
+            }));
+          }
+        }
+
         if (event.type === EventType.RUN_STARTED) {
           // An accepted stream must eventually be represented in the saved snapshot.
           awaitingCheckpoint = true;
@@ -715,7 +775,7 @@ export function createConversationSession(
         try {
           const output = parseA2UIEvent(event);
 
-          if (output && receiveOutputs([output])) {
+          if (output && receiveOutputs([output], receivedAt)) {
             void recoverOutputGap();
           }
         } catch (error) {

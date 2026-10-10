@@ -55,6 +55,7 @@ export function ChatPane({
   const {
     threadId,
     messages,
+    messageTimestamps,
     externalTasks,
     runs,
     surfaces,
@@ -71,6 +72,7 @@ export function ChatPane({
     useShallow((state) => ({
       threadId: state.threadId,
       messages: state.messages,
+      messageTimestamps: state.messageTimestamps,
       externalTasks: state.externalTasks,
       runs: state.runs,
       surfaces: state.surfaces,
@@ -158,6 +160,7 @@ export function ChatPane({
                             >
                               <MessageRow
                                 message={turn.user}
+                                timestamp={messageTimestamps[turn.user.id]}
                                 threadId={threadId}
                               />
                             </div>
@@ -167,6 +170,7 @@ export function ChatPane({
                           <MessageScrollerItem className="conversation-column">
                             <AssistantReply
                               turn={turn}
+                              messageTimestamps={messageTimestamps}
                               externalWaitCallIds={externalWaitCallIds}
                               animatedMessageId={animatedMessageId}
                               processDetails={

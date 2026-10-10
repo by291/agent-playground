@@ -237,3 +237,72 @@ test("reloading during a run recovers the completed reply without resubmitting",
   );
   expect(submissionsAfterReload).toBe(0);
 });
+
+test("reply copy and message times work during streaming, after reload and on mobile", async ({
+  page,
+  context,
+  request,
+}, testInfo) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  const threadId = await startHeldReply(page);
+  const reply = page.getByLabel("Assistant reply", { exact: true });
+
+  await expect(reply.getByRole("button", { name: "Copy all" })).toBeDisabled();
+  await expect(reply.locator("time")).toHaveCount(1);
+  await expect(
+    page.locator('[data-slot="message"][data-align="end"] time'),
+  ).toHaveCount(1);
+  const released = await request.post(
+    `http://127.0.0.1:4300/__e2e/release/${threadId}`,
+  );
+
+  expect(released.ok()).toBe(true);
+  await expect(reply.getByRole("button", { name: "Copy all" })).toBeEnabled();
+  await reply.getByRole("button", { name: "Copy all" }).click();
+  const markdown =
+    "Here is a C example.\n\n```c\nint main(void) {\n  return 0;\n}\n```";
+  const clipboardText = async () =>
+    (await page.evaluate(() => navigator.clipboard.readText())).replace(
+      /\r\n/g,
+      "\n",
+    );
+
+  await expect.poll(clipboardText).toBe(markdown);
+  await expect(reply.getByRole("button", { name: "Copied" })).toBeVisible();
+
+  await reply.locator(".chat-markdown").click({ position: { x: 8, y: 8 } });
+  await reply.locator(".chat-markdown").evaluate((answer) => {
+    const range = document.createRange();
+
+    range.selectNodeContents(answer);
+    const selection = window.getSelection()!;
+
+    selection.removeAllRanges();
+    selection.addRange(range);
+  });
+  await page.keyboard.press(
+    process.platform === "darwin" ? "Meta+C" : "Control+C",
+  );
+  await expect.poll(clipboardText).toBe(markdown);
+
+  const savedTimes = await page
+    .locator("time")
+    .evaluateAll((times) => times.map((time) => time.getAttribute("datetime")));
+
+  await page.reload();
+  await expect(reply.getByRole("button", { name: "Copy all" })).toBeEnabled();
+  await expect
+    .poll(() =>
+      page
+        .locator("time")
+        .evaluateAll((times) =>
+          times.map((time) => time.getAttribute("datetime")),
+        ),
+    )
+    .toEqual(savedTimes);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(reply.getByRole("button", { name: "Copy all" })).toBeVisible();
+  await reply.getByRole("button", { name: "Copy all" }).click();
+  await expect.poll(clipboardText).toBe(markdown);
+  await capture(page, testInfo, "reply-copy-mobile.png");
+});
