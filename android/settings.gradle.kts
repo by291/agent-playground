@@ -19,4 +19,4 @@ rootProject.name = "AgentPlaygroundAndroid"
 
 include(":app", ":core", ":data", ":ui")
 
-include(":feature:conversation", ":feature:knowledge", ":feature:settings")
+include(":feature:conversation", ":feature:knowledge", ":feature:memory", ":feature:settings")

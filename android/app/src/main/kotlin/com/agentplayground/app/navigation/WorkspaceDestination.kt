@@ -6,6 +6,7 @@ internal enum class WorkspaceDestination(val route: String) {
     Chat("chat"),
     Activity("activity"),
     Knowledge("knowledge"),
+    Memory("memory"),
     Settings("settings");
 
     val observesConversation: Boolean

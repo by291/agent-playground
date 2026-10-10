@@ -9,7 +9,14 @@ plugins {
 }
 
 val androidLibraries =
-    listOf(":data", ":ui", ":feature:conversation", ":feature:knowledge", ":feature:settings")
+    listOf(
+        ":data",
+        ":ui",
+        ":feature:conversation",
+        ":feature:knowledge",
+        ":feature:memory",
+        ":feature:settings",
+    )
 
 subprojects {
     plugins.withId("com.android.library") {

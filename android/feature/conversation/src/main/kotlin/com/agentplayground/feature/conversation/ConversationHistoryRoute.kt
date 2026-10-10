@@ -13,6 +13,7 @@ fun ConversationHistoryRoute(
     destination: String = "chat",
     serverUrl: String = "",
     onKnowledge: () -> Unit = {},
+    onMemory: () -> Unit = {},
     onSettings: () -> Unit = {},
 ) {
     ConversationHistory(
@@ -27,6 +28,7 @@ fun ConversationHistoryRoute(
         destination = destination,
         serverUrl = serverUrl,
         onKnowledge = onKnowledge,
+        onMemory = onMemory,
         onSettings = onSettings,
     )
 }

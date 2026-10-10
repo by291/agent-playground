@@ -20,6 +20,7 @@ import com.agentplayground.feature.conversation.ConversationHistoryRoute
 import com.agentplayground.feature.conversation.ConversationRoute
 import com.agentplayground.feature.conversation.ui.activity.ActivityScreen
 import com.agentplayground.feature.knowledge.KnowledgeRoute
+import com.agentplayground.feature.memory.MemoryRoute
 import com.agentplayground.feature.settings.SettingsRoute
 import com.agentplayground.ui.Motion
 import com.agentplayground.ui.RevealNavigationDrawer
@@ -95,6 +96,7 @@ internal fun PlaygroundWorkspace(
                     destination = destination.route,
                     serverUrl = preferences.serverUrl,
                     onKnowledge = { navigate(WorkspaceDestination.Knowledge) },
+                    onMemory = { navigate(WorkspaceDestination.Memory) },
                     onSettings = { navigate(WorkspaceDestination.Settings) },
                 )
             }
@@ -110,6 +112,19 @@ internal fun PlaygroundWorkspace(
                             )
 
                         WorkspaceDestination.Knowledge -> KnowledgeRoute(knowledge, openNavigation)
+
+                        WorkspaceDestination.Memory ->
+                            MemoryRoute(
+                                models.memory,
+                                onOpenSource = { threadId ->
+                                    if (threadId != chatState.session?.threadId) {
+                                        chat.select(threadId)
+                                    }
+
+                                    navigate(WorkspaceDestination.Chat)
+                                },
+                                onOpenNavigation = openNavigation,
+                            )
 
                         WorkspaceDestination.Settings ->
                             SettingsRoute(

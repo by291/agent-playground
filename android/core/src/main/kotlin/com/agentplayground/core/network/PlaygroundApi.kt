@@ -5,11 +5,14 @@ import com.agentplayground.core.model.ConversationModel
 import com.agentplayground.core.model.ConversationPage
 import com.agentplayground.core.model.ConversationSnapshot
 import com.agentplayground.core.model.KnowledgeDocument
+import com.agentplayground.core.model.MemoryPage
+import com.agentplayground.core.model.MemoryRecord
 import com.agentplayground.core.model.RenamedConversation
 import com.agentplayground.core.model.SkillFile
 import com.agentplayground.core.model.protocolJson
 import com.agentplayground.core.model.string
 import com.agentplayground.core.model.validateFile
+import com.agentplayground.core.model.validateMemoryText
 import com.agui.core.types.BaseEvent
 import com.agui.core.types.RunAgentInput
 import java.io.IOException
@@ -155,6 +158,62 @@ class PlaygroundApi(baseUrl: String) : ConversationApi, AutoCloseable {
     suspend fun clearConversations() = delete(url("conversations"))
 
     suspend fun documents(): List<KnowledgeDocument> = get(url("api", "knowledge", "documents"))
+
+    suspend fun memories(offset: Int = 0): MemoryPage {
+        require(offset in 0..1_000_000) { "Invalid memory offset." }
+
+        val address =
+            url("api", "memories")
+                .newBuilder()
+                .addQueryParameter("offset", offset.toString())
+                .addQueryParameter("limit", "50")
+                .build()
+        val page = get<MemoryPage>(address)
+
+        require(
+            page.nextOffset == null || page.nextOffset > offset && page.nextOffset <= 1_000_000
+        ) {
+            "Memory pagination did not advance."
+        }
+
+        return page
+    }
+
+    suspend fun correctMemory(memory: MemoryRecord, text: String): MemoryRecord {
+        val trimmed = validateMemoryText(text)
+        val body = memoryMutation(memory, trimmed).toString().toRequestBody(JSON)
+        val updated =
+            request(Request.Builder().url(url("api", "memories", memory.id)).patch(body).build())
+                .use { decode<MemoryRecord>(it) }
+
+        require(
+            updated.id == memory.id &&
+                updated.category == memory.category &&
+                updated.project == memory.project
+        ) {
+            "Memory correction returned an unexpected identity."
+        }
+
+        return updated
+    }
+
+    suspend fun forgetMemory(memory: MemoryRecord) {
+        val body = memoryMutation(memory).toString().toRequestBody(JSON)
+
+        request(Request.Builder().url(url("api", "memories", memory.id)).delete(body).build()).use {
+            checkResponse(it)
+        }
+    }
+
+    private fun memoryMutation(memory: MemoryRecord, text: String? = null) = buildJsonObject {
+        put("category", memory.category)
+        put("project", memory.project?.let(::JsonPrimitive) ?: JsonNull)
+        put("revision", memory.revision)
+
+        if (text != null) {
+            put("text", text)
+        }
+    }
 
     suspend fun deleteDocument(id: String) = delete(url("api", "knowledge", "documents", id))
 

@@ -46,6 +46,7 @@ dependencies {
     implementation(project(":ui"))
     implementation(project(":feature:conversation"))
     implementation(project(":feature:knowledge"))
+    implementation(project(":feature:memory"))
     implementation(project(":feature:settings"))
     implementation(platform(libs.compose.bom))
     implementation(libs.compose.ui)

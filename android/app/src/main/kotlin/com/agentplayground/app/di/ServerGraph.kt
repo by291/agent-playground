@@ -14,12 +14,15 @@ import com.agentplayground.data.conversation.ConversationRepository
 import com.agentplayground.data.files.AttachmentImages
 import com.agentplayground.data.files.DocumentAccess
 import com.agentplayground.data.knowledge.KnowledgeRepository
+import com.agentplayground.data.memory.MemoryRepository
 import com.agentplayground.feature.conversation.ConversationViewModel
 import com.agentplayground.feature.knowledge.KnowledgeViewModel
+import com.agentplayground.feature.memory.MemoryViewModel
 
 internal data class WorkspaceModels(
     val conversation: ConversationViewModel,
     val knowledge: KnowledgeViewModel,
+    val memory: MemoryViewModel,
 )
 
 @Composable
@@ -53,12 +56,20 @@ internal fun rememberWorkspaceModels(
                 }
             }
         }
+    val memoryFactory =
+        remember(serverUrl) {
+            viewModelFactory {
+                initializer { MemoryViewModel(MemoryRepository(PlaygroundApi(serverUrl))) }
+            }
+        }
+
     val conversation: ConversationViewModel =
         viewModel(viewModelStoreOwner = owner, factory = conversationFactory)
     val knowledge: KnowledgeViewModel =
         viewModel(viewModelStoreOwner = owner, factory = knowledgeFactory)
+    val memory: MemoryViewModel = viewModel(viewModelStoreOwner = owner, factory = memoryFactory)
 
-    return WorkspaceModels(conversation, knowledge)
+    return WorkspaceModels(conversation, knowledge, memory)
 }
 
 // The Activity retains this graph across recreation; replacing its server disposes all child

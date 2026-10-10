@@ -17,4 +17,10 @@ internal fun ObserveWorkspace(destination: WorkspaceDestination, models: Workspa
 
         onStopOrDispose { models.knowledge.setVisible(false) }
     }
+
+    LifecycleStartEffect(models.memory, destination == WorkspaceDestination.Memory) {
+        models.memory.setVisible(destination == WorkspaceDestination.Memory)
+
+        onStopOrDispose { models.memory.setVisible(false) }
+    }
 }

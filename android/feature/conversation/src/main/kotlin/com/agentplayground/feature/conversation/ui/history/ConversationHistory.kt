@@ -44,6 +44,7 @@ internal fun ConversationHistory(
     destination: String = "chat",
     serverUrl: String = "",
     onKnowledge: () -> Unit = {},
+    onMemory: () -> Unit = {},
     onSettings: () -> Unit = {},
 ) {
     var rename by remember { mutableStateOf<ConversationSummary?>(null) }
@@ -161,6 +162,40 @@ internal fun ConversationHistory(
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                             Text("Knowledge", style = MaterialTheme.typography.bodyMedium)
+                        }
+                    }
+                    Surface(
+                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                        shape = MaterialTheme.shapes.small,
+                        color =
+                            animateColorAsState(
+                                    if (destination == "memory") {
+                                        MaterialTheme.colorScheme.secondaryContainer
+                                    } else {
+                                        androidx.compose.ui.graphics.Color.Transparent
+                                    },
+                                    Motion.feedback(),
+                                    label = "memory-selection",
+                                )
+                                .value,
+                    ) {
+                        Row(
+                            Modifier.fillMaxWidth()
+                                .semantics { selected = destination == "memory" }
+                                .clickable(role = Role.Button, onClick = onMemory)
+                                .heightIn(min = 48.dp)
+                                .padding(horizontal = 12.dp, vertical = 8.dp)
+                                .testTag("navigation-memory"),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            Icon(
+                                Icons.Outlined.Psychology,
+                                null,
+                                Modifier.size(20.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            Text("Memory", style = MaterialTheme.typography.bodyMedium)
                         }
                     }
                     Row(

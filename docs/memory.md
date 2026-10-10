@@ -6,8 +6,9 @@
 
 Long-term memory is enabled in the normal Python Agent graph. No feature flag,
 separate service or visit to `/memory` is needed. Web and Android conversations
-use the same server-side memory. The Web **Memory** sidebar entry opens a page
-for inspecting, correcting and forgetting saved entries.
+use the same server-side memory. The **Memory** entry in the Web sidebar and
+Android navigation opens a page for inspecting, correcting and forgetting saved
+entries.
 
 In Web and Android conversations, explicit memory calls appear in a separate
 **Memory** execution group alongside **Tool** and **Skill**. Expand it to inspect
@@ -43,8 +44,8 @@ no background extraction job or separate extraction-model request.
 
 ## Inspect, correct and forget
 
-The Memory page lists preferences and project facts with their update date and
-source conversation when available. **Correct** changes the text while retaining
+The Web and Android Memory pages list preferences and project facts with their
+update date and source conversation when available. **Correct** changes the text while retaining
 its scope and source. **Forget** asks for confirmation and removes the entry from
 future recall. Existing conversation messages and historical checkpoints retain
 their original history; forgetting does not erase a conversation or interrupt a
@@ -140,5 +141,8 @@ TypeScript tests cover schemas, authenticated proxying, request bounds and error
 handling. Web DOM checks cover draft preservation and conflict/refresh recovery.
 The controlled browser regression uses the real Python management routes,
 LangMem and PostgreSQL through the real public server to verify source navigation,
-correction, reload and forgetting. These controlled checks establish mechanics;
-they do not establish a live model's memory-capture quality.
+correction, reload and forgetting. Android HTTP, ViewModel and Compose checks
+cover scope/revision requests, pagination retry, draft preservation, committed
+results after refresh failures and native management navigation/dialogs. These
+controlled checks establish mechanics; they do not establish a live model's
+memory-capture quality.

@@ -128,6 +128,33 @@ class DrawerNavigationTest {
     }
 
     @Test
+    fun `memory management opens from navigation and returns to its source conversation`() {
+        fixture {
+            compose.onNodeWithContentDescription("Open conversation history").performClick()
+            compose.onNodeWithTag("navigation-memory").assertIsDisplayed().performClick()
+
+            await {
+                compose
+                    .onAllNodesWithText("Prefer concise replies.")
+                    .fetchSemanticsNodes()
+                    .isNotEmpty()
+            }
+
+            compose.onNodeWithText("Prefer concise replies.").assertIsDisplayed()
+            compose.onNodeWithContentDescription("Open navigation menu").performClick()
+            compose.onNodeWithTag("navigation-memory").assertIsSelected()
+            compose.onNodeWithTag("navigation-memory").performClick()
+            compose
+                .onNodeWithContentDescription("Memory actions: Prefer concise replies.")
+                .performClick()
+            compose.onNodeWithText("Source conversation").performClick()
+
+            compose.onNodeWithTag("conversation-title").assertTextEquals("Drawer fixture")
+            compose.onNodeWithContentDescription("Message").assertTextContains("Preserved draft")
+        }
+    }
+
+    @Test
     fun `an unsent conversation remains reachable from the library without creating a new draft`() {
         fixture(empty = true) {
             compose.onNodeWithContentDescription("Open conversation history").performClick()
@@ -207,6 +234,11 @@ class DrawerNavigationTest {
                                             )
                                         )
                                 }
+                            "/api/memories?offset=0&limit=50" ->
+                                MockResponse()
+                                    .setBody(
+                                        """{"items":[{"id":"00000000-0000-4000-8000-000000000001","category":"preference","project":null,"text":"Prefer concise replies.","sourceThreadId":"fixture","sourceMessageId":"user","revision":1,"createdAt":"2026-10-10T00:00:00Z","updatedAt":"2026-10-10T00:00:00Z"}],"nextOffset":null}"""
+                                    )
                             else -> MockResponse().setResponseCode(404)
                         }
                 }
