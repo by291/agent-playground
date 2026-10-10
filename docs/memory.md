@@ -9,6 +9,11 @@ separate service or visit to `/memory` is needed. Web and Android conversations
 use the same server-side memory. The Web **Memory** sidebar entry opens a page
 for inspecting, correcting and forgetting saved entries.
 
+In Web and Android conversations, explicit memory calls appear in a separate
+**Memory** execution group alongside **Tool** and **Skill**. Expand it to inspect
+search, remember and forget operations, their parameters and their results.
+Existing conversation history uses the same grouping.
+
 The agent can save explicit durable preferences, confirmed project facts and
 decisions during a conversation. Examples:
 

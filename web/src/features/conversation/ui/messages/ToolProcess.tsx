@@ -13,7 +13,9 @@ import { ClockIcon } from "@phosphor-icons/react/dist/csr/Clock";
 import { WarningCircleIcon } from "@phosphor-icons/react/dist/csr/WarningCircle";
 import { WrenchIcon } from "@phosphor-icons/react/dist/csr/Wrench";
 import { StackIcon } from "@phosphor-icons/react/dist/csr/Stack";
+import { BrainIcon } from "@phosphor-icons/react/dist/csr/Brain";
 import { skillIdentity } from "../../model/skillExecution";
+import { isMemoryTool } from "../../model/memoryExecution";
 import {
   Collapsible,
   CollapsibleContent,
@@ -24,6 +26,9 @@ import { messageText } from "../../model/presentation";
 import type { toolProcess, ToolStep } from "../../model/turns";
 
 const toolLabels: Record<string, string> = {
+  search_memory: "Search memory",
+  remember_memory: "Remember a fact",
+  forget_memory: "Forget a fact",
   search_knowledge: "Search knowledge",
   load_skill: "Load a Skill",
   read_skill_file: "Read a Skill file",
@@ -121,7 +126,11 @@ function ToolDetails({ step }: { step: ToolStep }) {
       </CollapsibleTrigger>
       <CollapsibleContent className="space-y-3 px-2 pt-2 pb-3">
         <div>
-          <p className="mb-1 text-xs font-medium text-muted">Tool</p>
+          <p className="mb-1 text-xs font-medium text-muted">
+            {isMemoryTool(step.call.function.name)
+              ? "Memory operation"
+              : "Tool"}
+          </p>
           <code className="text-xs wrap-anywhere">
             {step.call.function.name}
           </code>
@@ -150,26 +159,31 @@ export function ToolProcess({
   process,
   children,
   skillName,
+  category = skillName ? "Skill" : "Tool",
 }: {
   process: ReturnType<typeof toolProcess>;
   children?: ReactNode;
   skillName?: string;
+  category?: "Tool" | "Skill" | "Memory";
 }) {
   const [open, setOpen] = useState(false);
   const steps = process.flatMap((entry) => entry.calls);
   const failed = steps.some((step) => step.status === "failed");
   const running = steps.some((step) => step.status === "running");
   const error = steps.find((step) => step.result?.error)?.result?.error;
+  const countLabel = category === "Memory" ? "operations" : "tools";
   const name =
     skillName ??
     (steps.length === 1
       ? steps[0]!.call.function.name
-      : `${steps.length} tools`);
+      : `${steps.length} ${countLabel}`);
   let Icon = WrenchIcon;
 
   if (failed) {
     Icon = WarningCircleIcon;
-  } else if (skillName) {
+  } else if (category === "Memory") {
+    Icon = BrainIcon;
+  } else if (category === "Skill") {
     Icon = StackIcon;
   }
 
@@ -178,7 +192,7 @@ export function ToolProcess({
       <Tooltip>
         <TooltipTrigger asChild>
           <CollapsibleTrigger
-            aria-label={`${skillName ? "Skill" : "Tool"} ${name} ${summary(steps)}`}
+            aria-label={`${category} ${name} ${summary(steps)}`}
             className={`flex min-h-8 max-w-full cursor-pointer items-center gap-2 rounded-lg px-2 py-1 text-left text-sm hover:bg-sidebar focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none ${failed ? "text-red-700" : "text-muted"}`}
           >
             {running ? (
@@ -190,7 +204,7 @@ export function ToolProcess({
               variant="outline"
               className="shrink-0 rounded px-1.5 py-0.5 text-[11px]"
             >
-              {skillName ? "Skill" : "Tool"}
+              {category}
             </Badge>
             <span className="min-w-0 truncate font-medium text-ink">
               {name}

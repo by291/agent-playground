@@ -107,11 +107,16 @@ test("nested memory tools complete during streaming without flashing failure", a
     .fill("Remember a durable preference.");
   await page.getByRole("textbox", { name: "Message" }).press("Enter");
   const input = (await submitted).postDataJSON() as { threadId: string };
-  const tools = page.getByRole("button", {
-    name: /Tool.*remember_memory.*Completed/,
+  const memory = page.getByRole("button", {
+    name: /Memory.*remember_memory.*Completed/,
   });
 
-  await expect(tools).toBeVisible();
+  await expect(memory).toBeVisible();
+  await expect(page.getByRole("button", { name: /^Tool / })).toHaveCount(0);
+  await memory.click();
+  await expect(
+    page.getByRole("button", { name: /Remember a fact/ }),
+  ).toBeVisible();
   await expect(page.getByRole("textbox", { name: "Message" })).toBeDisabled();
   await expect(page.getByRole("alert")).toHaveCount(0);
   await expect(
@@ -127,7 +132,7 @@ test("nested memory tools complete during streaming without flashing failure", a
   ).toContainText("Preference saved.");
   await expect(page.getByRole("textbox", { name: "Message" })).toBeEnabled();
   await page.reload();
-  await expect(tools).toBeVisible();
+  await expect(memory).toBeVisible();
   await expect(page.getByRole("alert")).toHaveCount(0);
 });
 

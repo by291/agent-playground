@@ -31,7 +31,17 @@ data class ToolStep(val call: ToolCall, val result: ToolMessage?, val status: To
 
 data class SkillIdentity(val name: String, val path: String? = null)
 
-data class ExecutionGroup(val skill: SkillIdentity?, val steps: List<ToolStep>)
+enum class ExecutionKind {
+    Tool,
+    Skill,
+    Memory,
+}
+
+data class ExecutionGroup(
+    val skill: SkillIdentity?,
+    val steps: List<ToolStep>,
+    val kind: ExecutionKind = if (skill == null) ExecutionKind.Tool else ExecutionKind.Skill,
+)
 
 data class KnowledgeSource(
     val chunkId: String,
@@ -68,6 +78,9 @@ private val citationPattern =
 private val uuidPattern =
     Regex("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", RegexOption.IGNORE_CASE)
 private val skillTools = setOf("load_skill", "read_skill_file", "run_skill_script")
+private val memoryTools = setOf("search_memory", "remember_memory", "forget_memory")
+
+fun isMemoryTool(name: String): Boolean = name in memoryTools
 
 fun conversationTurns(
     messages: List<Message>,
@@ -184,10 +197,16 @@ fun executionGroups(steps: List<ToolStep>): List<ExecutionGroup> {
 
     for (step in steps) {
         val skill = skillIdentity(step)
-        val index = groups.indexOfFirst { it.skill?.name == skill?.name }
+        val kind =
+            when {
+                isMemoryTool(step.call.function.name) -> ExecutionKind.Memory
+                skill != null -> ExecutionKind.Skill
+                else -> ExecutionKind.Tool
+            }
+        val index = groups.indexOfFirst { it.kind == kind && it.skill?.name == skill?.name }
 
         if (index < 0) {
-            groups.add(ExecutionGroup(skill, listOf(step)))
+            groups.add(ExecutionGroup(skill, listOf(step), kind))
         } else {
             groups[index] = groups[index].copy(steps = groups[index].steps + step)
         }

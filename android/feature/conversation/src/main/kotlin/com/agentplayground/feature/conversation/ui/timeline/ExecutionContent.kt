@@ -28,8 +28,10 @@ import com.agentplayground.core.model.isReasoning
 import com.agentplayground.core.model.protocolJson
 import com.agentplayground.core.presentation.ConversationTurn
 import com.agentplayground.core.presentation.ExecutionGroup
+import com.agentplayground.core.presentation.ExecutionKind
 import com.agentplayground.core.presentation.ToolStatus
 import com.agentplayground.core.presentation.ToolStep
+import com.agentplayground.core.presentation.isMemoryTool
 import com.agentplayground.core.presentation.reasoningPhase
 import com.agentplayground.core.presentation.skillIdentity
 import com.agentplayground.feature.conversation.ui.markdown.Markdown
@@ -122,6 +124,8 @@ internal fun ToolGroupContent(
         group.skill?.name
             ?: if (group.steps.size == 1) {
                 group.steps.first().call.function.name
+            } else if (group.kind == ExecutionKind.Memory) {
+                "${group.steps.size} operations"
             } else {
                 "${group.steps.size} tools"
             }
@@ -146,7 +150,15 @@ internal fun ToolGroupContent(
                             tint = colors.error,
                         )
 
-                    group.skill != null ->
+                    group.kind == ExecutionKind.Memory ->
+                        Icon(
+                            Icons.Outlined.Psychology,
+                            null,
+                            Modifier.size(18.dp),
+                            tint = colors.onSurfaceVariant,
+                        )
+
+                    group.kind == ExecutionKind.Skill ->
                         Icon(
                             painterResource(R.drawable.ic_agent_mark),
                             null,
@@ -169,7 +181,7 @@ internal fun ToolGroupContent(
                 border = BorderStroke(1.dp, colors.outlineVariant),
             ) {
                 Text(
-                    if (group.skill == null) "Tool" else "Skill",
+                    group.kind.name,
                     Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
                     style = MaterialTheme.typography.labelSmall,
                     color = colors.onSurfaceVariant,
@@ -224,7 +236,7 @@ private fun ToolDetails(step: ToolStep) {
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(
-                        "Tool",
+                        if (isMemoryTool(step.call.function.name)) "Memory operation" else "Tool",
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -344,6 +356,9 @@ private fun toolLabel(name: String): String =
         "load_skill" -> "Load a Skill"
         "read_skill_file" -> "Read a Skill file"
         "run_skill_script" -> "Run a Skill script"
+        "search_memory" -> "Search memory"
+        "remember_memory" -> "Remember a fact"
+        "forget_memory" -> "Forget a fact"
         "get_current_time" -> "Check the time"
         "calculate_sum" -> "Calculate a sum"
         "run_experiment_workflow" -> "Build an experiment plan"

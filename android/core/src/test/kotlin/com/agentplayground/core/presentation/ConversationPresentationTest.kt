@@ -145,6 +145,38 @@ class ConversationPresentationTest {
     }
 
     @Test
+    fun `memory operations form a distinct group beside tools and a skill named Memory`() {
+        val steps =
+            listOf(
+                    call("search", "search_memory", "{"),
+                    call("clock", "get_current_time"),
+                    call("remember", "remember_memory"),
+                    call("skill", "load_skill", """{"skill_name":"Memory"}"""),
+                    call("forget", "forget_memory"),
+                )
+                .map { ToolStep(it, null, ToolStatus.Running) }
+
+        val groups = executionGroups(steps)
+
+        assertEquals(3, groups.size)
+        assertEquals(
+            listOf("search", "remember", "forget"),
+            groups
+                .single { it.steps.any { step -> step.call.id == "search" } }
+                .steps
+                .map { it.call.id },
+        )
+        assertEquals(
+            listOf("clock"),
+            groups
+                .single { it.steps.any { step -> step.call.id == "clock" } }
+                .steps
+                .map { it.call.id },
+        )
+        assertEquals("Memory", groups.single { it.skill != null }.skill?.name)
+    }
+
+    @Test
     fun `skill groups retain paths and output files deduplicate by file identity`() {
         val load = call("load", "load_skill", """{"skill_name":"reports"}""")
         val script =

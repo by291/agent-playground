@@ -18,6 +18,7 @@ import com.agentplayground.core.model.SkillFile
 import com.agentplayground.core.model.isActiveRun
 import com.agentplayground.core.model.isReasoning
 import com.agentplayground.core.presentation.ConversationTurn
+import com.agentplayground.core.presentation.ExecutionKind
 import com.agentplayground.core.presentation.UploadedAttachment
 import com.agentplayground.core.presentation.executionGroups
 import com.agentplayground.core.presentation.skillFiles
@@ -136,7 +137,7 @@ internal fun AssistantTurnContent(
 
         executionGroups(turn.toolCalls).forEach { group ->
             ToolGroupContent(group) {
-                if (group.skill == null) {
+                if (group.kind == ExecutionKind.Tool) {
                     processDetails()
                 }
             }

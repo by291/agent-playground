@@ -31,6 +31,7 @@ import com.agentplayground.core.presentation.SkillIdentity
 import com.agentplayground.core.presentation.ToolStatus
 import com.agentplayground.core.presentation.ToolStep
 import com.agentplayground.core.presentation.conversationTurns
+import com.agentplayground.core.presentation.executionGroups
 import com.agentplayground.feature.conversation.ui.markdown.Markdown
 import com.agentplayground.feature.conversation.ui.markdown.copyableMarkdown
 import com.agentplayground.feature.conversation.ui.markdown.hasVisibleMarkdown
@@ -411,6 +412,42 @@ class MessageContentTest {
         compose.onAllNodesWithText("Parameters").assertCountEquals(1)
         compose.onNodeWithText("2").assertDoesNotExist()
         compose.onNodeWithText("4").assertIsDisplayed()
+    }
+
+    @Test
+    fun `memory has its own badge and preserves expansion through tool completion`() {
+        val call = ToolCall("remember", FunctionCall("remember_memory", "{"))
+        var step by mutableStateOf(ToolStep(call, null, ToolStatus.Running))
+
+        compose.setContent {
+            PlaygroundTheme("light") { ToolGroupContent(executionGroups(listOf(step)).single()) }
+        }
+
+        compose.onNodeWithText("Memory").assertIsDisplayed()
+        compose.onNodeWithText("Tool").assertDoesNotExist()
+        compose.onNodeWithTag("tool-group-remember").performClick()
+        compose.onNodeWithText("Remember a fact").assertIsDisplayed()
+
+        compose.runOnIdle {
+            step =
+                step.copy(
+                    result = ToolMessage("result", "Saved", "remember"),
+                    status = ToolStatus.Completed,
+                )
+        }
+        compose.onNodeWithText("Memory").assertIsDisplayed()
+        compose.onNodeWithText("Remember a fact").assertIsDisplayed()
+        compose.onNodeWithTag("tool-group-remember").performClick()
+
+        compose.runOnIdle {
+            step =
+                step.copy(
+                    result = ToolMessage("result", "", "remember", error = "Memory unavailable"),
+                    status = ToolStatus.Failed,
+                )
+        }
+        compose.onNodeWithText("Memory unavailable").assertIsDisplayed()
+        compose.onNodeWithText("Remember a fact").assertDoesNotExist()
     }
 
     @Test

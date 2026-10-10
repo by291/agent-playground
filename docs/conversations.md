@@ -56,9 +56,9 @@ The SDK does not automatically repeat run-creation requests after a transport er
 
 Snapshots recover saved results rather than every historical AG-UI event. Current output format and legacy compatibility are described in [architecture](architecture.md#a2ui-output-and-presentation).
 
-## Tools, Skills and sources
+## Tools, Skills, Memory and sources
 
-Ordinary tools and Skills use the same compact execution-header style, distinguished by their **Tool** or **Skill** label. Skill calls are grouped by Skill name; a single ordinary tool shows its name, and multiple ordinary calls show a count. Expanding a process reveals accompanying assistant text, paths, execution status, parameters and raw results. Failures remain visible while collapsed. User-opened processes stay open when execution finishes; workflow cards and review forms remain directly accessible.
+Ordinary tools, Skills and memory operations use the same compact execution-header style, distinguished by their **Tool**, **Skill** or **Memory** label. Skill calls are grouped by Skill name; `search_memory`, `remember_memory` and `forget_memory` share a separate Memory group. A single ordinary tool or memory operation shows its function name; multiple calls show a count of tools or memory operations. Expanding a process reveals accompanying assistant text, paths, execution status, parameters and raw results. Failures remain visible while collapsed. User-opened processes stay open when execution finishes; workflow cards and review forms remain directly accessible. Web and Android use these categories for both live calls and saved conversation history.
 
 Tool calls and results are archived as official AG-UI messages, including assistant messages with only tool calls. The Python checkpoint keeps public messages recoverable across compaction and review resumes. Reload restores a collapsed process; missing metadata in old text-only history is not reconstructed from prose.
 
