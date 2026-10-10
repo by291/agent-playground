@@ -43,18 +43,17 @@ class MarkdownSelectionTest {
     @get:Rule val compose = createComposeRule()
 
     @Test
-    fun `one selection copies prose code table cells and trailing prose without panel controls`() {
+    fun `select all copies original Markdown including code fences and table syntax`() {
         val toolbar = SelectionToolbar()
+        val markdown =
+            "**First paragraph.**\n\n```kotlin\nval answer = 42\n```\n\n" +
+                "| Name | Value |\n| --- | --- |\n| Ada | 42 |\n\nLast paragraph."
 
         compose.setContent {
             PlaygroundTheme("light") {
                 CompositionLocalProvider(LocalTextContextMenuToolbarProvider provides toolbar) {
                     Column(Modifier.width(320.dp)) {
-                        Markdown(
-                            "First paragraph.\n\n```kotlin\nval answer = 42\n```\n\n" +
-                                "| Name | Value |\n| --- | --- |\n| Ada | 42 |\n\nLast paragraph.",
-                            {},
-                        )
+                        Markdown(markdown, {})
                     }
                 }
             }
@@ -74,10 +73,7 @@ class MarkdownSelectionTest {
                 as ClipboardManager
         val copied = clipboard.primaryClip!!.getItemAt(0).text.toString()
 
-        assertEquals(
-            "First paragraph.\nval answer = 42\nName\nValue\nAda\n42\nLast paragraph.",
-            copied,
-        )
+        assertEquals(markdown, copied)
     }
 
     @Test
@@ -124,7 +120,7 @@ class MarkdownSelectionTest {
                 as ClipboardManager
 
         assertEquals(
-            "First answer.\nLast answer.",
+            "First answer.\n\nLast answer.",
             clipboard.primaryClip!!.getItemAt(0).text.toString(),
         )
     }
@@ -170,9 +166,99 @@ class MarkdownSelectionTest {
                 as ClipboardManager
 
         assertEquals(
-            "Start\ncode\nHeader\nCell\nFinish",
+            "Start\n\n```text\ncode\n```\n\n| Header |\n| --- |\n| Cell |\n\nFinish",
             clipboard.primaryClip!!.getItemAt(0).text.toString(),
         )
+    }
+
+    @Test
+    fun `copying a selected bold word keeps its markup without surrounding prose`() {
+        assertEquals(
+            "**chosen**",
+            copyWord("Before **chosen** after.", "Before chosen after.", "chosen"),
+        )
+    }
+
+    @Test
+    fun `copying part of a code block adds fences without unselected code`() {
+        assertEquals(
+            "```kotlin\nchosen\n```",
+            copyWord(
+                "Before\n\n```kotlin\nval chosen = 42\n```\n\nAfter",
+                "val chosen = 42",
+                "chosen",
+            ),
+        )
+    }
+
+    @Test
+    fun `copying a table cell retains table syntax without other cell contents`() {
+        assertEquals(
+            "|  |  |\n| --- | --- |\n| chosen |  |",
+            copyWord("| Name | Value |\n| --- | --- |\n| chosen | 42 |", "chosen", "chosen"),
+        )
+    }
+
+    @Test
+    fun `select all preserves headings lists quotes empty cells and reference definitions`() {
+        val toolbar = SelectionToolbar()
+        val markdown =
+            "# Title\n\n- **First**\n- Second\n\n> Quote\n\n" +
+                "| Name | Value |\n| :--- | ---: |\n| Ada | |\n\n" +
+                "Read [docs][api].\n\n[api]: https://example.com\n"
+
+        compose.setContent {
+            PlaygroundTheme("light") {
+                CompositionLocalProvider(LocalTextContextMenuToolbarProvider provides toolbar) {
+                    Column(Modifier.width(320.dp)) { Markdown(markdown, {}) }
+                }
+            }
+        }
+
+        compose.onNodeWithText("Title").performTouchInput { longClick(Offset(10f, centerY)) }
+        compose.waitUntil { toolbar.ready }
+        compose.runOnIdle { toolbar.click("Select all") }
+        compose.waitForIdle()
+        compose.runOnIdle { toolbar.click("Copy") }
+        compose.waitForIdle()
+
+        val clipboard =
+            RuntimeEnvironment.getApplication().getSystemService(Context.CLIPBOARD_SERVICE)
+                as ClipboardManager
+
+        assertEquals(markdown, clipboard.primaryClip!!.getItemAt(0).text.toString())
+    }
+
+    private fun copyWord(markdown: String, rendered: String, word: String): String {
+        val toolbar = SelectionToolbar()
+
+        compose.setContent {
+            PlaygroundTheme("light") {
+                CompositionLocalProvider(LocalTextContextMenuToolbarProvider provides toolbar) {
+                    Column(Modifier.width(320.dp)) { Markdown(markdown, {}) }
+                }
+            }
+        }
+
+        val target = compose.onNodeWithText(rendered)
+        val layouts = mutableListOf<TextLayoutResult>()
+        target
+            .fetchSemanticsNode()
+            .config[SemanticsActions.GetTextLayoutResult]
+            .action!!
+            .invoke(layouts)
+        val character = layouts.single().getBoundingBox(rendered.indexOf(word) + 1)
+
+        target.performTouchInput { longClick(character.center) }
+        compose.waitUntil { toolbar.ready }
+        compose.runOnIdle { toolbar.click("Copy") }
+        compose.waitForIdle()
+
+        val clipboard =
+            RuntimeEnvironment.getApplication().getSystemService(Context.CLIPBOARD_SERVICE)
+                as ClipboardManager
+
+        return clipboard.primaryClip!!.getItemAt(0).text.toString()
     }
 
     private class SelectionToolbar : TextContextMenuProvider, TextContextMenuSession {

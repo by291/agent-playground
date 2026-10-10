@@ -77,6 +77,7 @@ internal fun replyMarkdownAnnotator(
                             source.page?.let { ", page $it" }.orEmpty()
                     }
 
+                val start = length
                 pushTtsAnnotation(VerbatimTtsAnnotation(label))
                 withLink(
                     LinkAnnotation.Clickable(
@@ -96,6 +97,7 @@ internal fun replyMarkdownAnnotator(
                     append("[${source?.number ?: "?"}]")
                 }
                 pop()
+                addStringAnnotation(MarkdownCopyLinkTag, destination, start, length)
 
                 true
             } else if (node.type == MarkdownElementTypes.INLINE_LINK && destination != null) {

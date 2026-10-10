@@ -15,6 +15,7 @@ import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
@@ -48,23 +49,28 @@ import com.mikepenz.markdown.annotator.buildMarkdownAnnotatedString
 import com.mikepenz.markdown.compose.Markdown as ComposeMarkdown
 import com.mikepenz.markdown.compose.MarkdownElement
 import com.mikepenz.markdown.compose.components.MarkdownComponent
+import com.mikepenz.markdown.compose.components.MarkdownComponentModel
 import com.mikepenz.markdown.compose.components.markdownComponents
 import com.mikepenz.markdown.compose.elements.MarkdownBlockQuote
 import com.mikepenz.markdown.compose.elements.MarkdownCodeBlock
 import com.mikepenz.markdown.compose.elements.MarkdownCodeFence
 import com.mikepenz.markdown.compose.elements.MarkdownTable as ComposeMarkdownTable
+import com.mikepenz.markdown.compose.elements.MarkdownText
 import com.mikepenz.markdown.m3.markdownColor
 import com.mikepenz.markdown.m3.markdownTypography
 import com.mikepenz.markdown.model.State as MarkdownParseState
 import com.mikepenz.markdown.model.markdownAnimations
 import com.mikepenz.markdown.model.markdownPadding
 import com.mikepenz.markdown.model.rememberMarkdownState
+import com.mikepenz.markdown.utils.getUnescapedTextInNode
+import java.util.UUID
 import kotlinx.coroutines.delay
 import org.commonmark.ext.gfm.tables.*
 import org.commonmark.node.*
 import org.intellij.markdown.MarkdownElementTypes
 import org.intellij.markdown.MarkdownTokenTypes
 import org.intellij.markdown.ast.ASTNode
+import org.intellij.markdown.ast.findChildOfType
 import org.intellij.markdown.flavours.gfm.GFMElementTypes
 import org.intellij.markdown.flavours.gfm.GFMTokenTypes
 
@@ -83,6 +89,12 @@ internal fun Markdown(
     val state by
         rememberMarkdownState(content, retainState = true, immediate = true).state.collectAsState()
     val renderedContent = (state as? MarkdownParseState.Success)?.content.orEmpty()
+    val parsed = state as? MarkdownParseState.Success
+    val copySourceId = rememberSaveable { UUID.randomUUID().toString() }
+    val copySource =
+        remember(parsed?.content, parsed?.node, copySourceId) {
+            parsed?.let { MarkdownCopySource(it.content, it.node, copySourceId) }
+        }
     val blocks = remember(renderedContent) { markdownBlocks(renderedContent) }
     val panels =
         remember(blocks) {
@@ -140,17 +152,19 @@ internal fun Markdown(
         }
     val codeComponent: MarkdownComponent = { model ->
         when (val panel = panels[markdownLine(model.content, model.node.startOffset)]) {
-            is FencedCodeBlock -> CodeBlock(panel.literal, panel.info, dark, settled)
-            is IndentedCodeBlock -> CodeBlock(panel.literal, null, dark, settled)
+            is FencedCodeBlock ->
+                CodeBlock(panel.literal, panel.info, dark, settled, copySource, model.node)
+            is IndentedCodeBlock ->
+                CodeBlock(panel.literal, null, dark, settled, copySource, model.node)
             else -> {
                 // Parser dialects can classify the same source differently; never discard text.
                 if (model.node.type == MarkdownElementTypes.CODE_FENCE) {
                     MarkdownCodeFence(model.content, model.node) { code, info, _ ->
-                        CodeBlock(code, info, dark, settled)
+                        CodeBlock(code, info, dark, settled, copySource, model.node)
                     }
                 } else {
                     MarkdownCodeBlock(model.content, model.node) { code, info, _ ->
-                        CodeBlock(code, info, dark, settled)
+                        CodeBlock(code, info, dark, settled, copySource, model.node)
                     }
                 }
             }
@@ -158,6 +172,40 @@ internal fun Markdown(
     }
     val components =
         markdownComponents(
+            text = { model ->
+                val text = AnnotatedString(model.node.getUnescapedTextInNode(model.content))
+                MarkdownText(
+                    copySource?.annotate(text, model.node) ?: text,
+                    style = model.typography.text,
+                )
+            },
+            paragraph = { model ->
+                CopyableMarkdownText(model, model.typography.paragraph, copySource)
+            },
+            heading1 = { model ->
+                CopyableMarkdownText(model, model.typography.h1, copySource, true)
+            },
+            heading2 = { model ->
+                CopyableMarkdownText(model, model.typography.h2, copySource, true)
+            },
+            heading3 = { model ->
+                CopyableMarkdownText(model, model.typography.h3, copySource, true)
+            },
+            heading4 = { model ->
+                CopyableMarkdownText(model, model.typography.h4, copySource, true)
+            },
+            heading5 = { model ->
+                CopyableMarkdownText(model, model.typography.h5, copySource, true)
+            },
+            heading6 = { model ->
+                CopyableMarkdownText(model, model.typography.h6, copySource, true)
+            },
+            setextHeading1 = { model ->
+                CopyableMarkdownText(model, model.typography.h1, copySource, true)
+            },
+            setextHeading2 = { model ->
+                CopyableMarkdownText(model, model.typography.h2, copySource, true)
+            },
             codeFence = codeComponent,
             codeBlock = codeComponent,
             blockQuote = { model ->
@@ -172,7 +220,7 @@ internal fun Markdown(
                     panels[markdownLine(model.content, model.node.startOffset)] as? TableBlock
 
                 if (panel != null) {
-                    MarkdownTable(model.content, model.node, panel, settled)
+                    MarkdownTable(model.content, model.node, panel, settled, copySource)
                 } else {
                     ComposeMarkdownTable(model.content, model.node, body)
                 }
@@ -187,7 +235,7 @@ internal fun Markdown(
 
     CompositionLocalProvider(LocalUriHandler provides uriHandler) {
         // All reply text must register with one owner; Android TextViews cannot share a selection.
-        MarkdownSelection {
+        MarkdownSelection(copySource) {
             ComposeMarkdown(
                 state = state,
                 modifier = Modifier.fillMaxWidth(),
@@ -222,6 +270,29 @@ internal fun Markdown(
             )
         }
     }
+}
+
+@Composable
+private fun CopyableMarkdownText(
+    model: MarkdownComponentModel,
+    style: TextStyle,
+    source: MarkdownCopySource?,
+    isHeading: Boolean = false,
+) {
+    val settings = annotatorSettings()
+    val contentNode =
+        model.node.findChildOfType(MarkdownTokenTypes.ATX_CONTENT)
+            ?: model.node.findChildOfType(MarkdownTokenTypes.SETEXT_CONTENT)
+            ?: model.node
+    val text = buildAnnotatedString {
+        buildMarkdownAnnotatedString(model.content, contentNode, settings)
+    }
+
+    MarkdownText(
+        source?.annotate(text, model.node) ?: text,
+        style = style,
+        modifier = Modifier.semantics { if (isHeading) heading() },
+    )
 }
 
 @Composable
@@ -296,6 +367,8 @@ private fun CodeBlock(
     info: String?,
     dark: Boolean,
     settled: Boolean,
+    source: MarkdownCopySource?,
+    node: ASTNode,
 ) {
     val colors = MaterialTheme.colorScheme
     val highlighted = remember(code, info, dark) { highlightCode(info, code.trimEnd('\n'), dark) }
@@ -320,7 +393,7 @@ private fun CodeBlock(
                     Modifier.horizontalScroll(rememberScrollState()).testTag("markdown-code-scroll")
                 ) {
                     Text(
-                        highlighted,
+                        source?.annotate(highlighted, node) ?: highlighted,
                         modifier = Modifier.widthIn(min = minimumWidth).padding(16.dp),
                         style =
                             MaterialTheme.typography.bodyMedium.copy(
@@ -343,6 +416,7 @@ private fun MarkdownTable(
     node: ASTNode,
     table: TableBlock,
     settled: Boolean,
+    source: MarkdownCopySource?,
 ) {
     val colors = MaterialTheme.colorScheme
     val rows = remember(table) { markdownTableRows(table) }
@@ -435,7 +509,8 @@ private fun MarkdownTable(
                                     }
 
                                 Text(
-                                    text,
+                                    if (cellNode == null) text
+                                    else source?.annotate(text, cellNode) ?: text,
                                     modifier =
                                         Modifier.width(cellWidth)
                                             .padding(horizontal = 12.dp, vertical = 14.dp)
