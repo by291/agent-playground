@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
 import { ArrowLeftIcon } from "@phosphor-icons/react/dist/csr/ArrowLeft";
+import { BookOpenIcon } from "@phosphor-icons/react/dist/csr/BookOpen";
 import { UploadSimpleIcon } from "@phosphor-icons/react/dist/csr/UploadSimple";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -88,7 +89,16 @@ export function KnowledgeWorkspace() {
         </a>
         <div className="mt-8 flex flex-wrap items-start justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-semibold tracking-tight">Knowledge</h1>
+            <div className="flex items-center gap-3">
+              <BookOpenIcon
+                size={24}
+                className="shrink-0 text-muted"
+                aria-hidden="true"
+              />
+              <h1 className="text-2xl font-semibold tracking-tight">
+                Knowledge
+              </h1>
+            </div>
             <p className="mt-2 text-sm text-muted">
               Upload documents for all conversations to search.
             </p>

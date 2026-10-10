@@ -88,18 +88,22 @@ export function MemoryWorkspace() {
         </a>
         <header className="mt-8">
           <div className="flex items-center gap-3">
-            <BrainIcon size={24} className="text-muted" aria-hidden="true" />
+            <BrainIcon
+              size={24}
+              className="shrink-0 text-muted"
+              aria-hidden="true"
+            />
             <h1 className="text-2xl font-semibold tracking-tight">Memory</h1>
           </div>
-          <p className="mt-3 max-w-2xl text-sm/6 text-muted">
+          <p className="mt-3 text-sm/6 text-muted">
             Preferences and project facts the agent remembers across
             conversations. Memories are shared by everyone using this workspace.
           </p>
-          <p className="mt-1 max-w-2xl text-sm/6 text-muted">
+          <p className="mt-1 text-sm/6 text-muted">
             Preferences apply across conversations. Project facts are used when
             you ask the agent to work on that project.
           </p>
-          <p className="mt-1 max-w-2xl text-sm/6 text-muted">
+          <p className="mt-1 text-sm/6 text-muted">
             Memory is enabled automatically in normal chat; this page lets you
             review and manage saved entries.
           </p>
