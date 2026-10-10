@@ -109,3 +109,12 @@ test("developer and retired routes are unavailable without development mode", ()
     assert.doesNotMatch(markup, /JSON example/);
   }
 });
+
+test("the memory route presents its loading state without entering a conversation", () => {
+  const markup = renderInitialPage(null, "/memory");
+
+  assert.match(markup, /<h1[^>]*>Memory<\/h1>/);
+  assert.match(markup, /Loading memories/);
+  assert.doesNotMatch(markup, /Page not found/);
+  assert.doesNotMatch(markup, /placeholder="Describe a task/);
+});

@@ -1,4 +1,5 @@
 import { BookOpenIcon } from "@phosphor-icons/react/dist/csr/BookOpen";
+import { BrainIcon } from "@phosphor-icons/react/dist/csr/Brain";
 import { ChatCircleIcon } from "@phosphor-icons/react/dist/csr/ChatCircle";
 import { PlusIcon } from "@phosphor-icons/react/dist/csr/Plus";
 import { StackIcon } from "@phosphor-icons/react/dist/csr/Stack";
@@ -117,6 +118,22 @@ export function Sidebar({
           </a>
         </TooltipTrigger>
         <TooltipContent side="right">Knowledge</TooltipContent>
+      </Tooltip>
+
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <a
+            href="/memory"
+            aria-label="Memory"
+            className="workspace-sidebar-item mt-1 h-10 shrink-0 rounded-md border border-transparent text-[13px] text-muted hover:bg-selected hover:text-ink focus-visible:ring-2 focus-visible:ring-accent"
+          >
+            <BrainIcon size={18} className="shrink-0" aria-hidden="true" />
+            <span className="workspace-sidebar-label" aria-hidden={collapsed}>
+              Memory
+            </span>
+          </a>
+        </TooltipTrigger>
+        <TooltipContent side="right">Memory</TooltipContent>
       </Tooltip>
 
       <SidebarContent className="gap-0 overflow-visible">

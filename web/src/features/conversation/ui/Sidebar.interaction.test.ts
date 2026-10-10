@@ -69,6 +69,21 @@ function renderSidebar() {
   return { page, history, client, element };
 }
 
+test("workspace navigation exposes memory management beside knowledge", () => {
+  const { page, client } = renderSidebar();
+
+  expect(page.getByRole("link", { name: "Knowledge" })).toHaveAttribute(
+    "href",
+    "/knowledge",
+  );
+  expect(page.getByRole("link", { name: "Memory" })).toHaveAttribute(
+    "href",
+    "/memory",
+  );
+  page.unmount();
+  client.clear();
+});
+
 test("history replaces the current conversation placeholder and keeps one selected entry", () => {
   const { page, client } = renderSidebar();
 

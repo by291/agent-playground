@@ -14,6 +14,7 @@ web/
     pages/
       chat/ChatPage.tsx               Conversation selection and page composition
       knowledge/KnowledgePage.tsx     Shared document management page
+      memory/MemoryPage.tsx           Saved Agent memory management page
       dev/a2ui-components/            Development editor, examples and previews
       NotFoundPage.tsx
     features/
@@ -30,6 +31,7 @@ web/
         runtime/                     Validation, ordered ingestion and disposal
         catalog/                     Component schemas and renderers
       knowledge/                     Shared document API and upload/indexing UI
+      memory/                        Memory API, paginated queries and correction/forget UI
     components/                      Shared application widgets
       ui/                            shadcn/ui primitives
     lib/                             Small shared utilities
@@ -44,6 +46,8 @@ web/
 There is one conversation feature, including its chat UI. `pages/chat` is its route entry. The component workspace owns development-only editor state and examples; shared A2UI processing stays in the A2UI feature.
 
 The knowledge feature owns shared-document management. `useKnowledgeDocuments` owns Query reads, TanStack mutations, retry identity and request cancellation; `KnowledgeWorkspace` composes the page, and `DocumentRow` presents each document. Citation presentation belongs to conversation messages because it uses that reply's archived search results; both use `shared/knowledge.ts` rather than importing the other feature's private modules.
+
+The memory feature manages saved Agent entries through `shared/memory.ts`. `useMemories` owns paginated Query reads, mutation cancellation and cache updates; dialogs own drafts and explicit revision-conflict review. Visiting its page does not enable memory: Python integrates recall and tools into normal chat by default.
 
 ## Dependencies
 

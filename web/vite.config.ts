@@ -46,6 +46,7 @@ export default defineConfig(({ mode }) => {
         "/agent-info": backendUrl,
         "/conversations": backendUrl,
         "/api/knowledge": backendUrl,
+        "/api/memories": backendUrl,
         "/health": backendUrl,
         "/telemetry": backendUrl,
       },

@@ -49,7 +49,17 @@ class ContextUsage(TypedDict):
     revision: int
 
 
+def latest_memory_project(_previous: str, project: str) -> str:
+    # Parallel memory commands merge in tool-call order. The last explicitly
+    # named project becomes the conversation's automatic-recall scope.
+    return project
+
+
 class ContextState(AgentState[Any]):
+    memory_context: NotRequired[Annotated[str, OmitFromInput, PrivateStateAttr]]
+    memory_project: NotRequired[
+        Annotated[str, OmitFromInput, PrivateStateAttr, latest_memory_project]
+    ]
     context_usage: NotRequired[Annotated[ContextUsage, OmitFromInput]]
     # Keep public replies and tool results recoverable across compaction and review.
     response_messages: NotRequired[
@@ -152,6 +162,7 @@ class ContextMiddleware(SummarizationMiddleware):
         tools: list[BaseTool],
         settings: ContextSettings | None = None,
         tokens_per_image: int = 1024,
+        memory_token_budget: int = 0,
     ):
         self.settings = settings or ContextSettings.from_model(model)
         self.tokens_per_image = tokens_per_image
@@ -161,7 +172,7 @@ class ContextMiddleware(SummarizationMiddleware):
             [], tools=[*tools], chars_per_token=2.0
         )
         self.trigger_tokens = int(self.settings.window * self.settings.compact_ratio)
-        fixed_tokens = self.system_tokens + self.tool_tokens
+        fixed_tokens = self.system_tokens + self.tool_tokens + memory_token_budget
 
         if fixed_tokens >= self.trigger_tokens:
             raise ValueError(
@@ -277,7 +288,10 @@ class ContextMiddleware(SummarizationMiddleware):
                 conversation.append(message)
 
         breakdown: ContextBreakdown = {
-            "system": self.system_tokens,
+            "system": self.system_tokens
+            + estimate_tokens([SystemMessage(content=state["memory_context"])])
+            if state.get("memory_context")
+            else self.system_tokens,
             "tools": self.tool_tokens,
             "conversation": self._estimate_tokens(conversation),
             "toolResults": self._estimate_tokens(results),

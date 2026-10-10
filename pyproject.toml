@@ -21,6 +21,7 @@ dependencies = [
   "langchain-text-splitters>=1,<2",
   "langgraph>=1.2.12",
   "langgraph-checkpoint-postgres",
+  "langmem>=0.0.30,<0.1",
   "limits>=5.8,<6",
   "mcp>=1.30.0,<2",
   "openai>=3.19,<4",

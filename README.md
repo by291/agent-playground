@@ -36,6 +36,7 @@ A native Jetpack Compose client is available in [`android/`](android/README.md).
 | Workflows         | Experiment-plan approval, conversational SQL review and asynchronous reports that continue without an open browser. [Guide](docs/workflow-mechanisms.md).                                  |
 | A2A collaboration | Independent planner/reviewer agents, live child output, revision handoff, additional input, cancellation and recovery. [Guide](docs/a2a-demo.md).                                          |
 | Shared knowledge  | Upload documents for retrieval across conversations; inline footnotes open the exact retrieved passage. Shared-document deletion requires confirmation. [Guide](docs/knowledge.md).        |
+| Agent memory      | Default cross-conversation preferences and explicitly scoped project facts, with correction and forgetting. [Guide](docs/memory.md).                                                       |
 | Agent Skills      | Published `SKILL.md` bundles, Python/Bash/Node scripts in Docker, chat attachments and downloadable outputs. [Guide](docs/skills.md).                                                      |
 | Development tools | Live protocol Activity and an A2UI/Monaco component gallery, excluded from production builds. [Guide](docs/frontend-architecture.md#components-and-development-tools).                     |
 | Observability     | Optional traces, Langfuse, Collector, Prometheus and Grafana. [Guide](docs/observability.md).                                                                                              |
@@ -46,9 +47,9 @@ Use the [documentation index](docs/README.md) to find setup, feature guides, arc
 
 | Directory                  | Purpose                                                                               |
 | -------------------------- | ------------------------------------------------------------------------------------- |
-| `agent_playground/`        | Python agent, workflows, demonstration APIs, Skills and knowledge indexing/retrieval. |
+| `agent_playground/`        | Python agent, workflows, APIs, Skills, knowledge retrieval and long-term memory.       |
 | `server/`                  | AG-UI/HTTP adaptation, conversation lifecycle, persistence and shared S3 storage.     |
-| `web/`                     | React pages, conversation/knowledge UI and A2UI runtime/catalog.                      |
+| `web/`                     | React pages, conversation/knowledge/memory UI and A2UI runtime/catalog.                |
 | `android/`                 | Native Compose client, JVM protocol/session core and Android tests.                   |
 | `shared/`                  | TypeScript application contracts; protocol types come from official libraries.        |
 | `skills/`                  | Maintainer-published Skill bundles and their scripts/resources.                       |

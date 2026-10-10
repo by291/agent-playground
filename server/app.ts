@@ -3,6 +3,7 @@ import { agentRoutes } from "./http/agent-routes";
 import { conversationRoutes } from "./http/conversation-routes";
 import { externalTaskRoutes } from "./http/external-task-routes";
 import { knowledgeRoutes } from "./http/knowledge-routes";
+import { memoryRoutes } from "./http/memory-routes";
 import { skillFileRoutes } from "./http/skill-file-routes";
 import { telemetry } from "./observability/ingestion";
 
@@ -15,3 +16,4 @@ app.route("/", externalTaskRoutes);
 app.route("/", skillFileRoutes);
 
 app.route("/", knowledgeRoutes);
+app.route("/", memoryRoutes);

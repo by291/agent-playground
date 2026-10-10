@@ -54,7 +54,7 @@ Use E2E for a risk that needs a browser or spans the frontend, protocol adapter,
 | Settings and clearing                 | Native dialog focus/stacking, mobile layouts, keyboard selection, persistence across reload and browser-local pointer reset                        |
 | Pagination                            | Native IntersectionObserver geometry, focus/scroll stability, reduced motion, closing a drawer during a pending page                               |
 | Activity                              | Browser clipboard, live protocol delta inspection, responsive bounds, pointer resizing                                                             |
-| Skills and knowledge                  | Native file selection, real S3 transfers and Python indexing/retrieval; restored output links, inline citations, source selection and reader focus |
+| Skills, knowledge and memory          | Native file selection, S3/Python indexing; restored sources; real Python/LangMem memory correction, reload, source links and forgetting             |
 | Gallery                               | Official A2UI rendering, editable Monaco initialization, invalid JSON retaining the last valid preview and reset without runtime errors            |
 
 Pagination retry and rejected-clear cache preservation live in `useConversationHistory.test.ts`; rejected-clear UI state lives in `SettingsControl.test.ts`. Transport failure with zero events and exported activity issues live in `ActivityPanel.test.ts`. IME handling and preference media changes already have provider/DOM coverage. Browser tests verify Radix modal focus handling and real clipboard behavior rather than repeating every error/input branch.

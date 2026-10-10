@@ -8,6 +8,7 @@ from fastapi import FastAPI
 from agent_playground.db.async_operations import run_database_operation
 from agent_playground.db.connection import close_app_store, prepare_app_store
 from agent_playground.knowledge.worker import run_knowledge_worker
+from agent_playground.memory.routes import router as memory_router
 from agent_playground.models import AgentInfo
 from agent_playground.models import agent_info as model_agent_info
 from agent_playground.services.a2a.coordinator import run_a2a_worker
@@ -51,6 +52,7 @@ app = FastAPI(title="Agent Playground", lifespan=lifespan)
 app.include_router(sql_router)
 app.include_router(report_router)
 app.include_router(a2a_router)
+app.include_router(memory_router)
 
 
 @app.get("/agent-info")

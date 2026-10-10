@@ -17,6 +17,9 @@ from langgraph_sdk.runtime import ServerRuntime
 from agent_playground.context import ContextMiddleware
 from agent_playground.db.connection import prepare_app_store
 from agent_playground.knowledge.tools import search_knowledge
+from agent_playground.memory.middleware import MemoryMiddleware
+from agent_playground.memory.models import MEMORY_TOKEN_BUDGET
+from agent_playground.memory.tools import MEMORY_INSTRUCTIONS, memory_tools
 from agent_playground.models import create_chat_model, model_configuration
 from agent_playground.observability import execution_trace
 from agent_playground.prompts import SYSTEM_PROMPT
@@ -72,10 +75,11 @@ def make_graph(
         image_tokens = configuration.image_tokens
 
     catalog = skills if skills is not None else default_catalog()
-    prompt = SYSTEM_PROMPT + catalog.prompt()
+    prompt = SYSTEM_PROMPT + catalog.prompt() + MEMORY_INSTRUCTIONS
     tools = [
         get_current_time,
         search_knowledge,
+        *memory_tools(),
         *(mcp_tools or []),
         run_experiment_workflow,
         run_report_workflow,
@@ -90,9 +94,16 @@ def make_graph(
         checkpointer=checkpointer,
         system_prompt=prompt,
         middleware=[
+            MemoryMiddleware(),
             ContextMiddleware(
-                model, summary_model or model, prompt, tools, settings, image_tokens
-            )
+                model,
+                summary_model or model,
+                prompt,
+                tools,
+                settings,
+                image_tokens,
+                memory_token_budget=MEMORY_TOKEN_BUDGET,
+            ),
         ],
     )
 

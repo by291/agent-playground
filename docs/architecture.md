@@ -11,6 +11,7 @@ flowchart LR
     Server --> Aegra[Aegra / Redis execution queue]
     Aegra --> Agent[Python LangChain agent / LangGraph workflows]
     Aegra --> Checkpoints[(Aegra checkpoints)]
+    Agent --> Memory[(Aegra memory Store)]
     Server --> AppDB[(Application PostgreSQL)]
     Agent --> AppDB
     Server --> S3[(S3 objects)]
@@ -28,11 +29,13 @@ The server uses the official `@ag-ui/langgraph` adapter to create native Aegra r
 | `agent_playground/services/`                                         | SQL/report demonstration APIs; depend on configuration and repositories rather than workflows.             |
 | `agent_playground/skills/`                                           | Bundle catalog, script execution and authenticated file transfers.                                         |
 | `agent_playground/knowledge/`                                        | Text extraction, durable indexing, embedding/pgvector clients and retrieval tool.                          |
+| `agent_playground/memory/`                                           | Memory policy/tools, bounded recall, LangMem persistence and private management routes.                    |
 | `agent_playground/db/`                                               | Python database contracts, connections and repositories, independent of HTTP.                              |
 | `server/http/`                                                       | Routes, request validation and conversation-change SSE.                                                    |
 | `server/agent/`                                                      | Shared Aegra client, official protocol adapter and stream transport.                                       |
 | `server/conversation/`                                               | Admission, run mapping/state, recovery, task continuation, snapshots and conversation files.               |
 | `server/knowledge/`, `server/storage/`                               | Document lifecycle/cleanup and shared S3 client.                                                           |
+| `server/memory/`                                                     | Authenticated, bounded proxy to Python memory management.                                                 |
 | `server/db/`, `server/drizzle/`                                      | Application database schemas, access and migrations.                                                       |
 | `server/app.ts`, `server/server.ts`                                  | HTTP assembly and process/resource lifecycle respectively.                                                 |
 | `web/src/app/`, `web/src/pages/`                                     | Routing/providers and page composition.                                                                    |
@@ -51,6 +54,7 @@ The server entry owns termination signals and drains HTTP connections, backgroun
 | State                                                 | Source of truth                                           |
 | ----------------------------------------------------- | --------------------------------------------------------- |
 | Model history, workflow state and pending interrupts  | Aegra/LangGraph checkpoint.                               |
+| Cross-conversation preferences and project facts      | Aegra/LangGraph PostgreSQL Store.                         |
 | Public transcript and run summaries                   | Application conversation tables.                          |
 | Published cards/replies and their output sequence     | Application `workflow_outputs`.                           |
 | Document index jobs, generations and visible chunks   | Application metadata and pgvector tables.                 |
@@ -58,6 +62,8 @@ The server entry owns termination signals and drains HTTP connections, backgroun
 | Local draft, presentation pacing and open UI controls | Browser/session state.                                    |
 
 Model compaction replaces checkpoint history with a summary while preserving the application's public transcript. A normal browser submission sends the newest user message, without replaying archived history back into model context. Conversation snapshots restore saved messages, outputs, tasks and context usage; they are not durable AG-UI event replay.
+
+The Agent enables [long-term memory](memory.md) by default. Preferences and explicitly selected project facts enter bounded model context before each call; the management page does not control activation. Python serializes per-record writes across instances with database advisory locks and revision checks. Content-free deletion tombstones prevent stale creation retries from restoring forgotten entries.
 
 See [development](development.md#database-and-data-ownership) for schema roles and migrations, [conversations](conversations.md) for visible behavior and [workflows](workflow-mechanisms.md) for business-state and review contracts.
 

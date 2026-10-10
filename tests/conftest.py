@@ -13,7 +13,7 @@ from testcontainers.community.redis import RedisContainer
 
 from tests.model_config import ModelConfigFile
 
-pytest_plugins = ["tests.agent_config"]
+pytest_plugins = ["tests.agent_config", "tests.memory_fixtures"]
 
 
 @pytest.fixture(autouse=True)

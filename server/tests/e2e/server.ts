@@ -141,6 +141,27 @@ async function start() {
     )
   `);
   agent = controlledAegra(database.db);
+  // Management uses the real Python routes and LangGraph PostgreSQL Store.
+  agent.api.all("/memory/*", async (context) => {
+    const url = new URL(context.req.url);
+
+    return fetch(`http://127.0.0.1:4301${url.pathname}${url.search}`, {
+      method: context.req.method,
+      headers: context.req.raw.headers,
+      ...(context.req.method === "GET"
+        ? {}
+        : { body: await context.req.text() }),
+      signal: context.req.raw.signal,
+    });
+  });
+  agent.api.get("/memory", (context) => {
+    const url = new URL(context.req.url);
+
+    return fetch(`http://127.0.0.1:4301/memory${url.search}`, {
+      headers: context.req.raw.headers,
+      signal: context.req.raw.signal,
+    });
+  });
   upstream = await new Promise<Server>((resolve) => {
     const server = serve(
       { fetch: agent!.api.fetch, hostname: "127.0.0.1", port: 0 },
@@ -167,6 +188,17 @@ async function start() {
   let embeddingFailure = false;
 
   process.env.WORKFLOW_API_TOKEN = "knowledge-e2e-token";
+  harness.post("/__e2e/memory/:threadId", async (context) => {
+    return fetch(
+      `http://127.0.0.1:4301/__e2e/memory/${context.req.param("threadId")}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: await context.req.text(),
+        signal: context.req.raw.signal,
+      },
+    );
+  });
   harness.get("/health", (context) =>
     context.text(ready ? "ok" : "starting", ready ? 200 : 503),
   );
