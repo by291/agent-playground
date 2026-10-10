@@ -92,6 +92,45 @@ test("tool replies expose details and restore without duplicating the answer", a
   expect(submissions[1]!.threadId).toBe(threadId);
 });
 
+test("nested memory tools complete during streaming without flashing failure", async ({
+  page,
+  request,
+}) => {
+  const submitted = page.waitForRequest(
+    (request) =>
+      request.method() === "POST" &&
+      new URL(request.url()).pathname === "/agent",
+  );
+
+  await page
+    .getByRole("textbox", { name: "Message" })
+    .fill("Remember a durable preference.");
+  await page.getByRole("textbox", { name: "Message" }).press("Enter");
+  const input = (await submitted).postDataJSON() as { threadId: string };
+  const tools = page.getByRole("button", {
+    name: /Tool.*remember_memory.*Completed/,
+  });
+
+  await expect(tools).toBeVisible();
+  await expect(page.getByRole("textbox", { name: "Message" })).toBeDisabled();
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  await expect(
+    page.getByLabel("Assistant reply", { exact: true }),
+  ).not.toContainText("Preference saved.");
+  const released = await request.post(
+    `http://127.0.0.1:4300/__e2e/release/${input.threadId}`,
+  );
+
+  expect(released.ok()).toBe(true);
+  await expect(
+    page.getByLabel("Assistant reply", { exact: true }),
+  ).toContainText("Preference saved.");
+  await expect(page.getByRole("textbox", { name: "Message" })).toBeEnabled();
+  await page.reload();
+  await expect(tools).toBeVisible();
+  await expect(page.getByRole("alert")).toHaveCount(0);
+});
+
 test("a paused workflow restores its review and persists the edited approval", async ({
   page,
 }) => {

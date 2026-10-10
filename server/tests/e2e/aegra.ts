@@ -594,9 +594,12 @@ export function controlledAegra(database: typeof db) {
             prompt.includes("SQL review workflow");
           const reportWorkflow = prompt.includes("report workflow");
           const a2aWorkflow = prompt.includes("run_a2a_workflow");
+          const memoryTool = prompt === "Remember a durable preference.";
           let name = "get_current_time";
 
-          if (a2aWorkflow) {
+          if (memoryTool) {
+            name = "remember_memory";
+          } else if (a2aWorkflow) {
             name = "run_a2a_workflow";
           } else if (reportWorkflow) {
             name = "run_report_workflow";
@@ -608,18 +611,23 @@ export function controlledAegra(database: typeof db) {
 
           const callId = randomUUID();
           const messageId = randomUUID();
+          const args = memoryTool
+            ? { text: "Prefer concise answers.", category: "preference" }
+            : {};
 
           await modelChunk(messageId, "", [
             { id: callId, name, args: "", index: 0 },
           ]);
-          await modelChunk(messageId, "", [{ args: "{}", index: 0 }]);
+          await modelChunk(messageId, "", [
+            { args: JSON.stringify(args), index: 0 },
+          ]);
           await endModel();
           thread.messages.push({
             id: messageId,
             type: "ai",
             role: "assistant",
             content: "",
-            tool_calls: [{ id: callId, name, args: {} }],
+            tool_calls: [{ id: callId, name, args }],
           });
 
           if (reportWorkflow || a2aWorkflow) {
@@ -679,6 +687,40 @@ export function controlledAegra(database: typeof db) {
               metadata: { langgraph_node: "tools" },
               data: card,
             });
+          } else if (memoryTool) {
+            const result = {
+              type: "tool" as const,
+              role: "tool",
+              content: JSON.stringify({ memory: { text: args.text } }),
+              tool_call_id: callId,
+              status: "success" as const,
+              name: null,
+              id: null,
+            };
+
+            // Match the real LangMem trace inside remember_memory. This internal
+            // tool returns a string without the model's public tool-call ID.
+            await event("events", {
+              event: LangGraphEventTypes.OnToolEnd,
+              name: "manage_memory",
+              metadata: { langgraph_node: "tools" },
+              data: { input: { action: "update" }, output: "updated memory" },
+            });
+            await event("events", {
+              event: LangGraphEventTypes.OnToolEnd,
+              name,
+              metadata: { langgraph_node: "tools" },
+              data: { input: args, output: { update: { messages: [result] } } },
+            });
+            thread.messages.push({ ...result, id: randomUUID(), name });
+
+            // Keep the run open so the test observes success before checkpoint
+            // recovery can overwrite a transient stream failure.
+            await new Promise<void>((resolve) => {
+              thread.release = resolve;
+            });
+            delete thread.release;
+            await reply("Preference saved.");
           } else {
             const result = {
               id: randomUUID(),

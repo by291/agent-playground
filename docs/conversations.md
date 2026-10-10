@@ -62,6 +62,8 @@ Ordinary tools and Skills use the same compact execution-header style, distingui
 
 Tool calls and results are archived as official AG-UI messages, including assistant messages with only tool calls. The Python checkpoint keeps public messages recoverable across compaction and review resumes. Reload restores a collapsed process; missing metadata in old text-only history is not reconstructed from prose.
 
+Live tool results must carry the model's tool-call ID, either in a LangGraph `ToolMessage` or in a `Command` containing tool messages. Internal tool invocations, such as LangMem's write operation inside `remember_memory`, can return plain values without that ID; the server excludes those completion events from public tool conversion. The outer tool result determines execution status, while handled tool errors remain visible during the model's fallback reply.
+
 [Skill outputs](skills.md#attachments-and-outputs) appear as downloads. [Knowledge citations](knowledge.md#answer-citations-and-original-passages) appear as numbered footnotes that open their corresponding retrieved excerpt.
 
 ## Reply presentation and reasoning

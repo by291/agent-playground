@@ -1,6 +1,23 @@
 import type { Interrupt, ResumeEntry } from "@ag-ui/client";
-import { LangGraphAgent, type LangGraphAgentConfig } from "@ag-ui/langgraph";
+import {
+  LangGraphAgent,
+  LangGraphEventTypes,
+  type LangGraphAgentConfig,
+} from "@ag-ui/langgraph";
+import { z } from "zod";
 import { workflowReviewResponseSchema } from "../../shared/workflow-review";
+
+const toolResultSchema = z.object({
+  type: z.literal("tool"),
+  tool_call_id: z.string().min(1),
+});
+const commandResultSchema = z.object({
+  update: z.object({ messages: z.array(z.unknown()) }),
+});
+const toolEndEventSchema = z.object({
+  event: z.literal(LangGraphEventTypes.OnToolEnd),
+  data: z.object({ output: z.unknown() }),
+});
 
 export class ReviewLangGraphAgent extends LangGraphAgent {
   constructor(
@@ -20,6 +37,28 @@ export class ReviewLangGraphAgent extends LangGraphAgent {
     // The Aegra graph factory selects the model before the compiled graph runs,
     // so this server-owned field is absent from the graph's configuration schema.
     return { ...schema, config: [...(schema.config ?? []), "model_id"] };
+  }
+
+  override handleSingleEvent(event: unknown): void {
+    const toolEnd = toolEndEventSchema.safeParse(event);
+
+    if (toolEnd.success) {
+      const output = toolEnd.data.data.output;
+      const command = commandResultSchema.safeParse(output);
+      const results = command.success ? command.data.update.messages : [output];
+      const hasToolResult = results.some(
+        (result) => toolResultSchema.safeParse(result).success,
+      );
+
+      // Nested tool invocations (e.g. LangMem) return internal values without a
+      // model tool-call ID. The adapter assumes every on_tool_end is a public
+      // ToolMessage and otherwise emits invalid AG-UI lifecycle events.
+      if (!hasToolResult) {
+        return;
+      }
+    }
+
+    super.handleSingleEvent(event);
   }
 
   override async runAgentStream(
