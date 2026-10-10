@@ -3,21 +3,13 @@ package com.agentplayground.feature.conversation.ui.markdown
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
-import android.graphics.Typeface
-import android.text.Spanned
-import android.text.method.LinkMovementMethod
-import android.text.style.CharacterStyle
-import android.text.style.ForegroundColorSpan
-import android.text.style.RelativeSizeSpan
-import android.text.style.TypefaceSpan
-import android.view.Gravity
-import android.widget.TextView
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.selection.DisableSelection
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.ContentCopy
@@ -27,29 +19,54 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
-import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.platform.UriHandler
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextLinkStyles
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.viewinterop.AndroidView
-import androidx.core.view.ViewCompat
 import com.agentplayground.core.presentation.ReplySources
 import com.agentplayground.ui.ChangingContent
-import io.noties.markwon.AbstractMarkwonPlugin
-import io.noties.markwon.Markwon
-import io.noties.markwon.MarkwonConfiguration
-import io.noties.markwon.MarkwonSpansFactory
-import io.noties.markwon.MarkwonVisitor
-import io.noties.markwon.core.MarkwonTheme
-import io.noties.markwon.ext.strikethrough.StrikethroughPlugin
-import io.noties.markwon.ext.tables.TablePlugin
-import io.noties.markwon.ext.tables.TableTheme
+import com.mikepenz.markdown.annotator.annotatorSettings
+import com.mikepenz.markdown.annotator.buildMarkdownAnnotatedString
+import com.mikepenz.markdown.compose.Markdown as ComposeMarkdown
+import com.mikepenz.markdown.compose.MarkdownElement
+import com.mikepenz.markdown.compose.components.MarkdownComponent
+import com.mikepenz.markdown.compose.components.markdownComponents
+import com.mikepenz.markdown.compose.elements.MarkdownBlockQuote
+import com.mikepenz.markdown.compose.elements.MarkdownCodeBlock
+import com.mikepenz.markdown.compose.elements.MarkdownCodeFence
+import com.mikepenz.markdown.compose.elements.MarkdownTable as ComposeMarkdownTable
+import com.mikepenz.markdown.m3.markdownColor
+import com.mikepenz.markdown.m3.markdownTypography
+import com.mikepenz.markdown.model.State as MarkdownParseState
+import com.mikepenz.markdown.model.markdownAnimations
+import com.mikepenz.markdown.model.markdownPadding
+import com.mikepenz.markdown.model.rememberMarkdownState
 import kotlinx.coroutines.delay
 import org.commonmark.ext.gfm.tables.*
 import org.commonmark.node.*
+import org.intellij.markdown.MarkdownElementTypes
+import org.intellij.markdown.MarkdownTokenTypes
+import org.intellij.markdown.ast.ASTNode
+import org.intellij.markdown.flavours.gfm.GFMElementTypes
+import org.intellij.markdown.flavours.gfm.GFMTokenTypes
 
 @Composable
 internal fun Markdown(
@@ -61,207 +78,172 @@ internal fun Markdown(
     citations: ReplySources? = null,
 ) {
     val colors = MaterialTheme.colorScheme
-    val density = LocalDensity.current
     val dark = colors.surface.luminance() < 0.5f
     val callback by rememberUpdatedState(onLink)
-    val context = LocalContext.current
-    val blocks = remember(content) { markdownBlocks(content) }
-    val renderer =
-        remember(context, colors, density, citations) {
-            val margin = with(density) { 20.dp.roundToPx() }
-            val codeSize = with(density) { 14.sp.roundToPx() }
-            val tableTheme =
-                TableTheme.Builder()
-                    .tableBorderColor(colors.outlineVariant.toArgb())
-                    .tableBorderWidth(with(density) { 1.dp.roundToPx() })
-                    .tableCellPadding(with(density) { 12.dp.roundToPx() })
-                    .tableHeaderRowBackgroundColor(colors.surfaceContainer.toArgb())
-                    .tableEvenRowBackgroundColor(colors.surfaceContainerLow.toArgb())
-                    .tableOddRowBackgroundColor(colors.surface.toArgb())
-                    .build()
-
-            Markwon.builder(context)
-                .usePlugin(TablePlugin.create(tableTheme))
-                .usePlugin(StrikethroughPlugin.create())
-                .apply {
-                    if (citations != null) {
-                        usePlugin(
-                            KnowledgeCitationsPlugin(
-                                citations,
-                                colors.primary.toArgb(),
-                            )
-                        )
-                    }
-                }
-                .usePlugin(
-                    object : AbstractMarkwonPlugin() {
-                        override fun configureVisitor(builder: MarkwonVisitor.Builder) {
-                            // Inline code stays in the prose flow without artificial NBSP padding.
-                            builder.on(Code::class.java) { visitor, code ->
-                                val start = visitor.length()
-
-                                visitor.builder().append(code.literal)
-                                visitor.setSpansForNodeOptional(code, start)
-                            }
-                        }
-
-                        override fun configureSpansFactory(builder: MarkwonSpansFactory.Builder) {
-                            // Native text spans avoid backgrounds stretching across line spacing.
-                            builder.setFactory(Code::class.java) { _, _ ->
-                                arrayOf<CharacterStyle>(
-                                    TypefaceSpan("monospace"),
-                                    RelativeSizeSpan(0.9f),
-                                    ForegroundColorSpan(colors.onSurfaceVariant.toArgb()),
-                                )
-                            }
-                        }
-
-                        override fun configureTheme(builder: MarkwonTheme.Builder) {
-                            builder
-                                .linkColor(colors.primary.toArgb())
-                                .blockMargin(margin)
-                                .blockQuoteWidth(with(density) { 3.dp.roundToPx() })
-                                .blockQuoteColor(colors.primary.copy(alpha = 0.55f).toArgb())
-                                .bulletWidth(with(density) { 4.dp.roundToPx() })
-                                .listItemColor(colors.onSurfaceVariant.toArgb())
-                                .codeBlockTextColor(colors.onSurface.toArgb())
-                                .codeBlockBackgroundColor(colors.surfaceContainerLow.toArgb())
-                                .codeBlockTextSize(codeSize)
-                                .headingTextSizeMultipliers(
-                                    floatArrayOf(1.5f, 1.3f, 1.15f, 1f, 1f, 1f)
-                                )
-                                .headingBreakHeight(0)
-                                .thematicBreakColor(colors.outlineVariant.toArgb())
-                                .thematicBreakHeight(with(density) { 1.dp.roundToPx() })
-                        }
-
-                        override fun configureConfiguration(builder: MarkwonConfiguration.Builder) {
-                            builder.linkResolver { _, link -> callback(link) }
-                            builder.syntaxHighlight { info, code ->
-                                highlightCode(info, code, dark)
-                            }
-                        }
-                    }
-                )
-                .build()
+    val state by
+        rememberMarkdownState(content, retainState = true, immediate = true).state.collectAsState()
+    val renderedContent = (state as? MarkdownParseState.Success)?.content.orEmpty()
+    val blocks = remember(renderedContent) { markdownBlocks(renderedContent) }
+    val panels =
+        remember(blocks) {
+            blocks.flatMap(::markdownCopyTargets).associateBy { it.sourceSpans.first().lineIndex }
         }
-
-    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        blocks.forEachIndexed { index, block ->
-            when (block) {
-                is FencedCodeBlock ->
-                    CodeBlock(block.literal, block.info, dark, settled, onTextVisible)
-
-                is IndentedCodeBlock -> CodeBlock(block.literal, null, dark, settled, onTextVisible)
-                is TableBlock -> MarkdownTable(block, renderer, settled, onTextVisible)
-
-                else ->
-                    Column(Modifier.fillMaxWidth()) {
-                        val rendered =
-                            remember(renderer, block) { renderMarkdownBlock(renderer, block) }
-                        val modifier =
-                            if (block is Heading && index > 0) {
-                                Modifier.padding(top = 10.dp)
-                            } else {
-                                Modifier
-                            }
-
-                        if (block is BlockQuote) {
-                            Surface(
-                                shape = RoundedCornerShape(8.dp),
-                                color = colors.surfaceContainerLow,
-                            ) {
-                                MarkdownText(
-                                    rendered,
-                                    renderer,
-                                    Modifier.fillMaxWidth().padding(12.dp),
-                                    onTextVisible = onTextVisible,
-                                    subdued = subdued,
-                                )
-                            }
-                        } else {
-                            MarkdownText(
-                                rendered,
-                                renderer,
-                                modifier.fillMaxWidth(),
-                                heading = block is Heading,
-                                onTextVisible = onTextVisible,
-                                subdued = subdued,
-                            )
-                        }
-
-                        // Nested blocks stay with Markwon so list numbering and quote structure
-                        // survive.
-                        markdownCopyTargets(block).forEach { target ->
-                            CopyAction(
-                                copyableMarkdown(target).orEmpty(),
-                                if (target is TableBlock) "Copy table" else "Copy code",
-                                settled,
-                            )
-                        }
-                    }
+    val body =
+        MaterialTheme.typography.bodyLarge.copy(
+            fontSize = if (subdued) 14.sp else 16.sp,
+            lineHeight = if (subdued) 21.sp else 24.sp,
+            color = if (subdued) colors.onSurfaceVariant else colors.onSurface,
+        )
+    val typography =
+        markdownTypography(
+            h1 = body.copy(fontSize = 24.sp, lineHeight = 36.sp, fontWeight = FontWeight.Bold),
+            h2 = body.copy(fontSize = 21.sp, lineHeight = 31.sp, fontWeight = FontWeight.Bold),
+            h3 = body.copy(fontSize = 18.sp, lineHeight = 27.sp, fontWeight = FontWeight.Bold),
+            h4 = body.copy(fontWeight = FontWeight.Bold),
+            h5 = body.copy(fontWeight = FontWeight.Bold),
+            h6 = body.copy(fontWeight = FontWeight.Bold),
+            text = body,
+            paragraph = body,
+            ordered = body,
+            bullet = body,
+            list = body,
+            quote = body,
+            inlineCode =
+                TextStyle(
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 0.9.em,
+                    color = colors.onSurfaceVariant,
+                ),
+            textLink =
+                TextLinkStyles(
+                    style =
+                        SpanStyle(color = colors.primary, textDecoration = TextDecoration.Underline)
+                ),
+        )
+    val uriHandler = remember {
+        object : UriHandler {
+            override fun openUri(uri: String) {
+                callback(normalizeMarkdownDestination(uri))
             }
         }
     }
-}
-
-@Composable
-private fun MarkdownText(
-    rendered: Spanned,
-    renderer: Markwon,
-    modifier: Modifier = Modifier,
-    compact: Boolean = false,
-    heading: Boolean = false,
-    gravity: Int = Gravity.START,
-    onTextVisible: (() -> Unit)? = null,
-    subdued: Boolean = false,
-) {
-    val colors = MaterialTheme.colorScheme
-
-    AndroidView(
-        factory = { context ->
-            TextView(context).apply {
-                textSize = if (compact || subdued) 14f else 16f
-                includeFontPadding = false
-                setTextIsSelectable(true)
-                movementMethod = LinkMovementMethod.getInstance()
-                setLineSpacing(0f, if (compact) 1.45f else 1.5f)
+    val annotator =
+        remember(citations, colors.primary, typography.inlineCode, state.referenceLinkHandler) {
+            replyMarkdownAnnotator(
+                citations,
+                colors.primary,
+                typography.inlineCode.toSpanStyle(),
+                state.referenceLinkHandler,
+            ) {
+                callback(it)
             }
-        },
-        modifier = modifier,
-        update = { view ->
-            view.setTextColor((if (subdued) colors.onSurfaceVariant else colors.onSurface).toArgb())
-            view.setLinkTextColor(colors.primary.toArgb())
-            view.typeface = if (heading && compact) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
-            view.gravity = gravity
-            ViewCompat.setAccessibilityHeading(view, heading)
-            renderer.setParsedMarkdown(view, rendered)
-
-            if (hasVisibleMarkdown(rendered)) {
-                onTextVisible?.invoke()
+        }
+    val codeComponent: MarkdownComponent = { model ->
+        when (val panel = panels[markdownLine(model.content, model.node.startOffset)]) {
+            is FencedCodeBlock -> CodeBlock(panel.literal, panel.info, dark, settled)
+            is IndentedCodeBlock -> CodeBlock(panel.literal, null, dark, settled)
+            else -> {
+                // Parser dialects can classify the same source differently; never discard text.
+                if (model.node.type == MarkdownElementTypes.CODE_FENCE) {
+                    MarkdownCodeFence(model.content, model.node) { code, info, _ ->
+                        CodeBlock(code, info, dark, settled)
+                    }
+                } else {
+                    MarkdownCodeBlock(model.content, model.node) { code, info, _ ->
+                        CodeBlock(code, info, dark, settled)
+                    }
+                }
             }
-        },
-    )
+        }
+    }
+    val components =
+        markdownComponents(
+            codeFence = codeComponent,
+            codeBlock = codeComponent,
+            blockQuote = { model ->
+                Surface(shape = RoundedCornerShape(8.dp), color = colors.surfaceContainerLow) {
+                    Box(Modifier.padding(12.dp)) {
+                        MarkdownBlockQuote(model.content, model.node, style = body)
+                    }
+                }
+            },
+            table = { model ->
+                val panel =
+                    panels[markdownLine(model.content, model.node.startOffset)] as? TableBlock
+
+                if (panel != null) {
+                    MarkdownTable(model.content, model.node, panel, settled)
+                } else {
+                    ComposeMarkdownTable(model.content, model.node, body)
+                }
+            },
+        )
+
+    LaunchedEffect(renderedContent) {
+        if (blocks.any(::hasVisibleMarkdown)) {
+            onTextVisible?.invoke()
+        }
+    }
+
+    CompositionLocalProvider(LocalUriHandler provides uriHandler) {
+        // All reply text must register with one owner; Android TextViews cannot share a selection.
+        MarkdownSelection {
+            ComposeMarkdown(
+                state = state,
+                modifier = Modifier.fillMaxWidth(),
+                colors =
+                    markdownColor(
+                        text = body.color,
+                        inlineCodeBackground = Color.Transparent,
+                        dividerColor = colors.outlineVariant,
+                    ),
+                typography = typography,
+                padding = markdownPadding(block = 0.dp, blockQuote = PaddingValues(start = 16.dp)),
+                annotator = annotator,
+                components = components,
+                animations = markdownAnimations(animateTextSize = { this }),
+                success = { parsed, components, modifier ->
+                    val nodes =
+                        remember(parsed.node) {
+                            parsed.node.children.filter {
+                                it.type != MarkdownTokenTypes.EOL &&
+                                    it.type != MarkdownTokenTypes.WHITE_SPACE &&
+                                    it.type != MarkdownElementTypes.LINK_DEFINITION
+                            }
+                        }
+
+                    // Space rendered blocks, not syntax nodes or the reply's first paragraph.
+                    Column(modifier, verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                        nodes.forEach { node ->
+                            MarkdownElement(node, components, parsed.content, includeSpacer = false)
+                        }
+                    }
+                },
+            )
+        }
+    }
 }
 
 @Composable
 private fun BlockHeader(label: String, copy: String, action: String, settled: Boolean) {
-    Row(
-        Modifier.fillMaxWidth()
-            .background(MaterialTheme.colorScheme.surfaceContainer)
-            .padding(start = 16.dp, end = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween,
-    ) {
-        Text(
-            label,
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.weight(1f),
-        )
-        CopyAction(copy, action, settled)
+    DisableSelection {
+        Row(
+            Modifier.fillMaxWidth()
+                .background(MaterialTheme.colorScheme.surfaceContainer)
+                .padding(start = 16.dp, end = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Text(
+                label,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.weight(1f),
+            )
+            CopyAction(copy, action, settled)
+        }
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
     }
-    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
 }
 
 @Composable
@@ -314,7 +296,6 @@ private fun CodeBlock(
     info: String?,
     dark: Boolean,
     settled: Boolean,
-    onTextVisible: (() -> Unit)?,
 ) {
     val colors = MaterialTheme.colorScheme
     val highlighted = remember(code, info, dark) { highlightCode(info, code.trimEnd('\n'), dark) }
@@ -338,26 +319,17 @@ private fun CodeBlock(
                 Box(
                     Modifier.horizontalScroll(rememberScrollState()).testTag("markdown-code-scroll")
                 ) {
-                    AndroidView(
-                        factory = { context ->
-                            TextView(context).apply {
-                                typeface = Typeface.MONOSPACE
-                                textSize = 14f
-                                includeFontPadding = false
-                                setLineSpacing(0f, 1.5f)
-                                setHorizontallyScrolling(true)
-                                setTextIsSelectable(true)
-                            }
-                        },
+                    Text(
+                        highlighted,
                         modifier = Modifier.widthIn(min = minimumWidth).padding(16.dp),
-                        update = { view ->
-                            view.setTextColor(colors.onSurface.toArgb())
-                            view.text = highlighted
-
-                            if (code.isNotBlank()) {
-                                onTextVisible?.invoke()
-                            }
-                        },
+                        style =
+                            MaterialTheme.typography.bodyMedium.copy(
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = 14.sp,
+                                lineHeight = 21.sp,
+                            ),
+                        color = colors.onSurface,
+                        softWrap = false,
                     )
                 }
             }
@@ -367,18 +339,22 @@ private fun CodeBlock(
 
 @Composable
 private fun MarkdownTable(
+    content: String,
+    node: ASTNode,
     table: TableBlock,
-    renderer: Markwon,
     settled: Boolean,
-    onTextVisible: (() -> Unit)?,
 ) {
     val colors = MaterialTheme.colorScheme
     val rows = remember(table) { markdownTableRows(table) }
-    val rendered =
-        remember(table, renderer) {
-            rows.map { row -> row.map { renderMarkdownCell(renderer, it) } }
+    val cellNodes =
+        remember(node) {
+            node.children
+                .filter { it.type == GFMElementTypes.HEADER || it.type == GFMElementTypes.ROW }
+                .map { row -> row.children.filter { it.type == GFMTokenTypes.CELL } }
         }
     val columns = rows.maxOfOrNull { it.size } ?: return
+    val settings = annotatorSettings()
+    val cellStyle = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.sp, lineHeight = 20.sp)
 
     if (columns == 0) {
         return
@@ -425,22 +401,49 @@ private fun MarkdownTable(
                             }
                         ) {
                             row.forEachIndexed { column, cell ->
-                                val gravity =
+                                val alignment =
                                     when (cell.alignment) {
-                                        TableCell.Alignment.CENTER -> Gravity.CENTER_HORIZONTAL
-                                        TableCell.Alignment.RIGHT -> Gravity.END
-                                        else -> Gravity.START
+                                        TableCell.Alignment.CENTER -> TextAlign.Center
+                                        TableCell.Alignment.RIGHT -> TextAlign.End
+                                        else -> TextAlign.Start
+                                    }
+                                val cellNode = cellNodes.getOrNull(index)?.getOrNull(column)
+                                val text =
+                                    if (cellNode == null) {
+                                        AnnotatedString(plainMarkdown(cell))
+                                    } else {
+                                        // Trim cell syntax, preserving whitespace inside code and
+                                        // entities.
+                                        val children =
+                                            cellNode.children
+                                                .dropWhile {
+                                                    it.type == MarkdownTokenTypes.WHITE_SPACE
+                                                }
+                                                .dropLastWhile {
+                                                    it.type == MarkdownTokenTypes.WHITE_SPACE
+                                                }
+
+                                        buildAnnotatedString {
+                                            withStyle(cellStyle.toSpanStyle()) {
+                                                buildMarkdownAnnotatedString(
+                                                    content,
+                                                    children,
+                                                    settings,
+                                                )
+                                            }
+                                        }
                                     }
 
-                                MarkdownText(
-                                    rendered[index][column],
-                                    renderer,
-                                    Modifier.width(cellWidth)
-                                        .padding(horizontal = 12.dp, vertical = 14.dp),
-                                    compact = true,
-                                    heading = header,
-                                    gravity = gravity,
-                                    onTextVisible = onTextVisible,
+                                Text(
+                                    text,
+                                    modifier =
+                                        Modifier.width(cellWidth)
+                                            .padding(horizontal = 12.dp, vertical = 14.dp)
+                                            .semantics { if (header) heading() },
+                                    style = cellStyle,
+                                    fontWeight = if (header) FontWeight.Bold else FontWeight.Normal,
+                                    textAlign = alignment,
+                                    color = colors.onSurface,
                                 )
                             }
                         }

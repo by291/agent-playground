@@ -2,10 +2,6 @@ package com.agentplayground.feature.conversation
 
 import android.content.ClipboardManager
 import android.content.Context
-import android.text.Spanned
-import android.text.style.ClickableSpan
-import android.text.style.ForegroundColorSpan
-import android.widget.TextView
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
@@ -17,7 +13,10 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.em
 import androidx.core.graphics.ColorUtils
 import com.agentplayground.core.model.Download
 import com.agentplayground.core.model.RunRecord
@@ -39,8 +38,6 @@ import com.agentplayground.feature.conversation.ui.markdown.highlightCode
 import com.agentplayground.feature.conversation.ui.markdown.markdownBlocks
 import com.agentplayground.feature.conversation.ui.markdown.markdownCopyTargets
 import com.agentplayground.feature.conversation.ui.markdown.markdownTableRows
-import com.agentplayground.feature.conversation.ui.markdown.renderMarkdownBlock
-import com.agentplayground.feature.conversation.ui.markdown.renderMarkdownCell
 import com.agentplayground.feature.conversation.ui.timeline.AssistantTurnContent
 import com.agentplayground.feature.conversation.ui.timeline.SourcesSheet
 import com.agentplayground.feature.conversation.ui.timeline.ToolGroupContent
@@ -61,6 +58,27 @@ import org.robolectric.annotation.GraphicsMode
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class MessageContentTest {
     @get:Rule val compose = createComposeRule()
+
+    @Test
+    fun `inline code scales with headings and table cell typography`() {
+        compose.setContent {
+            PlaygroundTheme("light") {
+                Markdown("# Heading `code`\n\n| Name |\n| --- |\n| Cell `code` |", {})
+            }
+        }
+
+        listOf("Heading code", "Cell code").forEach { label ->
+            val text =
+                compose
+                    .onNodeWithText(label)
+                    .fetchSemanticsNode()
+                    .config[SemanticsProperties.Text]
+                    .single()
+            val code = text.spanStyles.single { it.item.fontFamily == FontFamily.Monospace }
+
+            assertEquals(0.9.em, code.item.fontSize)
+        }
+    }
 
     @Test
     fun `disclosure expands gradually and a rapid reversal ends fully collapsed`() {
@@ -103,6 +121,95 @@ class MessageContentTest {
     }
 
     @Test
+    fun `inline code preserves adjacency literal escapes and CommonMark whitespace`() {
+        compose.setContent {
+            PlaygroundTheme("light") {
+                Markdown("file`.txt` `a\\b &amp;` ` x `", {})
+            }
+        }
+
+        compose.onNodeWithText("file.txt a\\b &amp; x").assertIsDisplayed()
+    }
+
+    @Test
+    fun `quoted tab content survives different parser block classifications`() {
+        compose.setContent { PlaygroundTheme("light") { Markdown("> \tx", {}) } }
+
+        compose.onNodeWithText("x").assertIsDisplayed()
+    }
+
+    @Test
+    fun `angle bracket link destinations open their actual URL`() {
+        var opened: String? = null
+
+        compose.setContent {
+            PlaygroundTheme("light") {
+                Markdown("See [website](<https://example.com>).", { opened = it })
+            }
+        }
+
+        val text =
+            compose
+                .onNodeWithText("See website.")
+                .fetchSemanticsNode()
+                .config[SemanticsProperties.Text]
+                .single()
+        val link = text.getLinkAnnotations(0, text.length).single().item
+        compose.runOnIdle { link.linkInteractionListener!!.onClick(link) }
+        compose.runOnIdle { assertEquals("https://example.com", opened) }
+    }
+
+    @Test
+    fun `prose and table cells decode entities while inline code stays literal`() {
+        compose.setContent {
+            PlaygroundTheme("light") {
+                Markdown(
+                    "A &amp; B &#x3c; C\n\n" +
+                        "| Name | Literal |\n| --- | --- |\n" +
+                        "| D &amp; E &#x1f600; | file`.txt` and `&amp;` |\n" +
+                        "| &#160;kept&#160; | `  code  ` |",
+                    {},
+                )
+            }
+        }
+
+        compose.onNodeWithText("A & B < C").assertIsDisplayed()
+        compose.onNodeWithText("D & E 😀").assertIsDisplayed()
+        compose.onNodeWithText("file.txt and &amp;").assertIsDisplayed()
+        compose.onNodeWithText("\u00a0kept\u00a0").assertIsDisplayed()
+        compose.onNodeWithText(" code ").assertIsDisplayed()
+    }
+
+    @Test
+    fun `reference citations resolve their saved passage and number`() {
+        val id = "11111111-1111-4111-8111-111111111111"
+        val sources =
+            ReplySources(true, listOf(KnowledgeSource(id, "doc", "Guide.pdf", 3, "Passage", 1)))
+        var opened: String? = null
+
+        compose.setContent {
+            PlaygroundTheme("light") {
+                Markdown(
+                    "See [source][r].\n\n[r]: <#knowledge-source-$id>",
+                    { opened = it },
+                    citations = sources,
+                )
+            }
+        }
+
+        val text =
+            compose
+                .onNodeWithText("See [1].")
+                .fetchSemanticsNode()
+                .config[SemanticsProperties.Text]
+                .single()
+        val link = text.getLinkAnnotations(0, text.length).single().item
+        compose.runOnIdle { link.linkInteractionListener!!.onClick(link) }
+
+        assertEquals("#knowledge-source-$id", opened)
+    }
+
+    @Test
     fun `CommonMark code and tables copy parsed content without markdown punctuation`() {
         val content =
             """
@@ -139,23 +246,7 @@ class MessageContentTest {
     @Test
     fun `table-only answers retain rendered rows and count as visible content`() {
         val content = "| Name | Value |\n| --- | --- |\n| Ada | 42 |\n| Bob | 7 |"
-        val renderer =
-            io.noties.markwon.Markwon.builder(RuntimeEnvironment.getApplication())
-                .usePlugin(
-                    io.noties.markwon.ext.tables.TablePlugin.create(
-                        RuntimeEnvironment.getApplication()
-                    )
-                )
-                .build()
-        val rendered = renderMarkdownBlock(renderer, markdownBlocks(content).single())
-
-        assertEquals(
-            3,
-            rendered
-                .getSpans(0, rendered.length, io.noties.markwon.ext.tables.TableRowSpan::class.java)
-                .size,
-        )
-        assertTrue(hasVisibleMarkdown(rendered))
+        assertTrue(hasVisibleMarkdown(markdownBlocks(content).single()))
 
         var visible = false
 
@@ -202,16 +293,12 @@ class MessageContentTest {
         }
 
         compose.onNodeWithText("Copy code").assertIsNotEnabled()
-        assertEquals("unchanged", highlightCode("unknown", "unchanged", false))
+        assertEquals("unchanged", highlightCode("unknown", "unchanged", false).text)
 
-        val highlighted = highlightCode("kotlin", "val x = 1", false) as Spanned
+        val highlighted = highlightCode("kotlin", "val x = 1", false)
 
-        assertTrue(
-            highlighted
-                .getSpans(0, highlighted.length, ForegroundColorSpan::class.java)
-                .isNotEmpty()
-        )
-        assertEquals("val x = 1", highlighted.toString())
+        assertTrue(highlighted.spanStyles.isNotEmpty())
+        assertEquals("val x = 1", highlighted.text)
     }
 
     @Test
@@ -252,26 +339,10 @@ class MessageContentTest {
 
     @Test
     fun `table cells retain emphasis links alignment and escaped pipe content`() {
-        val context = RuntimeEnvironment.getApplication()
         var opened: String? = null
-        val renderer =
-            io.noties.markwon.Markwon.builder(context)
-                .usePlugin(io.noties.markwon.ext.strikethrough.StrikethroughPlugin.create())
-                .usePlugin(
-                    object : io.noties.markwon.AbstractMarkwonPlugin() {
-                        override fun configureConfiguration(
-                            builder: io.noties.markwon.MarkwonConfiguration.Builder
-                        ) {
-                            builder.linkResolver { _, link -> opened = link }
-                        }
-                    }
-                )
-                .build()
-        val table =
-            markdownBlocks(
-                    "| Name | Reference |\n| :--- | ---: |\n| **Ada** | [guide](https://example.com) and pipe \\| symbol |"
-                )
-                .single() as org.commonmark.ext.gfm.tables.TableBlock
+        val content =
+            "| Name | Reference |\n| :--- | ---: |\n| **Ada** | [guide](https://example.com) and pipe \\| symbol |"
+        val table = markdownBlocks(content).single() as org.commonmark.ext.gfm.tables.TableBlock
         val rows = markdownTableRows(table)
 
         assertEquals(2, rows.size)
@@ -281,27 +352,23 @@ class MessageContentTest {
             rows.last()[1].alignment,
         )
 
-        val name = renderMarkdownCell(renderer, rows.last()[0])
+        compose.setContent { PlaygroundTheme("light") { Markdown(content, { opened = it }) } }
+        val name =
+            compose
+                .onNodeWithText("Ada")
+                .fetchSemanticsNode()
+                .config[SemanticsProperties.Text]
+                .single()
+        val reference =
+            compose
+                .onNodeWithText("guide and pipe | symbol")
+                .fetchSemanticsNode()
+                .config[SemanticsProperties.Text]
+                .single()
 
-        assertEquals("Ada", name.toString())
-        assertTrue(
-            name
-                .getSpans(
-                    0,
-                    name.length,
-                    io.noties.markwon.core.spans.StrongEmphasisSpan::class.java,
-                )
-                .isNotEmpty()
-        )
-
-        val reference = renderMarkdownCell(renderer, rows.last()[1])
-
-        assertEquals("guide and pipe | symbol", reference.toString())
-
-        reference
-            .getSpans(0, reference.length, ClickableSpan::class.java)
-            .single()
-            .onClick(TextView(context))
+        assertTrue(name.spanStyles.any { it.item.fontWeight == FontWeight.Bold })
+        val link = reference.getLinkAnnotations(0, reference.length).single().item
+        compose.runOnIdle { link.linkInteractionListener!!.onClick(link) }
 
         assertEquals("https://example.com", opened)
     }
@@ -328,14 +395,13 @@ class MessageContentTest {
                         "// Note\nval value = 42\nval name = \"Ada\"",
                         theme == "dark",
                     )
-                        as Spanned
-                val spans = text.getSpans(0, text.length, ForegroundColorSpan::class.java)
+                val spans = text.spanStyles
 
                 assertTrue(spans.isNotEmpty())
                 spans.forEach { span ->
                     assertTrue(
                         "$theme syntax color should meet normal text contrast",
-                        ColorUtils.calculateContrast(span.foregroundColor, background) >= 4.5,
+                        ColorUtils.calculateContrast(span.item.color.toArgb(), background) >= 4.5,
                     )
                 }
             }
@@ -552,6 +618,7 @@ class MessageContentTest {
         compose.onNodeWithTag("reasoning-content-user").assertExists()
 
         compose.runOnIdle { current = turn("restored", "```kotlin\nval answer = 42") }
+        compose.waitUntilDoesNotExist(hasTestTag("reasoning-content-user"))
         compose.onNodeWithTag("reasoning-content-user").assertDoesNotExist()
 
         compose.onNodeWithText("Reasoning").performClick()

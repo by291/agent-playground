@@ -25,6 +25,7 @@ import com.agentplayground.core.presentation.skillFiles
 import com.agentplayground.core.presentation.userMessagePresentation
 import com.agentplayground.feature.conversation.ui.attachments.MessageAttachments
 import com.agentplayground.feature.conversation.ui.markdown.Markdown
+import com.agentplayground.feature.conversation.ui.markdown.MarkdownSelection
 import com.agentplayground.ui.Details
 import com.agui.core.types.*
 
@@ -114,6 +115,7 @@ internal fun AssistantTurnContent(
     var showSources by rememberSaveable(turn.id) { mutableStateOf(false) }
     var selectedSource by rememberSaveable(turn.id) { mutableStateOf<String?>(null) }
     var sourceUnavailable by rememberSaveable(turn.id) { mutableStateOf(false) }
+    val toolGroups = executionGroups(turn.toolCalls)
 
     val replyLink: (String) -> Unit = { link ->
         if (link.startsWith("#knowledge-source-", ignoreCase = true)) {
@@ -131,14 +133,18 @@ internal fun AssistantTurnContent(
     }
 
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        if (reasoning.isNotEmpty()) {
-            ReasoningContent(turn, active, visibleAnswerPhase == reasoning.size, replyLink)
-        }
+        if (reasoning.isNotEmpty() || toolGroups.isNotEmpty()) {
+            Column(Modifier.fillMaxWidth()) {
+                if (reasoning.isNotEmpty()) {
+                    ReasoningContent(turn, active, visibleAnswerPhase == reasoning.size, replyLink)
+                }
 
-        executionGroups(turn.toolCalls).forEach { group ->
-            ToolGroupContent(group) {
-                if (group.kind == ExecutionKind.Tool) {
-                    processDetails()
+                toolGroups.forEach { group ->
+                    ToolGroupContent(group) {
+                        if (group.kind == ExecutionKind.Tool) {
+                            processDetails()
+                        }
+                    }
                 }
             }
         }
@@ -148,25 +154,33 @@ internal fun AssistantTurnContent(
             }
         }
         children()
-        turn.messages
-            .filterIsInstance<AssistantMessage>()
-            .filter { !isReasoning(it) && !it.content.isNullOrBlank() }
-            .forEach { message ->
-                Markdown(
-                    message.content.orEmpty(),
-                    replyLink,
-                    settled = !active,
-                    citations = turn.sources,
-                    onTextVisible = {
-                        if (
-                            turn.messages.indexOf(message) > lastReasoningIndex &&
-                                message.toolCalls.isNullOrEmpty()
-                        ) {
-                            visibleAnswerPhase = reasoning.size
-                        }
-                    },
-                )
+        val answers =
+            turn.messages.filterIsInstance<AssistantMessage>().filter {
+                !isReasoning(it) && !it.content.isNullOrBlank()
             }
+
+        if (answers.isNotEmpty()) {
+            MarkdownSelection {
+                Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    answers.forEach { message ->
+                        Markdown(
+                            message.content.orEmpty(),
+                            replyLink,
+                            settled = !active,
+                            citations = turn.sources,
+                            onTextVisible = {
+                                if (
+                                    turn.messages.indexOf(message) > lastReasoningIndex &&
+                                        message.toolCalls.isNullOrEmpty()
+                                ) {
+                                    visibleAnswerPhase = reasoning.size
+                                }
+                            },
+                        )
+                    }
+                }
+            }
+        }
 
         if (turn.sources.searched) {
             val documents = turn.sources.documents

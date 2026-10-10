@@ -1,17 +1,15 @@
 package com.agentplayground.feature.conversation
 
-import android.text.Spanned
-import android.view.View
-import android.view.ViewGroup
-import android.widget.TextView
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
+import androidx.compose.ui.text.font.FontWeight
 import com.agentplayground.core.conversation.SessionState
 import com.agentplayground.core.model.AgentOutput
 import com.agentplayground.core.model.Download
@@ -25,7 +23,6 @@ import com.agentplayground.ui.PlaygroundTheme
 import com.agui.core.types.AssistantMessage
 import com.agui.core.types.FunctionCall
 import com.agui.core.types.ToolCall
-import io.noties.markwon.core.spans.StrongEmphasisSpan
 import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
@@ -166,13 +163,15 @@ class A2aExternalTaskTest {
         compose.onNodeWithText("Create the first draft.").assertExists()
         compose.onNodeWithText("Review Planner's draft.").assertExists()
         compose.onNodeWithText("Revise using Reviewer's feedback.").assertExists()
-        compose.runOnIdle {
-            val rendered =
-                markdownViews().single { it.text.toString() == "First draft" }.text as Spanned
+        val rendered =
+            compose
+                .onNodeWithText("First draft")
+                .fetchSemanticsNode()
+                .config[SemanticsProperties.Text]
+                .single()
 
-            assertTrue(
-                rendered.getSpans(0, rendered.length, StrongEmphasisSpan::class.java).isNotEmpty()
-            )
+        assertTrue(rendered.spanStyles.any { it.item.fontWeight == FontWeight.Bold })
+        compose.runOnIdle {
             current =
                 current.copy(
                     revision = 2,
@@ -180,11 +179,10 @@ class A2aExternalTaskTest {
                 )
         }
 
-        compose.runOnIdle {
-            assertEquals(1, markdownViews().count { it.text.toString() == "Updated draft" })
-            assertFalse(markdownViews().any { it.text.contains("First draft") })
-            assertFalse(markdownViews().any { it.text.contains("**Updated draft**") })
-        }
+        compose.waitUntilAtLeastOneExists(hasText("Updated draft"))
+        compose.onAllNodesWithText("Updated draft").assertCountEquals(1)
+        compose.onNodeWithText("First draft").assertDoesNotExist()
+        compose.onNodeWithText("**Updated draft**").assertDoesNotExist()
     }
 
     @Test
@@ -217,12 +215,9 @@ class A2aExternalTaskTest {
         compose.onNodeWithText("1. Draft · Planner").assertExists()
         compose.onNodeWithText("2. Review · Reviewer").assertExists()
         compose.onNodeWithText("3. Revision · Planner").assertExists()
-        compose.runOnIdle {
-            assertFalse(
-                markdownViews().any { it.text.toString() in setOf("Draft body", "Review body") }
-            )
-            assertEquals(1, markdownViews().count { it.text.toString() == "Corrected revision" })
-        }
+        compose.onNodeWithText("Draft body").assertDoesNotExist()
+        compose.onNodeWithText("Review body").assertDoesNotExist()
+        compose.onAllNodesWithText("Corrected revision").assertCountEquals(1)
     }
 
     @Test
@@ -243,7 +238,7 @@ class A2aExternalTaskTest {
             current =
                 current.copy(revision = 2, outputs = listOf(output("plan", "running", "New draft")))
         }
-        compose.runOnIdle { assertFalse(markdownViews().any { it.text.toString() == "New draft" }) }
+        compose.onNodeWithText("New draft").assertDoesNotExist()
 
         compose.onNodeWithText("1. Draft · Planner").performClick()
         compose.runOnIdle {
@@ -258,9 +253,8 @@ class A2aExternalTaskTest {
                 )
         }
 
-        compose.runOnIdle {
-            assertTrue(markdownViews().any { it.text.toString() == "Finished draft" })
-        }
+        compose.waitUntilAtLeastOneExists(hasText("Finished draft"))
+        compose.onNodeWithText("Finished draft").assertExists()
     }
 
     @Test
@@ -284,15 +278,10 @@ class A2aExternalTaskTest {
             }
         }
 
-        compose.runOnIdle {
-            assertFalse(markdownViews().any { it.text.toString() == "Earlier draft" })
-            assertTrue(markdownViews().any { it.text.toString() == "Partial review" })
-            current = current.copy(status = "cancelled", revision = 2)
-        }
-
-        compose.runOnIdle {
-            assertTrue(markdownViews().any { it.text.toString() == "Partial review" })
-        }
+        compose.onNodeWithText("Earlier draft").assertDoesNotExist()
+        compose.onNodeWithText("Partial review").assertExists()
+        compose.runOnIdle { current = current.copy(status = "cancelled", revision = 2) }
+        compose.onNodeWithText("Partial review").assertExists()
     }
 
     @Test
@@ -355,9 +344,7 @@ class A2aExternalTaskTest {
             compose.onNodeWithText("Additional information").performTextReplacement("January")
             compose.onNodeWithText("Continue agents").performClick()
             compose.onNodeWithText("Cancel agents").performClick()
-            compose.runOnIdle {
-                assertEquals(1, markdownViews().count { it.text.toString() == "Need a date range" })
-            }
+            compose.onAllNodesWithText("Need a date range").assertCountEquals(1)
         }
 
         assertEquals(listOf("job-1" to "January", "job-1" to "January"), inputs)
@@ -405,18 +392,4 @@ class A2aExternalTaskTest {
             status = status,
             text = text,
         )
-
-    private fun markdownViews(): List<TextView> = textViews(compose.activity.window.decorView)
-
-    private fun textViews(view: View): List<TextView> {
-        if (view is TextView) {
-            return listOf(view)
-        }
-
-        if (view !is ViewGroup) {
-            return emptyList()
-        }
-
-        return (0 until view.childCount).flatMap { textViews(view.getChildAt(it)) }
-    }
 }
