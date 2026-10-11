@@ -15,7 +15,13 @@ export async function removeDirectory(directory) {
   assert.equal(dirname(resolve(directory)), resolve(tmpdir()));
   assert.ok(basename(directory).startsWith("agent-playground-tools-"));
 
-  await rm(directory, { recursive: true, force: true });
+  // Windows may briefly retain file handles after a fixture process exits.
+  await rm(directory, {
+    recursive: true,
+    force: true,
+    maxRetries: 5,
+    retryDelay: 100,
+  });
 }
 
 export function isRunning(pid) {
