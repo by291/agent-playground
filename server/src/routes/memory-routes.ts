@@ -39,12 +39,16 @@ export const memoryRoutes = new Hono();
 
 memoryRoutes.use("/api/memories", async (context, next) => {
   context.header("Cache-Control", "no-store");
+
   await next();
 });
+
 memoryRoutes.use("/api/memories/*", async (context, next) => {
   context.header("Cache-Control", "no-store");
+
   await next();
 });
+
 memoryRoutes.onError((error, context) => {
   if (error instanceof MemoryServiceError) {
     return context.json({ error: error.message }, error.status);

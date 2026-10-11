@@ -4,6 +4,7 @@ import { isRunFinished } from "@shared/run-status";
 import { workflowReplyMessages } from "@shared/workflow-output";
 import type { A2UIIngestResult, A2UIOutput } from "@/features/a2ui";
 
+/** Merges task revisions without letting a late snapshot reopen a continuation. */
 export function mergeExternalTasks(
   currentTasks: ExternalTaskSnapshot[],
   incomingTasks: ExternalTaskSnapshot[],
@@ -12,6 +13,8 @@ export function mergeExternalTasks(
 
   for (const incoming of incomingTasks) {
     const current = tasks.get(incoming.taskId);
+
+    // Continuation progress can advance independently within the same task revision.
     const staleContinuation =
       incoming.revision === current?.revision &&
       current.continuationStatus !== null &&
@@ -30,6 +33,7 @@ export function mergeExternalTasks(
   return [...tasks.values()];
 }
 
+/** Publishes reply text only after the corresponding A2UI output sequence is complete. */
 export function projectOutputs(
   outputs: A2UIOutput[],
   result: A2UIIngestResult,
@@ -43,6 +47,7 @@ export function projectOutputs(
           .flatMap(workflowReplyMessages)
           .filter((message) => !savedIds.has(message.id))
       : [];
+
   let issue: string | null = null;
 
   if (result.kind === "failed") {

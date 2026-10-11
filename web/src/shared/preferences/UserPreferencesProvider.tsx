@@ -38,11 +38,13 @@ export function UserPreferencesProvider({ children }: { children: ReactNode }) {
   const [preferences, setPreferences] = useState(loadUserPreferences);
   const [saved, setSaved] = useState(true);
 
+  // Apply the root theme before paint; cleanup restores the DOM state this effect inherited.
   useLayoutEffect(() => {
     const root = document.documentElement;
     const media = window.matchMedia?.("(prefers-color-scheme: dark)");
     const previousDark = root.classList.contains("dark");
     const previousColorScheme = root.style.colorScheme;
+
     const applyTheme = () => {
       const dark =
         preferences.theme === "dark" ||
@@ -74,6 +76,7 @@ export function UserPreferencesProvider({ children }: { children: ReactNode }) {
       localStorage.setItem(storageKey, JSON.stringify(next));
       setSaved(true);
     } catch {
+      // Storage failures should not undo the user's current in-memory preferences.
       setSaved(false);
     }
   }

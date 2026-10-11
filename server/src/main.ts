@@ -29,6 +29,8 @@ async function shutdown() {
   }
 
   stopping = true;
+
+  // Stop accepting work and drain its owners before closing their shared clients.
   const workerStopped = stopWorker();
   const serverClosed = new Promise<void>((resolve, reject) => {
     server.close((error) => {
@@ -41,8 +43,9 @@ async function shutdown() {
   });
 
   server.closeAllConnections();
+
   const failures: unknown[] = [];
-  const stopped = await Promise.allSettled([
+  const drainResults = await Promise.allSettled([
     workerStopped,
     serverClosed,
     stopFileCleanup(),
@@ -50,7 +53,7 @@ async function shutdown() {
     closeConversationChanges(),
   ]);
 
-  for (const result of stopped) {
+  for (const result of drainResults) {
     if (result.status === "rejected") {
       failures.push(result.reason);
     }

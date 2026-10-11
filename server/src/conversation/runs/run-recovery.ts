@@ -40,6 +40,7 @@ function localStatus(status: Run["status"]): RunStatus {
   }
 }
 
+/** Saves an upstream observation conditionally so callbacks and newer recovery can win. */
 export async function reconcileRun(
   row: RunRow,
   client: Client = aegra,
@@ -63,6 +64,7 @@ export async function reconcileRun(
   }
 
   if (!aegraRunId) {
+    // A live local producer can still publish its mapping; only an ownerless claim is unknown.
     const outcomeUnknown =
       row.status === "dispatching" && !hasRunDispatchOwner(row.aguiRunId);
 

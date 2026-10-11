@@ -3,6 +3,7 @@ interface ChangeSource {
   close: () => void;
 }
 
+/** Opens a change stream; its caller owns both refresh scheduling and cleanup. */
 export function subscribeConversationChanges(
   threadId: string,
   refresh: () => void,
@@ -12,6 +13,7 @@ export function subscribeConversationChanges(
     `/conversations/${encodeURIComponent(threadId)}/events`,
   );
 
+  // A refresh after subscription closes the gap between the initial read and LISTEN.
   source.addEventListener("ready", refresh);
   source.addEventListener("changed", refresh);
 

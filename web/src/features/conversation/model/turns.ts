@@ -19,12 +19,14 @@ export interface ToolStep {
     "running" | "completed" | "failed" | "paused" | "waiting" | "unavailable";
 }
 
+/** Groups feedback and tool results by their owning turn, then applies saved run status. */
 export function chatTurns(
   messages: readonly Message[],
   runs: ConversationSnapshot["runs"],
 ): ChatTurn[] {
   const turns: ChatTurn[] = [];
   const callOwners = new Map<string, ChatTurn>();
+
   let current: ChatTurn | undefined;
 
   for (const message of messages) {
@@ -59,6 +61,7 @@ export function chatTurns(
   }
 
   const byUser = new Map(turns.map((turn) => [turn.id, turn]));
+
   let owner: ChatTurn | undefined;
 
   for (const run of runs) {

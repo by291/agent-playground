@@ -28,12 +28,14 @@ export function useMemories() {
   const client = useQueryClient();
   const controller = useRef<AbortController | null>(null);
   const mounted = useRef(true);
+
   const query = useInfiniteQuery({
     queryKey,
     initialPageParam: 0,
     queryFn: ({ pageParam, signal }) => listMemories(pageParam, signal),
     getNextPageParam: (page) => page.nextOffset,
   });
+
   const mutation = useMutation({
     mutationFn: async (request: MemoryRequest) => {
       const { kind, memory, text, controller } = request;
@@ -79,6 +81,17 @@ export function useMemories() {
     },
   });
 
+  // Refreshes can move records between pages. Use the last encountered record
+  // while keeping one row per memory in the original insertion order.
+  const records = new Map(
+    query.data?.pages.flatMap((page) =>
+      page.items.map((memory) => [memory.id, memory] as const),
+    ),
+  );
+  const conflict =
+    mutation.error instanceof MemoryRequestError &&
+    mutation.error.status === 409;
+
   useEffect(() => {
     mounted.current = true;
 
@@ -89,6 +102,7 @@ export function useMemories() {
   }, []);
 
   async function perform(kind: MemoryOperation, memory: Memory, text = "") {
+    // The ref also guards a second event arriving before React renders busy state.
     if (controller.current) {
       return;
     }
@@ -111,15 +125,6 @@ export function useMemories() {
       }
     }
   }
-
-  const records = new Map(
-    query.data?.pages.flatMap((page) =>
-      page.items.map((memory) => [memory.id, memory] as const),
-    ),
-  );
-  const conflict =
-    mutation.error instanceof MemoryRequestError &&
-    mutation.error.status === 409;
 
   return {
     query,

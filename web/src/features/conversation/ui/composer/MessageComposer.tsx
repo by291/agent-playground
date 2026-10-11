@@ -4,6 +4,7 @@ import {
   useEffect,
   useRef,
   useState,
+  type ChangeEvent,
   type KeyboardEvent,
   type SubmitEvent,
 } from "react";
@@ -33,16 +34,22 @@ import {
 } from "../attachments/MessageAttachments";
 import { useUserPreferences } from "@/shared/preferences/UserPreferencesProvider";
 
+interface MessageComposerProps {
+  prompt: string;
+  onPromptChange: (prompt: string) => void;
+}
+
+interface ComposerAttachment {
+  id: string;
+  file: File;
+  preview?: string;
+}
+
 export function MessageComposer({
   prompt,
   onPromptChange,
-}: {
-  prompt: string;
-  onPromptChange: (prompt: string) => void;
-}) {
-  const [files, setFiles] = useState<
-    { id: string; file: File; preview?: string }[]
-  >([]);
+}: MessageComposerProps) {
+  const [files, setFiles] = useState<ComposerAttachment[]>([]);
   const previews = useRef(new Map<string, string>());
   const [uploading, setUploading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -60,6 +67,7 @@ export function MessageComposer({
     mounted.current = true;
     const ownedPreviews = previews.current;
 
+    // The composer owns its previews and upload, including navigation cleanup.
     return () => {
       mounted.current = false;
       upload.current?.abort();
@@ -71,19 +79,6 @@ export function MessageComposer({
       ownedPreviews.clear();
     };
   }, []);
-
-  function removeFiles(ids: Set<string>) {
-    for (const id of ids) {
-      const url = previews.current.get(id);
-
-      if (url) {
-        URL.revokeObjectURL(url);
-        previews.current.delete(id);
-      }
-    }
-
-    setFiles((previous) => previous.filter(({ id }) => !ids.has(id)));
-  }
 
   const { preferences } = useUserPreferences();
   const {
@@ -97,6 +92,7 @@ export function MessageComposer({
   } = useConversation(useShallow(composerState));
   const presenting = useReplyPresentationBusy();
   const ensureThreadId = useConversation((state) => state.ensureThreadId);
+
   const responding = running || presenting;
   const disabled =
     submitting ||
@@ -129,6 +125,60 @@ export function MessageComposer({
     placeholder = discussionPlaceholder;
   }
 
+  function removeFiles(ids: Set<string>) {
+    for (const id of ids) {
+      const url = previews.current.get(id);
+
+      if (url) {
+        URL.revokeObjectURL(url);
+        previews.current.delete(id);
+      }
+    }
+
+    setFiles((previous) => previous.filter(({ id }) => !ids.has(id)));
+  }
+
+  function selectFiles(event: ChangeEvent<HTMLInputElement>) {
+    const selected = Array.from(event.target.files ?? []);
+
+    // Clear the input so choosing the same file again still fires a change.
+    event.target.value = "";
+
+    const invalidSelection =
+      files.length + selected.length > 4 ||
+      selected.some(
+        (file) =>
+          file.size > maxSkillFileBytes ||
+          !skillFilenameSchema.safeParse(file.name).success,
+      );
+
+    if (invalidSelection) {
+      setUploadError(
+        "Choose at most four files, up to 10 MiB each, with valid filenames.",
+      );
+
+      return;
+    }
+
+    setUploadError(null);
+
+    const attachments = selected.map((file) => {
+      const id = crypto.randomUUID();
+
+      if (!isImageAttachment(file.name)) {
+        return { id, file };
+      }
+
+      const preview = URL.createObjectURL(file);
+
+      previews.current.set(id, preview);
+
+      return { id, file, preview };
+    });
+
+    setFiles((previous) => [...previous, ...attachments]);
+  }
+
   function submit(event?: SubmitEvent<HTMLFormElement>) {
     event?.preventDefault();
 
@@ -156,6 +206,7 @@ export function MessageComposer({
 
       if (files.length) {
         const threadId = ensureThreadId();
+        // Wait for every upload to settle before releasing this submission's lock.
         const results = await Promise.allSettled(
           files.map(({ id, file }) =>
             uploadFile(threadId, id, file, controller.signal),
@@ -176,6 +227,7 @@ export function MessageComposer({
         content = uploadedFileMessage(message, uploaded);
       }
 
+      // Clear the draft only after server admission; a failed send remains retryable.
       await onSend(content, () => {
         if (!mounted.current || controller.signal.aborted) {
           return;
@@ -244,43 +296,7 @@ export function MessageComposer({
             className="hidden"
             aria-label="Choose files"
             disabled={disabled}
-            onChange={(event) => {
-              const selected = Array.from(event.target.files ?? []);
-
-              event.target.value = "";
-
-              if (
-                files.length + selected.length > 4 ||
-                selected.some(
-                  (file) =>
-                    file.size > maxSkillFileBytes ||
-                    !skillFilenameSchema.safeParse(file.name).success,
-                )
-              ) {
-                setUploadError(
-                  "Choose at most four files, up to 10 MiB each, with valid filenames.",
-                );
-
-                return;
-              }
-
-              setUploadError(null);
-              const attachments = selected.map((file) => {
-                const id = crypto.randomUUID();
-
-                if (!isImageAttachment(file.name)) {
-                  return { id, file };
-                }
-
-                const preview = URL.createObjectURL(file);
-
-                previews.current.set(id, preview);
-
-                return { id, file, preview };
-              });
-
-              setFiles((previous) => [...previous, ...attachments]);
-            }}
+            onChange={selectFiles}
           />
           <InputGroup className="h-auto flex-col items-stretch gap-1 rounded-xl border-line bg-surface p-3 shadow-[0_3px_12px_rgba(32,36,44,0.04)] transition-colors duration-150 focus-within:border-accent sm:p-4">
             <div className="flex flex-wrap gap-2 px-1 empty:hidden">

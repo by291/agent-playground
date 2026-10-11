@@ -82,20 +82,32 @@ export async function validateReview(
   const userInterrupts = interrupts.filter(
     (interrupt) => !parseExternalWait(interrupt),
   );
-
-  if (
+  const invalidReviewShape =
     run?.status !== "interrupted" ||
     !interrupts.length ||
     !submitted.length ||
     submittedIds.size !== submitted.length ||
-    (!allowsPartial && interrupts.length !== submitted.length) ||
-    [...submittedIds].some(
-      (id) =>
-        !currentIds.has(id) ||
-        interrupts.some(
-          (interrupt) => interrupt.id === id && parseExternalWait(interrupt),
-        ),
-    ) ||
+    (!allowsPartial && interrupts.length !== submitted.length);
+
+  if (invalidReviewShape) {
+    throw new SubmissionError("Review is no longer current", 409);
+  }
+
+  // External waits are resumed by the worker, even when a user review shares the pause.
+  const targetsUnavailableInterrupt = [...submittedIds].some(
+    (id) =>
+      !currentIds.has(id) ||
+      interrupts.some(
+        (interrupt) => interrupt.id === id && parseExternalWait(interrupt),
+      ),
+  );
+
+  if (targetsUnavailableInterrupt) {
+    throw new SubmissionError("Review is no longer current", 409);
+  }
+
+  // Admission holds the conversation lock while checking the published review outputs.
+  if (
     !(await reviewOutputsPersisted(input.threadId, userInterrupts, database))
   ) {
     throw new SubmissionError("Review is no longer current", 409);
@@ -114,23 +126,23 @@ export async function validateReview(
       continue;
     }
 
-    const response = workflowReviewResponseSchema.safeParse(entry?.payload);
+    const response = workflowReviewResponseSchema.safeParse(entry.payload);
 
     if (!response.success) {
       throw new SubmissionError("Invalid workflow review response", 400);
     }
 
-    const value = response.data;
-    const current =
-      value.workflowCallId === review.workflowCallId &&
-      value.revision === review.revision &&
-      value.round === review.round;
+    const responseValue = response.data;
+    const matchesCurrentReview =
+      responseValue.workflowCallId === review.workflowCallId &&
+      responseValue.revision === review.revision &&
+      responseValue.round === review.round;
 
-    if (!current) {
+    if (!matchesCurrentReview) {
       throw new SubmissionError("Workflow review is no longer current", 409);
     }
 
-    if (value.action === "accept" && !review.canAccept) {
+    if (responseValue.action === "accept" && !review.canAccept) {
       throw new SubmissionError(
         review.blockedReason ?? "This version cannot be accepted",
         400,
@@ -184,9 +196,19 @@ export async function validateExternalContinuation(
     input.resume?.length !== 1 ||
     !task ||
     task.continuationRunId ||
-    task.threadId !== input.threadId ||
-    wait?.taskId !== taskId ||
-    wait.workflowCallId !== task.workflowCallId ||
+    task.threadId !== input.threadId
+  ) {
+    throw new SubmissionError(
+      "External task continuation is no longer current",
+      409,
+    );
+  }
+
+  const matchesPausedTask =
+    wait?.taskId === taskId && wait.workflowCallId === task.workflowCallId;
+
+  if (
+    !matchesPausedTask ||
     !isExternalTaskTerminal(task.status) ||
     !isDeepStrictEqual(entry?.payload, expected)
   ) {

@@ -37,6 +37,7 @@ export function parsePlanReview(interrupt: Interrupt): PlanReview | null {
   };
 }
 
+/** Resolves every outstanding plan exactly once; partial or duplicate decisions are invalid. */
 export function reviewEntries(
   responses: PlanReviewResponse[],
   interrupts: Interrupt[],
@@ -44,12 +45,13 @@ export function reviewEntries(
   const expected = new Set(interrupts.map((item) => item.id));
   const received = new Set(responses.map((item) => item.interruptId));
 
-  if (
+  const incompleteResponseSet =
     !expected.size ||
     responses.length !== expected.size ||
     received.size !== expected.size ||
-    responses.some((response) => !expected.has(response.interruptId))
-  ) {
+    responses.some((response) => !expected.has(response.interruptId));
+
+  if (incompleteResponseSet) {
     return null;
   }
 

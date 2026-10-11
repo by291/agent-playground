@@ -45,19 +45,24 @@ export function MemoryWorkspace({
   const actionOpener = useRef<HTMLButtonElement | null>(null);
   const [correcting, setCorrecting] = useState<Memory | null>(null);
   const [forgetting, setForgetting] = useState<Memory | null>(null);
+
   const latestCorrection = memories.find(
     (memory) => memory.id === correcting?.id,
   );
   const latestForget = memories.find((memory) => memory.id === forgetting?.id);
+  // The confirmation retains the revision the user reviewed even as data refreshes.
   const forgetChanged = Boolean(
     forgetting && latestForget && forgetting.revision !== latestForget.revision,
   );
 
   function restoreActionFocus(event: Event) {
     event.preventDefault();
-    const opener = actionOpener.current;
 
-    if (opener?.isConnected && !opener.closest("[inert]")) {
+    const opener = actionOpener.current;
+    const canRestoreOpener = opener?.isConnected && !opener.closest("[inert]");
+
+    // Forgetting removes its row, so the page supplies a stable focus fallback.
+    if (canRestoreOpener) {
       opener.focus();
     } else {
       onActionFocusFallback();

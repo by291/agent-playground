@@ -27,6 +27,7 @@ export function useKnowledgeDocuments() {
   const pending = useRef<{ id: string; file: File } | null>(null);
   const [validationError, setValidationError] = useState<string | null>(null);
   const [retryUpload, setRetryUpload] = useState(false);
+
   const documents = useQuery({
     queryKey,
     queryFn: ({ signal }) => listKnowledge(signal),
@@ -37,6 +38,7 @@ export function useKnowledgeDocuments() {
         ? 2000
         : false,
   });
+
   const mutation = useMutation({
     mutationFn: ({ path, init, controller }: DocumentRequest) =>
       knowledgeRequest(path, { ...init, signal: controller.signal }),
@@ -66,6 +68,7 @@ export function useKnowledgeDocuments() {
     init: RequestInit,
     operation: KnowledgeOperation,
   ) {
+    // The ref locks immediately, before mutation state reaches the next render.
     if (controller.current) {
       return;
     }
@@ -119,7 +122,7 @@ export function useKnowledgeDocuments() {
       pending.current = null;
       setRetryUpload(false);
     } else if (uploaded === false) {
-      // A lost PUT response may hide a committed upload; retry the original identity.
+      // A lost upload response may hide a committed upload; retry the original identity.
       setRetryUpload(true);
     }
   }
@@ -129,11 +132,12 @@ export function useKnowledgeDocuments() {
       return;
     }
 
-    if (
+    const invalidDocument =
       !file.size ||
       file.size > maxKnowledgeBytes ||
-      !/\.(txt|md|pdf)$/i.test(file.name)
-    ) {
+      !/\.(txt|md|pdf)$/i.test(file.name);
+
+    if (invalidDocument) {
       setValidationError(
         "Use a nonempty TXT, Markdown or PDF file up to 10 MiB",
       );

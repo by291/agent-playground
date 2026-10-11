@@ -37,6 +37,7 @@ knowledgeRoutes.use(
 knowledgeRoutes.get("/api/knowledge/documents", async (context) =>
   context.json(await listDocuments()),
 );
+
 knowledgeRoutes.post(
   "/api/knowledge/documents",
   bodyLimit({ maxSize: maxKnowledgeBytes }),
@@ -49,16 +50,18 @@ knowledgeRoutes.post(
       return context.json({ error: "Invalid file name" }, 400);
     }
 
-    const document = await uploadDocument(
-      context.req.header("X-Document-Id") ?? "",
-      name,
-      Buffer.from(await context.req.arrayBuffer()),
-      parseTextEncoding(context.req.header("X-Text-Encoding")),
+    const id = context.req.header("X-Document-Id") ?? "";
+    const data = Buffer.from(await context.req.arrayBuffer());
+    const textEncoding = parseTextEncoding(
+      context.req.header("X-Text-Encoding"),
     );
+
+    const document = await uploadDocument(id, name, data, textEncoding);
 
     return context.json(document, 201);
   },
 );
+
 knowledgeRoutes.post(
   "/api/knowledge/documents/:id/reindex",
   async (context) => {
@@ -71,6 +74,7 @@ knowledgeRoutes.post(
     return context.json(document);
   },
 );
+
 knowledgeRoutes.delete("/api/knowledge/documents/:id", async (context) => {
   await changeDocument(context.req.param("id"), "delete");
 

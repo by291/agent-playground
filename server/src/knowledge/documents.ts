@@ -108,6 +108,7 @@ export async function uploadDocument(
   }
 
   validateTextEncoding(name, textEncoding ?? null);
+
   const sha256 = createHash("sha256").update(data).digest("hex");
 
   // Persist the upload intent first so a crash cannot leave an untracked object.
@@ -134,12 +135,13 @@ export async function uploadDocument(
       throw new KnowledgeError("Document was deleted", 404);
     }
 
-    if (
+    const identityConflict =
       row.sha256 !== sha256 ||
       row.name !== name ||
       row.size !== data.length ||
-      (textEncoding !== undefined && row.textEncoding !== textEncoding)
-    ) {
+      (textEncoding !== undefined && row.textEncoding !== textEncoding);
+
+    if (identityConflict) {
       throw new KnowledgeError(
         "Document identity is already used by another file",
         409,
@@ -152,6 +154,7 @@ export async function uploadDocument(
 
     // The document lock also serializes deletion and object cleanup with this PUT.
     await putObject(row.objectKey, data);
+
     const [queued] = await tx
       .update(knowledgeDocuments)
       .set({ status: "queued", updatedAt: new Date() })
@@ -210,12 +213,13 @@ export async function changeDocument(
       throw new KnowledgeError("Document is unavailable", 404);
     }
 
-    if (
+    const blocksReindex =
       action === "reindex" &&
       (row.status === "uploading" ||
         row.status === "indexing" ||
-        row.status === "queued")
-    ) {
+        row.status === "queued");
+
+    if (blocksReindex) {
       throw new KnowledgeError(
         "Wait for the current upload or indexing attempt",
         409,
@@ -226,10 +230,12 @@ export async function changeDocument(
       validateTextEncoding(row.name, textEncoding);
     }
 
+    // Hide old chunks and revoke the generation together; an in-flight worker cannot publish it.
     await tx
       .update(knowledgeChunks)
       .set({ visible: false })
       .where(eq(knowledgeChunks.documentId, id));
+
     const [updated] = await tx
       .update(knowledgeDocuments)
       .set({

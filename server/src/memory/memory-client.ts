@@ -60,6 +60,7 @@ async function requestMemory(
     signal: AbortSignal.any([signal, timeout]),
     redirect: "error",
   });
+
   const expectedStatus = method === "DELETE" ? 204 : 200;
 
   if (response.status !== expectedStatus) {

@@ -80,6 +80,7 @@ export async function cleanupDeletedDocuments(signal?: AbortSignal) {
         await tx
           .delete(knowledgeChunks)
           .where(eq(knowledgeChunks.documentId, row.id));
+
         // Keep the tombstone so a delayed retry cannot recreate the same document ID.
         await tx
           .update(knowledgeDocuments)
@@ -88,6 +89,8 @@ export async function cleanupDeletedDocuments(signal?: AbortSignal) {
       });
     } catch (error) {
       failures.push(error);
+
+      // Move failures behind unattempted candidates while retaining their tombstones.
       await db
         .update(knowledgeDocuments)
         .set({ cleanupAttemptedAt: new Date() })
@@ -136,6 +139,7 @@ export function startKnowledgeCleanup() {
     stopped = true;
     clearInterval(timer);
     controller.abort();
+
     await active;
   };
 }

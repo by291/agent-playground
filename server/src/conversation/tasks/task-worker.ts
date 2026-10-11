@@ -64,6 +64,7 @@ export async function processExternalTasks(
         continue;
       }
 
+      // A retried scan reuses the durable continuation, including an undispatched admission.
       let run = continuation;
 
       if (!run) {
@@ -100,6 +101,7 @@ export async function processExternalTasks(
             },
           ],
         });
+
         const admitted = await admitRun({
           threadId: task.threadId,
           runId,
@@ -169,6 +171,7 @@ export function startExternalTaskWorker() {
   let running = Promise.resolve();
 
   function tick() {
+    // Schedule after settlement so scans never overlap or outlive their shutdown owner.
     running = processExternalTasks(client, controller.signal)
       .catch((error: unknown) => {
         logger.error({ err: error }, "External task scan failed");
@@ -186,6 +189,7 @@ export function startExternalTaskWorker() {
     stopped = true;
     clearTimeout(timer);
     controller.abort();
+
     await running;
   };
 }

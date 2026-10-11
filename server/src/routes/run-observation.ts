@@ -50,12 +50,13 @@ export function observeAgentStream(
             },
 
             event(event) {
-              if (
+              const isFirstTextChunk =
                 event.type === EventType.TEXT_MESSAGE_CONTENT &&
                 typeof event.delta === "string" &&
                 event.delta.length &&
-                !firstText
-              ) {
+                !firstText;
+
+              if (isFirstTextChunk) {
                 firstText = true;
                 span.addEvent("first_text_forwarded", {
                   duration_ms: performance.now() - started,

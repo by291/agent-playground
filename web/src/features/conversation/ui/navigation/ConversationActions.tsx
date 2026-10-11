@@ -62,6 +62,12 @@ interface ConversationActionsState {
 const ConversationActionsContext =
   createContext<ConversationActionsState | null>(null);
 
+function runBlocksDeletion(status: RunStatus | null) {
+  return (
+    (status !== null && isRunActive(status)) || status === "submission_unknown"
+  );
+}
+
 export function ConversationActionsProvider({
   children,
   history,
@@ -78,22 +84,22 @@ export function ConversationActionsProvider({
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const focusThreadId = useRef<string | null>(null);
+
   const action = target?.action ?? null;
   const activeHistory = history ?? target?.history;
   const entry = activeHistory?.conversations.find(
     (entry) => entry.threadId === target?.threadId,
   );
+  // Recheck current run/history state while a dialog remains open; its captured
+  // target may predate a new run or an unresolved submission.
   const currentBlocked =
     current !== undefined &&
     current.threadId === target?.threadId &&
-    (current.busy ||
-      (current.status !== null && isRunActive(current.status)) ||
-      current.status === "submission_unknown");
+    (current.busy || runBlocksDeletion(current.status));
   const deletionBlocked =
     currentBlocked ||
     (entry
-      ? (entry.status !== null && isRunActive(entry.status)) ||
-        entry.status === "submission_unknown"
+      ? runBlocksDeletion(entry.status)
       : (target?.deletionBlocked ?? false));
 
   function openAction(
@@ -380,6 +386,8 @@ function ConversationActionsMenu(props: ConversationActionsProps) {
         className="w-44"
         onCloseAutoFocus={(event) => {
           if (openingDialog.current) {
+            // The dialog owns focus after a menu selection; avoid returning it
+            // to the menu trigger while the dialog's focus trap is mounting.
             event.preventDefault();
             openingDialog.current = false;
           }

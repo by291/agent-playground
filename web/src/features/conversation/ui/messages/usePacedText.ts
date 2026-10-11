@@ -70,12 +70,19 @@ class TextStreamAnimator {
     const now = Date.now();
     const elapsed = now - this.lastUpdateTime;
     const remaining = this.targetText.length - this.currentText.length;
-    const timePerChar = Math.min(
-      1000 / textReveal.charsPerSecond,
-      textReveal.backlogDrainMs / remaining,
+    const normalTimePerChar = 1000 / textReveal.charsPerSecond;
+    const backlogTimePerChar = textReveal.backlogDrainMs / remaining;
+    const deadlineTimePerChar =
       this.finishBy === null
         ? Infinity
-        : Math.max(0, this.finishBy - now) / remaining,
+        : Math.max(0, this.finishBy - now) / remaining;
+
+    // Accelerate for a growing backlog and finish pending text within the deadline
+    // once the server stops streaming, while retaining the normal pace otherwise.
+    const timePerChar = Math.min(
+      normalTimePerChar,
+      backlogTimePerChar,
+      deadlineTimePerChar,
     );
     const available = Math.min(remaining, Math.floor(elapsed / timePerChar));
     let revealed = 0;
@@ -146,7 +153,9 @@ export function usePacedText(text: string, streaming: boolean) {
   useEffect(() => {
     animator.update(text, enabled, streaming);
   }, [animator, text, enabled, streaming]);
+
   useEffect(() => () => animator.stop(), [animator]);
+
   useEffect(() => {
     if (
       !enabled ||

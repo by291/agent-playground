@@ -6,6 +6,7 @@ import {
   type RunStatus,
 } from "../../../../shared/run-status.js";
 
+// Durable status survives restarts; this map identifies dispatches still owned by this process.
 const dispatchOwners = new Map<string, symbol>();
 
 export async function claimPrepared(runId: string): Promise<boolean> {
@@ -23,6 +24,7 @@ export async function claimPrepared(runId: string): Promise<boolean> {
   return rows.length === 1;
 }
 
+/** Claims once and returns the release callback for the mapping/producer lifecycle. */
 export async function claimPreparedDispatch(
   runId: string,
 ): Promise<(() => void) | null> {
@@ -96,6 +98,7 @@ export async function latestRun(threadId: string): Promise<RunRow | null> {
   return row ?? null;
 }
 
+/** Writes only if the status and upstream mapping still match the observed row. */
 export async function saveRunObservation(
   expected: RunRow,
   observation: { status: RunStatus; aegraRunId: string | null },

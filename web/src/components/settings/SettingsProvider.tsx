@@ -28,6 +28,9 @@ export function SettingsProvider({
   const [clearError, setClearError] = useState<string | null>(null);
   const { resetPreferences } = useUserPreferences();
 
+  // Keep the parent dialog mounted while its confirmation or request owns focus.
+  const settingsCloseBlocked = clearing || confirmationOpen;
+
   function openSettings(trigger?: HTMLButtonElement) {
     openingTrigger.current = trigger ?? null;
     setClearError(null);
@@ -35,7 +38,7 @@ export function SettingsProvider({
   }
 
   function changeSettingsOpen(next: boolean) {
-    if (clearing || confirmationOpen) {
+    if (settingsCloseBlocked) {
       return;
     }
 
@@ -76,6 +79,40 @@ export function SettingsProvider({
     }
   }
 
+  function restoreSettingsFocus(event: Event) {
+    event.preventDefault();
+
+    // Responsive navigation can replace the opener while settings is displayed.
+    const opener = openingTrigger.current;
+    const canRestoreOpener =
+      opener?.isConnected &&
+      !opener.closest(
+        '[hidden], [inert], [data-slot="sheet-content"][data-state="closed"]',
+      ) &&
+      getComputedStyle(opener).display !== "none" &&
+      getComputedStyle(opener).visibility !== "hidden";
+
+    if (canRestoreOpener) {
+      opener.focus();
+
+      return;
+    }
+
+    const navigationTrigger = [
+      "workspace-sidebar-trigger",
+      "workspace-navigation-trigger",
+    ]
+      .map((id) => document.getElementById(id))
+      .find(
+        (element) =>
+          element?.isConnected &&
+          getComputedStyle(element).display !== "none" &&
+          getComputedStyle(element).visibility !== "hidden",
+      );
+
+    navigationTrigger?.focus();
+  }
+
   const settings = { dialogId: `${id}-dialog`, open, openSettings };
 
   return (
@@ -87,47 +124,16 @@ export function SettingsProvider({
           showCloseButton={false}
           className="fixed top-1/2 left-1/2 z-50 max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-lg origin-top-left transform-[translate(-50%,-50%)] overflow-y-auto rounded-xl border border-line bg-surface p-5 text-ink shadow-xl outline-none sm:p-6"
           onEscapeKeyDown={(event) => {
-            if (clearing || confirmationOpen) {
+            if (settingsCloseBlocked) {
               event.preventDefault();
             }
           }}
           onInteractOutside={(event) => {
-            if (clearing || confirmationOpen) {
+            if (settingsCloseBlocked) {
               event.preventDefault();
             }
           }}
-          onCloseAutoFocus={(event) => {
-            event.preventDefault();
-
-            const opener = openingTrigger.current;
-            const canRestoreOpener =
-              opener?.isConnected &&
-              !opener.closest(
-                '[hidden], [inert], [data-slot="sheet-content"][data-state="closed"]',
-              ) &&
-              getComputedStyle(opener).display !== "none" &&
-              getComputedStyle(opener).visibility !== "hidden";
-
-            if (canRestoreOpener) {
-              opener.focus();
-
-              return;
-            }
-
-            const navigationTrigger = [
-              "workspace-sidebar-trigger",
-              "workspace-navigation-trigger",
-            ]
-              .map((id) => document.getElementById(id))
-              .find(
-                (element) =>
-                  element?.isConnected &&
-                  getComputedStyle(element).display !== "none" &&
-                  getComputedStyle(element).visibility !== "hidden",
-              );
-
-            navigationTrigger?.focus();
-          }}
+          onCloseAutoFocus={restoreSettingsFocus}
         >
           <div className="flex items-start justify-between gap-4">
             <div>

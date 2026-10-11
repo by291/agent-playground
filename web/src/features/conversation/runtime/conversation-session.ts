@@ -52,8 +52,19 @@ import {
 
 // Query ownership stays outside the session; a refresh requests a new result.
 type RefreshSnapshot = () => Promise<void>;
+
+interface SubmissionAcceptance {
+  runId: string;
+  notify: (() => void) | undefined;
+  notified: boolean;
+}
+
 const activityLimit = 500;
 
+/**
+ * Owns one conversation's live stream and snapshot reconciliation.
+ * The caller supplies Query refreshes and releases resources with connect's cleanup.
+ */
 export function createConversationSession(
   saved: ConversationReference,
   agent = new HttpAgent({ url: "/agent", threadId: saved.threadId ?? "" }),
@@ -62,19 +73,22 @@ export function createConversationSession(
 
   let connected = false;
   let threadId = saved.threadId;
+
+  // Admission survives a reload; stream callbacks and snapshots may confirm it separately.
   let pending = saved.pending;
   let pendingSnapshot: ConversationSnapshot | null | undefined;
   let admissionError: unknown;
-  let acceptance:
-    | { runId: string; notify: (() => void) | undefined; notified: boolean }
-    | undefined;
+  let acceptance: SubmissionAcceptance | undefined;
+
   let savedEmpty = saved.empty;
   let savedModelId = saved.modelId ?? saved.pending?.modelId ?? null;
   let modelSelection: AbortController | undefined;
+
   let submittedRunId: string | undefined;
   let awaitingCheckpoint = false;
   let streamInterrupts: Interrupt[] | undefined;
   let refresh: RefreshSnapshot;
+
   let a2ui: ReturnType<typeof createA2UIRuntime> | undefined;
   let invalidOutputIssue: string | null = null;
   let recoveringOutputs = false;
@@ -104,11 +118,13 @@ export function createConversationSession(
     reviewPlan,
     reviewWorkflow,
   }));
+
   const submission = createSubmissionRunner(ensureThreadId, agent, {
     started() {
       admissionError = undefined;
       streamInterrupts = undefined;
       awaitingCheckpoint = false;
+
       const runs = store
         .getState()
         .runs.filter((run) => run.runId !== submittedRunId);
@@ -230,12 +246,17 @@ export function createConversationSession(
 
   function receiveContextUsage(value: unknown) {
     const usage = parseContextUsage(value);
-    const current = store.getState().contextUsage;
 
-    if (
-      usage &&
-      (usage.model !== current?.model || usage.revision >= current.revision)
-    ) {
+    if (!usage) {
+      return;
+    }
+
+    const current = store.getState().contextUsage;
+    // Revisions are scoped to a model; switching models starts a different sequence.
+    const replacesCurrentUsage =
+      usage.model !== current?.model || usage.revision >= current.revision;
+
+    if (replacesCurrentUsage) {
       store.setState({ contextUsage: usage });
     }
   }
@@ -255,6 +276,7 @@ export function createConversationSession(
     const pendingRejected =
       pending && rejectedAdmission(snapshot, pending, admissionError);
 
+    // Edited input is safe only after both rejection and the saved run state agree.
     if (pendingRejected) {
       pending = undefined;
       submittedRunId = undefined;
@@ -282,16 +304,18 @@ export function createConversationSession(
         .getState()
         .runs.find((run) => run.runId === submittedRunId);
       const runs = (snapshot?.runs ?? []).map((run) => {
+        if (run.runId !== localRun?.runId) {
+          return run;
+        }
+
         // A snapshot can observe dispatch before the creation callback saves its
         // mapping. The local request is still in flight during that uncertainty.
         const uncertainDuringLocalRequest =
           locallyActive && run.status === "submission_unknown";
+        const wouldReopenFinishedRun =
+          isRunFinished(localRun.status) && !isRunFinished(run.status);
 
-        if (
-          run.runId === localRun?.runId &&
-          ((isRunFinished(localRun.status) && !isRunFinished(run.status)) ||
-            uncertainDuringLocalRequest)
-        ) {
+        if (wouldReopenFinishedRun || uncertainDuringLocalRequest) {
           return { ...run, status: localRun.status };
         }
 
@@ -299,6 +323,7 @@ export function createConversationSession(
       });
 
       const state = store.getState();
+
       // Uploads can create a server row before admission pins its first model.
       const preserveLocalModel =
         state.modelSwitching ||
@@ -351,6 +376,7 @@ export function createConversationSession(
       state.surfaces.length === 0 &&
       state.pendingInterrupts.length === 0;
 
+    // Recovery hints are local; the checkpoint remains the source of message history.
     if (
       threadId &&
       (savedEmpty !== empty ||
@@ -516,7 +542,7 @@ export function createConversationSession(
     return threadId;
   }
 
-  function busy() {
+  function cannotSubmit() {
     const state = store.getState();
 
     return (
@@ -546,6 +572,7 @@ export function createConversationSession(
     store.setState({ modelSwitching: true });
 
     try {
+      // New conversations have only a local model choice until the server row exists.
       if (pendingSnapshot) {
         await selectConversationModel(
           ensureThreadId(),
@@ -583,7 +610,7 @@ export function createConversationSession(
   function send(content: string, onAccepted?: () => void): Promise<void> {
     const text = content.trim();
 
-    if (!text || busy()) {
+    if (!text || cannotSubmit()) {
       return Promise.resolve();
     }
 
@@ -655,19 +682,19 @@ export function createConversationSession(
   }
 
   function reviewPlan(responses: PlanReviewResponse[]): Promise<void> {
-    if (busy()) {
+    if (cannotSubmit()) {
       return Promise.resolve();
     }
 
     const interrupts = store.getState().pendingInterrupts;
-    const mixed = interrupts.some(
+    const hasNonPlanInterrupts = interrupts.some(
       (interrupt) =>
         parseWorkflowReview(interrupt) !== null ||
         parseExternalWait(interrupt) !== null,
     );
     const resume = reviewEntries(
       responses,
-      mixed
+      hasNonPlanInterrupts
         ? interrupts.filter((interrupt) => parsePlanReview(interrupt) !== null)
         : interrupts,
     );
@@ -696,7 +723,7 @@ export function createConversationSession(
     const current = interrupt ? parseWorkflowReview(interrupt) : null;
 
     if (
-      busy() ||
+      cannotSubmit() ||
       current?.interruptId !== review.interruptId ||
       current.round !== review.round ||
       current.revision !== review.revision
@@ -726,6 +753,7 @@ export function createConversationSession(
     refresh = requestRefresh;
     a2ui = createA2UIRuntime();
     invalidOutputIssue = null;
+
     store.setState({
       surfaces: [],
       issues: { ...store.getState().issues, output: null },
@@ -742,6 +770,7 @@ export function createConversationSession(
           ? new Date().toISOString()
           : eventDate.toISOString();
 
+        // Keep the first timestamp as chunks extend the same streamed message.
         if (
           (event.type === EventType.TEXT_MESSAGE_START ||
             event.type === EventType.TEXT_MESSAGE_CONTENT) &&
@@ -850,10 +879,12 @@ export function createConversationSession(
     return () => {
       connected = false;
       modelSelection?.abort();
+
       submission.trace?.outcome("disconnected");
       subscription.unsubscribe();
       a2ui?.dispose();
       a2ui = undefined;
+
       // Detach processing before aborting HTTP: the SDK's event transform keeps
       // its source subscription alive. The server-owned Aegra run continues.
       void agent.detachActiveRun();

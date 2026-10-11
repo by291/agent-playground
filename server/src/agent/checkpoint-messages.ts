@@ -31,6 +31,7 @@ function textContent(content: unknown): string {
 function publicMessage(value: unknown): Message | null {
   const raw = record(value);
 
+  // Compaction summaries belong to model context, not the public conversation archive.
   if (!raw || record(raw.additional_kwargs)?.lc_source === "summarization") {
     return null;
   }
@@ -166,15 +167,18 @@ export function completedMessages(values: unknown): Message[] {
   const history: unknown[] = Array.isArray(state.messages)
     ? state.messages
     : [];
+  // Turn responses survive model-history compaction; older checkpoints fall back to history.
   const responses: unknown[] = Array.isArray(state.response_messages)
     ? state.response_messages
     : history;
+
   const messages = responses.flatMap((raw) => {
     const reasoning = publicReasoning(raw);
     const message = publicMessage(raw);
 
     return [...(reasoning ? [reasoning] : []), ...(message ? [message] : [])];
   });
+
   const savedIds = new Set(messages.map((message) => message.id));
 
   // Older checkpoints archived only AI messages. Recover their tool results when
@@ -186,20 +190,20 @@ export function completedMessages(values: unknown): Message[] {
       continue;
     }
 
-    const caller = messages.findIndex(
+    const callerIndex = messages.findIndex(
       (message) =>
         message.role === "assistant" &&
         message.toolCalls?.some((call) => call.id === result.toolCallId),
     );
 
-    if (caller >= 0) {
-      let index = caller + 1;
+    if (callerIndex >= 0) {
+      let insertionIndex = callerIndex + 1;
 
-      while (messages[index]?.role === "tool") {
-        index += 1;
+      while (messages[insertionIndex]?.role === "tool") {
+        insertionIndex += 1;
       }
 
-      messages.splice(index, 0, result);
+      messages.splice(insertionIndex, 0, result);
       savedIds.add(result.id);
     }
   }

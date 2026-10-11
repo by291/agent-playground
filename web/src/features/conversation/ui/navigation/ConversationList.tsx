@@ -49,6 +49,13 @@ export function ConversationList({
     rows.unshift(current);
   }
 
+  const showEmptyHistory =
+    !collapsed &&
+    !history.loading &&
+    entries.length === 0 &&
+    empty &&
+    !history.error;
+
   useEffect(() => {
     const root = scrollerRef.current;
     const end = endRef.current;
@@ -64,6 +71,7 @@ export function ConversationList({
       return;
     }
 
+    // Observer callbacks already queued at cleanup must not fetch another page.
     let observing = true;
     const observer = new IntersectionObserver(
       (entries) => {
@@ -182,19 +190,15 @@ export function ConversationList({
             <Skeleton className="h-8" />
           </div>
         )}
-        {!collapsed &&
-          !history.loading &&
-          history.conversations.length === 0 &&
-          empty &&
-          !history.error && (
-            <Empty className="p-2 py-3">
-              <EmptyHeader>
-                <EmptyDescription className="text-xs">
-                  Your conversations will appear here after you send a message.
-                </EmptyDescription>
-              </EmptyHeader>
-            </Empty>
-          )}
+        {showEmptyHistory && (
+          <Empty className="p-2 py-3">
+            <EmptyHeader>
+              <EmptyDescription className="text-xs">
+                Your conversations will appear here after you send a message.
+              </EmptyDescription>
+            </EmptyHeader>
+          </Empty>
+        )}
         {!collapsed && history.error && (
           <div className="space-y-2 px-2 py-3">
             <Alert variant="destructive" className="p-2">

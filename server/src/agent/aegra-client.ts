@@ -48,6 +48,7 @@ export function prepareAegraRequest(url: URL, init: RequestInit): RequestInit {
   const metadata = body.config?.metadata ?? {};
 
   body.metadata = { ...body.metadata, agui_run_id: metadata.agui_run_id };
+
   // Runnable config reaches the per-run graph factory inside Aegra's worker.
   body.config = {
     ...body.config,
@@ -58,6 +59,7 @@ export function prepareAegraRequest(url: URL, init: RequestInit): RequestInit {
 }
 
 export const aegraUrl = process.env.AEGRA_URL ?? "http://127.0.0.1:2026";
+
 export const aegra = new Client({
   apiUrl: aegraUrl,
   onRequest: prepareAegraRequest,

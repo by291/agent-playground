@@ -77,13 +77,15 @@ export async function storeSkillFile(input: FileInput): Promise<SkillFile> {
       .where(eq(skillFiles.id, input.id));
 
     if (existing) {
-      if (
+      // A matching retry reuses the reserved object key rather than overwriting another file.
+      const identityConflict =
         existing.threadId !== input.threadId ||
         existing.name !== input.name ||
         existing.runId !== (input.runId ?? null) ||
         existing.sha256 !== sha256 ||
-        existing.size !== input.data.length
-      ) {
+        existing.size !== input.data.length;
+
+      if (identityConflict) {
         throw new SubmissionError("Conflicting file identity or content", 409);
       }
     } else {
@@ -133,6 +135,8 @@ export async function storeSkillFile(input: FileInput): Promise<SkillFile> {
 
     if (!file.ready) {
       await putObject(file.objectKey, input.data);
+
+      // Publish only after the object is available; a failed write retains the intent.
       await tx
         .update(skillFiles)
         .set({ ready: true })

@@ -71,6 +71,7 @@ function isDuplicateA2aResult(
   );
 }
 
+/** Projects replies and cards without changing their archived presentation ownership. */
 export function conversationView({
   messages,
   runs,
@@ -94,11 +95,13 @@ export function conversationView({
 
     return review ? [review] : [];
   });
+
   const latest = new Map<string, A2UISurfaceView>();
   const history: A2UISurfaceView[] = [];
   const owners = new Map<string, string>();
   const grouped = new Set<string>();
 
+  // Revisions share a group; only its latest surface is rendered beside the owning reply.
   for (const view of surfaces) {
     const presentation = view.presentation;
 
@@ -107,6 +110,7 @@ export function conversationView({
     }
 
     grouped.add(view.id);
+
     const previous = latest.get(presentation.groupId);
 
     if (previous) {
@@ -114,6 +118,7 @@ export function conversationView({
     }
 
     latest.set(presentation.groupId, view);
+
     const replyOwner = turns.find((turn) =>
       turn.messages.some(
         (message) => message.id === presentation.anchorMessageId,
@@ -145,6 +150,7 @@ export function conversationView({
   }
 
   const attachedCalls = new Set<string>();
+
   const replies = turns.map((turn, index) => {
     const calls = turn.messages.flatMap((message) =>
       message.role === "assistant" ? (message.toolCalls ?? []) : [],
@@ -186,13 +192,14 @@ export function conversationView({
       (view) => !duplicateA2aResults.has(view.id),
     );
 
+    const hasAssistantContent = turn.messages.some(
+      (message) =>
+        ((message.role === "assistant" || message.role === "reasoning") &&
+          hasMessageText(message)) ||
+        (message.role === "assistant" && Boolean(message.toolCalls?.length)),
+    );
     const hasReply =
-      turn.messages.some(
-        (message) =>
-          ((message.role === "assistant" || message.role === "reasoning") &&
-            hasMessageText(message)) ||
-          (message.role === "assistant" && Boolean(message.toolCalls?.length)),
-      ) ||
+      hasAssistantContent ||
       (turn.status !== null && isRunActive(turn.status)) ||
       views.length > 0 ||
       artifacts.reviews.length > 0 ||
@@ -209,6 +216,7 @@ export function conversationView({
       reviewKey: turnReviews.map((review) => review.interruptId).join(","),
     };
   });
+
   const unattachedSurfaces = [
     ...surfaces.filter(
       (view) =>

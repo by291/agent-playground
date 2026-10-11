@@ -26,6 +26,10 @@ function validPlan(draft: ReviewDraft) {
   return Boolean(draft.title.trim() && draft.stepsText.trim());
 }
 
+function isIncompleteDecision(draft: ReviewDraft) {
+  return !draft.decision || (draft.decision === "approve" && !validPlan(draft));
+}
+
 export function ReviewPanel({
   reviews,
   running,
@@ -44,8 +48,10 @@ export function ReviewPanel({
       stepsText: review.steps.join("\n"),
     })),
   );
+
   const multiple = drafts.length > 1;
   const visibleReviews = new Set(reviews.map((review) => review.interruptId));
+  const incomplete = drafts.some(isIncompleteDecision);
 
   function update(index: number, changes: Partial<ReviewDraft>) {
     setDrafts((current) =>
@@ -56,14 +62,7 @@ export function ReviewPanel({
   }
 
   function send(decisions: ReviewDraft[]) {
-    if (
-      running ||
-      decisions.some(
-        (draft) =>
-          !draft.decision ||
-          (draft.decision === "approve" && !validPlan(draft)),
-      )
-    ) {
+    if (running || decisions.some(isIncompleteDecision)) {
       return;
     }
 
@@ -98,11 +97,6 @@ export function ReviewPanel({
       choose(0, "approve");
     }
   }
-
-  const incomplete = drafts.some(
-    (draft) =>
-      !draft.decision || (draft.decision === "approve" && !validPlan(draft)),
-  );
 
   return (
     <form onSubmit={submit} className="space-y-3">

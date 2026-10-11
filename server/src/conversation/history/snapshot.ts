@@ -10,6 +10,7 @@ import { workflowOutputs } from "../../db/workflow-schema.js";
 import { presentConversationTitle } from "./titles.js";
 import { workflowReplyMessages } from "../../../../shared/workflow-output.js";
 
+/** Reads persisted presentation state without contacting or synchronizing Aegra. */
 export async function conversationSnapshot(threadId: string) {
   const [conversation] = await db
     .select({
@@ -63,6 +64,28 @@ export async function conversationSnapshot(threadId: string) {
     externalTaskSnapshots(threadId),
   ]);
 
+  const publicMessages = messages.map((row) => row.message);
+  const publicOutputs = outputs.map((row) => ({
+    id: row.id,
+    aguiRunId: row.aguiRunId,
+    workflowCallId: row.workflowCallId,
+    outputSeq: row.outputSeq,
+    toolCallId: row.workflowCallId,
+    ...row.payload,
+  }));
+
+  // Nested replies use their output publication time, including replies not yet archived.
+  const messageTimestamps = Object.fromEntries<string>([
+    ...messages.map(
+      (row) => [row.message.id, row.createdAt.toISOString()] as const,
+    ),
+    ...outputs.flatMap((row) =>
+      workflowReplyMessages(row.payload).map(
+        (reply) => [reply.id, row.createdAt.toISOString()] as const,
+      ),
+    ),
+  ]);
+
   return {
     threadId,
     externalTasks,
@@ -72,25 +95,9 @@ export async function conversationSnapshot(threadId: string) {
     ),
     contextUsage: conversation.contextUsage,
     modelId: conversation.modelId,
-    messages: messages.map((row) => row.message),
-    messageTimestamps: Object.fromEntries<string>([
-      ...messages.map(
-        (row) => [row.message.id, row.createdAt.toISOString()] as const,
-      ),
-      ...outputs.flatMap((row) =>
-        workflowReplyMessages(row.payload).map(
-          (reply) => [reply.id, row.createdAt.toISOString()] as const,
-        ),
-      ),
-    ]),
-    outputs: outputs.map((row) => ({
-      id: row.id,
-      aguiRunId: row.aguiRunId,
-      workflowCallId: row.workflowCallId,
-      outputSeq: row.outputSeq,
-      toolCallId: row.workflowCallId,
-      ...row.payload,
-    })),
+    messages: publicMessages,
+    messageTimestamps,
+    outputs: publicOutputs,
     runs: runs.map((run) => ({
       runId: run.runId,
       aegraRunId: run.aegraRunId,

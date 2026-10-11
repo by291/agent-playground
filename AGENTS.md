@@ -30,17 +30,42 @@
 
 ## Code style and readability
 
-Follow the control-flow and function-layout guidance in the [Google TypeScript Style Guide](https://google.github.io/styleguide/tsguide.html#control-flow-statements-and-blocks) and the logical grouping in [PEP 8](https://peps.python.org/pep-0008/#blank-lines). The project requirements below take precedence; TypeScript does not use the guide's single-line `if` exception.
+Follow the control-flow and documentation guidance in the [Google TypeScript Style Guide](https://google.github.io/styleguide/tsguide.html), TypeScript's [control-flow narrowing](https://www.typescriptlang.org/docs/handbook/2/narrowing.html), React's [component and Hook rules](https://react.dev/reference/rules), and the logical grouping in [PEP 8](https://peps.python.org/pep-0008/#blank-lines). The project requirements below take precedence; TypeScript does not use the guide's single-line `if` exception.
 
 - Always use braces for TypeScript `if`, `else`, `for`, `while` and `do`, with statements on separate lines, even for a single `return`, `throw` or `continue`. Do not use `if (condition) return value;` or multiline branches without braces.
 - Python branches, loops and exception handlers also place statements on separate lines. Do not use `if condition: return value` or join statements with semicolons.
 - Group function bodies by logical stages, such as validation, preparation, execution/persistence and response construction. Separate stages with a blank line; related declarations or operations can stay together. Avoid both a blank line after every statement and an unbroken multistage body.
+- Group declarations by purpose: request identity, local state, resource handles and derived presentation are different groups even when each uses `const` or `let`. Separate a completed stage from the next declaration group. Keep a resource's setup, use and cleanup easy to find.
 - In TypeScript, add a blank line after declaration groups, before/after control-flow blocks and before the final `return`. A block containing one statement needs no extra internal blank lines. Separate functions/methods with a blank line. In Python, use two blank lines between module-level functions/classes and one between methods.
 - Simple ternaries and single-expression arrow functions are acceptable; nested ternaries are not. Expand multiple checks, assignments or side effects into branches or named functions.
 - Use domain names for variables/functions. Extract complex conditions into named variables so readers do not decode conditions, state and side effects at once. Do not add abstractions solely to shorten the code.
+- Prefer guard clauses for invalid or inapplicable input. Keep the successful path visible without deeply nested branches. Preserve short-circuit evaluation when a predicate performs work or protects a nullable value; a readability refactor must not change call order or validation semantics.
+- Extract a helper, Hook or component when it has a meaningful responsibility and reduces the context needed to understand its caller. Do not split solely to meet a line count, wrap a single expression, or move a tightly coupled lifecycle into scattered files. Keep private helpers near their callers and expose only contracts used by other modules.
+- Use types and narrowing to make states understandable. Give substantial props/options/state contracts descriptive names; keep simple one-use shapes inline. Avoid unexplained assertions and non-null assertions where a local value or guard can express the same invariant.
 - Comments explain intent, protocol boundaries, races and non-obvious handling rather than restating code. Put necessary comments beside the relevant logical group.
 - Android/Kotlin follows the logical grouping, Compose layout and comment-contract rules in [android/AGENTS.md](android/AGENTS.md). Keep independent stages and page sections visually separate; formatter output alone is not a readability review.
 - Prettier and Ruff handle indentation, wrapping and basic formatting. `.gitattributes` keeps text files at LF on every platform, with CRLF reserved for Windows batch scripts. `eslint.style.mjs` enforces TypeScript braces, nested-ternary restrictions and statement spacing. Automated formatting does not replace manual review of logical grouping. Source and tests follow the same rules; generated third-party database snapshots retain generated formatting.
+
+### React components and Hooks
+
+- Keep each component readable as inputs/state, derived values, synchronization, event handlers and rendered sections. Keep related Hooks together, but separate independent state/resource groups and adjacent Effects with a blank line. Preserve Hook order and effect dependencies during readability changes.
+- Derive presentation from props/state during rendering; use Effects to synchronize external systems, as described in [You Might Not Need an Effect](https://react.dev/learn/you-might-not-need-an-effect). Do not add mirrored state, Effects or memoization merely to reorganize code.
+- Give each Effect one synchronization responsibility. Keep subscription/timer/request cleanup beside its setup. Explain non-obvious cancellation, stale-response guards, focus restoration or dependency choices; do not silence dependency lint to make code appear simpler. See [useEffect](https://react.dev/reference/react/useEffect).
+- Keep JSX declarative. Move multistage validation, asynchronous work and complex state transitions into named handlers. Name complicated visibility/disabled predicates before rendering. Separate independent page sections with blank lines; use a focused component when a section has its own behavior or a useful presentation contract.
+- Keep ownership visible: Query owns fetching, session owns conversation reconciliation, and UI owns transient interaction state. Component extraction must preserve keys, provider scope, focus behavior and resource lifetimes.
+
+### Server flows and asynchronous ownership
+
+- Make request parsing/validation, capability calls, persistence and response construction distinct stages. Keep HTTP adaptation in routes and capability policy in its owning module; do not hide domain decisions inside response expressions.
+- Keep transactional reads, locks, conditional writes and publication in their existing order. Document why a lock, revision check, idempotency key or ownership predicate is necessary. Name business predicates so a reviewer can see which stale or conflicting operations are rejected.
+- Make every asynchronous resource's owner and termination path apparent. Explain why work is awaited, detached, retried or deliberately left running when that decision affects behavior. Keep cancellation and failure cleanup adjacent to the work they protect.
+
+### Comments and readability review
+
+- Use JSDoc for public functions, Hooks and contracts whose ownership, preconditions, recovery behavior or side effects are not clear from their name and types. Use ordinary line comments for implementation decisions; do not duplicate TypeScript types in JSDoc.
+- Add intent comments at non-obvious protocol conversions, replay/deduplication rules, concurrency guards, fallback behavior and resource-release ordering. State the invariant or reason a future edit must preserve. Verify the explanation against the implementation and regression checks.
+- Do not add comments that repeat a name or operation, label every obvious statement, or narrate the entire function. Improve the structure or name first; update or remove a comment when its code changes.
+- Review readability independently of formatter output: a reader should be able to follow the main flow, distinguish independent stages, identify state/resource ownership and understand exceptional paths without reconstructing hidden assumptions. Retain the registry style of third-party UI primitives unless a substantive local change requires otherwise.
 
 ## Development and verification
 

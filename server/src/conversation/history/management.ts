@@ -51,6 +51,7 @@ export async function listConversations(
     .where(eq(conversationRuns.threadId, conversations.threadId))
     .orderBy(desc(conversationRuns.submitSeq))
     .limit(1);
+
   // Upload intents reserve identities before admission; legacy messages need no run row.
   const savedMessages = db
     .select({ id: conversationMessages.messageId })
@@ -87,6 +88,7 @@ export async function listConversations(
     )
     .orderBy(desc(conversations.updatedAt), desc(conversations.threadId))
     .limit(pageSize + 1);
+
   const page = rows
     .slice(0, pageSize)
     .map(({ firstMessage: message, ...row }) => ({
@@ -163,10 +165,10 @@ export async function deleteConversation(threadId: string) {
       .orderBy(desc(conversationRuns.submitSeq))
       .limit(1);
 
-    if (
-      run &&
-      (isRunActive(run.status) || run.status === "submission_unknown")
-    ) {
+    const blocksDeletion =
+      run && (isRunActive(run.status) || run.status === "submission_unknown");
+
+    if (blocksDeletion) {
       throw new SubmissionError(
         "Wait for the conversation run to finish before deleting it",
         409,
@@ -195,6 +197,7 @@ export async function deleteAllConversations() {
     }
 
     const threadIds = sql.param(targets.map((target) => target.threadId));
+
     // A separate statement sees admissions committed while row locks were waiting.
     const latestRuns = await tx
       .selectDistinctOn([conversationRuns.threadId], {
@@ -203,6 +206,7 @@ export async function deleteAllConversations() {
       .from(conversationRuns)
       .where(sql`${conversationRuns.threadId} = ANY(${threadIds}::text[])`)
       .orderBy(conversationRuns.threadId, desc(conversationRuns.submitSeq));
+
     const hasUnfinishedRun = latestRuns.some(
       (run) => isRunActive(run.status) || run.status === "submission_unknown",
     );

@@ -30,6 +30,7 @@ interface RunSubmission {
   agentInfo?: AgentInfo;
 }
 
+/** Persists one submission under the conversation lock, or returns its exact retry. */
 export async function admitRun({
   threadId,
   runId,
@@ -43,7 +44,7 @@ export async function admitRun({
   return db.transaction(async (tx) => {
     await tx.insert(conversations).values({ threadId }).onConflictDoNothing();
 
-    // The conversation row serializes admission with other submissions.
+    // Management, model selection and checkpoint publication use this same lock.
     const [conversation] = await tx
       .select()
       .from(conversations)
@@ -78,6 +79,7 @@ export async function admitRun({
         throw new Error("Conversation submission lookup failed");
       }
 
+      // Both IDs and the archived request must match; a retry must not alter its input.
       const sameSubmission =
         existing.length === 1 &&
         row.aguiRunId === runId &&
@@ -100,12 +102,13 @@ export async function admitRun({
       .limit(1);
 
     // Historical pauses remain immutable; only the newest run can block admission.
-    if (
+    const blocksAdmission =
       current &&
       (isRunActive(current.status) ||
         current.status === "submission_unknown" ||
-        (!isResume && current.status === "interrupted"))
-    ) {
+        (!isResume && current.status === "interrupted"));
+
+    if (blocksAdmission) {
       throw new SubmissionError(
         "Conversation has an active run or review",
         409,
@@ -182,15 +185,18 @@ export async function admitRun({
       });
     }
 
+    const shouldInitializeTitle =
+      conversation.nextSubmitSeq === 1 &&
+      userMessage &&
+      conversation.title === "Untitled conversation";
+
     await tx
       .update(conversations)
       .set({
         nextSubmitSeq: conversation.nextSubmitSeq + 1,
         updatedAt: new Date(),
         ...(!isResume && modelId ? { modelId } : {}),
-        ...(conversation.nextSubmitSeq === 1 &&
-        userMessage &&
-        conversation.title === "Untitled conversation"
+        ...(shouldInitializeTitle
           ? { title: defaultConversationTitle(userMessage) }
           : {}),
       })

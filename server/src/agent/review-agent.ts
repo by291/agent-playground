@@ -76,15 +76,15 @@ export class ReviewLangGraphAgent extends LangGraphAgent {
     entries: readonly ResumeEntry[],
     context: { openInterrupts: Interrupt[] },
   ): unknown {
-    const workflowReview = entries.some(
+    const hasWorkflowReview = entries.some(
       (entry) => workflowReviewResponseSchema.safeParse(entry.payload).success,
     );
-
-    if (
+    const usesScalarResume =
       entries.length <= 1 &&
-      !workflowReview &&
-      context.openInterrupts.length <= 1
-    ) {
+      !hasWorkflowReview &&
+      context.openInterrupts.length <= 1;
+
+    if (usesScalarResume) {
       return super.buildCommandResumeFromAgui(entries, context);
     }
 

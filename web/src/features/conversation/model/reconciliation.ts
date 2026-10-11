@@ -10,6 +10,7 @@ interface LocalRun {
   interrupts: Interrupt[] | undefined;
 }
 
+/** Keeps an in-flight local run authoritative until its checkpoint can replace it. */
 export function reconcileSnapshot(
   snapshot: ConversationSnapshot | null,
   local: LocalRun,
@@ -63,6 +64,7 @@ export function reconcileSnapshot(
   };
 }
 
+/** Only an absent or prepared run can replay the saved admission request. */
 export function pendingRecovery(
   snapshot: ConversationSnapshot | null,
   pending: PendingSubmission,

@@ -46,6 +46,8 @@ export function CorrectMemoryDialog({
   const [version, setVersion] = useState(memory);
   const [text, setText] = useState(memory.text);
   const [validationError, setValidationError] = useState<string | null>(null);
+
+  // Keep edits tied to the reviewed revision until the user adopts a newer one.
   const newerVersion = latest && latest.revision !== version.revision;
   const needsReview = Boolean(newerVersion) || conflict;
 
@@ -64,6 +66,7 @@ export function CorrectMemoryDialog({
     }
 
     setValidationError(null);
+
     const succeeded = await onCorrect(version, parsed.data.text);
 
     if (succeeded) {

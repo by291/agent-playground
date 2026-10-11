@@ -1,5 +1,6 @@
 import { skillFileSchema } from "@shared/skill-files";
 
+/** Uploads under a caller-owned ID so retries keep the same conversation-file identity. */
 export async function uploadFile(
   threadId: string,
   id: string,
@@ -30,6 +31,7 @@ export async function uploadFile(
 
   const result = skillFileSchema.parse(await response.json());
 
+  // Validate ownership as well as shape before the composer inserts an attachment reference.
   if (
     result.id !== id ||
     result.threadId !== threadId ||

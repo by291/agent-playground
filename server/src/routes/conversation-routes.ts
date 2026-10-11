@@ -145,6 +145,7 @@ conversationRoutes.get("/:threadId", async (context) => {
     }
 
     await synchronizeConversation(threadId);
+
     const snapshot = await conversationSnapshot(threadId);
 
     return snapshot

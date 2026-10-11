@@ -44,6 +44,7 @@ export function ContextIndicator({ disabled = false }: { disabled?: boolean }) {
   const selectable = useConversation(canSelectModel);
   const modelSwitching = useConversation((state) => state.modelSwitching);
   const { data: agentInfo } = useQuery(agentInfoQueryOptions());
+
   const models = agentInfo?.models ?? [];
   const hasCatalog = models.length > 0;
   const effectiveModelId = modelId ?? agentInfo?.defaultModelId;
@@ -52,6 +53,7 @@ export function ContextIndicator({ disabled = false }: { disabled?: boolean }) {
   );
   const model =
     selectedModel?.model ?? agentInfo?.model ?? reportedUsage?.model ?? "Model";
+  // Usage from the previous model must not appear against the newly selected one.
   const usage = reportedUsage?.model === model ? reportedUsage : null;
   const ratio = usage ? usage.usedTokens / usage.contextWindow : 0;
   const percentage = Math.round(ratio * 100);
@@ -63,6 +65,10 @@ export function ContextIndicator({ disabled = false }: { disabled?: boolean }) {
 
   const nearLimit = !!usage && usage.usedTokens >= usage.triggerTokens;
   const action = hasCatalog ? "Choose model and show details" : "Show details";
+  const triggerLabel = usage
+    ? `${model}. Estimated context usage ${label}. ${action}`
+    : `${model}. ${action}`;
+
   const selectionDisabled = disabled || !selectable;
   let selectionHelp = "Applies to the next message in this conversation.";
 
@@ -107,11 +113,7 @@ export function ContextIndicator({ disabled = false }: { disabled?: boolean }) {
               variant="ghost"
               type="button"
               className="workspace-toolbar-button h-10 min-w-0 shrink gap-2 px-2.5"
-              aria-label={
-                usage
-                  ? `${model}. Estimated context usage ${label}. ${action}`
-                  : `${model}. ${action}`
-              }
+              aria-label={triggerLabel}
             >
               <svg
                 viewBox="0 0 24 24"

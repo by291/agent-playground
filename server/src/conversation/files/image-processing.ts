@@ -3,6 +3,7 @@ import { SubmissionError } from "../errors.js";
 
 const maxImageDimension = 8192;
 
+/** Recognizes supported raster signatures; decoding still validates the full file. */
 export function imageMimeType(data: Buffer): string | null {
   if (
     data.length >= 24 &&
@@ -47,13 +48,13 @@ export async function validateImage(data: Buffer): Promise<void> {
 
   try {
     const metadata = await image.metadata();
-
-    if (
+    const invalidDimensions =
       !metadata.width ||
       !metadata.height ||
       metadata.width > maxImageDimension ||
-      metadata.height > maxImageDimension
-    ) {
+      metadata.height > maxImageDimension;
+
+    if (invalidDimensions) {
       throw new SubmissionError(
         "Image dimensions must be at most 8192 pixels per side",
         400,
@@ -92,13 +93,13 @@ export async function imagePreview(
 
   try {
     const metadata = await image.metadata();
-
-    if (
+    const invalidDimensions =
       !metadata.width ||
       !metadata.height ||
       metadata.width > maxImageDimension ||
-      metadata.height > maxImageDimension
-    ) {
+      metadata.height > maxImageDimension;
+
+    if (invalidDimensions) {
       throw new SubmissionError(
         "Image dimensions must be at most 8192 pixels per side",
         400,

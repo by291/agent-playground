@@ -6,6 +6,7 @@ import {
   conversations,
 } from "../../db/conversation-schema.js";
 
+/** Yields tasks whose continuation is absent or still needs execution/checkpoint recovery. */
 export async function* scanExternalTasks() {
   let cursor: string | undefined;
 
@@ -45,6 +46,7 @@ export async function* scanExternalTasks() {
       return;
     }
 
+    // Keyset paging keeps the scan bounded while callbacks update task rows.
     cursor = rows.at(-1)!.task.taskId;
     yield* rows;
 

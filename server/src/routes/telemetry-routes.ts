@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 
 export const telemetry = new Hono();
+
 telemetry.post(
   "/v1/traces",
   bodyLimit({ maxSize: 256_000 }),

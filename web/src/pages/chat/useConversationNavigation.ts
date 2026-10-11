@@ -48,6 +48,7 @@ function updateConversationUrl(
 }
 
 export function useConversationNavigation() {
+  // The key resets session resources on navigation; draft promotion preserves it.
   const [navigation, setNavigation] = useState(() => ({
     conversation: loadCurrentConversation(),
     key: 0,
@@ -56,6 +57,7 @@ export function useConversationNavigation() {
 
   useEffect(() => {
     updateConversationUrl(conversation.threadId, "replace");
+
     // Hydration may already have updated this thread's pending submission.
     const latest = conversation.threadId
       ? loadConversation(conversation.threadId)
@@ -108,6 +110,7 @@ export function useConversationNavigation() {
 
   const activateConversation = useCallback((threadId: string) => {
     updateConversationUrl(threadId, "replace");
+
     // Promotion must keep the same mounted session, stream and selected files.
     setNavigation((previous) => ({
       ...previous,

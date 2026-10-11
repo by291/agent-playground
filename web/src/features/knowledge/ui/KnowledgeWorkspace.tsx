@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useRef, useState, type ChangeEvent } from "react";
 import { BookOpenIcon } from "@phosphor-icons/react/dist/csr/BookOpen";
 import { UploadSimpleIcon } from "@phosphor-icons/react/dist/csr/UploadSimple";
 import { Button } from "@/components/ui/button";
@@ -50,6 +50,25 @@ export function KnowledgeWorkspace() {
   const [encodingDocument, setEncodingDocument] =
     useState<KnowledgeDocument | null>(null);
 
+  function chooseUploadFile(documentId: string | null) {
+    // Resuming keeps the server document identity; a new upload clears that intent.
+    resumeId.current = documentId;
+    input.current?.click();
+  }
+
+  function selectUploadFile(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+
+    // Allow the same file to be chosen again after a failed request.
+    event.target.value = "";
+
+    if (!file) {
+      return;
+    }
+
+    selectFile(file, resumeId.current);
+  }
+
   async function deleteDocument() {
     if (!deleting) {
       return;
@@ -68,6 +87,7 @@ export function KnowledgeWorkspace() {
     const opener = actionOpener.current;
     const canRestoreOpener = opener?.isConnected && !opener.closest("[inert]");
 
+    // Deletion can remove the action row before the dialog returns focus.
     if (canRestoreOpener) {
       opener.focus();
     } else {
@@ -99,10 +119,7 @@ export function KnowledgeWorkspace() {
         <Button
           ref={uploadButton}
           disabled={busy}
-          onClick={() => {
-            resumeId.current = null;
-            input.current?.click();
-          }}
+          onClick={() => chooseUploadFile(null)}
         >
           {operation?.kind === "upload" ? (
             <Spinner aria-hidden="true" role="presentation" />
@@ -118,17 +135,7 @@ export function KnowledgeWorkspace() {
           aria-label="Document file"
           disabled={busy}
           className="hidden"
-          onChange={(event) => {
-            const file = event.target.files?.[0];
-
-            event.target.value = "";
-
-            if (!file) {
-              return;
-            }
-
-            selectFile(file, resumeId.current);
-          }}
+          onChange={selectUploadFile}
         />
       </div>
       {error && !deleting && !encodingDocument && (
@@ -185,10 +192,7 @@ export function KnowledgeWorkspace() {
                   operation?.id === document.id ? operation.kind : null
                 }
                 busy={busy}
-                onResume={() => {
-                  resumeId.current = document.id;
-                  input.current?.click();
-                }}
+                onResume={() => chooseUploadFile(document.id)}
                 onReindex={() => void reindex(document.id)}
                 onEncoding={(opener) => {
                   actionOpener.current = opener;

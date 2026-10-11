@@ -6,6 +6,7 @@ import {
   type Tracer,
 } from "@opentelemetry/api";
 
+/** Starts one submission span; its owner must finish it after stream cleanup. */
 export function startSubmissionTrace(
   threadId: string,
   runId: string,
@@ -26,6 +27,7 @@ export function startSubmissionTrace(
   const headers: Record<string, string> = {};
 
   propagation.inject(trace.setSpan(ROOT_CONTEXT, span), headers);
+
   let firstText = false;
   let finished = false;
 
@@ -38,6 +40,7 @@ export function startSubmissionTrace(
       }
 
       firstText = true;
+
       const elapsed = performance.now() - started;
 
       span.setAttribute("app.first_text_received_ms", elapsed);

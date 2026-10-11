@@ -5,6 +5,7 @@ import {
   type Message,
 } from "@ag-ui/client";
 
+/** Configures SDK requests to send new input while the server owns checkpoint history. */
 export function configureConversationAgent(agent: HttpAgent) {
   agent.use((input, next) => {
     const state = { ...input.state } as Record<string, unknown>;
@@ -27,6 +28,7 @@ export function configureConversationAgent(agent: HttpAgent) {
   });
 }
 
+/** Adds replay/error repair to the SDK subscription; the caller must unsubscribe. */
 export function subscribeConversationAgent(
   agent: HttpAgent,
   observer: Omit<
@@ -85,6 +87,7 @@ export function subscribeConversationAgent(
         return;
       }
 
+      // Replace successful-looking tool results with checkpoint errors beside their call.
       return {
         messages: messages.flatMap<Message>((message) => {
           if (

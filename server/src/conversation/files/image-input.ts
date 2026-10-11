@@ -37,11 +37,11 @@ export async function prepareImageInput(
       }
 
       const mimeType = imageMimeType(file.data);
-
-      if (
+      const invalidImageFile =
         !mimeType &&
-        /\.(jpe?g|png|gif|webp|svg|bmp|avif|heic|heif|tiff?)$/i.test(file.name)
-      ) {
+        /\.(jpe?g|png|gif|webp|svg|bmp|avif|heic|heif|tiff?)$/i.test(file.name);
+
+      if (invalidImageFile) {
         throw new SubmissionError(
           "Attach a valid JPEG, PNG, GIF or WebP image",
           400,
@@ -51,6 +51,7 @@ export async function prepareImageInput(
       return { ...file, mimeType };
     }),
   );
+
   const images = files.filter((file) => file.mimeType !== null);
 
   if (!images.length) {

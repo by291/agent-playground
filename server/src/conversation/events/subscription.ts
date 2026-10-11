@@ -95,6 +95,8 @@ export function subscribeConversationChanges(
   const subscriber = { threadId, ...callbacks };
 
   current.subscribers.add(subscriber);
+
+  // A ready-triggered snapshot covers changes before LISTEN; later ones arrive as notifications.
   void current.ready.then(() => {
     if (current.subscribers.has(subscriber)) {
       subscriber.ready();
@@ -110,6 +112,7 @@ export function subscribeConversationChanges(
   };
 }
 
+/** Permanently stops the process-owned hub and waits for every retiring connection. */
 export async function closeConversationChanges(): Promise<void> {
   stopped = true;
 

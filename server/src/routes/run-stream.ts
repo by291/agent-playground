@@ -1,5 +1,6 @@
 import {
   EventType,
+  type AGUIEvent,
   type RunAgentInput,
   type RunErrorEvent,
   type RunStartedEvent,
@@ -21,6 +22,36 @@ import { observeAgentStream } from "./run-observation.js";
 import { logger } from "../observability/logger.js";
 import { publicToolErrors } from "../agent/checkpoint-messages.js";
 
+function publicRunEvent(
+  event: AGUIEvent,
+  runId: string,
+): Record<string, unknown> {
+  const normalized = normalizeRunEvent(event, runId);
+  const publicEvent = { ...normalized } as Record<string, unknown>;
+
+  delete publicEvent.rawEvent;
+
+  if (
+    event.type === EventType.STATE_SNAPSHOT &&
+    event.snapshot &&
+    typeof event.snapshot === "object"
+  ) {
+    const snapshot = { ...(event.snapshot as Record<string, unknown>) };
+
+    // The adapter omits results for handled tool errors. Keep their official
+    // ToolMessages in public state while the model continues.
+    snapshot.toolErrors = publicToolErrors(snapshot);
+
+    // Public messages are recovered from the archive, not compressed model state.
+    delete snapshot.messages;
+    delete snapshot.response_messages;
+    publicEvent.snapshot = snapshot;
+  }
+
+  return publicEvent;
+}
+
+/** Detaches the HTTP consumer on abort while Aegra continues the admitted run. */
 export function streamAgent(
   context: Context,
   trustedInput: RunAgentInput,
@@ -32,15 +63,15 @@ export function streamAgent(
   return streamSSE(
     context,
     observeAgentStream(trustedInput, async (stream, observation) => {
-      const cancelled = new Subject<void>();
-      let lastSnapshot: string | undefined;
+      const detached = new Subject<void>();
+      let lastPublicSnapshot: string | undefined;
       let runStarted = false;
       let terminalEventSent = false;
 
       stream.onAbort(() => {
         // Aegra continues the run; the browser can recover from persisted state.
-        cancelled.next();
-        cancelled.complete();
+        detached.next();
+        detached.complete();
       });
 
       try {
@@ -54,33 +85,7 @@ export function streamAgent(
                 event.type === EventType.MESSAGES_SNAPSHOT
               );
             }),
-            map((event) => {
-              const output = normalizeRunEvent(event, trustedInput.runId);
-              const clean = { ...output } as Record<string, unknown>;
-
-              delete clean.rawEvent;
-
-              if (
-                event.type === EventType.STATE_SNAPSHOT &&
-                event.snapshot &&
-                typeof event.snapshot === "object"
-              ) {
-                const snapshot = {
-                  ...(event.snapshot as Record<string, unknown>),
-                };
-
-                // The adapter omits results for handled tool errors. Keep their
-                // official ToolMessages in public state while the model continues.
-                snapshot.toolErrors = publicToolErrors(snapshot);
-
-                // Public messages are recovered from the archive, not compressed model state.
-                delete snapshot.messages;
-                delete snapshot.response_messages;
-                clean.snapshot = snapshot;
-              }
-
-              return clean;
-            }),
+            map((event) => publicRunEvent(event, trustedInput.runId)),
             filter((event) => {
               if (event.type !== EventType.STATE_SNAPSHOT) {
                 return true;
@@ -89,11 +94,11 @@ export function streamAgent(
               // Compare the small public state, not private model history.
               const snapshot = JSON.stringify(event.snapshot);
 
-              if (snapshot === lastSnapshot) {
+              if (snapshot === lastPublicSnapshot) {
                 return false;
               }
 
-              lastSnapshot = snapshot;
+              lastPublicSnapshot = snapshot;
 
               return true;
             }),
@@ -114,11 +119,12 @@ export function streamAgent(
 
               observation.event(event);
 
-              if (
-                !runStarted &&
-                (event.type === EventType.RUN_ERROR ||
-                  event.type === EventType.RUN_FINISHED)
-              ) {
+              const terminalEvent =
+                event.type === EventType.RUN_ERROR ||
+                event.type === EventType.RUN_FINISHED;
+
+              // Creation may fail before the adapter starts its public run lifecycle.
+              if (!runStarted && terminalEvent) {
                 const runStart: RunStartedEvent = {
                   type: EventType.RUN_STARTED,
                   threadId: trustedInput.threadId,
@@ -135,18 +141,16 @@ export function streamAgent(
                 runStarted = true;
               }
 
-              if (
-                event.type === EventType.RUN_ERROR ||
-                event.type === EventType.RUN_FINISHED
-              ) {
+              if (terminalEvent) {
                 terminalEventSent = true;
               }
             }),
-            takeUntil(cancelled),
+            takeUntil(detached),
           ),
           { defaultValue: undefined },
         );
 
+        // Wait for the mapping write and checkpoint sync after forwarding has stopped.
         await execution.settle();
       } catch (error) {
         observation.failed(error);

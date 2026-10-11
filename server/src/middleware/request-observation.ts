@@ -27,6 +27,7 @@ export const observeRequest = createMiddleware(async (context, next) => {
   );
 
   context.header("X-Trace-Id", span.spanContext().traceId);
+
   await otelContext.with(trace.setSpan(parent, span), async () => {
     try {
       await next();
@@ -47,6 +48,7 @@ export const observeRequest = createMiddleware(async (context, next) => {
       };
 
       span.setAttributes(attributes);
+
       // This measures response setup; the SSE span measures the connection lifetime.
       duration.record((performance.now() - started) / 1000, attributes);
       span.end();

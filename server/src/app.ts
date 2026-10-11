@@ -8,12 +8,12 @@ import { skillFileRoutes } from "./routes/skill-file-routes.js";
 import { telemetry } from "./routes/telemetry-routes.js";
 
 export const app = new Hono();
+
 app.get("/health", (context) => context.text("ok"));
 app.route("/telemetry", telemetry);
 app.route("/", agentRoutes);
 app.route("/conversations", conversationRoutes);
 app.route("/", externalTaskRoutes);
 app.route("/", skillFileRoutes);
-
 app.route("/", knowledgeRoutes);
 app.route("/", memoryRoutes);

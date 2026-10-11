@@ -43,6 +43,7 @@ export function streamConversationChanges(context: Context, threadId: string) {
     try {
       await closed;
     } finally {
+      // The stream owns these callbacks; the hub owns its shared PostgreSQL connection.
       signal.removeEventListener("abort", close);
       clearInterval(heartbeat);
       unsubscribe();

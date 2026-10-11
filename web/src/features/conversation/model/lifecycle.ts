@@ -1,5 +1,6 @@
 import type { ConversationReference } from "./conversation-storage";
 
+/** Readiness, agent execution and Query scheduling are independent state axes. */
 export interface ConversationLifecycle {
   hydration: "fresh" | "restoring" | "ready";
   execution:
@@ -55,6 +56,7 @@ export function transitionLifecycle(
     case "stream-started":
       return { ...state, execution: "streaming" };
     case "stream-settled":
+      // A closed HTTP stream still needs a checkpoint before recovery can stop.
       return {
         ...state,
         execution: "awaiting-snapshot",
@@ -71,6 +73,7 @@ export function transitionLifecycle(
       let execution = state.execution;
       let synchronization = activeSynchronization(state);
 
+      // Snapshot delivery cannot replace the execution state of a local stream.
       if (!event.locallyActive) {
         execution = event.running ? "recovering-run" : "idle";
         synchronization = event.needsRecovery ? "polling" : "on-demand";

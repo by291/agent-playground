@@ -60,6 +60,7 @@ async function saveCheckpoint(
   messages.unshift(
     ...outputs.flatMap((output) => workflowReplyMessages(output.payload)),
   );
+
   const values: unknown = checkpoint.state.values;
   const usage =
     values && typeof values === "object" && "context_usage" in values
@@ -81,11 +82,12 @@ async function saveCheckpoint(
       .orderBy(desc(conversationRuns.submitSeq))
       .limit(1);
 
-    if (
-      current?.aguiRunId !== run.aguiRunId ||
-      current.checkpointSynced ||
-      current.status !== run.status
-    ) {
+    const ownsCheckpoint =
+      current?.aguiRunId === run.aguiRunId &&
+      !current.checkpointSynced &&
+      current.status === run.status;
+
+    if (!ownsCheckpoint) {
       return;
     }
 
@@ -102,6 +104,7 @@ async function saveCheckpoint(
             ),
           ),
         );
+
       const savedIds = new Set(saved.map((message) => message.id));
       const additions = messages
         .map((message, index) => ({ message, order: index + 1 }))
@@ -147,6 +150,7 @@ async function saveCheckpoint(
       .set({ contextUsage: usage })
       .where(eq(conversations.threadId, run.threadId));
 
+    // Publish the interrupts with the archive so a resume never observes a half-saved pause.
     await tx
       .update(conversationRuns)
       .set({ checkpointSynced: true, interrupts: checkpoint.interrupts })
@@ -154,6 +158,7 @@ async function saveCheckpoint(
   });
 }
 
+/** Reconciles the latest run and publishes its completed messages and pause interrupts. */
 export async function synchronizeConversation(
   threadId: string,
   client: Client = aegra,
@@ -174,5 +179,7 @@ export async function synchronizeConversation(
     return;
   }
 
-  await saveCheckpoint(run, await readCompletedCheckpoint(run, client));
+  const checkpoint = await readCompletedCheckpoint(run, client);
+
+  await saveCheckpoint(run, checkpoint);
 }

@@ -24,6 +24,7 @@ export function newConversation(): ConversationReference {
   return { empty: true, fresh: true };
 }
 
+/** Restores admission hints from a thread journal, including the legacy current record. */
 export function loadConversation(threadId?: string): ConversationReference {
   try {
     const current = localStorage.getItem(storageKey);
@@ -42,11 +43,11 @@ export function loadConversation(threadId?: string): ConversationReference {
       }
     }
 
-    const saved: unknown = JSON.parse(
-      (lookupThreadId
-        ? (localStorage.getItem(`${storageKey}:${lookupThreadId}`) ?? current)
-        : current) ?? "null",
-    );
+    // Per-thread journals take precedence; older clients stored the whole record in current.
+    const serialized = lookupThreadId
+      ? (localStorage.getItem(`${storageKey}:${lookupThreadId}`) ?? current)
+      : current;
+    const saved: unknown = JSON.parse(serialized ?? "null");
 
     if (typeof saved === "object" && saved !== null && "threadId" in saved) {
       if (

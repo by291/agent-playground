@@ -45,6 +45,7 @@ export async function getObject(key: string, size: number): Promise<Buffer> {
     new GetObjectCommand({
       Bucket: bucket,
       Key: key,
+      // Include one extra byte so a limited read still detects an oversized object.
       ...(size > 0 ? { Range: `bytes=0-${maxFileBytes}` } : {}),
     }),
     { abortSignal: AbortSignal.timeout(30_000) },
@@ -70,6 +71,7 @@ export async function getObject(key: string, size: number): Promise<Buffer> {
 
       length += chunk.value.length;
 
+      // Enforce the bound even when the storage endpoint ignores the Range header.
       if (length > maxFileBytes) {
         throw new Error("Stored file exceeds 10 MiB");
       }

@@ -41,20 +41,7 @@ import { KnowledgeCitationProvider } from "./knowledge-citations";
 
 type RetrievedSource = KnowledgeSource & { number: number };
 
-export function KnowledgeSources({
-  process,
-  children,
-}: {
-  process: ReturnType<typeof toolProcess>;
-  children?: ReactNode;
-}) {
-  const documentControlId = useId();
-  const [open, setOpen] = useState(false);
-  const citationOpener = useRef<HTMLButtonElement | null>(null);
-  const [selection, setSelection] = useState<{
-    documentId: string;
-    chunkId: string;
-  } | null>(null);
+function collectRetrievedSources(process: ReturnType<typeof toolProcess>) {
   const sources = new Map<string, RetrievedSource>();
   const errors = new Set<string>();
   let searched = false;
@@ -77,6 +64,7 @@ export function KnowledgeSources({
         }
 
         for (const source of result.data.sources) {
+          // Repeated searches update the passage but keep its first citation number.
           const number =
             sources.get(source.chunkId)?.number ?? sources.size + 1;
 
@@ -87,6 +75,26 @@ export function KnowledgeSources({
       // Interrupted or legacy results may not carry a complete source contract.
     }
   }
+
+  return { sources, errors, searched };
+}
+
+export function KnowledgeSources({
+  process,
+  children,
+}: {
+  process: ReturnType<typeof toolProcess>;
+  children?: ReactNode;
+}) {
+  const documentControlId = useId();
+  const [open, setOpen] = useState(false);
+  const citationOpener = useRef<HTMLButtonElement | null>(null);
+  const [selection, setSelection] = useState<{
+    documentId: string;
+    chunkId: string;
+  } | null>(null);
+
+  const { sources, errors, searched } = collectRetrievedSources(process);
 
   if (!searched) {
     return children;
@@ -129,6 +137,17 @@ export function KnowledgeSources({
     }
   }
 
+  function selectDocument(documentId: string) {
+    const first = documents.get(documentId)?.[0];
+
+    if (first) {
+      setSelection({
+        documentId: first.documentId,
+        chunkId: first.chunkId,
+      });
+    }
+  }
+
   function openCitation(chunkId: string, opener: HTMLButtonElement) {
     const selected = sources.get(chunkId);
 
@@ -139,6 +158,16 @@ export function KnowledgeSources({
     citationOpener.current = opener;
     setSelection({ documentId: selected.documentId, chunkId });
     setOpen(true);
+  }
+
+  function restoreCitationFocus(event: Event) {
+    // Inline citations bypass SheetTrigger, so they supply their own focus return.
+    if (citationOpener.current?.isConnected) {
+      event.preventDefault();
+      citationOpener.current.focus();
+    }
+
+    citationOpener.current = null;
   }
 
   return (
@@ -163,14 +192,7 @@ export function KnowledgeSources({
           side="right"
           showCloseButton={false}
           className="min-h-0 gap-0 border-line bg-surface data-[side=right]:w-full data-[side=right]:sm:max-w-md"
-          onCloseAutoFocus={(event) => {
-            if (citationOpener.current?.isConnected) {
-              event.preventDefault();
-              citationOpener.current.focus();
-            }
-
-            citationOpener.current = null;
-          }}
+          onCloseAutoFocus={restoreCitationFocus}
         >
           <SheetHeader className="shrink-0 flex-row items-start justify-between gap-4 border-b border-line p-5">
             <div>
@@ -204,16 +226,7 @@ export function KnowledgeSources({
                   ) : (
                     <Select
                       value={source.documentId}
-                      onValueChange={(id) => {
-                        const first = documents.get(id)?.[0];
-
-                        if (first) {
-                          setSelection({
-                            documentId: first.documentId,
-                            chunkId: first.chunkId,
-                          });
-                        }
-                      }}
+                      onValueChange={selectDocument}
                     >
                       <SelectTrigger
                         aria-labelledby={documentControlId}

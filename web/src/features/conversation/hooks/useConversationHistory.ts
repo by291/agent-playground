@@ -36,6 +36,7 @@ export function useConversationHistory(
   const client = useQueryClient();
   const query = useInfiniteQuery(conversationHistoryOptions());
   const { hasNextPage, isFetching, fetchNextPage } = query;
+
   const loadMore = useCallback(() => {
     if (!hasNextPage || isFetching) {
       return;
@@ -43,7 +44,9 @@ export function useConversationHistory(
 
     void fetchNextPage({ cancelRefetch: false });
   }, [hasNextPage, isFetching, fetchNextPage]);
+
   const entries = query.data?.pages.flatMap((page) => page.conversations) ?? [];
+  // History can move between pages after a title or run update; retain its first row.
   const conversations = entries.filter(
     (entry, index) =>
       entries.findIndex(
@@ -78,18 +81,25 @@ export function useConversationHistory(
     },
     async remove(threadId) {
       await deleteSavedConversation(threadId);
+
       forgetConversation(threadId);
       onDeleted(threadId);
+
+      // Stop snapshot delivery before removing the deleted thread's cache.
       await client.cancelQueries({ queryKey: ["conversation", threadId] });
       client.removeQueries({ queryKey: ["conversation", threadId] });
+
       await client.invalidateQueries({ queryKey: conversationHistoryKey });
     },
     async clear() {
       await clearSavedConversations();
+
+      // A late fetch must not repopulate history or snapshots after deletion.
       await Promise.all([
         client.cancelQueries({ queryKey: conversationHistoryKey }),
         client.cancelQueries({ queryKey: ["conversation"] }),
       ]);
+
       forgetAllConversations();
       client.removeQueries({ queryKey: ["conversation"] });
       client.setQueryData(conversationHistoryKey, {
@@ -97,6 +107,7 @@ export function useConversationHistory(
         pageParams: [null],
       });
       onCleared();
+
       await client.invalidateQueries({ queryKey: conversationHistoryKey });
     },
   };

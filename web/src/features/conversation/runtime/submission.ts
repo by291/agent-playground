@@ -8,6 +8,7 @@ interface SubmissionCallbacks {
   settled: () => Promise<void>;
 }
 
+/** Serializes local submissions and owns their temporary SDK headers and trace. */
 export function createSubmissionRunner(
   getThreadId: () => string,
   agent: HttpAgent,
@@ -32,12 +33,14 @@ export function createSubmissionRunner(
 
       active = true;
       observation = startSubmissionTrace(getThreadId(), submission.runId);
+
       const originalHeaders = agent.headers;
 
       agent.headers = { ...originalHeaders, ...observation.headers };
       agent.setMessages(submission.messages);
       agent.setState(submission.state);
       callbacks.started();
+
       let accepted = false;
       const subscription = agent.subscribe({
         onRunStartedEvent({ event }) {
@@ -71,9 +74,11 @@ export function createSubmissionRunner(
           throw error;
         }
       } finally {
+        // Release stream observers before settlement asks Query for the saved snapshot.
         subscription.unsubscribe();
         observation.finish();
         observation = undefined;
+
         agent.headers = originalHeaders;
         active = false;
 

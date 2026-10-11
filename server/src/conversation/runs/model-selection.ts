@@ -55,6 +55,7 @@ export async function selectConversationModel(
         ),
       )
       .limit(1);
+
     const unfinishedRun =
       run &&
       (isRunActive(run.status) ||
@@ -72,6 +73,7 @@ export async function selectConversationModel(
       .update(conversations)
       .set({ modelId })
       .where(eq(conversations.threadId, threadId));
+
     // PostgreSQL delivers transactional notifications only after commit.
     await notifyConversation(tx, threadId);
 

@@ -80,6 +80,7 @@ export async function cleanupDeletedSkillFiles(signal?: AbortSignal) {
         }
 
         await deleteObject(row.file.objectKey, signal);
+
         // Keep the object key so a remote upload that finishes later can be deleted again.
         await tx
           .update(skillFiles)
@@ -88,6 +89,8 @@ export async function cleanupDeletedSkillFiles(signal?: AbortSignal) {
       });
     } catch (error) {
       failures.push(error);
+
+      // Move failures behind unattempted candidates while retaining their object intent.
       await db
         .update(skillFiles)
         .set({ cleanupAttemptedAt: new Date() })
@@ -130,6 +133,7 @@ export function startSkillFileCleanup() {
     stopped = true;
     clearInterval(timer);
     controller.abort();
+
     await active;
   };
 }

@@ -30,6 +30,7 @@ function historyUpdate(update: ExternalTaskUpdate) {
 
 export async function registerExternalTask(input: ExternalTaskRegistration) {
   return db.transaction(async (tx) => {
+    // Registration shares admission's lock so deletion cannot race in a new task.
     const [conversation] = await tx
       .select()
       .from(conversations)
@@ -63,12 +64,13 @@ export async function registerExternalTask(input: ExternalTaskRegistration) {
       .where(eq(externalTasks.taskId, input.taskId));
 
     if (existing) {
-      if (
+      const identityConflict =
         existing.threadId !== input.threadId ||
         existing.workflowCallId !== input.workflowCallId ||
         existing.stepId !== input.stepId ||
-        existing.label !== input.label
-      ) {
+        existing.label !== input.label;
+
+      if (identityConflict) {
         throw new SubmissionError("External task identity conflict", 409);
       }
 
@@ -89,6 +91,7 @@ export async function registerExternalTask(input: ExternalTaskRegistration) {
         progress: 0,
       },
     });
+
     await notifyConversation(tx, input.threadId);
 
     return { taskId: input.taskId, callbackToken };
@@ -101,11 +104,13 @@ export async function updateExternalTask(
   update: ExternalTaskUpdate,
 ) {
   return db.transaction(async (tx) => {
+    // Serialize callbacks so the accepted revision and its history advance together.
     const [task] = await tx
       .select()
       .from(externalTasks)
       .where(eq(externalTasks.taskId, taskId))
       .for("update");
+
     const supplied = Buffer.from(token);
     const expected = Buffer.from(task?.callbackToken ?? "");
 
@@ -131,6 +136,8 @@ export async function updateExternalTask(
       throw new SubmissionError("Conversation not found", 404);
     }
 
+    // Stale or identical retries are no-ops, including retries of a terminal update.
+    // A new revision cannot reopen a terminal task.
     if (update.revision < task.revision) {
       return { accepted: false };
     }
@@ -152,10 +159,12 @@ export async function updateExternalTask(
       revision: update.revision,
       update: historyUpdate(update),
     });
+
     await tx
       .update(externalTasks)
       .set({ revision: update.revision, status: update.status, update })
       .where(eq(externalTasks.taskId, taskId));
+
     await notifyConversation(tx, task.threadId);
 
     return { accepted: true };
@@ -234,6 +243,7 @@ export async function externalTaskSnapshots(threadId: string) {
       eq(externalTasks.continuationRunId, conversationRuns.aguiRunId),
     )
     .where(eq(externalTasks.threadId, threadId));
+
   const events = await db
     .select({
       taskId: externalTaskEvents.taskId,

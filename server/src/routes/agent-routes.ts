@@ -42,12 +42,14 @@ agentRoutes.post(
 
     try {
       prepared = await prepareConversationRun(parsed.data);
+
       const submission = prepared;
 
       return streamAgent(context, submission.input, (onRunCreated) =>
         executeConversationRun(submission, onRunCreated),
       );
     } catch (error) {
+      // Streaming setup may throw before the producer takes responsibility for this claim.
       prepared?.releaseDispatch();
 
       if (error instanceof SubmissionError) {

@@ -41,6 +41,13 @@ interface PositionedRow {
   position: number;
 }
 
+interface ActiveStream {
+  runId: string;
+  started: boolean;
+  positioned?: PositionedRow;
+}
+
+/** Projects newest-first events into rows while retaining original events for inspection. */
 export function activityRows(
   activity: readonly Activity[],
   merge: boolean,
@@ -51,14 +58,7 @@ export function activityRows(
 
   const rows: PositionedRow[] = [];
   const segmentCounts = new Map<string, number>();
-  const activeStreams = new Map<
-    string,
-    {
-      runId: string;
-      started: boolean;
-      positioned?: PositionedRow;
-    }
-  >();
+  const activeStreams = new Map<string, ActiveStream>();
 
   function stopStream(positioned: PositionedRow | undefined) {
     const stream = positioned?.row.stream;
@@ -114,6 +114,7 @@ export function activityRows(
         activeStreams.delete(key);
       } else if (typeof event.delta === "string") {
         if (!stream) {
+          // The bounded activity buffer may have already dropped this stream's start.
           stream = { runId: entry.runId, started: false };
           activeStreams.set(key, stream);
         }
@@ -121,6 +122,7 @@ export function activityRows(
         if (!stream.positioned) {
           const segment = segmentCounts.get(key) ?? 0;
 
+          // Replayed starts can reuse an ID; each segment still needs a stable distinct row.
           segmentCounts.set(key, segment + 1);
           stream.positioned = {
             position: index,

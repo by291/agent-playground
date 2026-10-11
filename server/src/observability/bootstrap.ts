@@ -35,6 +35,7 @@ if (endpoint) {
   });
 
   provider.register({ propagator: new W3CTraceContextPropagator() });
+
   const meterProvider = new MeterProvider({
     resource,
     views: [
@@ -80,6 +81,7 @@ if (endpoint) {
 }
 
 export function shutdownTelemetry(): Promise<void> {
+  // Both signal paths share one flush; providers must not be shut down twice.
   shutdown ??= shutdownProviders?.() ?? Promise.resolve();
 
   return shutdown;

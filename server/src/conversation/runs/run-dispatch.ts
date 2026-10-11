@@ -12,6 +12,7 @@ import { requestedModelId } from "./model-validation.js";
 export interface PreparedConversationRun {
   input: RunAgentInput;
   modelId: string | null;
+  /** Release after the mapping is durable, producer settlement, or setup failure. */
   releaseDispatch: () => void;
 }
 
@@ -49,6 +50,7 @@ export async function prepareConversationRun(
 
   // Refresh only the current run; admission does not need the full conversation history.
   await synchronizeConversation(trustedInput.threadId);
+
   const agentInfo = await fetchAgentInfo();
   const { row } = await admitRun({
     threadId: trustedInput.threadId,
@@ -82,6 +84,7 @@ export function executeConversationRun(
       input,
       (id) => {
         onRunCreated(id);
+
         // The callback cannot await. Retain its failure until execution settles.
         mappingWrite = recordAegraRun(input.runId, id)
           .then(releaseDispatch)

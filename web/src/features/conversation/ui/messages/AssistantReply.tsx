@@ -34,8 +34,9 @@ export function AssistantReply({
       return new Set([...previous, messageId]);
     });
   }, []);
+
   const process = toolProcess(turn, externalWaitCallIds);
-  const final = turn.messages.filter(
+  const answers = turn.messages.filter(
     (message) =>
       message.role === "assistant" &&
       !message.toolCalls?.length &&
@@ -50,25 +51,29 @@ export function AssistantReply({
   const latestReasoningIndex = latestReasoning
     ? turn.messages.indexOf(latestReasoning)
     : -1;
+
+  // Reasoning folds only when a later answer has rendered visible text. Receiving
+  // an answer message alone is insufficient while its paced presentation is empty.
   const replyAfterReasoning = turn.messages
     .slice(latestReasoningIndex + 1)
     .find(
-      (message) => final.includes(message) && visibleAnswers.has(message.id),
+      (message) => answers.includes(message) && visibleAnswers.has(message.id),
     );
+  const hasReplyContent =
+    reasoning.length > 0 ||
+    process.length > 0 ||
+    answers.length > 0 ||
+    Boolean(children);
 
-  if (
-    !reasoning.length &&
-    !process.length &&
-    !final.length &&
-    !active &&
-    !children
-  ) {
+  if (!hasReplyContent && !active) {
     return null;
   }
 
   const toolsRunning = process.some((entry) =>
     entry.calls.some((step) => step.status === "running"),
   );
+  const showThinkingStatus =
+    active && !reasoning.length && !toolsRunning && !answers.length;
 
   return (
     <AssistantFrame>
@@ -86,7 +91,7 @@ export function AssistantReply({
       <SkillFiles process={process} />
       {children}
       <KnowledgeSources process={process}>
-        {final.map((message) => (
+        {answers.map((message) => (
           <AssistantText
             key={message.id}
             message={message}
@@ -97,7 +102,7 @@ export function AssistantReply({
           />
         ))}
       </KnowledgeSources>
-      {active && !reasoning.length && !toolsRunning && !final.length && (
+      {showThinkingStatus && (
         <ThinkingStatus
           label={process.length ? "Preparing reply" : "Thinking"}
         />

@@ -14,6 +14,7 @@ function experimentStage(view: A2UISurfaceView): string | null {
   return ["idea", "draft", "review", "reviewed"].includes(stage) ? stage : null;
 }
 
+/** Selects visible experiment stages while retaining replaced surfaces as history. */
 export function workflowArtifacts(
   calls: readonly ToolCall[],
   surfaces: readonly A2UISurfaceView[],
@@ -24,6 +25,7 @@ export function workflowArtifacts(
       .filter((call) => call.function.name === "run_experiment_workflow")
       .map((call) => call.id),
   );
+
   const current: A2UISurfaceView[] = [];
   const history: A2UISurfaceView[] = [];
   const positions = new Map<string, number>();
@@ -61,6 +63,7 @@ export function workflowArtifacts(
   );
   const owners = new Set(pending.map((review) => review.workflowCallId));
   const legacyReview = pending.some((review) => !review.workflowCallId);
+
   const visible = current.filter((view) => {
     const replacedByEditor =
       experimentStage(view) === "review" &&

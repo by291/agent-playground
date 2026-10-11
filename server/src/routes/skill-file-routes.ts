@@ -46,13 +46,14 @@ skillFileRoutes.post(
   "/conversations/:threadId/files",
   bodyLimit({ maxSize: maxSkillFileBytes }),
   async (context) => {
-    const name = (() => {
-      try {
-        return decodeURIComponent(context.req.header("X-Filename") ?? "");
-      } catch {
-        return "";
-      }
-    })();
+    let name: string;
+
+    try {
+      name = decodeURIComponent(context.req.header("X-Filename") ?? "");
+    } catch {
+      name = "";
+    }
+
     const input = z
       .object({
         id: idSchema,

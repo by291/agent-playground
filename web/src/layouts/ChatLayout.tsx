@@ -106,6 +106,7 @@ function ChatPanels({
   const [initialSidebarWidth] = useState(sidebarSize.size);
   const [initialActivityWidth] = useState(activitySize.size);
   const activityTrigger = useRef<HTMLButtonElement>(null);
+
   const empty = useConversation(isEmpty);
   const threadId =
     useConversation((state) => state.threadId) ?? conversation.threadId ?? null;
@@ -114,6 +115,7 @@ function ChatPanels({
   const busy = useConversation(
     (state) => isRunning(state) || isRestoring(state),
   );
+
   const title =
     history?.conversations.find((entry) => entry.threadId === threadId)
       ?.title ??
@@ -121,10 +123,12 @@ function ChatPanels({
     (empty ? "New conversation" : "Current conversation");
   const current = { threadId: threadId ?? "", title, status, busy };
   const showActivity = import.meta.env.DEV && development && activityOpen;
+  const expandedDesktopSidebar = open && !isMobile;
   const sidebarMinimum = isMobile ? 0 : 64;
   const desktopSidebarWidth = open ? sidebarSize.size : 64;
   const sidebarWidth = isMobile ? 0 : desktopSidebarWidth;
   const dockedActivity = showActivity && wide;
+
   const restoreSidebarSize = useEffectEvent(() => {
     sidebarPanel.current?.resize(sidebarWidth);
   });
@@ -151,6 +155,7 @@ function ChatPanels({
     setActivityOpen(false);
 
     if (focusInPanel) {
+      // Only restore focus when closing would hide the currently focused control.
       activityTrigger.current?.focus();
     }
   }
@@ -161,12 +166,13 @@ function ChatPanels({
         id="workspace-layout"
         elementRef={navigationGroup}
         onLayoutChanged={(layout, meta) => {
-          if (
+          const userResizedSidebar =
             meta.isUserInteraction &&
-            open &&
-            !isMobile &&
-            sidebarPanel.current
-          ) {
+            expandedDesktopSidebar &&
+            sidebarPanel.current;
+
+          // Responsive restoration must not replace the preferred expanded width.
+          if (userResizedSidebar) {
             sidebarSize.saveSize(
               panelPixels(navigationGroup.current, layout["navigation-panel"]!),
             );
@@ -177,8 +183,8 @@ function ChatPanels({
           id="navigation-panel"
           panelRef={sidebarPanel}
           defaultSize={isMobile ? 0 : initialSidebarWidth}
-          minSize={open && !isMobile ? 240 : sidebarMinimum}
-          maxSize={open && !isMobile ? 420 : sidebarMinimum}
+          minSize={expandedDesktopSidebar ? 240 : sidebarMinimum}
+          maxSize={expandedDesktopSidebar ? 420 : sidebarMinimum}
           groupResizeBehavior="preserve-pixel-size"
           className="workspace-sidebar-shell"
           style={{ overflow: "visible" }}
@@ -190,7 +196,9 @@ function ChatPanels({
             current={current}
           />
         </ResizablePanel>
-        {open && !isMobile && <ResizableHandle aria-label="Sidebar width" />}
+        {expandedDesktopSidebar && (
+          <ResizableHandle aria-label="Sidebar width" />
+        )}
         <ResizablePanel
           id="workspace-main"
           minSize={isMobile ? 0 : 320}

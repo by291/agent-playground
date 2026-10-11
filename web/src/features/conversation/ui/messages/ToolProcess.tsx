@@ -41,7 +41,8 @@ const toolLabels: Record<string, string> = {
   run_a2a_workflow: "Collaborate with agents",
 };
 
-function summary(steps: ToolStep[]) {
+function processStatusLabel(steps: ToolStep[]) {
+  // A group can mix outcomes; failures and blocked work take priority over progress.
   if (steps.some((step) => step.status === "failed")) {
     return "Failed";
   }
@@ -170,6 +171,7 @@ export function ToolProcess({
   const steps = process.flatMap((entry) => entry.calls);
   const failed = steps.some((step) => step.status === "failed");
   const running = steps.some((step) => step.status === "running");
+  const statusLabel = processStatusLabel(steps);
   const error = steps.find((step) => step.result?.error)?.result?.error;
   const countLabel = category === "Memory" ? "operations" : "tools";
   const name =
@@ -177,6 +179,7 @@ export function ToolProcess({
     (steps.length === 1
       ? steps[0]!.call.function.name
       : `${steps.length} ${countLabel}`);
+
   let Icon = WrenchIcon;
 
   if (failed) {
@@ -192,7 +195,7 @@ export function ToolProcess({
       <Tooltip>
         <TooltipTrigger asChild>
           <CollapsibleTrigger
-            aria-label={`${category} ${name} ${summary(steps)}`}
+            aria-label={`${category} ${name} ${statusLabel}`}
             className={`flex min-h-8 max-w-full cursor-pointer items-center gap-2 rounded-lg px-2 py-1 text-left text-sm hover:bg-sidebar focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none ${failed ? "text-red-700" : "text-muted"}`}
           >
             {running ? (
@@ -210,11 +213,11 @@ export function ToolProcess({
               {name}
             </span>
             <span
-              key={summary(steps)}
+              key={statusLabel}
               className="motion-content-enter text-xs"
               role="status"
             >
-              {summary(steps)}
+              {statusLabel}
             </span>
             <CaretDownIcon
               aria-hidden="true"
@@ -233,21 +236,22 @@ export function ToolProcess({
         </Alert>
       )}
       <CollapsibleContent className="mt-2 space-y-3 border-l border-line pl-3">
-        {process.map((entry, index) => (
-          <div key={index} className="space-y-2">
-            {messageText(entry.message).trim() && (
-              <div className="chat-markdown px-2 text-sm text-muted">
-                <MarkdownMessage
-                  text={messageText(entry.message)}
-                  streaming={false}
-                />
-              </div>
-            )}
-            {entry.calls.map((step) => (
-              <ToolDetails key={step.call.id} step={step} />
-            ))}
-          </div>
-        ))}
+        {process.map((entry, index) => {
+          const text = messageText(entry.message);
+
+          return (
+            <div key={index} className="space-y-2">
+              {text.trim() && (
+                <div className="chat-markdown px-2 text-sm text-muted">
+                  <MarkdownMessage text={text} streaming={false} />
+                </div>
+              )}
+              {entry.calls.map((step) => (
+                <ToolDetails key={step.call.id} step={step} />
+              ))}
+            </div>
+          );
+        })}
         {children}
       </CollapsibleContent>
     </Collapsible>
