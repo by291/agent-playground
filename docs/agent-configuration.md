@@ -9,7 +9,7 @@ Agent configuration lives in two private YAML files. `make setup` creates them f
 | `server/.env` | TypeScript server configuration and storage credentials.                                                                 |
 | `web/.env`    | Web development configuration.                                                                                           |
 
-The Python Agent reads its two YAML files through `agent_playground/config.py`; this reader does not load dotenv files. Inherited setting variables such as `PORT` or `DATABASE_URL` do not override YAML. Both local YAML files are ignored by Git and created with owner-only permissions on Unix. [models.example.yaml](../models.example.yaml) shows a minimal chat catalog and independent embedding settings; [agent.example.yaml](../agent.example.yaml) groups runtime settings. Provider keys are empty in both examples. Keep the local files private; the examples are suitable for version control.
+The Python Agent reads its two YAML files through `agent_playground/config/agent.py` and `config/models.py`, with common validation and sanitized errors in `config/reader.py`; these readers do not load dotenv files. Inherited setting variables such as `PORT` or `DATABASE_URL` do not override YAML. Both local YAML files are ignored by Git and created with owner-only permissions on Unix. [models.example.yaml](../models.example.yaml) shows a minimal chat catalog and independent embedding settings; [agent.example.yaml](../agent.example.yaml) groups runtime settings. Provider keys are empty in both examples. Keep the local files private; the examples are suitable for version control.
 
 ## Models and keys
 

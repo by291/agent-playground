@@ -9,7 +9,7 @@ from langchain_deepseek import ChatDeepSeek
 from langchain_qwq import ChatQwen
 from pydantic import SecretStr
 
-from agent_playground.model_profiles import (
+from agent_playground.models.profiles import (
     NATIVE_REASONING_EFFORTS,
     ChatProvider,
     ThinkingLevel,
@@ -27,6 +27,7 @@ def restore_reasoning_history(
     *,
     require_reasoning: bool = False,
 ) -> dict[str, Any]:
+    """Restore provider-only fields omitted by the shared request serializer."""
     # Both integrations retain reasoning in responses, but their shared OpenAI
     # serializer omits this provider field when sending tool-call history.
     for message, serialized in zip(messages, payload["messages"], strict=True):
@@ -46,6 +47,8 @@ def restore_reasoning_history(
 
 
 class DeepSeekChatModel(ChatDeepSeek):
+    """Preserve reasoning fields required by DeepSeek thinking tool calls."""
+
     @override
     def _get_request_payload(
         self,
@@ -69,6 +72,8 @@ class DeepSeekChatModel(ChatDeepSeek):
 
 
 class QwenChatModel(ChatQwen):
+    """Replay available Qwen reasoning without synthesizing absent history."""
+
     @override
     def _get_request_payload(
         self,

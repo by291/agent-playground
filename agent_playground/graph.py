@@ -20,7 +20,7 @@ from agent_playground.knowledge.tools import search_knowledge
 from agent_playground.memory.middleware import MemoryMiddleware
 from agent_playground.memory.models import MEMORY_TOKEN_BUDGET
 from agent_playground.memory.tools import MEMORY_INSTRUCTIONS, memory_tools
-from agent_playground.models import create_chat_model, model_configuration
+from agent_playground.models.catalog import create_chat_model, model_configuration
 from agent_playground.observability import execution_trace
 from agent_playground.prompts import SYSTEM_PROMPT
 from agent_playground.skills.catalog import SkillCatalog
@@ -39,6 +39,7 @@ def get_current_time() -> str:
 
 
 def mcp_client() -> MultiServerMCPClient:
+    """Use this process's interpreter to discover the local stdio tools."""
     return MultiServerMCPClient(
         {
             "local": {
@@ -58,21 +59,17 @@ def make_graph(
     skills: SkillCatalog | None = None,
     model_id: str | None = None,
 ):
-    settings = None
-    image_tokens = 1024
+    """Assemble one conversation agent with model-scoped budgets and tools."""
+    configuration = model_configuration(model_id)
 
     if model is None:
-        configuration = model_configuration(model_id)
         model = create_chat_model(configuration.id)
         summary_model = summary_model or create_chat_model(
             configuration.id, summary=True
         )
-        settings = configuration.context_settings(model)
-        image_tokens = configuration.image_tokens
-    else:
-        configuration = model_configuration(model_id)
-        settings = configuration.context_settings(model)
-        image_tokens = configuration.image_tokens
+
+    settings = configuration.context_settings(model)
+    image_tokens = configuration.image_tokens
 
     catalog = skills if skills is not None else default_catalog()
     prompt = SYSTEM_PROMPT + catalog.prompt() + MEMORY_INSTRUCTIONS
@@ -110,6 +107,7 @@ def make_graph(
 
 @alru_cache(maxsize=1)
 async def shared_mcp_tools():
+    """Discover process-shared tools once; each invocation opens its own session."""
     return await mcp_client().get_tools()
 
 
@@ -133,6 +131,7 @@ async def graph(config: RunnableConfig, runtime: ServerRuntime[dict[str, object]
     configuration = model_configuration(requested)
     compiled = await base_graph(configuration.id)
 
+    # Keep the sandbox scope open across the yield; inspection omits the run trace.
     async with skill_execution(default_catalog()):
         if runtime.execution_runtime is None:
             yield compiled

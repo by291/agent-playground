@@ -26,7 +26,58 @@ class Skill:
     files: dict[str, bytes]
 
 
+def _load_skill(directory: Path) -> Skill:
+    files: dict[str, bytes] = {}
+
+    for path in sorted(directory.rglob("*")):
+        if path.is_symlink():
+            raise ValueError(f"Skill {directory.name} contains a symlink")
+
+        if path.is_file():
+            if path.stat().st_size > MAX_FILE_BYTES:
+                raise ValueError("Published Skill file exceeds 10 MiB")
+
+            files[path.relative_to(directory).as_posix()] = path.read_bytes()
+
+    if len(files) > 200 or sum(map(len, files.values())) > MAX_FILE_BYTES:
+        raise ValueError("Skill bundle exceeds 200 files or 10 MiB")
+
+    document = files["SKILL.md"].decode("utf-8")
+    parts = re.split(r"(?m)^---[ \t]*\r?$", document, maxsplit=2)
+
+    if len(parts) != 3 or parts[0].strip():
+        raise ValueError("SKILL.md requires YAML frontmatter")
+
+    metadata = yaml.safe_load(parts[1])
+
+    if not isinstance(metadata, dict):
+        raise TypeError("Skill metadata must contain name and description")
+
+    name = metadata.get("name")
+    description = metadata.get("description")
+
+    if not isinstance(name, str) or not re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", name):
+        raise ValueError("Invalid Skill name")
+
+    if name != directory.name:
+        raise ValueError("Skill name must match its directory")
+
+    if (
+        not isinstance(description, str)
+        or not description.strip()
+        or len(description) > 1024
+    ):
+        raise ValueError("Skill description must contain 1 to 1024 characters")
+
+    if len(files["SKILL.md"]) > MAX_TEXT_BYTES:
+        raise ValueError("SKILL.md exceeds 32 KiB")
+
+    return Skill(name, description.strip(), files)
+
+
 class SkillCatalog:
+    """Snapshot validated bundles so later reads never access arbitrary host paths."""
+
     def __init__(self, root: Path):
         self.skills: dict[str, Skill] = {}
 
@@ -40,54 +91,8 @@ class SkillCatalog:
             if not directory.is_dir() or not (directory / "SKILL.md").exists():
                 continue
 
-            files: dict[str, bytes] = {}
-
-            for path in sorted(directory.rglob("*")):
-                if path.is_symlink():
-                    raise ValueError(f"Skill {directory.name} contains a symlink")
-
-                if path.is_file():
-                    if path.stat().st_size > MAX_FILE_BYTES:
-                        raise ValueError("Published Skill file exceeds 10 MiB")
-
-                    files[path.relative_to(directory).as_posix()] = path.read_bytes()
-
-            if len(files) > 200 or sum(map(len, files.values())) > MAX_FILE_BYTES:
-                raise ValueError("Skill bundle exceeds 200 files or 10 MiB")
-
-            document = files["SKILL.md"].decode("utf-8")
-            parts = re.split(r"(?m)^---[ \t]*\r?$", document, maxsplit=2)
-
-            if len(parts) != 3 or parts[0].strip():
-                raise ValueError("SKILL.md requires YAML frontmatter")
-
-            metadata = yaml.safe_load(parts[1])
-
-            if not isinstance(metadata, dict):
-                raise TypeError("Skill metadata must contain name and description")
-
-            name = metadata.get("name")
-            description = metadata.get("description")
-
-            if not isinstance(name, str) or not re.fullmatch(
-                r"[a-z0-9]+(?:-[a-z0-9]+)*", name
-            ):
-                raise ValueError("Invalid Skill name")
-
-            if name != directory.name:
-                raise ValueError("Skill name must match its directory")
-
-            if (
-                not isinstance(description, str)
-                or not description.strip()
-                or len(description) > 1024
-            ):
-                raise ValueError("Skill description must contain 1 to 1024 characters")
-
-            if len(files["SKILL.md"]) > MAX_TEXT_BYTES:
-                raise ValueError("SKILL.md exceeds 32 KiB")
-
-            self.skills[name] = Skill(name, description.strip(), files)
+            skill = _load_skill(directory)
+            self.skills[skill.name] = skill
 
     def get(self, name: str) -> Skill:
         if name not in self.skills:

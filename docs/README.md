@@ -20,14 +20,15 @@ The guides below describe the current implementation. Start with [local developm
 
 ## Develop and validate
 
-| Guide                                             | Contents                                                                                      |
-| ------------------------------------------------- | --------------------------------------------------------------------------------------------- |
-| [Architecture](architecture.md)                   | Python, server and web boundaries; storage, protocols and recovery consistency.               |
-| [Frontend architecture](frontend-architecture.md) | Imports, state ownership, UI resources, development tools and frontend validation.            |
-| [Server architecture](server-architecture.md)     | Source directories, HTTP boundaries, admission, run persistence, ESM and server validation.   |
-| [Android architecture](android-architecture.md)   | Native module boundaries, repositories, state ownership, resource lifetimes and verification. |
-| [Browser tests](../web/tests/e2e/README.md)       | Controlled regression, live smoke, fixtures, coverage ownership and runtime reports.          |
-| [Project rules](../AGENTS.md)                     | Long-term directory, implementation, style and contribution conventions.                      |
+| Guide                                             | Contents                                                                                                |
+| ------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| [Architecture](architecture.md)                   | Python, server and web boundaries; storage, protocols and recovery consistency.                         |
+| [Python architecture](python-architecture.md)     | Conversation/model/configuration packages, workflow/service contracts, resources and Python validation. |
+| [Frontend architecture](frontend-architecture.md) | Imports, state ownership, UI resources, development tools and frontend validation.                      |
+| [Server architecture](server-architecture.md)     | Source directories, HTTP boundaries, admission, run persistence, ESM and server validation.             |
+| [Android architecture](android-architecture.md)   | Native module boundaries, repositories, state ownership, resource lifetimes and verification.           |
+| [Browser tests](../web/tests/e2e/README.md)       | Controlled regression, live smoke, fixtures, coverage ownership and runtime reports.                    |
+| [Project rules](../AGENTS.md)                     | Long-term directory, implementation, style and contribution conventions.                                |
 
 ## Validation records
 

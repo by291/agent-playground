@@ -74,25 +74,27 @@ def make_report_workflow():
         }
 
     async def publish(state: ReportState) -> None:
-        success = state.status == "succeeded"
+        succeeded = state.status == "succeeded"
         lines = (
             [str((state.result or {}).get("summary", "The report is ready."))]
-            if success
+            if succeeded
             else [state.error or "Report generation failed."]
         )
+        surface_id = f"report-{state.workflow_call_id}-result"
+
         await publish_workflow_output(
             workflow_call_id=state.workflow_call_id,
             step_id="result",
             step_seq=1,
             card=content_card(
-                surface_id=f"report-{state.workflow_call_id}-result",
-                title="Generated report" if success else "Report failed",
-                heading="REPORT READY" if success else "REPORT FAILED",
+                surface_id=surface_id,
+                title="Generated report" if succeeded else "Report failed",
+                heading="REPORT READY" if succeeded else "REPORT FAILED",
                 lines=lines,
             ),
             workflow=WorkflowOutputMetadata(
                 presentation=WorkflowPresentation(
-                    surface_id=f"report-{state.workflow_call_id}-result",
+                    surface_id=surface_id,
                     group_id=state.workflow_call_id,
                 )
             ),

@@ -3,8 +3,12 @@
 import httpx
 from pydantic import ValidationError
 
-from agent_playground.config import app_api_url, load_agent_config, workflow_api_token
-from agent_playground.services.a2a.models import CollaborationRequest
+from agent_playground.config.agent import (
+    app_api_url,
+    load_agent_config,
+    workflow_api_token,
+)
+from agent_playground.services.a2a.contracts import CollaborationRequest
 
 
 class HttpA2aApi:

@@ -32,7 +32,9 @@ def make_sql_workflow(
         }
 
     async def check(state: SqlState) -> dict[str, Any]:
-        return {"check": await api.check(state.sql), "checked_revision": state.revision}
+        check_result = await api.check(state.sql)
+
+        return {"check": check_result, "checked_revision": state.revision}
 
     async def revise_sql(state: SqlState) -> dict[str, Any]:
         result = await revise(state)
@@ -41,7 +43,7 @@ def make_sql_workflow(
         if not sql:
             raise ValueError("The SQL agent returned an empty SQL")
 
-        changed = sql != state.sql
+        sql_changed = sql != state.sql
         dialogue = [*state.dialogue]
 
         if state.feedback:
@@ -51,7 +53,7 @@ def make_sql_workflow(
 
         return {
             "sql": sql,
-            "revision": state.revision + int(changed),
+            "revision": state.revision + int(sql_changed),
             "dialogue": dialogue,
             "reply": result.reply,
         }
@@ -73,6 +75,8 @@ def make_sql_workflow(
         return {"round": published.round, "reply": reply}
 
     def wait_for_user(state: SqlState) -> dict[str, Any]:
+        # Explanations keep the existing revision and check. Acceptance must
+        # still target the exact SQL revision that produced that check.
         can_accept = (
             state.check is not None
             and state.check.passed
@@ -106,6 +110,9 @@ def make_sql_workflow(
 
         identity = f"{thread_id}:{state.workflow_call_id}:{state.revision}"
         key = f"sql-{sha256(identity.encode()).hexdigest()}"
+
+        # A resumed node can retry a committed submission. Its identity includes
+        # the conversation and accepted revision so retries reuse one receipt.
         receipt = await api.submit(state.sql, key)
 
         return {"submission": receipt, "status": "submitted", "reply": ""}
@@ -114,9 +121,12 @@ def make_sql_workflow(
         return {"status": "abandoned", "reply": ""}
 
     def after_initial_check(state: SqlState) -> str:
-        return "publish" if state.check and state.check.passed else "revise"
+        check_passed = state.check is not None and state.check.passed
+
+        return "publish" if check_passed else "revise"
 
     def after_revision(state: SqlState) -> str:
+        # A conversational explanation has no new SQL to validate.
         return "check" if state.checked_revision != state.revision else "publish"
 
     def after_publication(state: SqlState) -> str:

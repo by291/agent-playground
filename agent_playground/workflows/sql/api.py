@@ -4,7 +4,7 @@ from typing import Protocol
 
 import httpx
 
-from agent_playground.config import load_agent_config
+from agent_playground.config.agent import load_agent_config
 from agent_playground.services.sql.models import SqlCheck, SqlSource, SqlSubmission
 
 

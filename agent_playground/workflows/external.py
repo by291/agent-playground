@@ -8,7 +8,7 @@ from langgraph.config import get_config
 from langgraph.types import interrupt
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from agent_playground.config import app_api_url, workflow_api_token
+from agent_playground.config.agent import app_api_url, workflow_api_token
 
 
 class ExternalTaskRegistration(BaseModel):
@@ -41,6 +41,7 @@ class ExternalTaskResult(BaseModel):
 async def register_external_task(
     *, workflow_call_id: str, step_id: str, label: str
 ) -> ExternalTaskRegistration:
+    """Reuse one task identity across run recovery and checkpoint replay."""
     config = get_config()
     thread_id = (config.get("configurable") or {}).get("thread_id")
     run_id = (config.get("metadata") or {}).get("agui_run_id")
@@ -51,6 +52,8 @@ async def register_external_task(
             "External task registration requires run identity and workflow.api_token in agent.yaml"
         )
 
+    # Runs can change during recovery; the workflow call and step still identify
+    # the original task and must not create a second external operation.
     task_id = (
         "task-"
         + sha256(f"{thread_id}:{workflow_call_id}:{step_id}".encode()).hexdigest()
@@ -77,6 +80,7 @@ async def register_external_task(
 def wait_for_external_task(
     *, task_id: str, workflow_call_id: str
 ) -> ExternalTaskResult:
+    """Resume only with a validated terminal result for this registered task."""
     result = ExternalTaskResult.model_validate(
         interrupt(
             {

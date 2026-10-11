@@ -9,7 +9,7 @@ from sqlalchemy.dialects.postgresql import insert
 
 from agent_playground.db.connection import app_engine
 from agent_playground.db.schema import a2a_jobs
-from agent_playground.services.a2a.models import (
+from agent_playground.services.a2a.contracts import (
     CollaborationRequest,
     CollaborationState,
 )
@@ -31,9 +31,12 @@ def decode_job(row: RowMapping) -> CollaborationJob:
 
 
 def create_job(request: CollaborationRequest) -> CollaborationJob:
+    """Create or replay a coordinator job without replacing its saved state."""
     payload = request.model_dump()
 
     with app_engine().begin() as connection:
+        # A retry can reuse the identity, but it cannot change the request
+        # attached to another creator's durable state.
         connection.execute(
             insert(a2a_jobs)
             .values(
@@ -69,7 +72,10 @@ def change_job(
     operation: Callable[[CollaborationState], CollaborationState],
     owner: str | None = None,
 ) -> CollaborationJob:
+    """Apply a state transition under the row lock and optional worker lease."""
     with app_engine().begin() as connection:
+        # Serialize coordinator updates with user controls before testing the
+        # lease and terminal state against the latest committed snapshot.
         row = (
             connection.execute(
                 select(a2a_jobs).where(a2a_jobs.c.id == job_id).with_for_update()
@@ -90,10 +96,14 @@ def change_job(
         previous = CollaborationState.model_validate(row["state"])
         state = operation(previous.model_copy(deep=True))
 
-        if previous.terminal and state != previous:
+        terminal_state_changed = previous.terminal and state != previous
+
+        if terminal_state_changed:
             raise ValueError("A2A collaboration is already terminal")
 
         if state != previous:
+            # Only persisted changes produce callback revisions; a replay keeps
+            # its current revision and delivery offset.
             state.revision = previous.revision + 1
             connection.execute(
                 update(a2a_jobs)
@@ -136,9 +146,10 @@ def request_input(job_id: str, text: str) -> CollaborationJob:
 
 
 def claim_jobs(owner: str, limit: int = 4) -> list[CollaborationJob]:
+    """Lease available jobs that need execution, cancellation or delivery."""
     now = datetime.now(UTC)
     state = a2a_jobs.c.state
-    pending = or_(
+    has_pending_work = or_(
         state["revision"].astext.cast(Integer) > a2a_jobs.c.delivered_revision,
         and_(state["status"].astext.in_(["queued", "running"])),
         and_(
@@ -148,11 +159,13 @@ def claim_jobs(owner: str, limit: int = 4) -> list[CollaborationJob]:
     )
 
     with app_engine().begin() as connection:
+        # Claim and assign ownership in one transaction. Other workers skip
+        # locked rows rather than receiving the same job before this commit.
         rows = (
             connection.execute(
                 select(a2a_jobs)
                 .where(
-                    pending,
+                    has_pending_work,
                     or_(a2a_jobs.c.lease_until.is_(None), a2a_jobs.c.lease_until < now),
                 )
                 .limit(limit)
@@ -173,6 +186,7 @@ def claim_jobs(owner: str, limit: int = 4) -> list[CollaborationJob]:
 
 
 def renew_lease(job_id: str, owner: str) -> bool:
+    """Renew only a still-current lease; an expired worker cannot reclaim it."""
     with app_engine().begin() as connection:
         result = connection.execute(
             update(a2a_jobs)
@@ -188,6 +202,7 @@ def renew_lease(job_id: str, owner: str) -> bool:
 
 
 def release_lease(job_id: str, owner: str) -> None:
+    """Release this owner's lease without disturbing a replacement worker."""
     with app_engine().begin() as connection:
         connection.execute(
             update(a2a_jobs)
@@ -197,6 +212,7 @@ def release_lease(job_id: str, owner: str) -> None:
 
 
 def mark_delivered(job_id: str, revision: int) -> None:
+    """Record callback progress without regressing a newer delivery revision."""
     with app_engine().begin() as connection:
         connection.execute(
             update(a2a_jobs)

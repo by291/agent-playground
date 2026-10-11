@@ -2,7 +2,7 @@
 
 from fastapi.testclient import TestClient
 
-from agent_playground.http import app
+from agent_playground.app import app
 from tests.model_config import ModelConfigFile
 
 

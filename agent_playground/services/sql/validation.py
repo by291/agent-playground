@@ -28,24 +28,40 @@ def check_sql(sql: str) -> SqlCheck:
         query = statements[0]
         tables = list(query.find_all(exp.Table))
         cte_names = {cte.alias for cte in query.find_all(exp.CTE)}
+        available_table_names = {"orders", *cte_names}
+        references_unavailable_table = any(
+            table.name not in available_table_names for table in tables
+        )
 
-        if any(table.name not in {"orders", *cte_names} for table in tables):
+        if references_unavailable_table:
             return SqlCheck(
                 passed=False, issues=["Only the demo orders table is available."]
             )
 
-        if not any(table.name == "orders" for table in tables):
+        queries_orders = any(table.name == "orders" for table in tables)
+
+        if not queries_orders:
             return SqlCheck(passed=False, issues=["Query the demo orders table."])
 
-        if any(isinstance(node, (exp.DML, exp.DDL)) for node in query.walk()):
+        contains_mutation = any(
+            isinstance(node, (exp.DML, exp.DDL)) for node in query.walk()
+        )
+
+        if contains_mutation:
             return SqlCheck(passed=False, issues=["Data mutations are not supported."])
 
         for selection in query.find_all(exp.Select):
-            if any(expression.is_star for expression in selection.expressions):
+            selects_all_columns = any(
+                expression.is_star for expression in selection.expressions
+            )
+
+            if selects_all_columns:
                 return SqlCheck(
                     passed=False, issues=["Replace SELECT * with explicit columns."]
                 )
 
+        # Resolve aliases and column references only after rejecting unsupported
+        # statement structure; qualification validates the fixed demo schema.
         qualify(query, dialect="postgres", schema=ORDERS_SCHEMA)
     except RecursionError:
         return SqlCheck(

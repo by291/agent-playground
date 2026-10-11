@@ -2,7 +2,7 @@
 
 import pytest
 
-from agent_playground.knowledge.store import EmbeddingConfig
+from agent_playground.knowledge.config import EmbeddingConfig
 from tests.model_config import ModelConfigFile
 
 

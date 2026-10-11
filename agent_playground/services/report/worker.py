@@ -5,7 +5,7 @@ import logging
 
 import httpx
 
-from agent_playground.config import app_api_url
+from agent_playground.config.agent import app_api_url
 from agent_playground.db.async_operations import run_database_operation
 from agent_playground.db.report_jobs import (
     mark_report_event_delivered,
@@ -26,11 +26,17 @@ async def deliver_report_events(client: httpx.AsyncClient) -> None:
                 headers={"Authorization": f"Bearer {job.callback_token}"},
                 json=event.model_dump(exclude_none=True),
             )
+
             if response.status_code == 404:
+                # A deleted conversation no longer owns the task; stop retries
+                # rather than continuing to produce unobservable callbacks.
                 await run_database_operation(stop_report_job, job.id, FINAL_REVISION)
                 continue
 
             response.raise_for_status()
+
+            # A delivery error leaves this revision pending for the next scan.
+            # Acknowledgement must follow the backend's accepted callback.
             await run_database_operation(
                 mark_report_event_delivered, job.id, event.revision
             )

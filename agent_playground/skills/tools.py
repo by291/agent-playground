@@ -8,7 +8,8 @@ from pathlib import Path
 from langchain.tools import ToolRuntime, tool
 from langchain_core.messages import ToolMessage
 
-from agent_playground.config import PROJECT_ROOT, load_agent_config
+from agent_playground.config.agent import load_agent_config
+from agent_playground.config.reader import PROJECT_ROOT
 from agent_playground.skills.catalog import SkillCatalog
 from agent_playground.skills.files import SkillFileClient
 from agent_playground.skills.sandbox import current_session
@@ -75,6 +76,7 @@ def skill_tools(catalog: SkillCatalog):
             metadata = runtime.config.get("metadata") or {}
             thread_id = configurable.get("thread_id")
             run_id = metadata.get("agui_run_id")
+
             files: SkillFileClient | None = None
             inputs: dict[str, bytes] = {}
 
@@ -91,6 +93,8 @@ def skill_tools(catalog: SkillCatalog):
                 files = SkillFileClient(thread_id, run_id, runtime.tool_call_id)
                 inputs = await files.inputs(input_files or [])
 
+            # Script execution and output publication have different retry safety:
+            # publication failure must not cause an already completed script to rerun.
             result = await session.run(
                 skill_name, script_path, arguments or [], inputs, output_files or []
             )

@@ -13,7 +13,7 @@ from langgraph.checkpoint.memory import InMemorySaver
 from langgraph_sdk.runtime import ServerRuntime
 
 from agent_playground.graph import make_graph
-from agent_playground.models import create_chat_model, model_configuration
+from agent_playground.models.catalog import create_chat_model, model_configuration
 from agent_playground.workflows.sql.agent import make_revision_agent
 from agent_playground.workflows.sql.models import SqlState
 from tests.model_config import ModelConfigFile
@@ -59,7 +59,9 @@ def test_a_new_model_uses_its_own_context_budget_with_the_same_checkpoint(
     def selected_model(model_id: str | None = None, *, summary: bool = False):
         return models[model_id or "deepseek"]
 
-    monkeypatch.setattr("agent_playground.models.create_chat_model", selected_model)
+    monkeypatch.setattr(
+        "agent_playground.models.catalog.create_chat_model", selected_model
+    )
     # Patch where the factory is consumed, once that boundary exists.
     monkeypatch.setattr(
         graph_module, "create_chat_model", selected_model, raising=False

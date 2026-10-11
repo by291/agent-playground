@@ -17,11 +17,12 @@ from a2a.types import (
     Role,
     SendMessageRequest,
     StreamResponse,
+    Task,
     TaskState,
 )
 from a2a.utils.errors import TaskNotCancelableError, TaskNotFoundError
 
-from agent_playground.config import app_api_url, load_agent_config
+from agent_playground.config.agent import app_api_url, load_agent_config
 from agent_playground.db.a2a_jobs import (
     CollaborationJob,
     change_job,
@@ -32,13 +33,13 @@ from agent_playground.db.a2a_jobs import (
     renew_lease,
 )
 from agent_playground.db.async_operations import run_database_operation
-from agent_playground.services.a2a.models import (
+from agent_playground.services.a2a.contracts import (
     STEPS,
     ChildOutput,
     CollaborationState,
     TaskStatus,
+    remote_task_id,
 )
-from agent_playground.services.a2a.protocol import remote_task_id
 
 logger = logging.getLogger(__name__)
 REMOTE_STATUSES: dict[int, TaskStatus] = {
@@ -133,24 +134,24 @@ def advance(state: CollaborationState) -> CollaborationState:
 
 def prompt_for(job: CollaborationJob) -> str:
     step = STEPS[job.state.stage_index]
-    task = job.request.task
+    task_description = job.request.task
 
     if job.state.user_input:
-        task += f"\nAdditional information: {job.state.user_input}"
+        task_description += f"\nAdditional information: {job.state.user_input}"
 
     if step == "review":
         return (
             "Stage: Review\nProduce the independent critique only. Evaluate the supplied "
             "Planner draft against the request, and give concrete feedback for the Planner. "
             "Leave the revised proposal to the Planner's next stage.\n\n"
-            f"Original request:\n{task}\n\nPlanner draft:\n{job.state.outputs[0].text}"
+            f"Original request:\n{task_description}\n\nPlanner draft:\n{job.state.outputs[0].text}"
         )
     elif step == "revise":
         return (
             "Stage: Revise\nReturn one complete revised proposal using the supplied actual "
             "Reviewer feedback. Briefly identify the changes made in response to that "
             "feedback. Keep the independent critique attributed to the Reviewer.\n\n"
-            f"Original request:\n{task}\n\nPlanner draft:\n{job.state.outputs[0].text}"
+            f"Original request:\n{task_description}\n\nPlanner draft:\n{job.state.outputs[0].text}"
             f"\n\nReviewer feedback:\n{job.state.outputs[1].text}"
         )
 
@@ -158,11 +159,61 @@ def prompt_for(job: CollaborationJob) -> str:
         "Stage: Draft\nProduce the initial draft only. A separate Reviewer will critique "
         "this draft after you finish. Revision belongs to a later request containing "
         "the Reviewer's actual feedback.\n\n"
-        f"Original request:\n{task}"
+        f"Original request:\n{task_description}"
+    )
+
+
+def _stage_request(
+    job: CollaborationJob,
+    *,
+    step: str,
+    message_id: str,
+    task_id: str,
+    remote: Task | None,
+) -> SendMessageRequest:
+    """Reuse reserved message content before constructing a new stage request."""
+    is_input_continuation = step == "plan" and bool(job.state.user_input)
+    outgoing_message_id = f"{message_id}-input" if is_input_continuation else message_id
+    saved_message = None
+
+    if remote is not None:
+        saved_message = next(
+            (
+                message
+                for message in remote.history
+                if message.role == Role.ROLE_USER
+                and message.message_id == outgoing_message_id
+            ),
+            None,
+        )
+
+    if saved_message is not None:
+        # Reserved requests retain their original input fingerprint across
+        # coordinator prompt upgrades, including message parts and metadata.
+        message = Message()
+        message.CopyFrom(saved_message)
+    else:
+        role = "reviewer" if step == "review" else "planner"
+        message = Message(
+            role=Role.ROLE_USER,
+            message_id=outgoing_message_id,
+            task_id=task_id if is_input_continuation else "",
+            context_id=f"{job.request.id}-{role}",
+            parts=[Part(text=prompt_for(job))],
+        )
+
+    return SendMessageRequest(
+        message=message,
+        metadata={
+            "requireInput": job.request.require_input
+            and step == "plan"
+            and not job.state.user_input
+        },
     )
 
 
 async def deliver(job: CollaborationJob, client: httpx.AsyncClient) -> bool:
+    """Acknowledge a delivered revision or stop an orphaned collaboration."""
     if job.state.revision <= job.delivered_revision:
         return True
 
@@ -173,6 +224,8 @@ async def deliver(job: CollaborationJob, client: httpx.AsyncClient) -> bool:
     )
 
     if response.status_code == 404:
+        # The owning conversation disappeared; stop producing remote work and
+        # acknowledge this revision so a missing callback cannot retry forever.
         if not job.state.terminal:
             job = await run_database_operation(
                 change_job,
@@ -222,10 +275,11 @@ async def process_job(
                 return
 
             job = refreshed
+
         step = STEPS[job.state.stage_index]
         role = "reviewer" if step == "review" else "planner"
-        a2a = load_agent_config().a2a
-        endpoint = a2a.reviewer_url if role == "reviewer" else a2a.planner_url
+        settings = load_agent_config().a2a
+        endpoint = settings.reviewer_url if role == "reviewer" else settings.planner_url
         message_id = f"{job.request.id}-{step}"
         task_id = remote_task_id(message_id)
 
@@ -249,13 +303,15 @@ async def process_job(
                             remote = None
 
                         if remote is not None:
-                            if (
+                            has_new_input = (
                                 remote.status.state
                                 == TaskState.TASK_STATE_INPUT_REQUIRED
                                 and job.state.user_input
-                            ):
-                                pass
-                            else:
+                            )
+
+                            # New input belongs to the next dispatch. Applying
+                            # the old remote snapshot would restore its wait.
+                            if not has_new_input:
                                 job = await run_database_operation(
                                     change_job,
                                     job.request.id,
@@ -275,56 +331,25 @@ async def process_job(
                             and remote.status.state == TaskState.TASK_STATE_COMPLETED
                         )
 
+                        waiting_for_input = (
+                            job.state.status == "input_required"
+                            and not job.state.cancel_requested
+                        )
+
                         if cancel_before_dispatch or remote_completed:
                             job = await run_database_operation(
                                 change_job, job.request.id, advance, owner
                             )
-                        elif job.state.terminal or (
-                            job.state.status == "input_required"
-                            and not job.state.cancel_requested
-                        ):
+                        elif job.state.terminal or waiting_for_input:
                             await deliver(job, callbacks)
                             return
                         else:
-                            continuation = step == "plan" and bool(job.state.user_input)
-                            outgoing_message_id = (
-                                f"{message_id}-input" if continuation else message_id
-                            )
-                            saved_message = (
-                                next(
-                                    (
-                                        message
-                                        for message in remote.history
-                                        if message.role == Role.ROLE_USER
-                                        and message.message_id == outgoing_message_id
-                                    ),
-                                    None,
-                                )
-                                if remote is not None
-                                else None
-                            )
-
-                            if saved_message is not None:
-                                # Reserved requests retain their original input
-                                # fingerprint across coordinator prompt upgrades.
-                                message = Message()
-                                message.CopyFrom(saved_message)
-                            else:
-                                message = Message(
-                                    role=Role.ROLE_USER,
-                                    message_id=outgoing_message_id,
-                                    task_id=task_id if continuation else "",
-                                    context_id=f"{job.request.id}-{role}",
-                                    parts=[Part(text=prompt_for(job))],
-                                )
-
-                            request = SendMessageRequest(
-                                message=message,
-                                metadata={
-                                    "requireInput": job.request.require_input
-                                    and step == "plan"
-                                    and not job.state.user_input
-                                },
+                            request = _stage_request(
+                                job,
+                                step=step,
+                                message_id=message_id,
+                                task_id=task_id,
+                                remote=remote,
                             )
 
                             async for event in client.send_message(request):
@@ -336,11 +361,13 @@ async def process_job(
                                 )
                                 await deliver(job, callbacks)
 
-                            if (
+                            stage_succeeded = (
                                 not job.state.terminal
                                 and job.state.outputs
                                 and job.state.outputs[-1].status == "succeeded"
-                            ):
+                            )
+
+                            if stage_succeeded:
                                 job = await run_database_operation(
                                     change_job, job.request.id, advance, owner
                                 )
@@ -352,6 +379,8 @@ async def process_job(
                                     "A2A stream ended before a terminal or input-required state"
                                 )
                     finally:
+                        # Join the cancellation watcher before closing the SDK
+                        # client it uses; it must not outlive this stage.
                         watcher.cancel()
                         await asyncio.gather(watcher, return_exceptions=True)
             finally:

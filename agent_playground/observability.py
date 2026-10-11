@@ -14,6 +14,7 @@ _tracer = trace.get_tracer("agent-playground")
 
 @contextmanager
 def execution_trace(config: RunnableConfig) -> Generator[None]:
+    """Attach one run's propagated parent and restore the caller's trace on exit."""
     metadata = config.get("metadata", {})
     raw_carrier = metadata.get("otel_trace_context")
     carrier: dict[str, str] = (

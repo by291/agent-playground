@@ -41,8 +41,9 @@ from langchain_core.messages import AIMessageChunk, BaseMessage
 from agent_playground.db.a2a_tasks import PostgresTaskStore
 from agent_playground.db.connection import close_app_store, prepare_app_store
 from agent_playground.services.a2a.agent import DemoAgentExecutor
-from agent_playground.services.a2a.protocol import AgentRole, remote_task_id
-from agent_playground.services.a2a.server import DurableRequestHandler, create_a2a_app
+from agent_playground.services.a2a.contracts import AgentRole, remote_task_id
+from agent_playground.services.a2a.handler import DurableRequestHandler
+from agent_playground.services.a2a.server import create_a2a_app
 from tests.agent_config import update_agent_config
 from tests.model_config import ModelConfigFile
 
@@ -461,7 +462,7 @@ def test_configured_model_chunks_are_coalesced_and_stream_is_closed(
 
     model_config.chat(model="deepseek-v4-flash", thinking="disabled")
     monkeypatch.setattr(
-        "agent_playground.model_adapters.DeepSeekChatModel", StreamingModel
+        "agent_playground.models.providers.DeepSeekChatModel", StreamingModel
     )
     executor = DemoAgentExecutor("planner", mode="model")
 

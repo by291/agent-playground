@@ -7,7 +7,7 @@ from uuid import UUID
 from aegra_api.core.database import db_manager
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response
 
-from agent_playground.config import workflow_api_token
+from agent_playground.config.agent import workflow_api_token
 from agent_playground.memory.models import (
     MemoryEdit,
     MemoryMutation,

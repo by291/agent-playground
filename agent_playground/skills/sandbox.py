@@ -16,7 +16,7 @@ from opensandbox.models.execd import ExecutionHandlers, OutputMessage, RunComman
 from opensandbox.models.filesystem import WriteEntry
 from opensandbox.models.sandboxes import NetworkPolicy, NetworkRule
 
-from agent_playground.config import load_agent_config
+from agent_playground.config.agent import load_agent_config
 from agent_playground.skills.catalog import MAX_FILE_BYTES, SkillCatalog, relative_path
 
 MAX_LOG_CHARS = 32 * 1024
@@ -69,9 +69,12 @@ class ScriptResult:
 
 
 class SkillSession:
+    """Serialize scripts in one lazily created sandbox owned by the worker run."""
+
     def __init__(self, catalog: SkillCatalog, settings: SandboxSettings):
         self.catalog = catalog
         self.settings = settings
+
         self.sandbox: Sandbox | None = None
         self.lock = asyncio.Lock()
         self.closed = False
@@ -84,6 +87,7 @@ class SkillSession:
         await self.close()
 
     async def close(self):
+        # Retire the session before awaiting destruction so no later call reuses it.
         self.closed = True
         sandbox = self.sandbox
         self.sandbox = None
@@ -146,6 +150,59 @@ class SkillSession:
 
         return sandbox
 
+    async def _stage_inputs(self, sandbox: Sandbox, inputs: dict[str, bytes]) -> None:
+        for name, data in inputs.items():
+            path = f"/workspace/{relative_path(name)}"
+            await sandbox.files.create_directories(
+                [
+                    WriteEntry(
+                        path=str(PurePosixPath(path).parent),
+                        mode=755,
+                        owner="skill",
+                        group="skill",
+                    )
+                ]
+            )
+            await sandbox.files.write_files(
+                [
+                    WriteEntry(
+                        path=path,
+                        data=data,
+                        mode=644,
+                        owner="skill",
+                        group="skill",
+                    )
+                ]
+            )
+
+    async def _export_outputs(
+        self, sandbox: Sandbox, outputs: list[str]
+    ) -> dict[str, bytes]:
+        # Validate inside the sandbox before reading: host path checks cannot see
+        # sandbox symlinks or distinguish a regular file from a special file.
+        check = await sandbox.commands.run(
+            shlex.join(["python", "-c", EXPORT_CHECK, json.dumps(outputs)]),
+            opts=RunCommandOpts(working_directory="/workspace", uid=1000, gid=1000),
+        )
+
+        if check.exit_code != 0 or check.error:
+            raise ValueError("Output is missing, unsafe or exceeds 10 MiB")
+
+        exported: dict[str, bytes] = {}
+
+        for path in outputs:
+            data = await sandbox.files.read_bytes(
+                f"/workspace/{path}",
+                range_header=f"bytes=0-{MAX_FILE_BYTES}",
+            )
+
+            if len(data) > MAX_FILE_BYTES:
+                raise ValueError("Output file exceeds 10 MiB")
+
+            exported[path] = data
+
+        return exported
+
     async def run(
         self,
         skill_name: str,
@@ -154,6 +211,7 @@ class SkillSession:
         inputs: dict[str, bytes],
         output_files: list[str],
     ) -> ScriptResult:
+        """Run one published script and destroy the workspace on ambiguous failure."""
         skill = self.catalog.get(skill_name)
         script = relative_path(script_path)
         interpreter = {".py": "python", ".sh": "bash", ".js": "node"}.get(
@@ -182,34 +240,13 @@ class SkillSession:
         if len(command) > 16384:
             raise ValueError("Script arguments exceed 16 KiB")
 
+        # Staging, execution and export share mutable files; keep them under one lock.
         async with self.lock:
             try:
                 sandbox = await self._prepare(skill_name)
 
                 async with asyncio.timeout(self.settings.command_timeout):
-                    for name, data in inputs.items():
-                        path = f"/workspace/{relative_path(name)}"
-                        await sandbox.files.create_directories(
-                            [
-                                WriteEntry(
-                                    path=str(PurePosixPath(path).parent),
-                                    mode=755,
-                                    owner="skill",
-                                    group="skill",
-                                )
-                            ]
-                        )
-                        await sandbox.files.write_files(
-                            [
-                                WriteEntry(
-                                    path=path,
-                                    data=data,
-                                    mode=644,
-                                    owner="skill",
-                                    group="skill",
-                                )
-                            ]
-                        )
+                    await self._stage_inputs(sandbox, inputs)
 
                     log_size = 0
 
@@ -236,30 +273,7 @@ class SkillSession:
                     exported: dict[str, bytes] = {}
 
                     if execution.exit_code == 0 and error is None and outputs:
-                        check = await sandbox.commands.run(
-                            shlex.join(
-                                ["python", "-c", EXPORT_CHECK, json.dumps(outputs)]
-                            ),
-                            opts=RunCommandOpts(
-                                working_directory="/workspace", uid=1000, gid=1000
-                            ),
-                        )
-
-                        if check.exit_code != 0 or check.error:
-                            raise ValueError(
-                                "Output is missing, unsafe or exceeds 10 MiB"
-                            )
-
-                        for path in outputs:
-                            data = await sandbox.files.read_bytes(
-                                f"/workspace/{path}",
-                                range_header=f"bytes=0-{MAX_FILE_BYTES}",
-                            )
-
-                            if len(data) > MAX_FILE_BYTES:
-                                raise ValueError("Output file exceeds 10 MiB")
-
-                            exported[path] = data
+                        exported = await self._export_outputs(sandbox, outputs)
 
                     return ScriptResult(
                         execution.exit_code,
@@ -273,6 +287,7 @@ class SkillSession:
                         exported,
                     )
             except BaseException:
+                # Caller cancellation must still terminate a possibly running script.
                 await asyncio.shield(self.close())
                 raise
 
@@ -284,6 +299,7 @@ current_session: ContextVar[SkillSession | None] = ContextVar(
 
 @asynccontextmanager
 async def skill_execution(catalog: SkillCatalog):
+    """Bind tools to the worker's session and release its workspace on exit."""
     async with SkillSession(catalog, SandboxSettings.from_config()) as session:
         token = current_session.set(session)
 

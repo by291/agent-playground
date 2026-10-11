@@ -8,7 +8,7 @@ import pytest
 from sqlalchemy import event, inspect
 from sqlalchemy.engine import Engine
 
-from agent_playground import http
+from agent_playground import app as http
 from agent_playground.db.connection import app_engine, prepare_app_store
 from agent_playground.knowledge import worker as knowledge_worker_module
 from agent_playground.services.report import worker as report_worker_module

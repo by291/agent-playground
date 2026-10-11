@@ -10,7 +10,7 @@ import psycopg
 from langgraph.store.base import BaseStore
 from langmem import create_manage_memory_tool
 
-from agent_playground.config import load_agent_config
+from agent_playground.config.agent import load_agent_config
 from agent_playground.memory.models import (
     MEMORY_ROOT,
     MemoryContent,
@@ -40,6 +40,8 @@ async def record_lock(key: str):
 
 
 class MemoryService:
+    """Borrow the runtime Store and serialize revision-checked record mutations."""
+
     def __init__(self, store: BaseStore):
         self.store = store
 
@@ -74,6 +76,7 @@ class MemoryService:
         source_thread_id: str | None = None,
         source_message_id: str | None = None,
     ) -> MemoryView:
+        """Create idempotently or edit the current revision without restoring tombstones."""
         memory_id = str(UUID(memory_id))
         namespace = memory_namespace(scope)
         lock_key = json.dumps([*namespace, memory_id])
@@ -87,6 +90,7 @@ class MemoryService:
                 )
 
             existing = memory_view(previous) if previous is not None else None
+
             content = MemoryContent(
                 category=scope.category,
                 project=scope.project,
@@ -97,6 +101,8 @@ class MemoryService:
             )
 
             if revision is None and existing is not None:
+                # A replayed tool call may return its existing record, but the same
+                # identity must never be reused to silently create different content.
                 same_creation = (
                     existing.text == content.text
                     and existing.source_thread_id == source_thread_id
@@ -115,6 +121,7 @@ class MemoryService:
                 if revision != existing.revision:
                     raise ValueError("This memory changed; refresh it before editing")
 
+                # Management edits keep the original user-message provenance.
                 if source_thread_id is None:
                     content.source_thread_id = existing.source_thread_id
                     content.source_message_id = existing.source_message_id
@@ -134,6 +141,7 @@ class MemoryService:
                     "content": content.model_dump(by_alias=True),
                 }
             )
+
             stored = await self.store.aget(namespace, memory_id)
 
             if stored is None:
@@ -149,6 +157,7 @@ class MemoryService:
     async def forget(
         self, scope: MemoryScope, memory_id: str, *, revision: int
     ) -> None:
+        """Forget once and retain a tombstone that rejects delayed creation retries."""
         memory_id = str(UUID(memory_id))
         namespace = memory_namespace(scope)
 

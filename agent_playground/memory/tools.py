@@ -100,7 +100,9 @@ async def remember_memory(
     from search_memory. New memories omit both. Project facts require a project.
     """
     try:
-        if (memory_id is None) != (revision is None):
+        has_partial_update_identity = (memory_id is None) != (revision is None)
+
+        if has_partial_update_identity:
             raise ValueError("Updating memory requires both memory_id and revision")
 
         scope = MemoryScope(category=category, project=project)
@@ -117,12 +119,16 @@ async def remember_memory(
             ),
             None,
         )
+
+        # Tool-call identity survives execution retries; random creation IDs would
+        # duplicate memories when persistence succeeds before a retry begins.
         identity = memory_id or str(
             uuid5(
                 NAMESPACE_URL,
                 f"agent-playground:memory:{thread_id}:{runtime.tool_call_id}",
             )
         )
+
         saved = await memory_service(runtime).save(
             scope,
             text,

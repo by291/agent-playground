@@ -9,16 +9,15 @@ from langchain.tools import ToolRuntime, tool
 from langchain_core.messages import ToolMessage
 
 from agent_playground.db.knowledge import KnowledgeRepository
+from agent_playground.knowledge.config import EmbeddingConfig
 from agent_playground.knowledge.embeddings import validate_vectors
-from agent_playground.knowledge.store import (
-    EmbeddingConfig,
-    open_store,
-)
+from agent_playground.knowledge.store import open_store
 
 
 async def retrieve(
     query: str, config: EmbeddingConfig, repository: KnowledgeRepository
 ) -> list[dict[str, object]]:
+    """Retrieve bounded excerpts and recheck generation visibility before returning."""
     if not query.strip() or len(query) > 2000:
         raise ValueError("Use a nonempty search query up to 2000 characters")
 
@@ -29,6 +28,9 @@ async def retrieve(
             matches = await store.asimilarity_search_with_score_by_vector(
                 vector, k=5, filter={"embedding_profile": profile, "visible": True}
             )
+
+            # A document can be replaced or deleted after similarity search. The
+            # repository checks readiness and the owning generation before citation.
             visible = await asyncio.to_thread(
                 repository.visible_ids,
                 profile,

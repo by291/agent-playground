@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 from datetime import datetime
 
-from sqlalchemy import select, update
+from sqlalchemy import RowMapping, select, update
 from sqlalchemy.dialects.postgresql import insert
 
 from agent_playground.db.connection import app_engine
@@ -20,10 +20,24 @@ class ReportJob:
     created_at: datetime
 
 
+def _decode_report_job(row: RowMapping) -> ReportJob:
+    return ReportJob(
+        id=row["id"],
+        task=row["task"],
+        callback_token=row["callback_token"],
+        outcome=row["outcome"],
+        delivered_revision=row["delivered_revision"],
+        created_at=row["created_at"],
+    )
+
+
 def create_report_job(
     *, job_id: str, task: str, callback_token: str, outcome: str
 ) -> ReportJob:
+    """Create or replay a job only when its immutable request fields match."""
     with app_engine().begin() as connection:
+        # A concurrent creator may win the key; read its committed identity
+        # rather than overwriting the job or resetting its delivery offset.
         connection.execute(
             insert(report_jobs)
             .values(
@@ -36,20 +50,12 @@ def create_report_job(
             .mappings()
             .one()
         )
-        job = ReportJob(
-            id=row["id"],
-            task=row["task"],
-            callback_token=row["callback_token"],
-            outcome=row["outcome"],
-            delivered_revision=row["delivered_revision"],
-            created_at=row["created_at"],
-        )
+        job = _decode_report_job(row)
 
-        if (job.task, job.callback_token, job.outcome) != (
-            task,
-            callback_token,
-            outcome,
-        ):
+        stored_identity = (job.task, job.callback_token, job.outcome)
+        requested_identity = (task, callback_token, outcome)
+
+        if stored_identity != requested_identity:
             raise ValueError("Report job identity conflict")
 
         return job
@@ -67,24 +73,13 @@ def pending_report_jobs(final_revision: int) -> list[ReportJob]:
             .all()
         )
 
-    jobs = []
-
-    for row in rows:
-        job = ReportJob(
-            id=row["id"],
-            task=row["task"],
-            callback_token=row["callback_token"],
-            outcome=row["outcome"],
-            delivered_revision=row["delivered_revision"],
-            created_at=row["created_at"],
-        )
-        jobs.append(job)
-
-    return jobs
+    return [_decode_report_job(row) for row in rows]
 
 
 def mark_report_event_delivered(job_id: str, revision: int) -> None:
+    """Advance one delivery step without skipping or replaying a revision."""
     with app_engine().begin() as connection:
+        # Callback retries may arrive after another delivery has advanced the job.
         connection.execute(
             update(report_jobs)
             .where(
@@ -96,6 +91,7 @@ def mark_report_event_delivered(job_id: str, revision: int) -> None:
 
 
 def stop_report_job(job_id: str, final_revision: int) -> None:
+    """Stop future callback delivery by moving the job to its final offset."""
     with app_engine().begin() as connection:
         connection.execute(
             update(report_jobs)
@@ -115,11 +111,4 @@ def read_report_job(job_id: str) -> ReportJob | None:
     if row is None:
         return None
 
-    return ReportJob(
-        id=row["id"],
-        task=row["task"],
-        callback_token=row["callback_token"],
-        outcome=row["outcome"],
-        delivered_revision=row["delivered_revision"],
-        created_at=row["created_at"],
-    )
+    return _decode_report_job(row)

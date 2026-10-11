@@ -13,15 +13,17 @@ from limits.aio.storage.redis.redispy import RedispyBridge
 from limits.aio.strategies import SlidingWindowCounterRateLimiter
 from redis.asyncio import Redis
 
-from agent_playground.config import load_agent_config
+from agent_playground.config.agent import load_agent_config
 
 if TYPE_CHECKING:
-    from agent_playground.knowledge.store import EmbeddingConfig
+    from agent_playground.knowledge.config import EmbeddingConfig
 
 BeforeRequest = Callable[[], Awaitable[None]]
 
 
 class EmbeddingQuota:
+    """Own the Redis client used for shared admission and provider cooldowns."""
+
     def __init__(self, config: EmbeddingConfig, redis_url: str | None = None):
         url = redis_url or load_agent_config().redis.url.get_secret_value()
 
@@ -72,6 +74,7 @@ class EmbeddingQuota:
     async def acquire(
         self, tokens: int, before_request: BeforeRequest | None = None
     ) -> float:
+        """Reserve request and token budgets together, renewing job ownership while waiting."""
         if tokens > self.token_budget:
             raise ValueError(
                 "Embedding text exceeds the configured per-second token budget"
@@ -116,6 +119,7 @@ class EmbeddingQuota:
             await asyncio.sleep(min(delay, 1.0))
 
     async def cooldown(self, seconds: float) -> None:
+        """Extend the shared provider cooldown without shortening another client's wait."""
         milliseconds = max(1, int(seconds * 1000))
 
         async with self.lock():

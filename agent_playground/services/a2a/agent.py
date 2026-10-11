@@ -14,9 +14,10 @@ from a2a.server.tasks import TaskUpdater
 from a2a.types import Part, Role
 from langchain_core.messages import AIMessageChunk, HumanMessage, SystemMessage
 
-from agent_playground.config import load_agent_config, load_model_config
-from agent_playground.models import create_chat_model
-from agent_playground.services.a2a.protocol import AgentRole
+from agent_playground.config.agent import load_agent_config
+from agent_playground.config.models import load_model_config
+from agent_playground.models.catalog import create_chat_model
+from agent_playground.services.a2a.contracts import AgentRole
 
 logger = logging.getLogger(__name__)
 
@@ -95,14 +96,14 @@ class DemoAgentExecutor(AgentExecutor):
             await updater.start_work()
             prompt = "\n\n".join(get_message_text(message) for message in user_messages)
             first_chunk = True
-            output_length = 0
+            output_characters = 0
             artifact_id = f"{task_id}:output"
 
             async with aclosing(self._stream_text(prompt)) as chunks:
                 async for text in chunks:
-                    output_length += len(text)
+                    output_characters += len(text)
 
-                    if output_length > 100_000:
+                    if output_characters > 100_000:
                         raise ValueError("Agent output exceeded the demo limit")
 
                     await updater.add_artifact(
@@ -166,7 +167,7 @@ class DemoAgentExecutor(AgentExecutor):
             HumanMessage(content=prompt),
         ]
         buffer = ""
-        last_emitted = time.monotonic()
+        last_emitted_at = time.monotonic()
         first_chunk = True
 
         model_stream = cast(
@@ -180,17 +181,17 @@ class DemoAgentExecutor(AgentExecutor):
                 if not buffer:
                     continue
 
-                ready = (
+                should_emit = (
                     first_chunk
-                    or time.monotonic() - last_emitted >= 0.15
+                    or time.monotonic() - last_emitted_at >= 0.15
                     or len(buffer) >= 600
                 )
 
-                if ready:
+                if should_emit:
                     yield buffer
                     buffer = ""
                     first_chunk = False
-                    last_emitted = time.monotonic()
+                    last_emitted_at = time.monotonic()
 
         if buffer:
             yield buffer

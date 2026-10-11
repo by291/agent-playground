@@ -18,6 +18,7 @@ from agent_playground.knowledge.text import decode_text
 def split_document(
     name: str, data: bytes, *, text_encoding: str | None = None
 ) -> list[Document]:
+    """Split supported source bytes while preserving source names and PDF pages."""
     suffix = Path(name).suffix.lower()
 
     if suffix == ".pdf":
@@ -63,8 +64,9 @@ def split_document(
 async def extract_document(
     name: str, data: bytes, *, text_encoding: str | None = None
 ) -> list[Document]:
+    """Own an extraction process through completion, timeout or caller cancellation."""
     # Windows' database-compatible Selector loop cannot manage asyncio subprocesses.
-    starting = asyncio.create_task(
+    process_start = asyncio.create_task(
         asyncio.to_thread(
             lambda: subprocess.Popen(
                 [
@@ -83,16 +85,14 @@ async def extract_document(
             ),
         )
     )
-    communication: asyncio.Task[tuple[bytes, bytes]] | None = None
+    pipe_drain: asyncio.Task[tuple[bytes, bytes]] | None = None
 
     try:
-        process = await asyncio.shield(starting)
-        communication = asyncio.create_task(
-            asyncio.to_thread(process.communicate, data)
-        )
+        process = await asyncio.shield(process_start)
+        pipe_drain = asyncio.create_task(asyncio.to_thread(process.communicate, data))
 
         # Keep pipe draining alive so cancellation can kill and reap the child.
-        output, _stderr = await asyncio.shield(communication)
+        output, _stderr = await asyncio.shield(pipe_drain)
 
         if process.returncode != 0:
             raise ValueError("Document extraction failed; check the document format")
@@ -105,17 +105,17 @@ async def extract_document(
         return [Document.model_validate(document) for document in result["documents"]]
     finally:
         # Creation may still be running in a thread when the caller cancels.
-        process = await starting
+        process = await process_start
 
         if process.poll() is None:
             with suppress(ProcessLookupError):
                 process.kill()
 
         # Drain pipes after cancellation so a full output pipe cannot stall reaping.
-        if communication is None:
+        if pipe_drain is None:
             await asyncio.to_thread(process.communicate)
         else:
-            await communication
+            await pipe_drain
 
 
 if __name__ == "__main__":

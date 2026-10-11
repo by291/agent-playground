@@ -5,7 +5,7 @@ from typing import Any
 
 import yaml
 
-from agent_playground.config import load_model_config
+from agent_playground.config.models import load_model_config
 
 
 class ModelConfigFile:

@@ -6,15 +6,15 @@ from typing import TypedDict
 from langchain_core.language_models import BaseChatModel
 from pydantic import SecretStr
 
-from agent_playground.config import load_model_config
-from agent_playground.context import ContextSettings
-from agent_playground.model_adapters import create_provider_model
-from agent_playground.model_profiles import (
+from agent_playground.config.models import load_model_config
+from agent_playground.models.profiles import (
     ChatProvider,
     ModelInformation,
     ThinkingLevel,
     model_information,
 )
+from agent_playground.models.providers import create_provider_model
+from agent_playground.models.tokens import ContextSettings
 
 
 class ModelOption(TypedDict):
@@ -57,6 +57,7 @@ class ChatModelConfiguration:
         }
 
     def output_budget(self, thinking: ThinkingLevel, limit: int | None = None) -> int:
+        """Apply an optional call limit within the configured provider budget."""
         budget = self.output_override or self.information.output_budget(thinking)
 
         if limit is not None:
@@ -75,6 +76,7 @@ class ChatModelConfiguration:
         if self.input_override is not None:
             budget = min(budget, self.input_override)
 
+        # Input and output share the provider's total context window.
         return min(budget, self.information.context_window - self.max_output_tokens)
 
     def context_settings(self, model: BaseChatModel) -> ContextSettings:
@@ -115,6 +117,7 @@ def model_configurations() -> tuple[ChatModelConfiguration, ...]:
 
 
 def model_configuration(model_id: str | None = None) -> ChatModelConfiguration:
+    """Resolve the persisted selection; an unknown ID never falls back to default."""
     selected = model_id if model_id is not None else load_model_config().chat.default
 
     for configuration in model_configurations():
@@ -125,6 +128,7 @@ def model_configuration(model_id: str | None = None) -> ChatModelConfiguration:
 
 
 def agent_info() -> AgentInfo:
+    """Expose model choices without credentials or provider client construction."""
     default = model_configuration()
 
     return {
@@ -143,6 +147,7 @@ def create_chat_model(
     max_tokens: int | None = None,
     disable_thinking: bool = False,
 ) -> BaseChatModel:
+    """Create an isolated provider client for a main, summary or revision call."""
     configuration = model_configuration(model_id)
 
     if not configuration.available:

@@ -36,6 +36,7 @@ async def publish_workflow_output(
     card: A2uiMessageListWrapper,
     workflow: WorkflowOutputMetadata | None = None,
 ) -> None:
+    """Persist output before publishing an event with its durable identity."""
     config = get_config()
     metadata = config.get("metadata") or {}
     configurable = config.get("configurable") or {}
@@ -61,6 +62,8 @@ async def publish_workflow_output(
         payload=payload,
     )
 
+    # Reconnects read the same persisted payload and identity. Emitting before
+    # storage completes would expose output that history cannot recover.
     await adispatch_custom_event(
         "a2ui",
         {

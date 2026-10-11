@@ -7,7 +7,8 @@ from typing import Any
 import pytest
 import yaml
 
-from agent_playground.config import PROJECT_ROOT, load_agent_config
+from agent_playground.config.agent import load_agent_config
+from agent_playground.config.reader import PROJECT_ROOT
 
 
 def update_agent_config(section: str, **values: Any) -> None:

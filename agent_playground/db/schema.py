@@ -1,4 +1,4 @@
-"""Workflow output DDL and the shared conversation table contracts.
+"""Python-owned application DDL and server-owned conversation query contracts.
 
 Python owns workflow outputs, SQL/report demo jobs and A2A tasks/jobs.
 The TypeScript server owns conversations and conversation_runs; their columns

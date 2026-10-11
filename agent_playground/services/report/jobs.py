@@ -18,6 +18,7 @@ def report_event(job: ReportJob, revision: int) -> ReportEvent:
 
     if revision <= 4:
         stage, message, progress = stages[revision - 1]
+
         return ReportEvent(
             revision=revision,
             status="queued" if revision == 1 else "running",
@@ -53,13 +54,18 @@ def report_event(job: ReportJob, revision: int) -> ReportEvent:
 def pending_report_events(
     *, now: datetime | None = None
 ) -> list[tuple[ReportJob, ReportEvent]]:
-    current = now or datetime.now(UTC)
+    current_time = now or datetime.now(UTC)
     events = []
 
     for job in pending_report_jobs(FINAL_REVISION):
         revision = job.delivered_revision + 1
 
-        if (current - job.created_at).total_seconds() >= (revision - 1) * 3:
+        elapsed_seconds = (current_time - job.created_at).total_seconds()
+        revision_due = elapsed_seconds >= (revision - 1) * 3
+
+        # Advance one revision per acknowledged callback, even if the worker
+        # resumes long after creation. Never skip durable progress snapshots.
+        if revision_due:
             events.append((job, report_event(job, revision)))
 
     return events

@@ -6,6 +6,7 @@ from datetime import UTC, datetime, timedelta
 import httpx
 import pytest
 
+from agent_playground.app import app
 from agent_playground.db.connection import app_engine, prepare_app_store
 from agent_playground.db.report_jobs import (
     create_report_job as store_report_job,
@@ -13,7 +14,6 @@ from agent_playground.db.report_jobs import (
 from agent_playground.db.report_jobs import (
     mark_report_event_delivered,
 )
-from agent_playground.http import app
 from agent_playground.services.report.jobs import pending_report_events
 from agent_playground.services.report.models import ReportRequest
 from agent_playground.services.report.worker import deliver_report_events

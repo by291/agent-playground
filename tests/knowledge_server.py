@@ -9,10 +9,10 @@ from fastapi import FastAPI, Header, Request
 from langgraph.store.postgres.aio import AsyncPostgresStore
 from pydantic import BaseModel
 
-from agent_playground.config import load_agent_config
+from agent_playground.config.agent import load_agent_config
 from agent_playground.db.connection import close_app_store, prepare_app_store
 from agent_playground.db.knowledge import KnowledgeRepository
-from agent_playground.knowledge.store import EmbeddingConfig
+from agent_playground.knowledge.config import EmbeddingConfig
 from agent_playground.knowledge.tools import retrieve
 from agent_playground.knowledge.worker import run_knowledge_worker
 from agent_playground.memory.models import MemoryEdit

@@ -10,7 +10,11 @@ import pytest
 import yaml
 
 from agent_playground import cli
-from agent_playground.config import app_api_url, load_agent_config, workflow_api_token
+from agent_playground.config.agent import (
+    app_api_url,
+    load_agent_config,
+    workflow_api_token,
+)
 from agent_playground.skills.sandbox import SandboxSettings
 
 

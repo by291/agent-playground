@@ -60,6 +60,8 @@ def _store(
         )
 
         if existing is not None:
+            # Replay returns the original run and sequence, even when a later
+            # run resumes the same workflow step.
             if existing["version"] != WORKFLOW_OUTPUT_VERSION:
                 raise ValueError(
                     "Unsupported workflow output version; start a new conversation"
@@ -106,6 +108,8 @@ def _store(
             .values(next_output_seq=next_output_seq + 1)
         )
 
+        # PostgreSQL delivers NOTIFY only after the output and its sequence
+        # allocation commit together.
         connection.execute(
             text("SELECT pg_notify('conversation_changed', :thread_id)"),
             {"thread_id": thread_id},
@@ -123,6 +127,7 @@ async def store_workflow_output(
     step_seq: int,
     payload: dict[str, object],
 ) -> WorkflowOutput:
+    """Store one workflow step or replay its original identity and sequence."""
     return await asyncio.to_thread(
         _store,
         thread_id=thread_id,

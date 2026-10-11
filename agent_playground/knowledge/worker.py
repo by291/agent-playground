@@ -8,15 +8,13 @@ from uuid import uuid4
 
 import httpx
 
-from agent_playground.config import app_api_url, workflow_api_token
+from agent_playground.config.agent import app_api_url, workflow_api_token
 from agent_playground.db.async_operations import run_database_operation
 from agent_playground.db.knowledge import IndexJob, KnowledgeRepository, publish_index
+from agent_playground.knowledge.config import EmbeddingConfig
 from agent_playground.knowledge.documents import extract_document
 from agent_playground.knowledge.embeddings import validate_vectors
-from agent_playground.knowledge.store import (
-    EmbeddingConfig,
-    open_store,
-)
+from agent_playground.knowledge.store import open_store
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +29,8 @@ async def index_job(
     config: EmbeddingConfig,
     source_client: httpx.AsyncClient,
 ) -> bool:
+    """Index one claimed generation while a sibling task maintains its lease."""
+
     async def check_ownership() -> None:
         if not await run_database_operation(repository.renew, job):
             raise SupersededIndexJob
@@ -45,6 +45,7 @@ async def index_job(
             await check_ownership()
 
             async with asyncio.TaskGroup() as tasks:
+                # A failed ownership check cancels indexing; completion stops renewal.
                 heartbeat = tasks.create_task(keep_lease())
 
                 try:
@@ -85,6 +86,7 @@ async def build_index(
     source_client: httpx.AsyncClient,
     check_ownership: Callable[[], Awaitable[None]],
 ) -> bool:
+    """Stage hidden vectors and publish only if the claimed generation still owns them."""
     response = await source_client.get(
         f"{app_api_url()}/internal/knowledge/documents/{job.id}/file",
         headers={"Authorization": f"Bearer {workflow_api_token()}"},
@@ -92,7 +94,11 @@ async def build_index(
     response.raise_for_status()
     data = response.content
 
-    if len(data) != job.size or hashlib.sha256(data).hexdigest() != job.sha256:
+    source_mismatch = (
+        len(data) != job.size or hashlib.sha256(data).hexdigest() != job.sha256
+    )
+
+    if source_mismatch:
         raise ValueError("Source file does not match its upload metadata")
 
     documents = await extract_document(job.name, data, text_encoding=job.text_encoding)
@@ -132,6 +138,7 @@ async def build_index(
 
 
 async def run_knowledge_worker() -> None:
+    """Claim recoverable jobs until application shutdown cancels the worker."""
     async with httpx.AsyncClient(timeout=30) as client:
         while True:
             try:

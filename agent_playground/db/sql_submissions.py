@@ -22,6 +22,8 @@ class SubmissionConflictError(ValueError):
 
 def _store(*, submission_id: str, sql: str) -> SqlSubmissionRecord:
     with app_engine().begin() as connection:
+        # Insert first so concurrent retries share one receipt. The following
+        # read checks the winning statement before this transaction commits.
         connection.execute(
             insert(sql_demo_submissions)
             .values(id=submission_id, sql=sql)
@@ -64,6 +66,7 @@ def _read(submission_id: str) -> SqlSubmissionRecord | None:
 
 
 async def store_sql_submission(*, submission_id: str, sql: str) -> SqlSubmissionRecord:
+    """Store or replay a receipt; the SQL text is never executed here."""
     return await asyncio.to_thread(_store, submission_id=submission_id, sql=sql)
 
 

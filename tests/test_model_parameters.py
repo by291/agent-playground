@@ -11,8 +11,12 @@ from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langchain_deepseek import ChatDeepSeek
 from langchain_qwq import ChatQwen
 
-from agent_playground.model_profiles import library_model_profile
-from agent_playground.models import agent_info, create_chat_model, model_configuration
+from agent_playground.models.catalog import (
+    agent_info,
+    create_chat_model,
+    model_configuration,
+)
+from agent_playground.models.profiles import library_model_profile
 from tests.model_config import ModelConfigFile
 
 
@@ -476,7 +480,7 @@ def test_incomplete_sdk_capacities_fail_configuration_validation(
         return profile
 
     monkeypatch.setattr(
-        "agent_playground.model_profiles.library_model_profile",
+        "agent_playground.models.profiles.library_model_profile",
         sdk_profile,
     )
     model_config.chat(model="unknown-model", api_key="never-expose-this-key")
@@ -498,7 +502,7 @@ def test_sdk_profile_without_effort_information_rejects_thinking(
         }
 
     monkeypatch.setattr(
-        "agent_playground.model_profiles.library_model_profile",
+        "agent_playground.models.profiles.library_model_profile",
         sdk_profile,
     )
     model_config.chat(model="unknown-model", thinking="medium")
@@ -514,7 +518,7 @@ def test_output_override_must_leave_space_in_the_total_context(
         return {"max_input_tokens": 8000, "max_output_tokens": 8000}
 
     monkeypatch.setattr(
-        "agent_playground.model_profiles.library_model_profile",
+        "agent_playground.models.profiles.library_model_profile",
         sdk_profile,
     )
     model_config.chat(

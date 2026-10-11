@@ -21,8 +21,9 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from agent_playground.db.knowledge import KnowledgeRepository, publish_index
+from agent_playground.knowledge.config import EmbeddingConfig
 from agent_playground.knowledge.documents import split_document
-from agent_playground.knowledge.store import EmbeddingConfig, open_store
+from agent_playground.knowledge.store import open_store
 from agent_playground.knowledge.tools import retrieve
 from agent_playground.knowledge.worker import index_job
 from tests.agent_config import update_agent_config

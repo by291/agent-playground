@@ -41,6 +41,7 @@ def sql_card(state: SqlState) -> A2uiMessageListWrapper:
         raise ValueError("SQL card requires a check result")
 
     surface_id = f"sql-{state.workflow_call_id}-{state.round}"
+
     return A2uiMessageListWrapper(
         messages=[
             CreateSurfaceMessage(
@@ -70,24 +71,27 @@ def sql_card(state: SqlState) -> A2uiMessageListWrapper:
 
 
 async def publish_sql_card(*, state: SqlState) -> None:
+    card = sql_card(state)
+    surface_id = f"sql-{state.workflow_call_id}-{state.round}"
+    reply_id = f"sql-{state.workflow_call_id}-reply-{state.round}"
+    reply = None
+
+    if state.reply:
+        reply = WorkflowReply(id=reply_id, content=state.reply)
+
+    presentation = WorkflowPresentation(
+        surface_id=surface_id,
+        group_id=state.workflow_call_id,
+        anchor_message_id=reply_id if state.reply else None,
+    )
+
     await publish_workflow_output(
         workflow_call_id=state.workflow_call_id,
         step_id=f"{state.status}:{state.round}",
         step_seq=state.round,
-        card=sql_card(state),
+        card=card,
         workflow=WorkflowOutputMetadata(
-            reply=WorkflowReply(
-                id=f"sql-{state.workflow_call_id}-reply-{state.round}",
-                content=state.reply,
-            )
-            if state.reply
-            else None,
-            presentation=WorkflowPresentation(
-                surface_id=f"sql-{state.workflow_call_id}-{state.round}",
-                group_id=state.workflow_call_id,
-                anchor_message_id=f"sql-{state.workflow_call_id}-reply-{state.round}"
-                if state.reply
-                else None,
-            ),
+            reply=reply,
+            presentation=presentation,
         ),
     )

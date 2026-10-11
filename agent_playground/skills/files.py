@@ -8,7 +8,7 @@ from uuid import NAMESPACE_URL, UUID, uuid5
 import httpx
 from pydantic import BaseModel, ConfigDict, Field
 
-from agent_playground.config import app_api_url, workflow_api_token
+from agent_playground.config.agent import app_api_url, workflow_api_token
 from agent_playground.skills.catalog import MAX_FILE_BYTES, relative_path
 
 
@@ -26,6 +26,7 @@ class SkillFileClient:
         self.thread_id = thread_id
         self.run_id = run_id
         self.call_id = call_id
+
         token = workflow_api_token()
 
         if not token:
@@ -59,16 +60,19 @@ class SkillFileClient:
     async def publish(
         self, outputs: dict[str, bytes]
     ) -> tuple[list[SkillFile], str | None]:
+        """Keep published links on partial failure, using retry-stable file identities."""
         result: list[SkillFile] = []
 
         async with httpx.AsyncClient(timeout=30) as client:
             for path, data in outputs.items():
+                # A matching transfer retry reuses the reserved output identity.
                 identifier = str(
                     uuid5(
                         NAMESPACE_URL,
                         f"skill/{self.thread_id}/{self.run_id}/{self.call_id}/{path}",
                     )
                 )
+
                 try:
                     response = await client.post(
                         f"{app_api_url()}/internal/skill-files",

@@ -1,11 +1,9 @@
-"""Report model context and delegate compaction to LangChain."""
+"""Compact checkpoint model history without losing recoverable public responses."""
 
 from collections.abc import Iterable
-from math import ceil
-from typing import Annotated, Any, NotRequired, TypedDict, cast, override
+from typing import Any, cast, override
 
 from langchain.agents.middleware import AgentState, SummarizationMiddleware
-from langchain.agents.middleware.types import OmitFromInput, PrivateStateAttr
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import (
     AIMessage,
@@ -15,125 +13,32 @@ from langchain_core.messages import (
     SystemMessage,
     ToolMessage,
 )
-from langchain_core.messages.utils import (
-    convert_to_messages,
-    count_tokens_approximately,
-)
+from langchain_core.messages.utils import count_tokens_approximately
 from langchain_core.tools import BaseTool
 from langgraph.runtime import Runtime
-from pydantic import BaseModel, Field
 
-
-class ContextBreakdown(TypedDict):
-    system: int
-    tools: int
-    conversation: int
-    toolResults: int
-    summary: int
-
-
-class CompactionUsage(TypedDict):
-    beforeTokens: int
-    afterTokens: int
-
-
-class ContextUsage(TypedDict):
-    model: str
-    usedTokens: int
-    contextWindow: int
-    triggerTokens: int
-    breakdown: ContextBreakdown
-    lastInputTokens: int | None
-    compactions: int
-    lastCompaction: CompactionUsage | None
-    revision: int
-
-
-def latest_memory_project(_previous: str, project: str) -> str:
-    # Parallel memory commands merge in tool-call order. The last explicitly
-    # named project becomes the conversation's automatic-recall scope.
-    return project
-
-
-class ContextState(AgentState[Any]):
-    memory_context: NotRequired[Annotated[str, OmitFromInput, PrivateStateAttr]]
-    memory_project: NotRequired[
-        Annotated[str, OmitFromInput, PrivateStateAttr, latest_memory_project]
-    ]
-    context_usage: NotRequired[Annotated[ContextUsage, OmitFromInput]]
-    # Keep public replies and tool results recoverable across compaction and review.
-    response_messages: NotRequired[
-        Annotated[list[AIMessage | ToolMessage], PrivateStateAttr]
-    ]
-
-
-class ContextSettings(BaseModel):
-    window: int = Field(gt=0)
-    compact_ratio: float = Field(default=0.8, gt=0.2, lt=1)
-
-    @classmethod
-    def from_model(
-        cls,
-        model: BaseChatModel,
-        *,
-        window: int | None = None,
-        compact_ratio: float = 0.8,
-    ):
-        profile = model.profile or {}
-        if window is None:
-            model_window = profile.get("max_input_tokens")
-
-            if isinstance(model_window, int):
-                window = model_window
-            elif model.__class__.__module__.startswith("langchain_deepseek"):
-                raise ValueError(
-                    "Set max_input_tokens in models.yaml for an unknown model"
-                )
-            else:
-                window = 1000000
-
-        return cls(
-            window=window,
-            compact_ratio=compact_ratio,
-        )
-
-
-def estimate_tokens(
-    messages: Iterable[MessageLikeRepresentation], *, tokens_per_image: int = 1024
-) -> int:
-    # A conservative character ratio also accommodates the playground's Chinese text.
-    # Image pixels are charged by the provider; base64 length is not a token estimate.
-    history = convert_to_messages(messages)
-    tokens = count_tokens_approximately(
-        history, chars_per_token=2.0, tokens_per_image=tokens_per_image
-    )
-
-    # The library counter excludes additional_kwargs, while thinking tool calls
-    # send reasoning_content back to the provider as part of the input history.
-    for message in history:
-        if not isinstance(message, AIMessage):
-            continue
-
-        reasoning = message.additional_kwargs.get("reasoning_content")
-
-        if isinstance(reasoning, str):
-            tokens += ceil(len(reasoning) / 2.0)
-
-    return tokens
+from agent_playground.context_state import (
+    ContextBreakdown,
+    ContextState,
+    ContextUsage,
+)
+from agent_playground.models.tokens import ContextSettings, estimate_tokens
 
 
 def recoverable_responses(state: ContextState) -> list[AIMessage | ToolMessage]:
+    """Retain public replies independently of compacted model history."""
     messages = state["messages"]
-    start = 0
+    response_start = 0
 
     for index, message in enumerate(messages):
         if isinstance(message, HumanMessage):
-            start = index + 1
+            response_start = index + 1
 
     responses = list(state.get("response_messages", []))
     saved_ids = {message.id for message in responses if message.id is not None}
 
-    for message in messages[start:]:
+    # A checkpoint can contain replies already saved before a review or compaction.
+    for message in messages[response_start:]:
         if not isinstance(message, (AIMessage, ToolMessage)):
             continue
 
@@ -152,6 +57,8 @@ def recoverable_responses(state: ContextState) -> list[AIMessage | ToolMessage]:
 
 
 class ContextMiddleware(SummarizationMiddleware):
+    """Compact model history while preserving public replies and usage revisions."""
+
     state_schema = ContextState
 
     def __init__(
@@ -167,6 +74,7 @@ class ContextMiddleware(SummarizationMiddleware):
         self.settings = settings or ContextSettings.from_model(model)
         self.tokens_per_image = tokens_per_image
         self.model_name = str(getattr(model, "model_name", model.__class__.__name__))
+
         self.system_tokens = estimate_tokens([SystemMessage(content=system_prompt)])
         self.tool_tokens = count_tokens_approximately(
             [], tools=[*tools], chars_per_token=2.0
@@ -234,6 +142,7 @@ class ContextMiddleware(SummarizationMiddleware):
     ) -> dict[str, Any]:
         context_state = cast("ContextState", state)
         usage = self._usage(context_state, state["messages"], include_input_usage=True)
+
         return {
             "context_usage": usage,
             "response_messages": recoverable_responses(context_state),
@@ -287,16 +196,20 @@ class ContextMiddleware(SummarizationMiddleware):
             else:
                 conversation.append(message)
 
+        system_tokens = self.system_tokens
+        memory_context = state.get("memory_context")
+
+        if memory_context:
+            system_tokens += estimate_tokens([SystemMessage(content=memory_context)])
+
         breakdown: ContextBreakdown = {
-            "system": self.system_tokens
-            + estimate_tokens([SystemMessage(content=state["memory_context"])])
-            if state.get("memory_context")
-            else self.system_tokens,
+            "system": system_tokens,
             "tools": self.tool_tokens,
             "conversation": self._estimate_tokens(conversation),
             "toolResults": self._estimate_tokens(results),
             "summary": self._estimate_tokens(summaries),
         }
+
         previous = state.get("context_usage")
         last_input = (
             previous["lastInputTokens"]

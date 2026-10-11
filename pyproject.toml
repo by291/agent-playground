@@ -53,6 +53,7 @@ dev = [
     "pytest",
     "ruff",
     "testcontainers[postgres]>=4.15.0",
+    "types-protobuf>=7.35.1.20260906",
     "types-pyyaml>=6,<7",
 ]
 

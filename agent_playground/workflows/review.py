@@ -34,19 +34,20 @@ class WorkflowReviewResponse(BaseModel):
 
 
 def wait_for_review(review: WorkflowReview) -> WorkflowReviewResponse:
+    """Validate a resumed decision against the exact published review round."""
     response = WorkflowReviewResponse.model_validate(
         interrupt(
             review.model_dump(by_alias=True, exclude_none=True),
             response_schema=WorkflowReviewResponse,
         )
     )
-    current = (
+    targets_current_review = (
         response.workflow_call_id == review.workflow_call_id
         and response.revision == review.revision
         and response.round == review.round
     )
 
-    if not current:
+    if not targets_current_review:
         raise ValueError("Workflow review is no longer current")
 
     if response.action == "accept" and not review.can_accept:

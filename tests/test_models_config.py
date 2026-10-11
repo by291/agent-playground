@@ -8,8 +8,12 @@ from langchain_core.messages import AIMessage
 from langchain_qwq import ChatQwen
 from pydantic import SecretStr
 
-from agent_playground.knowledge.store import EmbeddingConfig
-from agent_playground.models import agent_info, create_chat_model, model_configuration
+from agent_playground.knowledge.config import EmbeddingConfig
+from agent_playground.models.catalog import (
+    agent_info,
+    create_chat_model,
+    model_configuration,
+)
 from tests.model_config import ModelConfigFile
 from tests.test_context import RecordingModel
 
@@ -21,7 +25,7 @@ def test_catalog_uses_private_file_and_ignores_obsolete_model_environment(
         return {"max_input_tokens": 64000, "max_output_tokens": 8000}
 
     monkeypatch.setattr(
-        "agent_playground.model_profiles.library_model_profile",
+        "agent_playground.models.profiles.library_model_profile",
         sdk_profile,
     )
     model_config.chat(

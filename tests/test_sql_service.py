@@ -5,8 +5,8 @@ import asyncio
 import httpx
 import pytest
 
+from agent_playground.app import app
 from agent_playground.db.connection import app_engine, prepare_app_store
-from agent_playground.http import app
 from agent_playground.services.sql.validation import check_sql
 from tests.agent_config import update_agent_config
 

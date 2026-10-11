@@ -6,7 +6,7 @@ from typing import Annotated
 from fastapi import APIRouter, Header, HTTPException
 from pydantic import BaseModel, Field
 
-from agent_playground.config import workflow_api_token
+from agent_playground.config.agent import workflow_api_token
 from agent_playground.db.a2a_jobs import (
     create_job,
     read_job,
@@ -14,7 +14,7 @@ from agent_playground.db.a2a_jobs import (
     request_input,
 )
 from agent_playground.db.async_operations import run_database_operation
-from agent_playground.services.a2a.models import CollaborationRequest
+from agent_playground.services.a2a.contracts import CollaborationRequest
 
 router = APIRouter(prefix="/a2a-demo", tags=["A2A demonstration"])
 

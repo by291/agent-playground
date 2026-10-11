@@ -4,11 +4,12 @@ import os
 
 from aegra_cli.cli import cli
 
-from agent_playground.config import PROJECT_ROOT, AgentConfig, load_agent_config
+from agent_playground.config.agent import AgentConfig, load_agent_config
+from agent_playground.config.reader import PROJECT_ROOT
 
 
 def aegra_environment(config: AgentConfig) -> dict[str, str]:
-    """Translate only the runtime library's settings before importing Aegra."""
+    """Translate YAML into the runtime library's environment before serving."""
     observability = config.observability
 
     return {
@@ -33,6 +34,8 @@ def aegra_environment(config: AgentConfig) -> dict[str, str]:
 
 def main() -> None:
     config = load_agent_config()
+
+    # YAML settings replace inherited values before Aegra's dotenv loading runs.
     os.environ.update(aegra_environment(config))
     os.environ.setdefault("AEGRA_CONFIG", str(PROJECT_ROOT / "aegra.json"))
 

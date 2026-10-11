@@ -33,6 +33,7 @@ def test_a2a_workflow_waits_and_publishes_compact_completion_receipt(
     receipt: str,
 ):
     from agent_playground.workflows.a2a import graph as module
+    from agent_playground.workflows.a2a.models import A2aState
     from agent_playground.workflows.external import ExternalTaskRegistration
 
     submissions = []
@@ -56,7 +57,7 @@ def test_a2a_workflow_waits_and_publishes_compact_completion_receipt(
         graph = module.make_a2a_workflow(checkpointer=InMemorySaver())
         config = {"configurable": {"thread_id": "thread"}}
         await graph.ainvoke(
-            module.A2aState(task="Order plan", workflow_call_id="call"), config
+            A2aState(task="Order plan", workflow_call_id="call"), config
         )
         snapshot = await graph.aget_state(config)
         assert snapshot.interrupts[0].value["taskId"] == "job"

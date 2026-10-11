@@ -10,6 +10,7 @@ logger = logging.getLogger(__name__)
 async def run_database_operation[**P, T](
     operation: Callable[P, T], *args: P.args, **kwargs: P.kwargs
 ) -> T:
+    """Drain the blocking operation before propagating caller cancellation."""
     task = asyncio.create_task(asyncio.to_thread(operation, *args, **kwargs))
 
     try:

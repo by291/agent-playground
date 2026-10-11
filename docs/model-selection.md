@@ -55,7 +55,7 @@ The application translates the same thinking levels into each provider's native 
 
 No separate `enabled`, native `effort` or numeric `budget_tokens` field is accepted. Omitted thinking is explicitly disabled in the request, independently of provider defaults.
 
-The normalized model information in [model_profiles.py](../agent_playground/model_profiles.py) combines bundled LangChain profiles with verified overrides. The two built-in entries were verified on October 7, 2026; runtime startup does not scrape model pages or issue model calls. Verified entries take precedence over incomplete or stale SDK profiles.
+The normalized model information in [profiles.py](../agent_playground/models/profiles.py) combines bundled LangChain profiles with verified overrides. The two built-in entries were verified on October 7, 2026; runtime startup does not scrape model pages or issue model calls. Verified entries take precedence over incomplete or stale SDK profiles.
 
 | Model            | Total context | Maximum output | Default output without thinking | Default output with thinking            |
 | ---------------- | ------------: | -------------: | ------------------------------: | --------------------------------------- |

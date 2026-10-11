@@ -18,7 +18,8 @@ from tests.model_config import ModelConfigFile
 
 
 def test_switching_models_does_not_report_the_previous_provider_input_usage():
-    from agent_playground.context import ContextMiddleware, ContextState
+    from agent_playground.context import ContextMiddleware
+    from agent_playground.context_state import ContextState
 
     model = RecordingModel(responses=[AIMessage(content="Next.")])
     middleware = ContextMiddleware(model, model, "Prompt", [])
@@ -60,7 +61,7 @@ def test_switching_models_does_not_report_the_previous_provider_input_usage():
 
 
 def test_image_token_estimate_uses_deepseek_upper_bound_not_base64_length():
-    from agent_playground.context import estimate_tokens
+    from agent_playground.models.tokens import estimate_tokens
 
     text = HumanMessage(content=[{"type": "text", "text": "Read this image."}])
     image = HumanMessage(
@@ -77,7 +78,7 @@ def test_image_token_estimate_uses_deepseek_upper_bound_not_base64_length():
 
 
 def test_token_estimate_counts_replayed_reasoning_without_changing_visible_content():
-    from agent_playground.context import estimate_tokens
+    from agent_playground.models.tokens import estimate_tokens
 
     plain = AIMessage(content="Use the clock tool.")
     reasoning = "Inspect the timestamp. " * 200

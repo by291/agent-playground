@@ -2,7 +2,8 @@
 
 from langchain.tools import ToolRuntime, tool
 
-from agent_playground.workflows.a2a.graph import A2aState, make_a2a_workflow
+from agent_playground.workflows.a2a.graph import make_a2a_workflow
+from agent_playground.workflows.a2a.models import A2aState
 
 workflow = make_a2a_workflow()
 
@@ -26,6 +27,7 @@ async def run_a2a_workflow(
 
     if completed.status == "failed":
         return f"A2A collaboration failed: {completed.error}"
+
     if completed.status == "cancelled":
         return (
             "The A2A collaboration was cancelled. Partial child output remains visible."

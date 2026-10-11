@@ -49,24 +49,24 @@ Python/LangGraph defines sequence, branches and business state. Shared mechanism
 
 ## Code responsibilities
 
-| Code                                     | Responsibility                                                                                          |
-| ---------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| `agent_playground/graph.py`              | Parent agent, model, tools and context management.                                                      |
-| `agent_playground/workflows/review.py`   | `WorkflowReview` / `wait_for_review()`: pause, feedback/accept/abandon, identity and acceptance checks. |
-| `agent_playground/workflows/output.py`   | Persist before events; publish official A2UI and independent reply/presentation metadata.               |
-| `agent_playground/workflows/sql/`        | SQL generation, checking, revisions, submission, receipts, model adaptation and content display.        |
-| `agent_playground/workflows/experiment/` | Experiment stages and editable form review.                                                             |
-| `agent_playground/services/sql/`         | API models/routes/checks; persist submissions without executing SQL.                                    |
-| `agent_playground/services/report/`      | Report requests, stages and durable callback delivery.                                                  |
-| `agent_playground/db/`                   | Database contracts and idempotent persistence, independent of HTTP/review copy.                         |
-| `shared/workflow-review.ts`              | Common review identities/responses without SQL, schema or check fields.                                 |
-| `shared/workflow-output.ts`              | Stable reply IDs and presentation ownership without parsing business cards.                             |
-| `server/src/conversation/`               | Admission, review/output checks, feedback archiving and checkpoint reply synchronization.               |
-| `server/src/agent/`                      | Official AG-UI/LangGraph adapter and resume targeting by interrupt ID.                                  |
-| `web/src/features/conversation/`         | Common feedback routing, decision panels and current/historical card presentation.                      |
-| `web/src/features/a2ui/`                 | Official processor and business components; does not authorize business submission.                     |
+| Code                                     | Responsibility                                                                                                     |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `agent_playground/graph.py`              | Parent agent graph and tool assembly; `context.py` and `context_state.py` own compaction and checkpoint contracts. |
+| `agent_playground/workflows/review.py`   | `WorkflowReview` / `wait_for_review()`: pause, feedback/accept/abandon, identity and acceptance checks.            |
+| `agent_playground/workflows/output.py`   | Persist before events; publish official A2UI and independent reply/presentation metadata.                          |
+| `agent_playground/workflows/sql/`        | SQL generation, checking, revisions, submission, receipts, model adaptation and content display.                   |
+| `agent_playground/workflows/experiment/` | Experiment stages and editable form review.                                                                        |
+| `agent_playground/services/sql/`         | API models/routes/checks; persist submissions without executing SQL.                                               |
+| `agent_playground/services/report/`      | Report requests, stages and durable callback delivery.                                                             |
+| `agent_playground/db/`                   | Database contracts and idempotent persistence, independent of HTTP/review copy.                                    |
+| `shared/workflow-review.ts`              | Common review identities/responses without SQL, schema or check fields.                                            |
+| `shared/workflow-output.ts`              | Stable reply IDs and presentation ownership without parsing business cards.                                        |
+| `server/src/conversation/`               | Admission, review/output checks, feedback archiving and checkpoint reply synchronization.                          |
+| `server/src/agent/`                      | Official AG-UI/LangGraph adapter and resume targeting by interrupt ID.                                             |
+| `web/src/features/conversation/`         | Common feedback routing, decision panels and current/historical card presentation.                                 |
+| `web/src/features/a2ui/`                 | Official processor and business components; does not authorize business submission.                                |
 
-Services depend on `config.py` and `db/`, not workflow orchestration. SQL API models live in `services/sql/models.py`; workflow clients/state reuse them. Review state and revision-agent output remain in `workflows/sql/models.py`. `http.py` assembles routes and owns the report worker.
+Services depend on `config/`, pure `services/a2a/contracts.py` and `db/`, not workflow orchestration. SQL API models live in `services/sql/models.py`; workflow clients/state reuse them. Review state and revision-agent output remain in `workflows/sql/models.py`. A2A workflow state and completion cards live in its `models.py` and `cards.py`. Each business graph is defined in `workflows/<domain>/graph.py`. `app.py` assembles routes and owns the report, knowledge and A2A workers.
 
 ## State, review identity and acceptance
 

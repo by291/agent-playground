@@ -79,6 +79,7 @@ def library_model_profile(provider: ChatProvider, model: str) -> ModelProfile:
         return {}
 
     model_class = ChatDeepSeek if provider == "deepseek" else ChatQwen
+
     # The partner extension hook reads bundled metadata. Constructing without
     # validation avoids creating HTTP clients just to inspect model information.
     metadata_model = model_class.model_construct(model_name=model)
@@ -87,6 +88,7 @@ def library_model_profile(provider: ChatProvider, model: str) -> ModelProfile:
 
 
 def model_information(provider: ChatProvider, model: str) -> ModelInformation:
+    """Prefer verified capacities, requiring complete provider-scoped SDK fallbacks."""
     verified = VERIFIED_MODELS.get((provider, model))
 
     if verified is not None:

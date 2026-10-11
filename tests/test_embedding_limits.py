@@ -13,9 +13,9 @@ import httpx2
 import pytest
 from openai import AsyncOpenAI
 
+from agent_playground.knowledge.config import EmbeddingConfig
 from agent_playground.knowledge.embeddings import EmbeddingService
 from agent_playground.knowledge.rate_limits import EmbeddingQuota
-from agent_playground.knowledge.store import EmbeddingConfig
 from agent_playground.knowledge.token_estimation import EmbeddingTokenEstimator
 from agent_playground.knowledge.worker import SupersededIndexJob
 

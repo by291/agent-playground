@@ -21,12 +21,12 @@ from tests.agent_config import update_agent_config
 
 def test_child_prompts_separate_draft_review_and_revision() -> None:
     from agent_playground.db.a2a_jobs import CollaborationJob
-    from agent_playground.services.a2a.coordinator import prompt_for
-    from agent_playground.services.a2a.models import (
+    from agent_playground.services.a2a.contracts import (
         ChildOutput,
         CollaborationRequest,
         CollaborationState,
     )
+    from agent_playground.services.a2a.coordinator import prompt_for
 
     state = CollaborationState(user_input="For new engineers")
     job = CollaborationJob(
@@ -75,8 +75,8 @@ def test_child_prompts_separate_draft_review_and_revision() -> None:
 
 
 def test_artifact_reconnect_replaces_partial_text_before_appending():
+    from agent_playground.services.a2a.contracts import CollaborationState
     from agent_playground.services.a2a.coordinator import apply_remote_event
-    from agent_playground.services.a2a.models import CollaborationState
 
     state = CollaborationState()
     first = StreamResponse(
@@ -112,8 +112,8 @@ def test_artifact_reconnect_replaces_partial_text_before_appending():
 
 
 def test_remote_input_required_keeps_existing_artifact():
+    from agent_playground.services.a2a.contracts import CollaborationState
     from agent_playground.services.a2a.coordinator import apply_remote_event
-    from agent_playground.services.a2a.models import CollaborationState
 
     event = StreamResponse(
         task=Task(
@@ -140,7 +140,7 @@ def test_coordinator_registration_replay_and_control_are_durable(
         request_input,
     )
     from agent_playground.db.connection import app_engine, prepare_app_store
-    from agent_playground.services.a2a.models import CollaborationRequest
+    from agent_playground.services.a2a.contracts import CollaborationRequest
 
     update_agent_config("database", application_url=postgres_database_url)
     app_engine.cache_clear()
@@ -194,7 +194,7 @@ def test_transient_cancel_transport_failure_retries_actual_remote_cancel(
 
     from agent_playground.db.a2a_jobs import CollaborationJob
     from agent_playground.services.a2a import coordinator
-    from agent_playground.services.a2a.models import (
+    from agent_playground.services.a2a.contracts import (
         CollaborationRequest,
         CollaborationState,
     )
@@ -257,8 +257,8 @@ def test_coordinator_runs_real_http_agents(
     )
     from agent_playground.db.a2a_tasks import PostgresTaskStore
     from agent_playground.db.connection import close_app_store, prepare_app_store
+    from agent_playground.services.a2a.contracts import CollaborationRequest
     from agent_playground.services.a2a.coordinator import process_job
-    from agent_playground.services.a2a.models import CollaborationRequest
 
     close_app_store()
     update_agent_config("database", application_url=postgres_database_url)
@@ -386,7 +386,7 @@ def test_coordinator_reuses_saved_remote_prompt_after_upgrade(
     from agent_playground.db.a2a_tasks import PostgresTaskStore
     from agent_playground.db.connection import close_app_store, prepare_app_store
     from agent_playground.services.a2a import coordinator
-    from agent_playground.services.a2a.models import CollaborationRequest
+    from agent_playground.services.a2a.contracts import CollaborationRequest
 
     close_app_store()
     update_agent_config("database", application_url=postgres_database_url)
@@ -518,7 +518,7 @@ def test_expired_lease_cannot_write_or_renew(
         prepare_app_store,
     )
     from agent_playground.db.schema import a2a_jobs
-    from agent_playground.services.a2a.models import CollaborationRequest
+    from agent_playground.services.a2a.contracts import CollaborationRequest
 
     close_app_store()
     update_agent_config("database", application_url=postgres_database_url)

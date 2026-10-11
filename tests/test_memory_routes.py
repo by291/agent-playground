@@ -7,7 +7,7 @@ import httpx
 import pytest
 from aegra_api.core.database import db_manager
 
-from agent_playground.http import app
+from agent_playground.app import app
 from agent_playground.memory.service import MemoryService
 from tests.agent_config import update_agent_config
 from tests.memory_fixtures import remember

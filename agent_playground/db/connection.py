@@ -5,7 +5,7 @@ from functools import lru_cache
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
 
-from agent_playground.config import load_agent_config
+from agent_playground.config.agent import load_agent_config
 from agent_playground.db.schema import (
     a2a_jobs,
     a2a_tasks,
@@ -25,6 +25,7 @@ def postgres_driver_url(database_url: str) -> str:
 
 @lru_cache(maxsize=1)
 def app_engine() -> Engine:
+    """Return the process-owned engine, released by ``close_app_store``."""
     database_url = load_agent_config().database.application_url.get_secret_value()
 
     if not database_url:
@@ -38,6 +39,7 @@ def app_engine() -> Engine:
 
 
 def prepare_app_store() -> None:
+    """Prepare Python-owned tables while serializing concurrent process starts."""
     try:
         with app_engine().begin() as connection:
             # Independent agent processes can start together. Serialize both the
@@ -63,6 +65,7 @@ def prepare_app_store() -> None:
 
 
 def close_app_store() -> None:
+    """Dispose the cached engine after its callers have drained database work."""
     if not app_engine.cache_info().currsize:
         return
 

@@ -15,7 +15,7 @@ from langchain_core.messages import SystemMessage
 from langgraph.runtime import Runtime
 from psycopg import Error as PostgresError
 
-from agent_playground.context import ContextState, estimate_tokens
+from agent_playground.context_state import ContextState
 from agent_playground.memory.models import (
     MEMORY_TOKEN_BUDGET,
     MemoryScope,
@@ -24,11 +24,13 @@ from agent_playground.memory.models import (
     memory_view,
 )
 from agent_playground.memory.service import MemoryService
+from agent_playground.models.tokens import estimate_tokens
 
 logger = logging.getLogger(__name__)
 
 
 def memory_context(memories: list[MemoryView]) -> str:
+    """Pack whole records into the recall budget without archiving model context."""
     selected: list[dict[str, object]] = []
     context = ""
 
@@ -40,12 +42,18 @@ def memory_context(memories: list[MemoryView]) -> str:
             "text": memory.text,
             "revision": memory.revision,
         }
+
         candidate = (
             "\nSaved memory reference data (current instructions take priority):\n"
             + json.dumps([*selected, item], ensure_ascii=False)
         )
 
-        if estimate_tokens([SystemMessage(content=candidate)]) > MEMORY_TOKEN_BUDGET:
+        exceeds_budget = (
+            estimate_tokens([SystemMessage(content=candidate)]) > MEMORY_TOKEN_BUDGET
+        )
+
+        if exceeds_budget:
+            # A smaller later record may still fit; never truncate a memory's content.
             continue
 
         selected.append(item)

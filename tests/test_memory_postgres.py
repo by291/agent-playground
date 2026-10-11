@@ -4,6 +4,7 @@ import asyncio
 from uuid import uuid4
 
 import pytest
+from aegra_api.utils.event_loop import selector_loop_factory
 from langgraph.store.postgres.aio import AsyncPostgresStore
 
 from agent_playground.memory.models import MemoryScope, MemoryView, memory_namespace
@@ -68,4 +69,4 @@ def test_shared_postgres_memory_serializes_edits_and_preserves_forgetting(
             with pytest.raises(ValueError, match="forgotten"):
                 await reloaded.save(scope, original.text, identity)
 
-    asyncio.run(check())
+    asyncio.run(check(), loop_factory=selector_loop_factory)

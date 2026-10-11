@@ -5,7 +5,7 @@ from typing import Literal
 import httpx
 from pydantic import ValidationError
 
-from agent_playground.config import app_api_url, load_agent_config
+from agent_playground.config.agent import app_api_url, load_agent_config
 from agent_playground.services.report.models import (
     ReportEvent,
     ReportJobStatus,

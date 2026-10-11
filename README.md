@@ -43,7 +43,7 @@ A native Jetpack Compose client is available in [`android/`](android/README.md).
 
 ## Documentation and code
 
-Use the [documentation index](docs/README.md) to find setup, feature guides, architecture and historical records. [AGENTS.md](AGENTS.md) contains contribution and code-style rules.
+Use the [documentation index](docs/README.md) to find setup, feature guides, architecture and historical records. The [Python architecture guide](docs/python-architecture.md) describes execution packages, contracts and resource ownership. [AGENTS.md](AGENTS.md) contains contribution and code-style rules.
 
 | Directory                  | Purpose                                                                             |
 | -------------------------- | ----------------------------------------------------------------------------------- |

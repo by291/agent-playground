@@ -26,7 +26,7 @@ from sqlalchemy.dialects.postgresql import insert
 from agent_playground.db.async_operations import run_database_operation
 from agent_playground.db.connection import app_engine
 from agent_playground.db.schema import a2a_tasks
-from agent_playground.services.a2a.protocol import (
+from agent_playground.services.a2a.contracts import (
     TERMINAL_TASK_STATES,
     AgentRole,
     remote_task_id,
@@ -35,6 +35,8 @@ from agent_playground.services.a2a.protocol import (
 
 
 class PostgresTaskStore(TaskStore):
+    """Persist SDK task snapshots and reserve role-scoped message identities."""
+
     def __init__(self, role: str) -> None:
         if role not in {"planner", "reviewer"}:
             raise ValueError("A2A agent role must be planner or reviewer")
@@ -52,6 +54,12 @@ class PostgresTaskStore(TaskStore):
             state=task.status.state,
             payload=MessageToDict(task),
         )
+        accepts_snapshot = (~a2a_tasks.c.state.in_(TERMINAL_TASK_STATES)) & (
+            a2a_tasks.c.context_id == task.context_id
+        )
+
+        # Delayed SDK events cannot reopen a terminal task or replace another
+        # context's snapshot after a task identity has already been reserved.
         statement = statement.on_conflict_do_update(
             index_elements=[a2a_tasks.c.role, a2a_tasks.c.id],
             set_={
@@ -59,8 +67,7 @@ class PostgresTaskStore(TaskStore):
                 "payload": statement.excluded.payload,
                 "updated_at": func.now(),
             },
-            where=(~a2a_tasks.c.state.in_(TERMINAL_TASK_STATES))
-            & (a2a_tasks.c.context_id == task.context_id),
+            where=accepts_snapshot,
         )
 
         with app_engine().begin() as connection:
@@ -82,16 +89,19 @@ class PostgresTaskStore(TaskStore):
     async def reserve_request(
         self, request: SendMessageRequest, context: ServerCallContext
     ) -> Task:
+        """Reserve a new message or replay its existing task before dispatch."""
         return await run_database_operation(self._reserve_request, request)
 
     def _reserve_request(self, request: SendMessageRequest) -> Task:
         message = request.message
 
-        if (
+        invalid_user_message = (
             not message.message_id
             or message.role != Role.ROLE_USER
             or not any(part.text.strip() for part in message.parts)
-        ):
+        )
+
+        if invalid_user_message:
             raise InvalidParamsError(
                 message="A user message with a messageId and text is required"
             )
@@ -111,6 +121,8 @@ class PostgresTaskStore(TaskStore):
 
         with app_engine().begin() as connection:
             if not message.task_id:
+                # New requests derive a stable task identity. Concurrent
+                # retries share the first insert instead of creating work twice.
                 connection.execute(
                     insert(a2a_tasks)
                     .values(
@@ -123,6 +135,8 @@ class PostgresTaskStore(TaskStore):
                     .on_conflict_do_nothing()
                 )
 
+            # Keep fingerprint checks and interruption consumption under the
+            # same task lock so only one new answer can reserve the transition.
             row = connection.execute(
                 select(a2a_tasks.c.payload)
                 .where(a2a_tasks.c.role == self.role, a2a_tasks.c.id == task_id)
@@ -149,6 +163,7 @@ class PostgresTaskStore(TaskStore):
                         message="The messageId was already used with different input"
                     )
 
+                # A retry replays even if the task has since become terminal.
                 return task
 
             if task.status.state in TERMINAL_TASK_STATES:
@@ -190,7 +205,9 @@ class PostgresTaskStore(TaskStore):
     async def list(
         self, params: ListTasksRequest, context: ServerCallContext
     ) -> ListTasksResponse:
-        if params.tenant or params.HasField("status_timestamp_after"):
+        unsupported_filters = params.tenant or params.HasField("status_timestamp_after")
+
+        if unsupported_filters:
             raise UnsupportedOperationError(
                 message="Tenant and timestamp filters are not supported by this demo task store"
             )
@@ -205,8 +222,11 @@ class PostgresTaskStore(TaskStore):
         if params.page_token:
             prefix = f"{self.role}:"
             value = params.page_token.removeprefix(prefix)
+            invalid_page_token = (
+                not params.page_token.startswith(prefix) or not value.isdecimal()
+            )
 
-            if not params.page_token.startswith(prefix) or not value.isdecimal():
+            if invalid_page_token:
                 raise InvalidParamsError(message="Invalid pageToken")
 
             offset = int(value)

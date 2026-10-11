@@ -1,6 +1,6 @@
 # Architecture
 
-[Documentation index](README.md) · [Frontend architecture](frontend-architecture.md) · [Server architecture](server-architecture.md)
+[Documentation index](README.md) · [Python architecture](python-architecture.md) · [Frontend architecture](frontend-architecture.md) · [Server architecture](server-architecture.md)
 
 ## Execution path
 
@@ -22,30 +22,33 @@ The server uses the official `@ag-ui/langgraph` adapter to create native Aegra r
 
 ## Code boundaries
 
-| Area                                                                 | Responsibility                                                                                             |
-| -------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `agent_playground/graph.py`, `config.py`, `prompts.py`, `context.py` | Agent/model/tools, shared Python configuration and checkpointed model context.                             |
-| `agent_playground/workflows/`                                        | Experiment, SQL and report graphs/tools/cards; common review, external wait and output publication.        |
-| `agent_playground/services/`                                         | SQL/report demonstration APIs; depend on configuration and repositories rather than workflows.             |
-| `agent_playground/skills/`                                           | Bundle catalog, script execution and authenticated file transfers.                                         |
-| `agent_playground/knowledge/`                                        | Text extraction, durable indexing, embedding/pgvector clients and retrieval tool.                          |
-| `agent_playground/memory/`                                           | Memory policy/tools, bounded recall, LangMem persistence and private management routes.                    |
-| `agent_playground/db/`                                               | Python database contracts, connections and repositories, independent of HTTP.                              |
-| `server/src/routes/`, `server/src/middleware/`                       | HTTP routes, request validation, authentication and browser SSE transport.                                 |
-| `server/src/agent/`                                                  | Shared Aegra client, official protocol adapter, checkpoints and run execution.                             |
-| `server/src/conversation/`                                           | Run admission/persistence/recovery, history, tasks, files and change events in named directories.          |
-| `server/src/knowledge/`, `server/src/storage/`                       | Document lifecycle/cleanup and shared S3 client.                                                           |
-| `server/src/memory/`                                                 | Authenticated, bounded proxy to Python memory management.                                                  |
-| `server/src/db/`, `server/drizzle/`                                  | Application database schemas, access and migrations.                                                       |
-| `server/src/app.ts`, `server/src/main.ts`                            | HTTP assembly and process/resource lifecycle respectively.                                                 |
-| `web/src/app/`, `web/src/pages/`                                     | Routing/providers and page composition.                                                                    |
-| `web/src/layouts/`                                                   | Application page shells, back navigation and panel geometry.                                               |
-| `web/src/components/`, `web/src/shared/`                             | Reusable widgets, shadcn/ui primitives, browser hooks, preferences and telemetry.                          |
-| `web/src/features/conversation/`, `knowledge/`, `memory/`, `a2ui/`   | Conversation state/UI, document and memory management, and official A2UI processing/catalog.               |
-| `android/core/`, `android/app/`                                      | JVM protocol/session core and Compose presentation, Android lifecycle and file access.                     |
-| `shared/`                                                            | Application contracts: runs, context, conversations, workflow outputs/reviews, tasks, files and knowledge. |
+| Area                                                                        | Responsibility                                                                                             |
+| --------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `agent_playground/graph.py`, `context.py`, `context_state.py`, `prompts.py` | Main graph/tool assembly, context compaction, checkpoint state and instructions.                           |
+| `agent_playground/models/`, `config/`                                       | Provider/catalog/budgets and separate validated Agent/model YAML configuration.                            |
+| `agent_playground/services/a2a/contracts.py`                                | Pure shared A2A application state and stable request identities.                                           |
+| `agent_playground/app.py`, `cli.py`, `mcp_server.py`                        | HTTP/worker assembly, Aegra startup environment and stdio MCP entry.                                       |
+| `agent_playground/workflows/`                                               | Experiment, SQL and report graphs/tools/cards; common review, external wait and output publication.        |
+| `agent_playground/services/`                                                | SQL/report demonstration APIs; depend on configuration and repositories rather than workflows.             |
+| `agent_playground/skills/`                                                  | Bundle catalog, script execution and authenticated file transfers.                                         |
+| `agent_playground/knowledge/`                                               | Text extraction, durable indexing, embedding/pgvector clients and retrieval tool.                          |
+| `agent_playground/memory/`                                                  | Memory policy/tools, bounded recall, LangMem persistence and private management routes.                    |
+| `agent_playground/db/`                                                      | Python database contracts, connections and repositories, independent of HTTP.                              |
+| `server/src/routes/`, `server/src/middleware/`                              | HTTP routes, request validation, authentication and browser SSE transport.                                 |
+| `server/src/agent/`                                                         | Shared Aegra client, official protocol adapter, checkpoints and run execution.                             |
+| `server/src/conversation/`                                                  | Run admission/persistence/recovery, history, tasks, files and change events in named directories.          |
+| `server/src/knowledge/`, `server/src/storage/`                              | Document lifecycle/cleanup and shared S3 client.                                                           |
+| `server/src/memory/`                                                        | Authenticated, bounded proxy to Python memory management.                                                  |
+| `server/src/db/`, `server/drizzle/`                                         | Application database schemas, access and migrations.                                                       |
+| `server/src/app.ts`, `server/src/main.ts`                                   | HTTP assembly and process/resource lifecycle respectively.                                                 |
+| `web/src/app/`, `web/src/pages/`                                            | Routing/providers and page composition.                                                                    |
+| `web/src/layouts/`                                                          | Application page shells, back navigation and panel geometry.                                               |
+| `web/src/components/`, `web/src/shared/`                                    | Reusable widgets, shadcn/ui primitives, browser hooks, preferences and telemetry.                          |
+| `web/src/features/conversation/`, `knowledge/`, `memory/`, `a2ui/`          | Conversation state/UI, document and memory management, and official A2UI processing/catalog.               |
+| `android/core/`, `android/app/`                                             | JVM protocol/session core and Compose presentation, Android lifecycle and file access.                     |
+| `shared/`                                                                   | Application contracts: runs, context, conversations, workflow outputs/reviews, tasks, files and knowledge. |
 
-AG-UI and A2UI protocol schemas remain owned by the official libraries. SQL workflows reuse API response models from `services/sql/models.py`; their revision output and business state remain in `workflows/sql/models.py`. `http.py` registers services and owns the report and knowledge worker lifecycles.
+AG-UI, A2UI and A2A protocol schemas remain owned by the official libraries. SQL workflows reuse API response models from `services/sql/models.py`; their revision output and business state remain in `workflows/sql/models.py`. A2A application contracts are shared through `services/a2a/contracts.py`, so database modules do not depend on service implementations. `app.py` registers services and owns report, knowledge and A2A worker lifecycles. See the [Python architecture guide](python-architecture.md) for the complete ownership map.
 
 Python table declarations share `db/schema.py`; obtaining an engine does not create tables. The HTTP lifespan explicitly prepares Python-owned tables before starting workers, drains those workers on shutdown, then disposes and clears the cached engine. `db/async_operations.py` waits for worker database threads to finish before propagating cancellation; cancelled startup also drains schema preparation and releases the engine. Repositories depend on schema and connections, without initialization-time circular imports.
 

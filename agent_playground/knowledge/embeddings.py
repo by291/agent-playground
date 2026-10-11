@@ -19,7 +19,7 @@ from agent_playground.knowledge.rate_limits import BeforeRequest, EmbeddingQuota
 from agent_playground.knowledge.token_estimation import EmbeddingTokenEstimator
 
 if TYPE_CHECKING:
-    from agent_playground.knowledge.store import EmbeddingConfig
+    from agent_playground.knowledge.config import EmbeddingConfig
 
 logger = logging.getLogger(__name__)
 
@@ -74,7 +74,22 @@ def rate_limit_message(error: RateLimitError) -> str:
     return "Embedding service is rate limited. Wait before retrying and check your provider quota."
 
 
+async def _wait_before_retry(
+    delay: float, before_request: BeforeRequest | None
+) -> None:
+    # Lease renewal and generation checks must continue throughout non-quota delays.
+    until = time.monotonic() + delay
+
+    while (remaining := until - time.monotonic()) > 0:
+        if before_request:
+            await before_request()
+
+        await asyncio.sleep(min(remaining, 1.0))
+
+
 class EmbeddingService(Embeddings):
+    """Borrow scoped clients and retry only batches whose vectors did not complete."""
+
     def __init__(
         self, config: EmbeddingConfig, client: AsyncOpenAI, quota: EmbeddingQuota
     ):
@@ -93,6 +108,7 @@ class EmbeddingService(Embeddings):
     def batches(
         self, texts: list[str], estimator: EmbeddingTokenEstimator
     ) -> Iterator[list[str]]:
+        """Yield batches using the estimator's current calibration on each resume."""
         offset = 0
 
         while offset < len(texts):
@@ -283,13 +299,6 @@ class EmbeddingService(Embeddings):
                 )
 
                 if not isinstance(error, RateLimitError):
-                    # Keep the job lease live during non-quota retry delays as well.
-                    until = time.monotonic() + delay
-
-                    while (remaining := until - time.monotonic()) > 0:
-                        if before_request:
-                            await before_request()
-
-                        await asyncio.sleep(min(remaining, 1.0))
+                    await _wait_before_retry(delay, before_request)
 
         raise RuntimeError("Embedding retry loop ended without a result")

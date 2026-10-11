@@ -11,6 +11,8 @@ def conservative_tokens(text: str) -> int:
 
 
 class EmbeddingTokenEstimator:
+    """Keep usage calibration local to one document attempt, including retry backoff."""
+
     def __init__(self):
         self._ratios: deque[float] = deque(maxlen=12)
         self._smoothed_ratio: float | None = None

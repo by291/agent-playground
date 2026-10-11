@@ -23,6 +23,7 @@ class MemoryScope(BaseModel):
         if isinstance(value, str):
             value = value.strip()
 
+            # Match the application server's JavaScript string-length contract.
             if len(value.encode("utf-16-le")) > 200:
                 raise ValueError("Project names must contain at most 100 characters")
 
@@ -98,6 +99,7 @@ def memory_namespace(scope: MemoryScope) -> tuple[str, ...]:
 
 
 def memory_view(item: Item) -> MemoryView | None:
+    """Validate remembered content while keeping retry tombstones out of recall."""
     if item.value.get("deleted") is True:
         return None
 
