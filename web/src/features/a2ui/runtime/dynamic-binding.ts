@@ -33,7 +33,7 @@ function validateBindingPaths(value: unknown): void {
   } else if ("call" in value) {
     const call = FunctionCallSchema.parse(value);
 
-    for (const argument of Object.values(call.args)) {
+    for (const argument of Object.values(call.args ?? {})) {
       validateBindingPaths(argument);
     }
   }

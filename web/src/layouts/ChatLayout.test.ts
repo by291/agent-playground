@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { createElement } from "react";
 import { act, fireEvent, render } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { RunAgentInputSchema } from "@ag-ui/client";
+import { RunAgentInputSchema } from "@shared/ag-ui-schemas";
 import {
   ConversationProvider,
   useConversation,

@@ -1,6 +1,6 @@
 import { test } from "vitest";
 import assert from "node:assert/strict";
-import { InterruptSchema } from "@ag-ui/client";
+import { InterruptSchema } from "@shared/ag-ui-schemas";
 import { parsePlanReview, reviewEntries } from "./plan-review";
 
 test("review ownership identifies its plan without adding UI metadata to resume payloads", () => {

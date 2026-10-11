@@ -15,7 +15,7 @@ cd android
 
 In PowerShell, run `.\gradlew.bat qualityCheck` instead. The repository-root `make android-*` commands select the native wrapper automatically.
 
-The debug APK is `app/build/outputs/apk/debug/app-debug.apk`. The wrapper uses Gradle 9.5.0 with AGP 9.3.3.
+The debug APK is `app/build/outputs/apk/debug/app-debug.apk`. The wrapper uses Gradle 9.8.1 with AGP 9.4.1. Kotlin 2.4.21's [published fully tested range](https://kotlinlang.org/docs/gradle-configure-project.html) ends at Gradle 9.7.0 and AGP 9.3.1; this newer combination is verified with the repository's `qualityCheck` task. Review that check when changing any toolchain version.
 
 Start the existing backend with `make dev` from the repository root. In the app's **Settings**, connect to the TypeScript server:
 

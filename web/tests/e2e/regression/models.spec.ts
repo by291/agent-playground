@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { RunAgentInputSchema } from "@ag-ui/client";
+import { RunAgentInputSchema } from "@shared/ag-ui-schemas";
 import { expect, test } from "../fixtures";
 
 test("model selection preserves the draft, survives reload and pins each run", async ({

@@ -1,4 +1,4 @@
-import { RunAgentInputSchema } from "@ag-ui/client";
+import { RunAgentInputSchema } from "../../../shared/ag-ui-schemas.js";
 import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { streamAgent } from "./run-stream.js";

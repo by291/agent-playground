@@ -19,7 +19,9 @@ export type A2UIIngestResult =
 
 /** Owns ordered output replay and SDK surface subscriptions; its caller must dispose it. */
 export function createA2UIRuntime() {
-  const processor = new MessageProcessor([workflowCatalog]);
+  const processor = new MessageProcessor<ReactComponentImplementation>([
+    workflowCatalog,
+  ]);
 
   const outputs = new Map<number, A2UIOutput>();
   const byId = new Map<string, A2UIOutput>();

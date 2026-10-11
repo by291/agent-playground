@@ -1,4 +1,4 @@
-import type { InputContent, Message, RunAgentInput } from "@ag-ui/client";
+import type { ContentPart, Message, RunAgentInput } from "@ag-ui/client";
 import { imageMimeType, validateImage } from "./image-processing.js";
 import { uploadedFileReferences } from "../../../../shared/uploaded-files.js";
 import { SubmissionError } from "../errors.js";
@@ -81,9 +81,9 @@ export async function prepareImageInput(
 
   // Keep references in the admission/archive and inline bytes only in model input.
   // Private/local S3 URLs cannot be fetched by the model provider.
-  const content: InputContent[] = [
+  const content: ContentPart[] = [
     { type: "text", text: userMessage.content },
-    ...images.map((file): InputContent => ({
+    ...images.map((file): ContentPart => ({
       type: "image",
       source: {
         type: "data",

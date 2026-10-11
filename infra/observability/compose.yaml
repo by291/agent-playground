@@ -94,7 +94,7 @@ services:
 
   langfuse-clickhouse:
     profiles: [observability]
-    image: clickhouse/clickhouse-server:25.12
+    image: clickhouse/clickhouse-server:26.6
     environment:
       CLICKHOUSE_USER: langfuse
       CLICKHOUSE_PASSWORD: langfuse

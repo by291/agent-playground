@@ -6,7 +6,7 @@ import { WorkflowSql } from "./components/WorkflowSql";
 
 export const workflowCatalogId = "urn:agent-playground:workflow:v1";
 
-export const workflowCatalog = new Catalog(workflowCatalogId, [
+export const workflowCatalog = new Catalog(workflowCatalogId, "v0.9", [
   WorkflowPanel,
   WorkflowText,
   WorkflowSteps,

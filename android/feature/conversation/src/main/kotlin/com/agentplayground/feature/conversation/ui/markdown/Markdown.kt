@@ -182,6 +182,7 @@ internal fun Markdown(
                 val text = AnnotatedString(model.node.getUnescapedTextInNode(model.content))
                 MarkdownText(
                     copySource?.annotate(text, model.node) ?: text,
+                    node = model.node,
                     style = model.typography.text,
                 )
             },
@@ -296,6 +297,7 @@ private fun CopyableMarkdownText(
 
     MarkdownText(
         source?.annotate(text, model.node) ?: text,
+        node = model.node,
         style = style,
         modifier = Modifier.semantics { if (isHeading) heading() },
     )

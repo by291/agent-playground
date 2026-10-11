@@ -2,14 +2,14 @@
 
 from typing import Literal
 
-from a2ui.core.schema import (
+from a2ui.core.schema.v0_9 import (
     A2uiMessageListWrapper,
     CreateSurface,
     CreateSurfaceMessage,
     UpdateComponents,
     UpdateComponentsMessage,
 )
-from a2ui.core.schema.common_types import ComponentId
+from a2ui.core.schema.v0_9.common_types import ComponentId
 from pydantic import BaseModel
 
 from agent_playground.workflows.output import (
@@ -63,6 +63,12 @@ def content_card(
         ],
     ]
 
+    # The protocol envelope accepts JSON mappings, while our catalog stays typed.
+    component_payloads = [
+        component.model_dump(mode="json", by_alias=True, exclude_none=True)
+        for component in components
+    ]
+
     return A2uiMessageListWrapper(
         messages=[
             CreateSurfaceMessage(
@@ -72,7 +78,7 @@ def content_card(
             ),
             UpdateComponentsMessage(
                 update_components=UpdateComponents(
-                    surface_id=surface_id, components=components
+                    surface_id=surface_id, components=component_payloads
                 )
             ),
         ]

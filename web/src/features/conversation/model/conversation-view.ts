@@ -30,7 +30,7 @@ function isDuplicateA2aResult(
   const legacySurface =
     task &&
     view.surface.id === `a2a-${task.workflowCallId}-result` &&
-    view.surface.catalog.id === workflowCatalog.id;
+    view.surface.defaultCatalog.id === workflowCatalog.id;
 
   if (!legacySurface || !revision) {
     return false;

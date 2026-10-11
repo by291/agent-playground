@@ -1,3 +1,4 @@
+import { messageText } from "../../model/presentation";
 import { DownloadSimpleIcon } from "@phosphor-icons/react/dist/csr/DownloadSimple";
 import {
   skillFileUrl,
@@ -35,7 +36,7 @@ export function SkillFiles({
 
     try {
       const result = skillScriptResultSchema.safeParse(
-        JSON.parse(step.result.content),
+        JSON.parse(messageText(step.result)),
       );
 
       if (result.success) {

@@ -1,9 +1,5 @@
-import {
-  HttpAgent,
-  MessageSchema,
-  type AgentSubscriber,
-  type Message,
-} from "@ag-ui/client";
+import { MessageSchema } from "@shared/ag-ui-schemas";
+import { HttpAgent, type AgentSubscriber, type Message } from "@ag-ui/client";
 
 /** Configures SDK requests to send new input while the server owns checkpoint history. */
 export function configureConversationAgent(agent: HttpAgent) {

@@ -2,7 +2,7 @@
 
 from typing import Literal
 
-from a2ui.core.schema import A2uiMessageListWrapper
+from a2ui.core.schema.v0_9 import A2uiMessageListWrapper
 
 from agent_playground.workflows.cards import content_card
 from agent_playground.workflows.output import publish_workflow_output

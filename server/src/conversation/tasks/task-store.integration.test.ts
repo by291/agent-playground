@@ -8,7 +8,7 @@ import {
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
-import { InterruptSchema } from "@ag-ui/client";
+import { InterruptSchema } from "../../../../shared/ag-ui-schemas.js";
 import { eq, sql } from "drizzle-orm";
 import {
   createIntegrationDatabase,
