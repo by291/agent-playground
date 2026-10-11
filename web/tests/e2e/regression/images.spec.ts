@@ -1,4 +1,5 @@
 import { capture, expect, test } from "../fixtures";
+import type { ConversationSnapshot } from "../../../src/features/conversation/api/contracts";
 
 const png = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC",
@@ -512,13 +513,35 @@ test.describe("wheel zoom motion", () => {
     await expect
       .poll(async () => (await image.boundingBox())!.width)
       .toBeGreaterThan(fitted.width * 1.1);
-    const beforeReverse = (await image.boundingBox())!;
+    await image.evaluate((element) => {
+      const recordReversal = (event: WheelEvent) => {
+        if (event.deltaY > 0) {
+          // Capture before the viewer handles reversal, even on a slow runner.
+          element.setAttribute(
+            "data-width-at-wheel-reversal",
+            String(element.getBoundingClientRect().width),
+          );
+          element.ownerDocument.removeEventListener(
+            "wheel",
+            recordReversal,
+            true,
+          );
+        }
+      };
+
+      element.ownerDocument.addEventListener("wheel", recordReversal, true);
+    });
 
     await page.mouse.wheel(0, -120);
     await page.mouse.wheel(0, 120);
+    await expect(image).toHaveAttribute("data-width-at-wheel-reversal", /\d/);
+    const beforeReverse = Number(
+      await image.getAttribute("data-width-at-wheel-reversal"),
+    );
+
     await expect
       .poll(async () => (await image.boundingBox())!.width)
-      .toBeLessThan(beforeReverse.width);
+      .toBeLessThan(beforeReverse);
 
     await page.mouse.wheel(0, -120);
     await dialog.getByRole("button", { name: "Fit image to screen" }).click();
@@ -790,24 +813,47 @@ test("image pixels reach the model through S3 and remain available after reload 
 
 test("invalid image submission retains the prompt and attachment without starting a run", async ({
   page,
+  request,
 }) => {
   await page.goto("/");
+  const composer = page.locator("form").filter({
+    has: page.getByRole("textbox", { name: "Message" }),
+  });
+
   await page.getByLabel("Choose files").setInputFiles({
     name: "broken.png",
     mimeType: "image/png",
     buffer: Buffer.from("not a PNG"),
   });
   await page.getByRole("textbox", { name: "Message" }).fill("Read this image.");
+  const rejection = page.waitForResponse(
+    (response) =>
+      response.request().method() === "POST" &&
+      new URL(response.url()).pathname === "/agent",
+  );
 
   await page.getByRole("button", { name: "Send message", exact: true }).click();
-  await expect(page.getByRole("alert")).toContainText(
+  const response = await rejection;
+
+  expect(response.status()).toBe(400);
+  // Recovery also reports admission failures; verify the retained composer draft.
+  await expect(composer.getByRole("alert")).toContainText(
     "Attach a valid JPEG, PNG, GIF or WebP image",
   );
   await expect(page.getByRole("textbox", { name: "Message" })).toHaveValue(
     "Read this image.",
   );
-  await expect(page.getByText("broken.png", { exact: true })).toBeVisible();
+  await expect(composer.getByText("broken.png", { exact: true })).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Send message", exact: true }),
   ).toBeEnabled();
+  const input = response.request().postDataJSON() as { threadId: string };
+  const stored = await request.get(
+    `http://127.0.0.1:4300/__e2e/stored-conversation/${input.threadId}`,
+  );
+
+  expect(stored.ok()).toBe(true);
+  const snapshot = (await stored.json()) as ConversationSnapshot | null;
+
+  expect(snapshot?.runs ?? []).toHaveLength(0);
 });
