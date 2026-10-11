@@ -44,10 +44,12 @@ internal fun MemoryRow(
                     }
                 )
             }
+
             Box {
                 IconButton(onClick = { menu = true }, enabled = !busy) {
                     Icon(Icons.Outlined.MoreHoriz, "Memory actions: ${memory.text}")
                 }
+
                 DropdownMenu(menu, onDismissRequest = { menu = false }) {
                     DropdownMenuItem(
                         text = { Text("Correct") },
@@ -73,6 +75,7 @@ internal fun MemoryRow(
                             },
                         )
                     }
+
                     DropdownMenuItem(
                         text = { Text("Forget") },
                         leadingIcon = { Icon(Icons.Outlined.DeleteOutline, null) },
@@ -94,6 +97,7 @@ internal fun MemoryRow(
                 }
             }
         }
+
         SelectionContainer { Text(memory.text, style = MaterialTheme.typography.bodyLarge) }
         Text(
             "Updated ${memory.updatedAt.take(10)}",

@@ -166,11 +166,13 @@ internal fun ConversationTimeline(
                     }
                 )
             }
+
             timeline.standaloneLegacySurfaces.forEach { surface ->
                 add(
                     TimelineEntry("surface:${surface.id}") { WorkflowSurface(renderer, surface.id) }
                 )
             }
+
             timeline.standaloneTasks.forEach { task ->
                 add(
                     TimelineEntry("task:${task.taskId}") {
@@ -302,6 +304,7 @@ internal fun ConversationTimeline(
                     }
                 }
             }
+
             AnimatedVisibility(
                 visible = !empty && !atBottom,
                 modifier = Modifier.align(Alignment.BottomCenter).padding(12.dp),

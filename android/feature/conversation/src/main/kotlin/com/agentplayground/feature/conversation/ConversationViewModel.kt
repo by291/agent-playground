@@ -21,26 +21,18 @@ import java.util.UUID
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 
+/** Owns the selected session, local file selection and background jobs for one server. */
 @HiltViewModel(assistedFactory = ConversationViewModel.Factory::class)
 class ConversationViewModel(private val repository: ConversationRepository) : ViewModel() {
-    @AssistedInject
-    constructor(
-        repositories: RepositoryProvider,
-        @Assisted serverUrl: String,
-    ) : this(repositories.conversation(serverUrl))
-
-    @AssistedFactory
-    interface Factory {
-        fun create(serverUrl: String): ConversationViewModel
-    }
-
     private var session: ConversationSession? = null
+    private var visible = false
+
     private var sessionCollector: Job? = null
     private var selectionJob: Job? = null
     private var draftSaveJob: Job? = null
-    private var visible = false
     private var metadataJob: Job? = null
     private var modelSelectionJob: Job? = null
+
     private val mutable = MutableStateFlow(ConversationUiState())
     val state = mutable.asStateFlow()
 
@@ -74,6 +66,7 @@ class ConversationViewModel(private val repository: ConversationRepository) : Vi
                 mutable.update {
                     it.copy(error = "Local conversation could not be restored: ${error.message}")
                 }
+
                 selectSaved(SavedConversation(UUID.randomUUID().toString()))
             }
         }
@@ -81,6 +74,12 @@ class ConversationViewModel(private val repository: ConversationRepository) : Vi
         refreshHistory()
         refreshMetadata()
     }
+
+    @AssistedInject
+    constructor(
+        repositories: RepositoryProvider,
+        @Assisted serverUrl: String,
+    ) : this(repositories.conversation(serverUrl))
 
     fun setVisible(value: Boolean) {
         visible = value
@@ -132,6 +131,7 @@ class ConversationViewModel(private val repository: ConversationRepository) : Vi
         val next = repository.createSession(viewModelScope, saved)
         session = next
         next.setDefaultModel(mutable.value.agentInfo?.defaultModelId)
+
         mutable.update {
             it.copy(session = next.state.value, attachments = emptyList(), error = null)
         }
@@ -181,6 +181,7 @@ class ConversationViewModel(private val repository: ConversationRepository) : Vi
         }
 
         draftSaveJob?.cancel()
+
         val current = session
 
         draftSaveJob = viewModelScope.launch {
@@ -236,6 +237,7 @@ class ConversationViewModel(private val repository: ConversationRepository) : Vi
         viewModelScope.launch {
             try {
                 val text = current.state.value.draft
+
                 // Selected files retain their IDs after failure, so retries reuse server resources.
                 val uploaded = repository.uploadAttachments(current.threadId, state.attachments)
 
@@ -341,6 +343,7 @@ class ConversationViewModel(private val repository: ConversationRepository) : Vi
     fun rename(thread: String, title: String, completed: () -> Unit) {
         mutateHistory(HistoryMutation("rename", thread)) {
             repository.rename(thread, title)
+
             val current = session
 
             if (current?.threadId == thread) {
@@ -359,6 +362,7 @@ class ConversationViewModel(private val repository: ConversationRepository) : Vi
 
         mutateHistory(HistoryMutation("delete", thread)) {
             repository.deleteConversation(thread)
+
             val selected = session?.threadId == thread
 
             if (selected) {
@@ -450,5 +454,10 @@ class ConversationViewModel(private val repository: ConversationRepository) : Vi
         history.close()
         session?.close()
         repository.close()
+    }
+
+    @AssistedFactory
+    interface Factory {
+        fun create(serverUrl: String): ConversationViewModel
     }
 }

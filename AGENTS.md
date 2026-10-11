@@ -38,6 +38,7 @@ Follow the control-flow and function-layout guidance in the [Google TypeScript S
 - Simple ternaries and single-expression arrow functions are acceptable; nested ternaries are not. Expand multiple checks, assignments or side effects into branches or named functions.
 - Use domain names for variables/functions. Extract complex conditions into named variables so readers do not decode conditions, state and side effects at once. Do not add abstractions solely to shorten the code.
 - Comments explain intent, protocol boundaries, races and non-obvious handling rather than restating code. Put necessary comments beside the relevant logical group.
+- Android/Kotlin follows the logical grouping, Compose layout and comment-contract rules in [android/AGENTS.md](android/AGENTS.md). Keep independent stages and page sections visually separate; formatter output alone is not a readability review.
 - Prettier and Ruff handle indentation, wrapping and basic formatting. `.gitattributes` keeps text files at LF on every platform, with CRLF reserved for Windows batch scripts. `eslint.style.mjs` enforces TypeScript braces, nested-ternary restrictions and statement spacing. Automated formatting does not replace manual review of logical grouping. Source and tests follow the same rules; generated third-party database snapshots retain generated formatting.
 
 ## Development and verification

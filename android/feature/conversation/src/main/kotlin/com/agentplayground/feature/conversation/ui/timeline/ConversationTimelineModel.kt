@@ -95,12 +95,14 @@ internal fun conversationTimelineModel(
     val pendingPlans = visibleInterrupts.filter {
         Review.from(it)?.kind == "experiment_plan_review"
     }
+
     val duplicateA2aResults = duplicateA2aResultSurfaces(state)
 
     val timelineTurns = turns.mapIndexed { index, turn ->
         val ownedCards = presentations.filter {
             owners[it.workflow!!.presentation!!.groupId] == turn.id
         }
+
         val callIds = turn.toolCalls.map { it.call.id }.toSet()
         val tasks = state.externalTasks.filter { it.workflowCallId in callIds }
         val legacyCards = legacy.current.filter { it.toolCallId in callIds }

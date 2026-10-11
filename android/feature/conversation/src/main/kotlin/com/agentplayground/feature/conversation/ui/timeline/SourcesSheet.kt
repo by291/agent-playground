@@ -106,6 +106,7 @@ internal fun SourcesSheet(
                         IconButton(onClick = { chooseDocument = true }) {
                             Icon(Icons.Outlined.ExpandMore, "Choose document")
                         }
+
                         DropdownMenu(
                             chooseDocument,
                             onDismissRequest = { chooseDocument = false },

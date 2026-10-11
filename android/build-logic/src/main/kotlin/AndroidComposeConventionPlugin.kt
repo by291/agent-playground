@@ -17,6 +17,7 @@ class AndroidComposeConventionPlugin : Plugin<Project> {
                 "implementation",
                 dependencies.platform(catalog.findLibrary("compose-bom").get()),
             )
+
             for (library in listOf("compose-ui", "compose-material3", "compose-icons")) {
                 dependencies.add("implementation", catalog.findLibrary(library).get())
             }

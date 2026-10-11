@@ -48,6 +48,7 @@ class WorkflowRendererTest {
                 WorkflowSurface(renderer, "experiment")
             }
         }
+
         compose.waitUntil(10_000) {
             compose.onAllNodesWithText("Validation passed").fetchSemanticsNodes().isNotEmpty()
         }
@@ -79,6 +80,7 @@ class WorkflowRendererTest {
                 WorkflowSurface(renderer, "sql")
             }
         }
+
         compose.waitUntil(10_000) {
             compose.onAllNodesWithText("Receipt: receipt-1").fetchSemanticsNodes().isNotEmpty()
         }

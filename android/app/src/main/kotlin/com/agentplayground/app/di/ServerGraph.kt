@@ -6,8 +6,7 @@ import androidx.lifecycle.ViewModelStoreOwner
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 
-// The Activity retains this graph across recreation; replacing its server disposes all child
-// jobs/clients.
+/** Retained Activity graph; changing servers clears all child ViewModels and their jobs/clients. */
 @HiltViewModel
 internal class ServerGraph @Inject constructor() : ViewModel() {
     private var serverUrl: String? = null

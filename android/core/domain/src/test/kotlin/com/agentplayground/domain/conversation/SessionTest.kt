@@ -157,6 +157,7 @@ class SessionTest {
                 release.await()
                 throw java.io.IOException("Response lost")
             }
+
             val changing = launch { session.selectModel("qwen") }
             committed.await()
             session.refresh()
@@ -247,6 +248,7 @@ class SessionTest {
             requested.complete(Unit)
             release.await()
         }
+
         val changing = launch { session.selectModel("qwen") }
         requested.await()
 
@@ -293,6 +295,7 @@ class SessionTest {
                 } else {
                     session.review("pause", "accept")
                 }
+
                 runCurrent()
 
                 assertEquals(
@@ -490,6 +493,7 @@ class SessionTest {
             fetched.complete(Unit)
             release.await()
         }
+
         val refresh = launch { session.refresh() }
         fetched.await()
 
@@ -542,6 +546,7 @@ class SessionTest {
             writing.complete(Unit)
             release.await()
         }
+
         val selection = launch { session.selectModel("qwen") }
         writing.await()
 
@@ -1243,6 +1248,7 @@ class SessionTest {
                 final.await()
             }
         }
+
         val refresh = backgroundScope.launch { session.refresh() }
         runCurrent()
         api.events.emit(RunFinishedEvent("thread", input.runId))

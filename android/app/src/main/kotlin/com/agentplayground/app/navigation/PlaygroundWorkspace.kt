@@ -52,6 +52,7 @@ internal fun PlaygroundWorkspace(
     var selected by rememberSaveable { mutableIntStateOf(0) }
     val stack = stacks[selected]
     val destination = stack.last() as WorkspaceDestination
+
     val back: () -> Unit = {
         if (stack.size > 1) {
             stack.removeLastOrNull()
@@ -98,13 +99,16 @@ internal fun PlaygroundWorkspace(
                 // Install the destination before drawer settlement so the new page is revealed
                 // underneath.
                 selected = primaryDestinations.indexOf(route)
+
                 if (route == WorkspaceDestination.Chat) {
                     while (chatStack.size > 1) {
                         chatStack.removeLastOrNull()
                     }
                 }
+
                 scope.launch { drawer.close() }
             }
+
             val sidebar: @Composable () -> Unit = {
                 ConversationHistoryRoute(
                     chatState,
@@ -162,6 +166,7 @@ internal fun PlaygroundWorkspace(
                     WorkspaceDestination.Chat ->
                         ConversationRoute(chat, preferences, openNavigation) {
                             keyboard?.hide()
+
                             if (chatStack.last() != WorkspaceDestination.Activity) {
                                 chatStack.add(WorkspaceDestination.Activity)
                             }
@@ -169,6 +174,8 @@ internal fun PlaygroundWorkspace(
                 }
             }
 
+            // Decorate every stack so inactive pages retain entry state and ViewModels as well.
+            // Server-owned conversation resources live outside these navigation entries.
             val decoratedStacks = stacks.mapIndexed { index, backStack ->
                 key(preferences.serverUrl, index) {
                     rememberDecoratedNavEntries(
@@ -186,6 +193,7 @@ internal fun PlaygroundWorkspace(
                     )
                 }
             }
+
             val display: @Composable () -> Unit = {
                 NavDisplay(
                     entries = decoratedStacks[selected],
@@ -221,6 +229,7 @@ internal fun PlaygroundWorkspace(
                         ) {
                             sidebar()
                         }
+
                         VerticalDivider()
                         Box(Modifier.weight(1f)) { display() }
                     }

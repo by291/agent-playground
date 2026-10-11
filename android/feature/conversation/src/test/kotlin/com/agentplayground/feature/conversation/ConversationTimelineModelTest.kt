@@ -375,6 +375,7 @@ class ConversationTimelineModelTest {
                 }
             }
         }
+
         val messages = buildJsonArray {
             addJsonObject {
                 put("version", "v0.9")
@@ -383,6 +384,7 @@ class ConversationTimelineModelTest {
                     put("catalogId", catalog)
                 }
             }
+
             addJsonObject {
                 put("version", "v0.9")
                 putJsonObject("updateComponents") {

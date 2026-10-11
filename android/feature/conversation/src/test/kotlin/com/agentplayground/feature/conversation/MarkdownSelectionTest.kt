@@ -62,6 +62,7 @@ class MarkdownSelectionTest {
         compose.onNodeWithText("First paragraph.").performTouchInput {
             longClick(Offset(10f, centerY))
         }
+
         compose.waitUntil { toolbar.ready }
         compose.runOnIdle { toolbar.click("Select all") }
         compose.waitForIdle()
@@ -114,6 +115,7 @@ class MarkdownSelectionTest {
         compose.onNodeWithText("First answer.").performTouchInput {
             longClick(Offset(10f, centerY))
         }
+
         compose.waitUntil { toolbar.ready }
         compose.runOnIdle { toolbar.click("Select all") }
         compose.waitForIdle()
@@ -162,6 +164,7 @@ class MarkdownSelectionTest {
             moveTo(end, delayMillis = 200)
             up()
         }
+
         compose.waitUntil { toolbar.ready }
         compose.runOnIdle { toolbar.click("Copy") }
         compose.waitForIdle()

@@ -17,24 +17,22 @@ import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
+/**
+ * Coordinates visible-page polling and uploads; failed transfers retain their selected file IDs.
+ */
 @HiltViewModel(assistedFactory = KnowledgeViewModel.Factory::class)
 class KnowledgeViewModel(private val repository: KnowledgeRepository) : ViewModel() {
-    @AssistedInject
-    constructor(
-        repositories: RepositoryProvider,
-        @Assisted serverUrl: String,
-    ) : this(repositories.knowledge(serverUrl))
-
-    @AssistedFactory
-    interface Factory {
-        fun create(serverUrl: String): KnowledgeViewModel
-    }
-
     private val mutable = MutableStateFlow(KnowledgeUiState())
     val state = mutable.asStateFlow()
 
     private var polling: Job? = null
     private val refreshMutex = Mutex()
+
+    @AssistedInject
+    constructor(
+        repositories: RepositoryProvider,
+        @Assisted serverUrl: String,
+    ) : this(repositories.knowledge(serverUrl))
 
     fun setVisible(visible: Boolean) {
         polling?.cancel()
@@ -197,6 +195,7 @@ class KnowledgeViewModel(private val repository: KnowledgeRepository) : ViewMode
     fun reindex(id: String, textEncoding: String? = null, completed: () -> Unit = {}) {
         mutate("Reindexing document…") {
             repository.reindex(id, textEncoding)
+
             refresh()
             completed()
         }
@@ -209,6 +208,7 @@ class KnowledgeViewModel(private val repository: KnowledgeRepository) : ViewMode
     fun delete(id: String, completed: () -> Unit) {
         mutate("Deleting document…") {
             repository.delete(id)
+
             refresh()
             completed()
         }
@@ -253,5 +253,10 @@ class KnowledgeViewModel(private val repository: KnowledgeRepository) : ViewMode
 
     override fun onCleared() {
         repository.close()
+    }
+
+    @AssistedFactory
+    interface Factory {
+        fun create(serverUrl: String): KnowledgeViewModel
     }
 }

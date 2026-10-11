@@ -18,6 +18,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
+/** Retains an editable server draft and persists a connection only after its check succeeds. */
 @HiltViewModel(assistedFactory = SettingsViewModel.Factory::class)
 internal class SettingsViewModel
 @AssistedInject
@@ -27,11 +28,6 @@ constructor(
     @Assisted serverUrl: String,
     private val server: ServerRepository,
 ) : ViewModel() {
-    @AssistedFactory
-    interface Factory {
-        fun create(serverUrl: String): SettingsViewModel
-    }
-
     private val mutableState =
         MutableStateFlow(SettingsState(server = savedState["server"] ?: serverUrl))
     val state = mutableState.asStateFlow()
@@ -189,5 +185,10 @@ constructor(
                 error = cause.message ?: "Connection failed.",
             )
         }
+    }
+
+    @AssistedFactory
+    interface Factory {
+        fun create(serverUrl: String): SettingsViewModel
     }
 }

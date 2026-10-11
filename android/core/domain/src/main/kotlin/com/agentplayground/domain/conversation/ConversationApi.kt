@@ -12,8 +12,10 @@ data class ServerEvent(val name: String?, val data: String)
 interface ConversationApi {
     suspend fun selectModel(threadId: String, modelId: String): ConversationModel
 
+    /** Returns null for an unpersisted thread; transport failures remain exceptions. */
     suspend fun snapshot(threadId: String): ConversationSnapshot?
 
+    /** Streams official events; stopping collection releases the local connection. */
     fun run(input: RunAgentInput): Flow<BaseEvent>
 
     fun changes(threadId: String): Flow<ServerEvent>

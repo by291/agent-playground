@@ -19,6 +19,7 @@ interface ConversationRepository : AutoCloseable {
 
     suspend fun select(saved: SavedConversation)
 
+    /** Creates a session borrowing this repository's transport; close it before this repository. */
     fun createSession(scope: CoroutineScope, saved: SavedConversation): ConversationSession
 
     suspend fun removeSavedConversation(threadId: String)
@@ -37,6 +38,9 @@ interface ConversationRepository : AutoCloseable {
 
     suspend fun inspectAttachments(uris: List<String>): List<PickedFile>
 
+    /**
+     * Reuses the selected file IDs so an ambiguous response can be retried without new resources.
+     */
     suspend fun uploadAttachments(threadId: String, attachments: List<PickedFile>): List<SkillFile>
 
     suspend fun save(download: Download, target: String)

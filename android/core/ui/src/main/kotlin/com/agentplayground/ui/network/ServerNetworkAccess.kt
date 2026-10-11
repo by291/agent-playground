@@ -15,6 +15,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
+/** Gates local-network connections separately from URL validation and server health checks. */
 class ServerNetworkAccess(
     private val sdkInt: Int,
     private val isGranted: () -> Boolean,

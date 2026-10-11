@@ -17,10 +17,12 @@ class AndroidApplicationConventionPlugin : Plugin<Project> {
                     minSdk = 26
                     targetSdk = 37
                 }
+
                 compileOptions {
                     sourceCompatibility = JavaVersion.VERSION_17
                     targetCompatibility = JavaVersion.VERSION_17
                 }
+
                 buildFeatures.compose = true
                 testOptions { unitTests.isIncludeAndroidResources = true }
                 lint { configurePlaygroundLint() }

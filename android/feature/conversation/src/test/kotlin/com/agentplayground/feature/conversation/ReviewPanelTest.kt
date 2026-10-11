@@ -59,6 +59,7 @@ class ReviewPanelTest {
             task = task.copy(progress = 80.0)
             androidx.compose.runtime.snapshots.Snapshot.sendApplyNotifications()
         }
+
         compose.mainClock.advanceTimeBy(96)
 
         compose.onNodeWithText("80%").assertExists()
@@ -78,6 +79,7 @@ class ReviewPanelTest {
             task = task.copy(progress = null)
             androidx.compose.runtime.snapshots.Snapshot.sendApplyNotifications()
         }
+
         compose.mainClock.advanceTimeBy(300)
 
         progress.assertDoesNotExist()

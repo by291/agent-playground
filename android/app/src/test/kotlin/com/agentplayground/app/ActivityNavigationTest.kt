@@ -123,6 +123,7 @@ class ActivityNavigationTest {
                     .fetchSemanticsNodes()
                     .isNotEmpty()
             }
+
             await { compose.onAllNodesWithText("Question 19").fetchSemanticsNodes().isNotEmpty() }
 
             compose.onNodeWithContentDescription("Message").performTextInput("Observe this run")
@@ -140,6 +141,7 @@ class ActivityNavigationTest {
                     .fetchSemanticsNodes()
                     .isNotEmpty()
             }
+
             compose.onNodeWithContentDescription("Back to chat").performClick()
 
             compose.onNodeWithContentDescription("Jump to latest message").assertIsDisplayed()

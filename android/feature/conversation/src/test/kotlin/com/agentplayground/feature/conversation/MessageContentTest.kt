@@ -501,6 +501,7 @@ class MessageContentTest {
                     status = ToolStatus.Completed,
                 )
         }
+
         compose.onNodeWithText("Memory").assertIsDisplayed()
         compose.onNodeWithText("Remember a fact").assertIsDisplayed()
         compose.onNodeWithTag("tool-group-remember").performClick()
@@ -512,6 +513,7 @@ class MessageContentTest {
                     status = ToolStatus.Failed,
                 )
         }
+
         compose.onNodeWithText("Memory unavailable").assertIsDisplayed()
         compose.onNodeWithText("Remember a fact").assertDoesNotExist()
     }

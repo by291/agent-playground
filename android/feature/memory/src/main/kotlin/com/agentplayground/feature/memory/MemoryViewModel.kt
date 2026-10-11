@@ -15,22 +15,19 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 
+/** Owns loaded memory pages and revision-checked correction/forget dialogs for one server. */
 @HiltViewModel(assistedFactory = MemoryViewModel.Factory::class)
 class MemoryViewModel(private val repository: MemoryRepository) : ViewModel() {
+    private val mutable = MutableStateFlow(MemoryUiState())
+    val state = mutable.asStateFlow()
+
+    private var loadedPages = 1
+
     @AssistedInject
     constructor(
         repositories: RepositoryProvider,
         @Assisted serverUrl: String,
     ) : this(repositories.memory(serverUrl))
-
-    @AssistedFactory
-    interface Factory {
-        fun create(serverUrl: String): MemoryViewModel
-    }
-
-    private val mutable = MutableStateFlow(MemoryUiState())
-    val state = mutable.asStateFlow()
-    private var loadedPages = 1
 
     fun setVisible(visible: Boolean) {
         if (visible) {
@@ -44,6 +41,7 @@ class MemoryViewModel(private val repository: MemoryRepository) : ViewModel() {
         }
 
         mutable.update { it.copy(loading = true) }
+
         viewModelScope.launch { refreshLoadedPages() }
     }
 
@@ -56,8 +54,10 @@ class MemoryViewModel(private val repository: MemoryRepository) : ViewModel() {
             var next: Int? = null
             var pages = 0
 
+            // Mutations can shift page offsets; refresh the whole loaded window before publishing.
             for (pageNumber in 0 until loadedPages) {
                 val page = repository.page(offset)
+
                 page.items.forEach { records[it.id] = it }
                 next = page.nextOffset
                 pages++
@@ -70,6 +70,7 @@ class MemoryViewModel(private val repository: MemoryRepository) : ViewModel() {
             }
 
             loadedPages = pages
+
             mutable.update {
                 it.copy(memories = records.values.toList(), nextOffset = next, loaded = true)
             }
@@ -94,10 +95,12 @@ class MemoryViewModel(private val repository: MemoryRepository) : ViewModel() {
         }
 
         mutable.update { it.copy(loadingMore = true, moreError = null) }
+
         viewModelScope.launch {
             try {
                 val page = repository.page(offset)
                 val records = current.memories.associateByTo(linkedMapOf()) { it.id }
+
                 page.items.forEach { records[it.id] = it }
                 loadedPages++
 
@@ -179,6 +182,7 @@ class MemoryViewModel(private val repository: MemoryRepository) : ViewModel() {
                         )
                 )
             }
+
             return
         }
 
@@ -187,14 +191,17 @@ class MemoryViewModel(private val repository: MemoryRepository) : ViewModel() {
                 if (dialog.action == MemoryAction.Correct) validateMemoryText(dialog.draft) else ""
             } catch (error: IllegalArgumentException) {
                 mutable.update { it.copy(dialog = dialog.copy(error = error.message)) }
+
                 return
             }
 
         // Reserve the operation before launching: repeated clicks cannot admit a second write.
         mutable.update { it.copy(mutating = true, dialog = dialog.copy(error = null)) }
+
         viewModelScope.launch {
             try {
                 performMutation(dialog, text)
+
                 // Both success and ambiguous failures reconcile against server state.
                 refreshLoadedPages()
             } finally {
@@ -245,5 +252,10 @@ class MemoryViewModel(private val repository: MemoryRepository) : ViewModel() {
 
     override fun onCleared() {
         repository.close()
+    }
+
+    @AssistedFactory
+    interface Factory {
+        fun create(serverUrl: String): MemoryViewModel
     }
 }

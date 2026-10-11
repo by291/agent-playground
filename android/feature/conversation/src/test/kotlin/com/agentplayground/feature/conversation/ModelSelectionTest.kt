@@ -37,6 +37,7 @@ class ModelSelectionTest {
                 vm.state.value.session?.modelId == "qwen" &&
                     vm.state.value.session?.modelSelectionPending == false
             }
+
             val before = metadataRequests.get()
             vm.setVisible(true)
             compose.waitUntil(10_000) {
@@ -56,12 +57,14 @@ class ModelSelectionTest {
                 idle()
                 vm.state.value.session?.threadId != "thread"
             }
+
             vm.select("thread")
             compose.waitUntil(10_000) {
                 idle()
                 vm.state.value.session?.threadId == "thread" &&
                     vm.state.value.session?.loading == false
             }
+
             assertEquals("qwen", vm.state.value.session!!.modelId)
             assertEquals("Preserved draft", vm.state.value.session!!.draft)
             assertTrue(server.requestCount > 0)
@@ -126,8 +129,10 @@ class ModelSelectionTest {
                                         """{"model":"deepseek-flash","defaultModelId":"deepseek","models":[{"id":"deepseek","label":"DeepSeek","model":"deepseek-flash","available":true},{"id":"qwen","label":"Qwen","model":"qwen3.8-flash","available":true}]}"""
                                     )
                             }
+
                             request.path == "/conversations/thread/model" -> {
                                 modelRequests.incrementAndGet()
+
                                 if (reject) {
                                     MockResponse()
                                         .setResponseCode(409)
@@ -142,6 +147,7 @@ class ModelSelectionTest {
                                         .setBody("""{"threadId":"thread","modelId":"qwen"}""")
                                 }
                             }
+
                             request.path == "/conversations/thread" ->
                                 MockResponse()
                                     .setBody(
@@ -160,6 +166,7 @@ class ModelSelectionTest {
                 journal.write(SavedConversation("thread", empty = false))
                 journal.select("thread")
             }
+
             val store = ViewModelStore()
             val vm =
                 ViewModelProvider(

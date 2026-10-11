@@ -117,6 +117,7 @@ internal fun SettingsScreen(
                 RevealValue(connection.status) {
                     Text(it, color = MaterialTheme.colorScheme.primary)
                 }
+
                 RevealValue(connection.error) { ErrorNotice(it) }
 
                 if (connection.permissionDenied) {
@@ -159,6 +160,7 @@ internal fun SettingsScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
+
                     Switch(
                         checked = preferences.replyAnimation,
                         onCheckedChange = onReplyAnimationChanged,

@@ -57,6 +57,7 @@ class ConversationScreenTest {
 
                                 MockResponse().setResponseCode(204)
                             }
+
                             request.path == "/conversations/fixture" && deleted ->
                                 MockResponse().setResponseCode(404)
                             request.path == "/conversations" && deleted ->
@@ -155,6 +156,7 @@ class ConversationScreenTest {
                 compose.setContent {
                     PlaygroundTheme("light") { ConversationRoute(vm, AppPreferences()) }
                 }
+
                 compose.waitUntil(10_000) {
                     Shadows.shadowOf(Looper.getMainLooper()).idle()
                     vm.state.value.session?.loading == false

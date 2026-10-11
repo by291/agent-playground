@@ -56,6 +56,7 @@ class SettingsConnectionTest {
 
                                 MockResponse().setBody("{}")
                             }
+
                             "/agent-info" -> MockResponse().setBody("{\"model\":\"fixture\"}")
                             else -> MockResponse().setResponseCode(404)
                         }
@@ -169,6 +170,7 @@ class SettingsConnectionTest {
 
                                 override suspend fun checkConnection(serverUrl: String): String {
                                     started.complete(Unit)
+
                                     try {
                                         return finish.await()
                                     } finally {

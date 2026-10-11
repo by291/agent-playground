@@ -83,6 +83,7 @@ class ImageViewerTest {
             advanceEventTime(500)
             doubleClick(center)
         }
+
         compose.mainClock.advanceTimeBy(400)
 
         page()
@@ -174,6 +175,7 @@ class ImageViewerTest {
         page().performTouchInput {
             swipe(Offset(centerX, height * 0.4f), Offset(centerX, height * 0.49f), 300)
         }
+
         compose.mainClock.advanceTimeBy(400)
 
         page().assertIsDisplayed()
@@ -220,6 +222,7 @@ class ImageViewerTest {
         page().performTouchInput {
             swipe(Offset(centerX, height * 0.4f), Offset(centerX, height * 0.49f), 300)
         }
+
         compose.mainClock.advanceTimeBy(32)
         page().performTouchInput { click(center) }
         compose.mainClock.advanceTimeBy(500)

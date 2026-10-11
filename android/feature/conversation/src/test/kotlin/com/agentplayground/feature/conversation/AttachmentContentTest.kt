@@ -225,6 +225,7 @@ class AttachmentContentTest {
             assertTrue(started)
             visible = false
         }
+
         compose.runOnIdle { assertTrue(cancelled) }
     }
 }

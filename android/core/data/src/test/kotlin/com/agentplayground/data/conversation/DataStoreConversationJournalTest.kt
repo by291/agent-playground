@@ -40,6 +40,7 @@ class DataStoreConversationJournalTest {
                     it[stringPreferencesKey("thread:$server:${original.threadId}")] =
                         protocolJson.encodeToString(original)
                 }
+
                 otherJournal.write(other)
                 otherJournal.select(other.threadId)
 

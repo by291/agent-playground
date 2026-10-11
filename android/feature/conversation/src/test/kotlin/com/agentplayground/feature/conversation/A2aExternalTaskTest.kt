@@ -238,6 +238,7 @@ class A2aExternalTaskTest {
             current =
                 current.copy(revision = 2, outputs = listOf(output("plan", "running", "New draft")))
         }
+
         compose.onNodeWithText("New draft").assertDoesNotExist()
 
         compose.onNodeWithText("1. Draft · Planner").performClick()

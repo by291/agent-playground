@@ -145,6 +145,7 @@ class MemoryScreenTest {
             Shadows.shadowOf(Looper.getMainLooper()).idle()
             condition()
         }
+
         compose.waitForIdle()
     }
 

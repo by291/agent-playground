@@ -151,6 +151,7 @@ class WorkflowHistoryTest {
                         ConversationRoute(vm, AppPreferences(replyAnimation = false))
                     }
                 }
+
                 compose.waitUntil(10_000) {
                     Shadows.shadowOf(Looper.getMainLooper()).idle()
                     vm.state.value.session?.loading == false &&

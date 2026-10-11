@@ -50,6 +50,7 @@ internal fun Composer(
     onSelectModel: (String) -> Unit,
 ) {
     val session = state.session ?: return
+
     var context by remember(session.threadId) { mutableStateOf(false) }
     var contextDetails by remember(session.threadId) { mutableStateOf(false) }
     var field by remember(session.threadId) { mutableStateOf(TextFieldValue(session.draft)) }
@@ -57,6 +58,7 @@ internal fun Composer(
 
     LaunchedEffect(state.draftRevision, session.threadId) {
         pendingInput = null
+
         val draft = currentDraft()
 
         if (field.text != draft) {
@@ -129,6 +131,7 @@ internal fun Composer(
                             loadImage,
                         )
                     }
+
                     BasicTextField(
                         value = field,
                         onValueChange = {
@@ -181,6 +184,7 @@ internal fun Composer(
                             }
                         },
                     )
+
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         IconButton(onClick = onAttach, enabled = enabled) {
                             Icon(
@@ -189,6 +193,7 @@ internal fun Composer(
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
+
                         TextButton(
                             onClick = {
                                 contextDetails = !hasCatalog
@@ -225,6 +230,7 @@ internal fun Composer(
                                 }
                             }
                         }
+
                         FilledIconButton(
                             onClick = onSend,
                             enabled = enabled && session.draft.isNotBlank(),
@@ -256,6 +262,7 @@ internal fun Composer(
                     }
                 }
             }
+
             session.modelSelectionError?.let {
                 Text(
                     it,
@@ -317,6 +324,7 @@ internal fun Composer(
                                         if (optionEnabled) MaterialTheme.colorScheme.onSurface
                                         else MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
+
                                 if (option.model != option.label) {
                                     Text(
                                         option.model,
@@ -335,6 +343,7 @@ internal fun Composer(
                             }
                         }
                     }
+
                     if (!state.canSelectModel) {
                         Text(
                             when {
@@ -347,6 +356,7 @@ internal fun Composer(
                             style = MaterialTheme.typography.bodySmall,
                         )
                     }
+
                     TextButton(onClick = { contextDetails = true }) { Text("Context details") }
                 } else {
                     Text("Model context", style = MaterialTheme.typography.titleLarge)
@@ -403,15 +413,18 @@ internal fun Composer(
                                 "Last compaction: ${it["beforeTokens"]} → ${it["afterTokens"]} tokens"
                             )
                         }
+
                         usage.lastInputTokens?.let {
                             Text("Last request input: $it tokens, reported by the provider.")
                         }
+
                         Text(
                             "The model uses a summary of older messages. Your full chat stays available.",
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             style = MaterialTheme.typography.bodySmall,
                         )
                     }
+
                     if (hasCatalog) {
                         TextButton(onClick = { contextDetails = false }) { Text("Back to models") }
                     }

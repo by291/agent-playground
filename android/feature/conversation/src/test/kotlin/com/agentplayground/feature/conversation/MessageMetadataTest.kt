@@ -36,6 +36,7 @@ class MessageMetadataTest {
     fun `user and agent times use the local timezone and stay outside message content`() {
         val previous = TimeZone.getDefault()
         TimeZone.setDefault(TimeZone.getTimeZone("Asia/Shanghai"))
+
         try {
             val state =
                 SessionState(

@@ -62,6 +62,7 @@ fun TextEncodingDialog(
                         Text(selected, Modifier.weight(1f))
                         Icon(Icons.Outlined.ExpandMore, "Choose text encoding")
                     }
+
                     DropdownMenu(expanded, onDismissRequest = { expanded = false }) {
                         textEncodings.forEach { (value, label) ->
                             DropdownMenuItem(
@@ -74,6 +75,7 @@ fun TextEncodingDialog(
                         }
                     }
                 }
+
                 error?.let { ErrorNotice(it) }
             }
         },

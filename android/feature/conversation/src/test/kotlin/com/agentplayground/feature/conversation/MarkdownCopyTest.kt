@@ -146,6 +146,7 @@ class MarkdownCopyTest {
         val code = buildAnnotatedString {
             withStyle(SpanStyle(fontFamily = FontFamily.Monospace)) { append("left|right") }
         }
+
         val body = source.annotate(code, cells[1])
         val registry = MarkdownCopyRegistry().apply { add(source) }
 

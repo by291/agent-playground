@@ -163,17 +163,21 @@ private object WorkflowSql : A2uiComponent {
                     )
                 }
             }
+
             RevealValue(checked?.get(issues)?.takeIf { it.isNotEmpty() }) { currentIssues ->
                 Column {
                     currentIssues.forEach { Text(it, color = MaterialTheme.colorScheme.error) }
                 }
             }
+
             Details("Original SQL") {
                 Text(properties[original].orEmpty(), fontFamily = FontFamily.Monospace)
             }
+
             RevealValue(properties[receipt]) {
                 Text("Receipt: $it", style = MaterialTheme.typography.bodySmall)
             }
+
             Text(
                 "Demo checks only. Submission records SQL without executing it.",
                 style = MaterialTheme.typography.bodySmall,

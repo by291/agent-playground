@@ -8,6 +8,7 @@ import com.agentplayground.domain.repository.ConversationJournal
 import kotlinx.coroutines.flow.first
 import kotlinx.serialization.encodeToString
 
+/** Stores recovery records under the existing server/thread keys for upgrade compatibility. */
 internal class DataStoreConversationJournal(
     private val store: DataStore<Preferences>,
     private val server: String,

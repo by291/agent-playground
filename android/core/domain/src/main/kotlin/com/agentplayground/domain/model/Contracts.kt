@@ -68,6 +68,7 @@ data class AgentModel(val id: String, val label: String, val model: String, val 
 
 @Serializable data class ConversationModel(val threadId: String, val modelId: String)
 
+/** Persisted before dispatch; retries reuse this input's run and message identities. */
 @Serializable
 data class PendingSubmission(
     val input: RunAgentInput,
@@ -75,6 +76,7 @@ data class PendingSubmission(
     val submittedAt: String? = null,
 )
 
+/** Local recovery metadata and draft; the server remains the owner of the conversation history. */
 @Serializable
 data class SavedConversation(
     val threadId: String,

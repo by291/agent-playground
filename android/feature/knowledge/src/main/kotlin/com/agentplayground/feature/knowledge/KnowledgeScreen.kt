@@ -201,10 +201,12 @@ internal fun KnowledgeScreen(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
+
                         Box {
                             IconButton(onClick = { menu = true }) {
                                 Icon(Icons.Outlined.MoreHoriz, "Document actions")
                             }
+
                             DropdownMenu(menu, onDismissRequest = { menu = false }) {
                                 if (document.status == "uploading") {
                                     DropdownMenuItem(
@@ -240,6 +242,7 @@ internal fun KnowledgeScreen(
                                         onReindex(document.id, null, {})
                                     },
                                 )
+
                                 if (
                                     document.name.substringAfterLast('.').lowercase() in
                                         setOf("txt", "md")
@@ -257,6 +260,7 @@ internal fun KnowledgeScreen(
                                         },
                                     )
                                 }
+
                                 DropdownMenuItem(
                                     text = {
                                         Text("Delete", color = MaterialTheme.colorScheme.error)

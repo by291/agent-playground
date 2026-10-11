@@ -90,6 +90,7 @@ internal fun ReasoningContent(
             }
             DisclosureChevron(open)
         }
+
         Reveal(open) {
             ProcessBody(Modifier.testTag("reasoning-content-${turn.id}")) {
                 turn.messages
@@ -175,6 +176,7 @@ internal fun ToolGroupContent(
                         )
                 }
             }
+
             Surface(
                 shape = MaterialTheme.shapes.extraSmall,
                 color = androidx.compose.ui.graphics.Color.Transparent,
@@ -229,6 +231,7 @@ private fun ToolDetails(step: ToolStep) {
             ExecutionStatus(step.status, Modifier.widthIn(max = 100.dp))
             DisclosureChevron(expanded)
         }
+
         Reveal(expanded) {
             Column(
                 Modifier.fillMaxWidth().padding(start = 8.dp, end = 8.dp, bottom = 12.dp),
@@ -248,6 +251,7 @@ private fun ToolDetails(step: ToolStep) {
                         )
                     }
                 }
+
                 PayloadPanel(
                     "Parameters",
                     step.call.function.arguments.ifBlank { "Waiting for parameters…" },

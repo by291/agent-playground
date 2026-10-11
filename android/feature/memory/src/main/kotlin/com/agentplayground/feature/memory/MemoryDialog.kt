@@ -81,6 +81,7 @@ internal fun MemoryDialog(
                             SelectionContainer {
                                 Text(latest.text, Modifier.testTag("latest-memory-text"))
                             }
+
                             OutlinedButton(onClick = onReviewLatest, enabled = !busy) {
                                 Text("Review latest memory")
                             }

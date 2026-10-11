@@ -41,6 +41,7 @@ class ConversationHistoryMutationTest {
                                     .setBody("{\"error\":\"Try again later\"}")
                                     .setBodyDelay(100, TimeUnit.MILLISECONDS)
                             }
+
                             request.method == "DELETE" -> {
                                 deletes.incrementAndGet()
 
@@ -49,6 +50,7 @@ class ConversationHistoryMutationTest {
                                     .setBody("{\"error\":\"Try again later\"}")
                                     .setBodyDelay(100, TimeUnit.MILLISECONDS)
                             }
+
                             request.path == "/agent-info" ->
                                 MockResponse().setBody("{\"model\":\"fixture\"}")
                             request.path == "/conversations" ->

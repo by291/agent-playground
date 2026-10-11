@@ -142,6 +142,7 @@ class ConversationScrollTest {
                         ConversationRoute(vm, AppPreferences(replyAnimation = false))
                     }
                 }
+
                 await { vm.state.value.session?.loading == false }
 
                 check(vm)

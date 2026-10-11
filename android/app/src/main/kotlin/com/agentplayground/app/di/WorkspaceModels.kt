@@ -22,8 +22,9 @@ internal fun rememberWorkspaceModels(serverUrl: String): WorkspaceModels {
     val graph: ServerGraph = hiltViewModel()
     val owner = graph.owner(serverUrl)
     val factory = rememberHiltViewModelFactory()
-    val extras = checkNotNull(LocalViewModelStoreOwner.current).defaultViewModelCreationExtras
+
     // The child store owns the resources; Hilt's saved-state extras come from the Activity.
+    val extras = checkNotNull(LocalViewModelStoreOwner.current).defaultViewModelCreationExtras
 
     val conversation =
         viewModel<ConversationViewModel>(

@@ -90,6 +90,7 @@ internal fun Markdown(
         rememberMarkdownState(content, retainState = true, immediate = true).state.collectAsState()
     val renderedContent = (state as? MarkdownParseState.Success)?.content.orEmpty()
     val parsed = state as? MarkdownParseState.Success
+
     val copySourceId = rememberSaveable { UUID.randomUUID().toString() }
     val copySource =
         remember(parsed?.content, parsed?.node, copySourceId) {
@@ -100,6 +101,7 @@ internal fun Markdown(
         remember(blocks) {
             blocks.flatMap(::markdownCopyTargets).associateBy { it.sourceSpans.first().lineIndex }
         }
+
     val body =
         MaterialTheme.typography.bodyLarge.copy(
             fontSize = if (subdued) 14.sp else 16.sp,
@@ -132,6 +134,7 @@ internal fun Markdown(
                         SpanStyle(color = colors.primary, textDecoration = TextDecoration.Underline)
                 ),
         )
+
     val uriHandler = remember {
         object : UriHandler {
             override fun openUri(uri: String) {
@@ -139,6 +142,7 @@ internal fun Markdown(
             }
         }
     }
+
     val annotator =
         remember(citations, colors.primary, typography.inlineCode, state.referenceLinkHandler) {
             replyMarkdownAnnotator(
@@ -150,6 +154,7 @@ internal fun Markdown(
                 callback(it)
             }
         }
+
     val codeComponent: MarkdownComponent = { model ->
         when (val panel = panels[markdownLine(model.content, model.node.startOffset)]) {
             is FencedCodeBlock ->
@@ -170,6 +175,7 @@ internal fun Markdown(
             }
         }
     }
+
     val components =
         markdownComponents(
             text = { model ->
@@ -313,6 +319,7 @@ private fun BlockHeader(label: String, copy: String, action: String, settled: Bo
             )
             CopyAction(copy, action, settled)
         }
+
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
     }
 }

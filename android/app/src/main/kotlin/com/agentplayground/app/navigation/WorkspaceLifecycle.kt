@@ -4,6 +4,9 @@ import androidx.compose.runtime.Composable
 import androidx.lifecycle.compose.LifecycleStartEffect
 import com.agentplayground.app.di.WorkspaceModels
 
+/**
+ * Stops visible-page observation with the Activity lifecycle while retaining server-owned models.
+ */
 @Composable
 internal fun ObserveWorkspace(destination: WorkspaceDestination, models: WorkspaceModels) {
     LifecycleStartEffect(models.conversation, destination.observesConversation) {

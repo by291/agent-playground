@@ -36,6 +36,9 @@ import retrofit2.Retrofit
 import retrofit2.awaitResponse
 import retrofit2.converter.kotlinx.serialization.asConverterFactory
 
+/**
+ * Owns REST and SSE clients for one server; [close] cancels requests and releases their resources.
+ */
 internal class PlaygroundApi(baseUrl: String) : ConversationApi, AutoCloseable {
     val baseUrl = normalizeServerUrl(baseUrl)
     private val root = this.baseUrl.toHttpUrl()
@@ -84,8 +87,11 @@ internal class PlaygroundApi(baseUrl: String) : ConversationApi, AutoCloseable {
 
     override suspend fun snapshot(threadId: String): ConversationSnapshot? {
         val response = service.snapshot(threadId)
+
+        // A new local thread has no server record until its first admission.
         if (response.code() == 404) {
             response.errorBody()?.close()
+
             return null
         }
 
@@ -234,6 +240,9 @@ internal class PlaygroundApi(baseUrl: String) : ConversationApi, AutoCloseable {
     fun documentPath(id: String): String =
         url("api", "knowledge", "documents", id, "file").toString()
 
+    /**
+     * Streams a same-server download; the caller owns [target] and this method closes the response.
+     */
     suspend fun download(address: String, target: OutputStream) {
         val requested = address.toHttpUrl()
 
@@ -253,6 +262,7 @@ internal class PlaygroundApi(baseUrl: String) : ConversationApi, AutoCloseable {
                 try {
                     val body = call.awaitResponse().requireBody()
                     responseBody = body
+
                     // The cancellable await can abort a socket while its child is blocked in IO.
                     async(Dispatchers.IO) {
                             try {

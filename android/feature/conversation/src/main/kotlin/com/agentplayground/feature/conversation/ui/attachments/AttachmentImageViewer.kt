@@ -221,6 +221,7 @@ private fun ImageViewerContent(
                             chromeVisible = !chromeVisible
                             true
                         }
+
                         customActions = buildList {
                             add(
                                 CustomAccessibilityAction("Close image viewer") {
@@ -228,6 +229,7 @@ private fun ImageViewerContent(
                                     true
                                 }
                             )
+
                             if (ready) {
                                 add(
                                     CustomAccessibilityAction(

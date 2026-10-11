@@ -90,6 +90,7 @@ internal fun MessageContent(
                         }
                     }
                 }
+
                 MessageTimestamp(timestamp, Modifier.padding(end = 6.dp))
             }
 
@@ -164,11 +165,13 @@ internal fun AssistantTurnContent(
                 }
             }
         }
+
         skillFiles(turn.toolCalls).forEach { file ->
             OutlinedButton(onClick = { onDownload(fileDownload(file)) }) {
                 Text("Save ${file.name} · ${displayFileSize(file.size)}")
             }
         }
+
         children()
         val answers =
             turn.messages.filterIsInstance<AssistantMessage>().filter {

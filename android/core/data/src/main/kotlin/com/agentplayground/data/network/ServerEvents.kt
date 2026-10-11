@@ -29,6 +29,8 @@ internal class ServerEvents(client: OkHttpClient) {
                         data: String,
                     ) {
                         if (trySend(ServerEvent(type, data)).isFailure) {
+                            // Dropping an event could corrupt run state; fail so recovery reads a
+                            // snapshot.
                             close(
                                 IOException(
                                     "Event delivery overflow; recover the conversation snapshot."

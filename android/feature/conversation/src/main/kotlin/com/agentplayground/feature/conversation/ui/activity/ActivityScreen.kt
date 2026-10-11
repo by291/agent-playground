@@ -151,6 +151,7 @@ fun ActivityScreen(state: SessionState?, onBack: () -> Unit, onClear: () -> Unit
                                 Spacer(Modifier.width(8.dp))
                                 ChangingContent(copied) { Text(if (it) "Copied" else "Copy log") }
                             }
+
                             TextButton(
                                 shape = MaterialTheme.shapes.small,
                                 enabled = rows.isNotEmpty(),
@@ -162,12 +163,14 @@ fun ActivityScreen(state: SessionState?, onBack: () -> Unit, onClear: () -> Unit
                                 Text("Clear log")
                             }
                         }
+
                         SelectionContainer {
                             Text(
                                 "Thread: ${state?.threadId ?: "Not started"}",
                                 style = MaterialTheme.typography.bodySmall,
                             )
                         }
+
                         listOfNotNull(state?.error, state?.outputError).distinct().forEach {
                             ErrorNotice(it)
                         }
@@ -197,6 +200,7 @@ fun ActivityScreen(state: SessionState?, onBack: () -> Unit, onClear: () -> Unit
                                 style = MaterialTheme.typography.titleSmall,
                             )
                         }
+
                         items(events, key = { it.entry.sequence }) { row ->
                             ActivityEventCard(
                                 row,
@@ -242,6 +246,7 @@ private fun ActivityEventCard(row: ActivityRow, modifier: Modifier = Modifier) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
+
         Text("Run ${entry.runId ?: "unavailable"}", style = MaterialTheme.typography.bodySmall)
         row.status?.let { StatusTag("${row.events.size} events · $it") }
         Details("Event details") {

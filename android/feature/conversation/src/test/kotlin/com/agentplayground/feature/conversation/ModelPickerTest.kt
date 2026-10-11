@@ -47,6 +47,7 @@ class ModelPickerTest {
                 )
             }
         }
+
         val input = compose.onNodeWithContentDescription("Message")
         input.performClick().performTextInput("Preserve this draft")
         compose.onNodeWithContentDescription("Choose conversation model").performClick()
@@ -122,6 +123,7 @@ class ModelPickerTest {
                 )
             }
         }
+
         compose.onNodeWithContentDescription("Choose conversation model").performClick()
         compose.onNodeWithTag("model-option-qwen").assertIsNotEnabled()
         compose.runOnIdle {
@@ -131,6 +133,7 @@ class ModelPickerTest {
                     session = state.session!!.copy(modelSelectionPending = true),
                 )
         }
+
         compose.onNodeWithTag("model-option-qwen").assertIsNotEnabled()
         compose.runOnIdle {
             state =
@@ -142,6 +145,7 @@ class ModelPickerTest {
                         )
                 )
         }
+
         compose.onNodeWithTag("model-option-qwen").assertIsNotEnabled().performClick()
         compose.onNodeWithText("Context details").performClick()
         compose.onNodeWithText("Model context").assertIsDisplayed()
@@ -187,6 +191,7 @@ class ModelPickerTest {
         compose.runOnIdle {
             state = state.copy(agentInfo = catalog().copy(defaultModelId = "deepseek"))
         }
+
         compose.onNodeWithText("Qwen3.8-Flash").assertIsDisplayed()
         compose.onNodeWithText(" · 50%").assertDoesNotExist()
         compose.onNodeWithContentDescription("Choose conversation model").performClick()

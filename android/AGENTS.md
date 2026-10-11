@@ -1,5 +1,7 @@
 # Android client conventions
 
+## Architecture and ownership
+
 - Keep the existing server as the owner of agent execution, context, persistence and external-task continuation.
 - `app/` is the composition root: Android entry points, dependency assembly, server-scoped ViewModel stores, navigation and lifecycle visibility. It depends on feature, data and shared UI modules.
 - `core/domain/` is JVM-only: application models, repository interfaces, conversation state/recovery/history and pure presentation. It does not depend on Android, transport, persistence or DI libraries. Keep use cases/policies here only when actual shared behavior needs them.
@@ -13,12 +15,26 @@
 - Keep A2UI library details inside `feature/conversation/` under `ui/workflow/`. Use the official renderer and protocol types; custom components must match the existing workflow catalog.
 - Maintain explicit resource ownership. Release jobs and API clients when their owner is disposed; preserve original admission identities before network requests.
 - Store settings and journals by normalized server URL. Never copy backend model/storage credentials into the app.
-- Follow the [Kotlin coding conventions](https://kotlinlang.org/docs/coding-conventions.html) and [Android Kotlin style guide](https://developer.android.com/kotlin/style-guide), with the project rules below taking precedence. Use four-space indentation and one statement per line.
-- Separate functions, constructors and nested classes with one blank line. Keep related properties together, including a backing state flow and its public view; separate property groups when their responsibilities differ.
-- Divide function bodies into logical stages such as validation, preparation, network/persistence, state publication and response construction. Separate these stages with one blank line. Add space around control-flow blocks and before a final return when it marks a new stage; keep short, closely related statements together rather than adding a blank line after every statement.
-- In Composables, separate state/derived values, lifecycle effects and UI rendering. Inside callbacks, separate validation, side effects and state publication. Use blank lines between distinct page sections; keep related child widgets and constructor arguments compact.
+
+## Kotlin readability
+
+- Follow the [Kotlin coding conventions](https://kotlinlang.org/docs/coding-conventions.html) and [Android Kotlin style guide](https://developer.android.com/kotlin/style-guide), with the project rules below taking precedence. Use four-space indentation and one statement per line. Apply these rules to production code, tests and Gradle Kotlin scripts.
+- Separate functions, constructors and nested classes with one blank line. Group members by responsibility and reading order rather than alphabetically. Keep related properties together, including a backing state flow and its public view; separate session ownership, background jobs, persistence coordination and presentation state into distinct property groups.
+- Divide function bodies into logical stages such as validation, preparation, network/persistence, state publication and response construction. Separate these stages with one blank line. In particular, separate a guard clause from subsequent work, local declarations from a new control-flow block, and a completed block from the next operation. Add space before a final return when it marks a new stage; keep short, closely related statements together rather than adding a blank line after every statement.
+- In Composables, separate remembered state, derived values, lifecycle effects and UI rendering. Use blank lines between independent page sections, list items, dialogs and substantial sibling components. Keep a small icon/spacer/label group and constructor arguments compact. Inside callbacks, separate validation, side effects and state publication.
 - Use braces for control-flow statements and multiline `if`/`else` expressions. A complete conditional expression that fits on one line may omit braces. Keep simple expression-body functions concise; separate substantial `when` branches while leaving adjacent simple cases together.
+- Prefer domain names and named intermediate values when conditions or transformations require several checks. Use a block body when a function has multiple stages. Keep short expression bodies, collection transformations and scope functions when they remain easy to follow; avoid nested implicit `it`/`this` receivers and chains that hide mutations or resource ownership. Extract a helper when it names a coherent responsibility, not just to reduce line count.
 - Organize tests into fixture/setup, actions and assertions with blank lines between phases. Keep assertions about the same result together and preserve the ordering of resource acquisition, actions and cleanup.
+- Treat whitespace and comments as part of code review. Check that readers can identify each logical stage and understand non-obvious constraints without reconstructing them from several files. A formatter pass alone does not satisfy this requirement.
+
+## Comments and contracts
+
+- Write comments and KDoc in English. Use KDoc on module-facing contracts and substantial state/resource owners to describe responsibilities and caller obligations. Document meaningful behavior such as server scoping, resource disposal, revision checks, retry identities, failure semantics and cancellation. Obvious getters, simple data fields and overrides that inherit a documented contract need no repetitive KDoc.
+- Put short implementation comments beside the code whose intent they explain. Explain why an ordering, guard, fallback or limit exists, especially around admission, snapshot/stream races, persistence, coroutine cancellation and Android lifecycle effects. Keep existing invariant comments when moving code.
+- Prefer readable names and structure to comments that narrate statements. Do not add decorative stage banners, comments such as "update state", or a comment above every function. Keep comments accurate when behavior changes; use KDoc links such as `[close]` or `[serverUrl]` where they clarify the contract.
+
+## Formatting and verification
+
 - Format Kotlin source/tests and Gradle Kotlin scripts with `./gradlew spotlessApply`. Spotless pins ktfmt with Kotlin language style; `spotlessCheck` verifies without editing files. The formatter handles indentation and wrapping, but logical grouping and readable blank lines still require manual review. These conventions apply to source and tests alike.
 - SDK, Java, Compose, Hilt/KSP, test-resource and lint settings are shared through `build-logic/` convention plugins. Keep dependency versions in the version catalog and resource references in their owning module's namespace. Put tests in the module that owns their subject; cross-feature navigation and retained-graph tests belong to app.
 - Android Lint covers every Android module and the JVM core, including tests. `./gradlew lintCheck` runs them together. Warnings fail the check; fix findings rather than adding a blanket baseline. Dependency upgrade advisories (`GradleDependency`, `NewerVersionAvailable` and `AndroidGradlePluginVersion`) are disabled because versions are pinned and upgrades are reviewed separately.

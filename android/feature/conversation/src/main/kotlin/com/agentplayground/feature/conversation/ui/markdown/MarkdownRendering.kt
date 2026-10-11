@@ -67,6 +67,7 @@ internal fun markdownCopyTargets(node: Node): List<Node> {
     fun collect(current: Node) {
         if (copyableMarkdown(current) != null) {
             targets.add(current)
+
             return
         }
 

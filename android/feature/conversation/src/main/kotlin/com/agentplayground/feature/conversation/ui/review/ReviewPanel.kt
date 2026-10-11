@@ -62,6 +62,7 @@ internal fun PlanReviewPanel(
                 multiple = true,
             )
         }
+
         Text(
             "Choose a decision for every plan before continuing.",
             style = MaterialTheme.typography.bodySmall,
@@ -169,12 +170,14 @@ private fun ReviewContent(
             RevealValue(review.blockedReason) {
                 Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
+
             Reveal(review.expired) {
                 Text(
                     "This review has expired. Refresh the conversation.",
                     color = MaterialTheme.colorScheme.error,
                 )
             }
+
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (review.kind == "workflow_review") {
                     Button(
@@ -183,6 +186,7 @@ private fun ReviewContent(
                     ) {
                         Text(review.acceptLabel)
                     }
+
                     OutlinedButton(
                         onClick = { onReview(interrupt.id, "abandon", null) },
                         enabled = !busy && !review.expired,
@@ -207,6 +211,7 @@ private fun ReviewContent(
                         )
                         Text("Approve plan")
                     }
+
                     Row(
                         modifier =
                             Modifier.selectable(
@@ -231,6 +236,7 @@ private fun ReviewContent(
                     ) {
                         Text("Approve")
                     }
+
                     OutlinedButton(
                         onClick = { onReview(interrupt.id, "reject", plan) },
                         enabled = !busy && !review.expired,
@@ -274,6 +280,7 @@ internal fun ExternalTaskPanel(
                     Text("${progress.toInt()}%", style = MaterialTheme.typography.labelMedium)
                 }
             }
+
             RevealValue(task.error) { Text(it, color = MaterialTheme.colorScheme.error) }
             Reveal(task.continuationStatus in setOf("submission_unknown", "failed")) {
                 Text("The task finished, but workflow continuation requires reconciliation.")

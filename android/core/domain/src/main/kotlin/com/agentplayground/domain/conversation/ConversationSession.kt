@@ -38,6 +38,7 @@ class ConversationSession(
 
     private var closed = false
     private var admitting = false
+
     // A terminal event does not release admission until EOF and snapshot reconciliation finish.
     private var settling = false
     private var attached = true
@@ -59,6 +60,7 @@ class ConversationSession(
     private val journalMutex = Mutex()
 
     private val outputBuffer = OutputBuffer()
+
     // A snapshot may replace streamed messages only when no event arrived during its fetch.
     private var eventRevision = 0L
     private var activitySequence = 0L
@@ -318,6 +320,7 @@ class ConversationSession(
                     ExternalTaskAction.Input -> api.submitExternalTaskInput(taskId, input.trim())
                     ExternalTaskAction.Cancel -> api.cancelExternalTask(taskId)
                 }
+
                 accepted = true
             } catch (cancelled: CancellationException) {
                 throw cancelled
@@ -552,6 +555,7 @@ class ConversationSession(
         mutableState.update {
             it.copy(busy = true, executionStatus = "running", loading = false, error = null)
         }
+
         settling = true
         activityRunId = submission.input.runId
         val generation = ++streamGeneration
@@ -618,6 +622,7 @@ class ConversationSession(
                 val snapshot = api.snapshot(threadId)
                 val locallyActive = admitting || (settling && !settlement)
                 val result = reconcile(snapshot, pending, state.value.messages)
+
                 if (
                     snapshot != null &&
                         (!saved.empty ||
@@ -650,6 +655,7 @@ class ConversationSession(
                                     snapshot?.outputs.isNullOrEmpty(),
                         )
                     }
+
                     pending = null
                 }
 
@@ -802,6 +808,7 @@ class ConversationSession(
             val messages = addOutputReplies(it.messages, combined)
             val existingIds = it.messages.mapTo(mutableSetOf()) { message -> message.id }
             val added = messages.filter { message -> message.id !in existingIds }
+
             // Snapshot recovery uses canonical metadata; missing dates must stay unknown.
             val addedTimestamps =
                 if (receivedAt != null) {

@@ -13,6 +13,7 @@ sealed interface RecoveryDecision {
     data object Confirmed : RecoveryDecision
 }
 
+/** Chooses how to recover the original admission identity without creating a replacement run. */
 fun recoveryDecision(
     snapshot: ConversationSnapshot?,
     pending: PendingSubmission,
@@ -51,6 +52,7 @@ data class ReconciledConversation(
     val needsRecovery: Boolean,
 )
 
+/** Keeps optimistic messages until the snapshot confirms the pending admission. */
 fun reconcile(
     snapshot: ConversationSnapshot?,
     pending: PendingSubmission?,

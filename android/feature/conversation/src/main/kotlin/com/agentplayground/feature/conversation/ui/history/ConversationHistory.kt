@@ -114,6 +114,7 @@ internal fun ConversationHistory(
                             )
                         }
                     }
+
                     OutlinedButton(
                         onClick = { onSelect(null) },
                         enabled = !state.uploading && !pending,
@@ -130,6 +131,7 @@ internal fun ConversationHistory(
                         Spacer(Modifier.width(8.dp))
                         Text("New conversation")
                     }
+
                     Surface(
                         modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
                         shape = MaterialTheme.shapes.small,
@@ -164,6 +166,7 @@ internal fun ConversationHistory(
                             Text("Knowledge", style = MaterialTheme.typography.bodyMedium)
                         }
                     }
+
                     Surface(
                         modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
                         shape = MaterialTheme.shapes.small,
@@ -198,6 +201,7 @@ internal fun ConversationHistory(
                             Text("Memory", style = MaterialTheme.typography.bodyMedium)
                         }
                     }
+
                     Row(
                         Modifier.fillMaxWidth().padding(top = 20.dp, bottom = 8.dp),
                         verticalAlignment = Alignment.CenterVertically,
@@ -217,12 +221,14 @@ internal fun ConversationHistory(
                             )
                         }
                     }
+
                     state.historyError?.let { ErrorNotice(it, onRefresh) }
                     Reveal(state.historyLoading) {
                         LinearProgressIndicator(Modifier.fillMaxWidth())
                     }
                 }
             }
+
             items(rows, key = { "history:${it.threadId}" }) { row ->
                 var menu by remember { mutableStateOf(false) }
                 val selected = destination == "chat" && state.session?.threadId == row.threadId
@@ -301,6 +307,7 @@ internal fun ConversationHistory(
                                     )
                                 }
                         }
+
                         if (hasActions) {
                             Box {
                                 IconButton(onClick = { menu = true }, enabled = !pending) {
@@ -311,6 +318,7 @@ internal fun ConversationHistory(
                                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                     )
                                 }
+
                                 DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                                     DropdownMenuItem(
                                         text = { Text("Rename") },
@@ -358,12 +366,17 @@ internal fun ConversationHistory(
                 }
             }
         }
+
         WorkspaceFooter(serverUrl, destination == "settings", onSettings)
     }
 
     rename?.let { row ->
         AlertDialog(
-            onDismissRequest = { if (!pending) rename = null },
+            onDismissRequest = {
+                if (!pending) {
+                    rename = null
+                }
+            },
             title = { Text("Rename conversation") },
             text = {
                 Column {
@@ -444,6 +457,7 @@ private fun WorkspaceFooter(serverUrl: String, settingsSelected: Boolean, onSett
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
+
             Surface(
                 color =
                     animateColorAsState(

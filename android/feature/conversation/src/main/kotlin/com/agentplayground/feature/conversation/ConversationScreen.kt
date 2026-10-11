@@ -93,10 +93,12 @@ internal fun ConversationScreen(
                         ) {
                             Icon(Icons.Outlined.Add, "New conversation")
                         }
+
                         Box {
                             IconButton(onClick = { menu = true }) {
                                 Icon(Icons.Outlined.MoreHoriz, "Conversation options")
                             }
+
                             DropdownMenu(menu, onDismissRequest = { menu = false }) {
                                 DropdownMenuItem(
                                     text = { Text("Agent activity") },

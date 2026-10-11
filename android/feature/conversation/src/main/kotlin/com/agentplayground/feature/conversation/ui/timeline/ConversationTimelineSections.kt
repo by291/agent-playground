@@ -68,6 +68,7 @@ internal fun TimelineTurnContent(
                 )
             }
         }
+
         row.presentations.forEach { WorkflowOutputPresentation(it, renderer) }
         row.legacySurfaces.forEach { WorkflowSurface(renderer, it.id) }
 
@@ -112,11 +113,13 @@ internal fun TimelineNotices(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
+
             RevealValue(errors.takeIf { it.isNotEmpty() }) { visibleErrors ->
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     visibleErrors.forEach { ErrorNotice(it, onRecover) }
                 }
             }
+
             Reveal(state.busy) {
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
@@ -143,6 +146,7 @@ internal fun TimelineWelcome(compactHeight: Boolean, onSuggestion: (String) -> U
         if (!compactHeight) {
             AgentMark()
         }
+
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text(
                 if (compactHeight) {
@@ -163,6 +167,7 @@ internal fun TimelineWelcome(compactHeight: Boolean, onSuggestion: (String) -> U
                 style = MaterialTheme.typography.bodyLarge,
             )
         }
+
         Column(
             Modifier.padding(top = 8.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),

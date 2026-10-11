@@ -76,14 +76,17 @@ internal fun MemoryScreen(
                     )
                 }
             }
+
             if (state.loading) {
                 item("memory-loading") { LinearProgressIndicator(contentWidth) }
             }
+
             state.error?.let { error ->
                 item("memory-error") {
                     Box(contentWidth) { ErrorNotice(error, if (state.busy) null else onReload) }
                 }
             }
+
             if (state.loaded && state.memories.isEmpty() && state.error == null) {
                 item("memory-empty") {
                     SectionCard(contentWidth) {
@@ -94,6 +97,7 @@ internal fun MemoryScreen(
                     }
                 }
             }
+
             items(state.memories, key = { it.id }) { memory ->
                 MemoryRow(
                     memory,
@@ -104,11 +108,13 @@ internal fun MemoryScreen(
                     onOpenSource,
                 )
             }
+
             state.moreError?.let { error ->
                 item("memory-page-error") {
                     Box(contentWidth) { ErrorNotice(error, if (state.busy) null else onLoadMore) }
                 }
             }
+
             if (state.nextOffset != null && state.moreError == null) {
                 item("memory-load-more") {
                     OutlinedButton(
