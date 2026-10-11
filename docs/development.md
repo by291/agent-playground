@@ -162,6 +162,8 @@ Minor and patch releases are grouped by ecosystem, while major releases get sepa
 
 Version updates do not enable Dependabot security alerts or security updates. Those settings are managed separately in GitHub's repository security settings; see the [Dependabot setup guide](https://docs.github.com/en/code-security/how-tos/secure-your-supply-chain/secure-your-dependencies/configure-version-updates).
 
+The [Android dependency graph workflow](../.github/workflows/android-dependencies.yml) resolves direct and transitive Gradle dependencies from `android/` and submits them to GitHub's dependency graph on every push to `main`. It can also be dispatched manually on `main`. It uses the same JDK and Android SDK as CI, resolves dependencies without running the full quality check, and grants `contents: write` only to the submission job. Dependabot alerts must be enabled separately to report known vulnerabilities in these dependencies.
+
 ## Troubleshooting
 
 | Symptom                                 | Check                                                                                                                                       |
