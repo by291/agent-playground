@@ -1,9 +1,9 @@
-import { SettingsProvider } from "@/components/SettingsControl";
+import { SettingsProvider } from "@/components/settings";
 import {
   ConversationProvider,
-  ConversationWorkspace,
   useConversationHistory,
 } from "@/features/conversation";
+import { ChatLayout } from "@/layouts/ChatLayout";
 import { useConversationNavigation } from "./useConversationNavigation";
 
 export function ChatPage({ development }: { development: boolean }) {
@@ -31,7 +31,7 @@ export function ChatPage({ development }: { development: boolean }) {
         conversation={conversation}
         onThreadCreated={activateConversation}
       >
-        <ConversationWorkspace
+        <ChatLayout
           conversation={conversation}
           development={development}
           onNewConversation={() => startNewConversation()}

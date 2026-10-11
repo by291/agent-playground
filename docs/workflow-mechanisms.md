@@ -61,8 +61,8 @@ Python/LangGraph defines sequence, branches and business state. Shared mechanism
 | `agent_playground/db/`                   | Database contracts and idempotent persistence, independent of HTTP/review copy.                         |
 | `shared/workflow-review.ts`              | Common review identities/responses without SQL, schema or check fields.                                 |
 | `shared/workflow-output.ts`              | Stable reply IDs and presentation ownership without parsing business cards.                             |
-| `server/conversation/`                   | Admission, review/output checks, feedback archiving and checkpoint reply synchronization.               |
-| `server/agent/`                          | Official AG-UI/LangGraph adapter and resume targeting by interrupt ID.                                  |
+| `server/src/conversation/`               | Admission, review/output checks, feedback archiving and checkpoint reply synchronization.               |
+| `server/src/agent/`                      | Official AG-UI/LangGraph adapter and resume targeting by interrupt ID.                                  |
 | `web/src/features/conversation/`         | Common feedback routing, decision panels and current/historical card presentation.                      |
 | `web/src/features/a2ui/`                 | Official processor and business components; does not authorize business submission.                     |
 
@@ -140,7 +140,7 @@ External APIs post complete snapshots. Duplicate/older revisions are ignored; sa
 
 Status is `queued`, `running`, `succeeded` or `failed`. Success requires an object result; failure requires an error. Same-revision conflicts or changes after terminal state return `409`. The server scans persistent tasks every second and admits continuation under the conversation lock, using bounded mapping recovery for unknown run creation.
 
-`workflows/external.py` supplies registration and a separate wait node. `shared/external-task.ts` defines cross-layer state/interrupt contracts. `server/conversation/external-tasks.ts` persists updates; `external-task-worker.ts` continues runs; `changes.ts` publishes notifications. `change-subscription.ts` shares one PostgreSQL LISTEN connection across the process's active SSE subscribers, and `server/http/conversation-events.ts` owns each stream. Query fetches snapshots, session coordinates updates and `ExternalTaskPanel` presents progress/history. HTTP modules own routes/validation; conversation owns persistence/continuation.
+`workflows/external.py` supplies registration and a separate wait node. `shared/external-task.ts` defines cross-layer state/interrupt contracts. `server/src/conversation/tasks/task-store.ts` persists updates; `server/src/conversation/tasks/task-worker.ts` continues runs; `server/src/conversation/events/publish.ts` publishes notifications. `server/src/conversation/events/subscription.ts` shares one PostgreSQL LISTEN connection across the process's active SSE subscribers, and `server/src/routes/conversation-events.ts` owns each stream. Query fetches snapshots, session coordinates updates and `ExternalTaskPanel` presents progress/history. HTTP modules own routes/validation; conversation owns persistence/continuation.
 
 Notifications become visible after commit. Task, run, message and output changes invalidate snapshots; SSE reconnect sends `ready` and refetches complete state. Lost notifications do not lose persisted results. Switching/closing releases subscriptions. The background worker owns an Aegra client with 10-second request deadlines and aborts requests on shutdown; these are transport limits, not external-job deadlines. The server process owns the continuation worker, and Python lifespan owns demo callback delivery.
 

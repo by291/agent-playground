@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { runStatuses } from "./run-status";
+import { runStatuses } from "./run-status.js";
 
 const externalTaskStatusSchema = z.enum([
   "queued",

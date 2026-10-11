@@ -8,7 +8,7 @@ export default defineConfig({
         extends: true,
         test: {
           name: "unit",
-          include: ["**/*.test.ts"],
+          include: ["src/**/*.test.ts", "tests/**/*.test.js"],
           exclude: [...configDefaults.exclude, "**/*.integration.test.ts"],
         },
       },
@@ -25,15 +25,7 @@ export default defineConfig({
     ],
     coverage: {
       provider: "v8",
-      include: [
-        "agent/**/*.ts",
-        "http/**/*.ts",
-        "conversation/**/*.ts",
-        "db/**/*.ts",
-        "observability/**/*.ts",
-        "app.ts",
-        "config.ts",
-      ],
+      include: ["src/**/*.ts"],
       exclude: ["**/*.test.ts"],
       reporter: ["text", "html", "lcov"],
     },

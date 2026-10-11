@@ -70,7 +70,7 @@ test("unknown component types cannot replace a valid preview", () => {
 });
 
 test("replacement, invalid edits, reset and unmount own the preview resources", async () => {
-  const { createGalleryPreviews } = await import("./galleryPreviews");
+  const { createGalleryPreviews } = await import("./gallery-previews");
   const examples = [
     { component: "WorkflowText", source: validJson },
     { component: "WorkflowPanel", source: validJson },

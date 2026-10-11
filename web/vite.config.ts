@@ -16,7 +16,7 @@ function productionFeatureBoundary(): Plugin {
           (id) =>
             id.includes("/src/pages/dev/") ||
             /[/@]monaco-editor[/@]/.test(id) ||
-            /\/features\/conversation\/(ui\/(ActivityPanel|ActivityItem|MergedActivityContent|JsonPayload|activity\.css)|model\/activity)/.test(
+            /\/features\/conversation\/(ActivityPanel|ui\/activity\/|model\/activity)/.test(
               id,
             ),
         );

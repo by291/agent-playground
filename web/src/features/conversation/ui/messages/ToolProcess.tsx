@@ -14,8 +14,8 @@ import { WarningCircleIcon } from "@phosphor-icons/react/dist/csr/WarningCircle"
 import { WrenchIcon } from "@phosphor-icons/react/dist/csr/Wrench";
 import { StackIcon } from "@phosphor-icons/react/dist/csr/Stack";
 import { BrainIcon } from "@phosphor-icons/react/dist/csr/Brain";
-import { skillIdentity } from "../../model/skillExecution";
-import { isMemoryTool } from "../../model/memoryExecution";
+import { skillIdentity } from "../../model/skill-execution";
+import { isMemoryTool } from "../../model/memory-execution";
 import {
   Collapsible,
   CollapsibleContent,

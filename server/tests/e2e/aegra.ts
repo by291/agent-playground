@@ -8,13 +8,13 @@ import {
   LangGraphEventTypes,
   type LangGraphPlatformMessage,
 } from "@ag-ui/langgraph";
-import type { db } from "../../db/database";
-import { ControlledSqlWorkflow } from "./sql-workflow";
+import type { db } from "../../src/db/database.js";
+import { ControlledSqlWorkflow } from "./sql-workflow.js";
 import {
   workflowReviewResponseSchema,
   type WorkflowReview,
-} from "../../../shared/workflow-review";
-import type { WorkflowOutputMetadata } from "../../../shared/workflow-output";
+} from "../../../shared/workflow-review.js";
+import type { WorkflowOutputMetadata } from "../../../shared/workflow-output.js";
 
 const resumeSchema = z.object({
   decision: z.literal("approve"),
@@ -632,7 +632,7 @@ export function controlledAegra(database: typeof db) {
 
           if (reportWorkflow || a2aWorkflow) {
             const { registerExternalTask } =
-              await import("../../conversation/external-tasks");
+              await import("../../src/conversation/tasks/task-store.js");
             const taskId = randomUUID();
 
             await registerExternalTask({

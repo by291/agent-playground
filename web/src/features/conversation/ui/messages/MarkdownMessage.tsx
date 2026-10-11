@@ -16,11 +16,11 @@ import {
   type ExtraProps,
 } from "streamdown";
 import { code } from "@streamdown/code";
-import { compactStreamingText, segmentStreamingText } from "./streamingText";
+import { compactStreamingText, segmentStreamingText } from "./streaming-text";
 import { textReveal, usePacedText } from "./usePacedText";
-import { useReportReplyPresentation } from "../ReplyPresentation";
-import { knowledgeCitations, KnowledgeCitation } from "./knowledgeCitations";
-import { markdownCopyAnnotations } from "./markdownSelection";
+import { useReportReplyPresentation } from "../outputs/ReplyPresentation";
+import { knowledgeCitations, KnowledgeCitation } from "./knowledge-citations";
+import { markdownCopyAnnotations } from "./markdown-selection";
 
 interface MarkdownProps {
   text: string;

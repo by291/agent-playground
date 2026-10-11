@@ -1,5 +1,5 @@
 import { Component, type ReactNode } from "react";
-import { reportClientError } from "@/observability/tracing";
+import { reportClientError } from "@/shared/observability/tracing";
 import { Button } from "@/components/ui/button";
 import {
   Empty,

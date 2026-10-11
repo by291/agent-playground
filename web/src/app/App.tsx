@@ -1,7 +1,7 @@
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { lazy, Suspense } from "react";
-import { NotFoundPage } from "@/pages/NotFoundPage";
+import { NotFoundPage } from "@/pages/not-found/NotFoundPage";
 import { ChatPage } from "@/pages/chat/ChatPage";
 import { conversationIdFromPath } from "@/pages/chat/conversation-route";
 import { KnowledgePage } from "@/pages/knowledge/KnowledgePage";

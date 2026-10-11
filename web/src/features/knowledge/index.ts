@@ -1,1 +1,1 @@
-export { KnowledgeWorkspace } from "./KnowledgeWorkspace";
+export { KnowledgeWorkspace } from "./ui/KnowledgeWorkspace";

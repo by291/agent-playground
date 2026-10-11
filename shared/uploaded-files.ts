@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { skillFilenameSchema, type SkillFile } from "./skill-files";
+import { skillFilenameSchema, type SkillFile } from "./skill-files.js";
 
 const marker = "\n\nUploaded files:\n";
 const referenceSchema = z.object({

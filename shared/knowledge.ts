@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { maxFileBytes } from "./files";
+import { maxFileBytes } from "./files.js";
 
 export const maxKnowledgeBytes = maxFileBytes;
 export const knowledgeTextEncodings = [

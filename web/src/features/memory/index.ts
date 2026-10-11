@@ -1,1 +1,1 @@
-export { MemoryWorkspace } from "./MemoryWorkspace";
+export { MemoryWorkspace } from "./ui/MemoryWorkspace";

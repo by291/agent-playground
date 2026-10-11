@@ -1,6 +1,6 @@
 import type { HttpAgent } from "@ag-ui/client";
 import type { PendingSubmission } from "../api/contracts";
-import { startSubmissionTrace } from "@/observability/tracing";
+import { startSubmissionTrace } from "@/shared/observability/tracing";
 
 interface SubmissionCallbacks {
   started: () => void;

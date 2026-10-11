@@ -7,10 +7,10 @@ import { fileURLToPath } from "node:url";
 import {
   knowledgeCitationUrl,
   knowledgeSearchSchema,
-} from "../../../shared/knowledge";
-import { createSkillTestStorage } from "../skill-storage";
+} from "../../../shared/knowledge.js";
+import { createSkillTestStorage } from "../skill-storage.js";
 import { GenericContainer, type StartedTestContainer } from "testcontainers";
-import { skillFileSchema } from "../../../shared/skill-files";
+import { skillFileSchema } from "../../../shared/skill-files.js";
 import type { LangGraphPlatformMessage } from "@ag-ui/langgraph";
 import { serve } from "@hono/node-server";
 import type { Server } from "node:http";
@@ -21,11 +21,14 @@ import {
 import { Hono } from "hono";
 import { eq, sql } from "drizzle-orm";
 import type { Message } from "@ag-ui/client";
-import { completedMessages } from "../../agent/messages";
-import { controlledAegra } from "./aegra";
+import { completedMessages } from "../../src/agent/checkpoint-messages.js";
+import { controlledAegra } from "./aegra.js";
 import { randomUUID } from "node:crypto";
-import { conversations, conversationMessages } from "../../db/schema";
-import { scrollHistory } from "./scroll-history";
+import {
+  conversations,
+  conversationMessages,
+} from "../../src/db/conversation-schema.js";
+import { scrollHistory } from "./scroll-history.js";
 
 let knowledgeProcess: ChildProcess | undefined;
 let configurationDirectory: string | undefined;
@@ -33,7 +36,7 @@ let stopKnowledgeCleanup: (() => Promise<void>) | undefined;
 let storage: StartedTestContainer | undefined;
 let redis: StartedTestContainer | undefined;
 let postgres: StartedPostgreSqlContainer | undefined;
-let database: typeof import("../../db/database") | undefined;
+let database: typeof import("../../src/db/database.js") | undefined;
 let upstream: Server | undefined;
 let backend: Server | undefined;
 let agent: ReturnType<typeof controlledAegra> | undefined;
@@ -88,7 +91,7 @@ function stop() {
       } finally {
         try {
           await (
-            await import("../../conversation/change-subscription")
+            await import("../../src/conversation/events/subscription.js")
           ).closeConversationChanges();
           await database?.db.$client.end();
         } finally {
@@ -96,7 +99,9 @@ function stop() {
             await postgres?.stop();
           } finally {
             try {
-              (await import("../../storage/object-store")).closeObjectStore();
+              (
+                await import("../../src/storage/object-store.js")
+              ).closeObjectStore();
               await storage?.stop();
             } finally {
               try {
@@ -128,7 +133,7 @@ async function start() {
     "pgvector/pgvector:0.8.7-pg18",
   ).start();
   process.env.APP_DATABASE_URL = postgres.getConnectionUri();
-  database = await import("../../db/database");
+  database = await import("../../src/db/database.js");
   await database.migrateServer();
   // Python owns this table. Match its read contract in the isolated test DB.
   await database.db.execute(sql`
@@ -175,12 +180,13 @@ async function start() {
   }
 
   process.env.AEGRA_URL = `http://127.0.0.1:${address.port}`;
-  const { app } = await import("../../app");
+  const { app } = await import("../../src/app.js");
   const { startExternalTaskWorker } =
-    await import("../../conversation/external-task-worker");
-  const { externalTasks } = await import("../../db/external-task-schema");
+    await import("../../src/conversation/tasks/task-worker.js");
+  const { externalTasks } =
+    await import("../../src/db/external-task-schema.js");
   const { conversationSnapshot } =
-    await import("../../conversation/conversation-snapshot");
+    await import("../../src/conversation/history/snapshot.js");
 
   stopWorker = startExternalTaskWorker();
   const harness = new Hono();
@@ -556,7 +562,7 @@ async function start() {
   }
 
   stopKnowledgeCleanup = (
-    await import("../../knowledge/cleanup")
+    await import("../../src/knowledge/cleanup.js")
   ).startKnowledgeCleanup();
 }
 

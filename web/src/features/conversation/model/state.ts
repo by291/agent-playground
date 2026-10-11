@@ -4,7 +4,7 @@ import type { ContextUsage } from "@shared/context-usage";
 import type { A2UISurfaceView } from "@/features/a2ui";
 import type { ConversationSnapshot } from "../api/contracts";
 import type { ConversationLifecycle } from "./lifecycle";
-import type { PlanReviewResponse } from "./planReview";
+import type { PlanReviewResponse } from "./plan-review";
 import type { WorkflowReview } from "@shared/workflow-review";
 
 export interface Activity {

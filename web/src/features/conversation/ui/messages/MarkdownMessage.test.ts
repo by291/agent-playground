@@ -5,11 +5,14 @@ import { createElement } from "react";
 import { act, fireEvent, render, waitFor } from "@testing-library/react";
 import MarkdownMessage from "./MarkdownMessage";
 import { animationClock } from "../../../../../tests/animationClock";
-import { UserPreferencesProvider, useUserPreferences } from "@/lib/preferences";
+import {
+  UserPreferencesProvider,
+  useUserPreferences,
+} from "@/shared/preferences/UserPreferencesProvider";
 import {
   ReplyPresentationProvider,
   useReplyPresentationBusy,
-} from "../ReplyPresentation";
+} from "../outputs/ReplyPresentation";
 
 test("code blocks highlight syntax and copy the original source", async () => {
   const source = "int main(void) {\n  return 0;\n}\n";

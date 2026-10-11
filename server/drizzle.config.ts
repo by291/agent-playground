@@ -3,10 +3,10 @@ import { defineConfig } from "drizzle-kit";
 export default defineConfig({
   dialect: "postgresql",
   schema: [
-    "./db/schema.ts",
-    "./db/external-task-schema.ts",
-    "./db/skill-file-schema.ts",
-    "./db/knowledge-schema.ts",
+    "./src/db/conversation-schema.ts",
+    "./src/db/external-task-schema.ts",
+    "./src/db/skill-file-schema.ts",
+    "./src/db/knowledge-schema.ts",
   ],
   out: "./drizzle",
   dbCredentials: {

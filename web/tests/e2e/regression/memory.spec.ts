@@ -79,6 +79,7 @@ test("saved memory can be corrected, reloaded and forgotten", async ({
     .click();
   await expect(confirmation).toHaveCount(0);
   await expect(correctedRow).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Back to chat" })).toBeFocused();
   await page.reload();
   await expect(
     page.getByRole("listitem").filter({ hasText: correctedText }),

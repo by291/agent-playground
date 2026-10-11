@@ -1,6 +1,6 @@
 # Architecture
 
-[Documentation index](README.md) · [Frontend architecture](frontend-architecture.md)
+[Documentation index](README.md) · [Frontend architecture](frontend-architecture.md) · [Server architecture](server-architecture.md)
 
 ## Execution path
 
@@ -31,15 +31,17 @@ The server uses the official `@ag-ui/langgraph` adapter to create native Aegra r
 | `agent_playground/knowledge/`                                        | Text extraction, durable indexing, embedding/pgvector clients and retrieval tool.                          |
 | `agent_playground/memory/`                                           | Memory policy/tools, bounded recall, LangMem persistence and private management routes.                    |
 | `agent_playground/db/`                                               | Python database contracts, connections and repositories, independent of HTTP.                              |
-| `server/http/`                                                       | Routes, request validation and conversation-change SSE.                                                    |
-| `server/agent/`                                                      | Shared Aegra client, official protocol adapter and stream transport.                                       |
-| `server/conversation/`                                               | Admission, run mapping/state, recovery, task continuation, snapshots and conversation files.               |
-| `server/knowledge/`, `server/storage/`                               | Document lifecycle/cleanup and shared S3 client.                                                           |
-| `server/memory/`                                                     | Authenticated, bounded proxy to Python memory management.                                                 |
-| `server/db/`, `server/drizzle/`                                      | Application database schemas, access and migrations.                                                       |
-| `server/app.ts`, `server/server.ts`                                  | HTTP assembly and process/resource lifecycle respectively.                                                 |
+| `server/src/routes/`, `server/src/middleware/`                       | HTTP routes, request validation, authentication and browser SSE transport.                                 |
+| `server/src/agent/`                                                  | Shared Aegra client, official protocol adapter, checkpoints and run execution.                             |
+| `server/src/conversation/`                                           | Run admission/persistence/recovery, history, tasks, files and change events in named directories.          |
+| `server/src/knowledge/`, `server/src/storage/`                       | Document lifecycle/cleanup and shared S3 client.                                                           |
+| `server/src/memory/`                                                 | Authenticated, bounded proxy to Python memory management.                                                  |
+| `server/src/db/`, `server/drizzle/`                                  | Application database schemas, access and migrations.                                                       |
+| `server/src/app.ts`, `server/src/main.ts`                            | HTTP assembly and process/resource lifecycle respectively.                                                 |
 | `web/src/app/`, `web/src/pages/`                                     | Routing/providers and page composition.                                                                    |
-| `web/src/features/conversation/`, `knowledge/`, `a2ui/`              | Chat/session UI, shared document management and official A2UI processing/catalog.                          |
+| `web/src/layouts/`                                                   | Application page shells, back navigation and panel geometry.                                               |
+| `web/src/components/`, `web/src/shared/`                             | Reusable widgets, shadcn/ui primitives, browser hooks, preferences and telemetry.                          |
+| `web/src/features/conversation/`, `knowledge/`, `memory/`, `a2ui/`   | Conversation state/UI, document and memory management, and official A2UI processing/catalog.               |
 | `android/core/`, `android/app/`                                      | JVM protocol/session core and Compose presentation, Android lifecycle and file access.                     |
 | `shared/`                                                            | Application contracts: runs, context, conversations, workflow outputs/reviews, tasks, files and knowledge. |
 

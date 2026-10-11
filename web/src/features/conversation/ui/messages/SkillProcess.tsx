@@ -1,8 +1,8 @@
 import type { ReactNode } from "react";
 import type { toolProcess, ToolStep } from "../../model/turns";
 import { ToolProcess } from "./ToolProcess";
-import { skillIdentity } from "../../model/skillExecution";
-import { isMemoryTool } from "../../model/memoryExecution";
+import { skillIdentity } from "../../model/skill-execution";
+import { isMemoryTool } from "../../model/memory-execution";
 
 export function ExecutionProcess({
   process,

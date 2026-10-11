@@ -14,7 +14,7 @@ The guides below describe the current implementation. Start with [local developm
 | [Workflows](workflow-mechanisms.md)           | Experiment, SQL and report examples; common review, durable output and external-task mechanisms.          |
 | [A2A collaboration](a2a-demo.md)              | Independent planner/reviewer agents, streaming child output, multi-turn input, cancellation and recovery. |
 | [Shared knowledge](knowledge.md)              | Document upload, OpenAI-compatible embeddings, indexing, source citations and cleanup.                    |
-| [Agent memory](memory.md)                     | Default cross-conversation preferences and project facts, correction, forgetting and shared storage.    |
+| [Agent memory](memory.md)                     | Default cross-conversation preferences and project facts, correction, forgetting and shared storage.      |
 | [Agent Skills](skills.md)                     | Published bundles, Docker execution, attachments, outputs and runtime limits.                             |
 | [Observability](observability.md)             | Optional tracing, Langfuse, metrics, local accounts and deployment settings.                              |
 
@@ -24,6 +24,7 @@ The guides below describe the current implementation. Start with [local developm
 | ------------------------------------------------- | --------------------------------------------------------------------------------------------- |
 | [Architecture](architecture.md)                   | Python, server and web boundaries; storage, protocols and recovery consistency.               |
 | [Frontend architecture](frontend-architecture.md) | Imports, state ownership, UI resources, development tools and frontend validation.            |
+| [Server architecture](server-architecture.md)     | Source directories, HTTP boundaries, admission, run persistence, ESM and server validation.   |
 | [Android architecture](android-architecture.md)   | Native module boundaries, repositories, state ownership, resource lifetimes and verification. |
 | [Browser tests](../web/tests/e2e/README.md)       | Controlled regression, live smoke, fixtures, coverage ownership and runtime reports.          |
 | [Project rules](../AGENTS.md)                     | Long-term directory, implementation, style and contribution conventions.                      |

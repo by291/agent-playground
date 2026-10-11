@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { runStatuses } from "./run-status";
+import { runStatuses } from "./run-status.js";
 
 export const conversationTitleSchema = z
   .string()

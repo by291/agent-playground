@@ -2,7 +2,7 @@
 
 [Documentation index](README.md) · [Architecture](architecture.md)
 
-The frontend groups code by application entry, page composition, product capability, and shared foundations. Add code to the capability that owns its behavior; create another feature only when it has an independent responsibility.
+The frontend groups code by application entry, route coordination, workspace layout, product capability, and shared foundations. Add code to the capability that owns its behavior; create another feature only when it has an independent responsibility. This directory structure is a project choice, grounded in React's [component/Hook rules](https://react.dev/reference/rules) and [custom Hook conventions](https://react.dev/learn/reusing-logic-with-custom-hooks), rather than a framework-mandated template.
 
 ## Structure
 
@@ -10,32 +10,46 @@ The frontend groups code by application entry, page composition, product capabil
 web/
   src/
     main.tsx                         Browser bootstrap
-    app/                             Routes, configuration, providers, page errors
+    app/                             Routing, configuration, AppProviders and PageBoundary
     pages/
       chat/ChatPage.tsx               Conversation selection and page composition
       knowledge/KnowledgePage.tsx     Shared document management page
       memory/MemoryPage.tsx           Saved Agent memory management page
       dev/a2ui-components/            Development editor, examples and previews
-      NotFoundPage.tsx
+      not-found/NotFoundPage.tsx
+    layouts/
+      ChatLayout.tsx                 Responsive sidebar, chat/activity panels and composition
+      ManagementLayout.tsx           Management page shell and back navigation
+      useStoredPanelSize.ts           Persisted panel dimensions and geometry
     features/
       conversation/
         index.ts                     Public page-facing API
-        ConversationProvider.tsx     Query delivery and scoped React subscriptions
+        providers/                   Query delivery and scoped React subscriptions
+        hooks/                       Conversation history queries and management actions
         api/                         HTTP snapshots, contracts and Query options
         model/                       Lifecycle, reconciliation, selectors and view model
         runtime/                     Session, submission and official SDK adaptation
-        ui/                          Workspace, messages, composer and review
+        ui/                          navigation, composer, messages, attachments, outputs, review, activity
+          navigation/ConversationToolbar.tsx  Conversation header controls and activity badge
+        tests/                       Checks spanning UI and runtime
+        ActivityPanel.tsx            Separate development-only lazy public entry
       a2ui/
         index.ts                     Public runtime/catalog API
         A2UISurface.tsx              Public lazy renderer entry
         runtime/                     Validation, ordered ingestion and disposal
         catalog/                     Component schemas and renderers
-      knowledge/                     Shared document API and upload/indexing UI
-      memory/                        Memory API, paginated queries and correction/forget UI
-    components/                      Shared application widgets
-      ui/                            shadcn/ui primitives
-    lib/                             Small shared utilities
-    observability/                   Browser tracing and error reporting
+      knowledge/                     api/, hooks/, ui/ for document upload/indexing
+      memory/                        api/, hooks/, ui/ for memory correction/forgetting
+    components/
+      ui/                            shadcn/ui primitives and UI helpers
+      AppBrand.tsx                    Shared application branding
+      GatewayStatus.tsx               Gateway connection status
+      settings/                      Settings state, forms, confirmation and triggers
+    shared/
+      utils/cn.ts                    Class composition entry for the shadcn generator
+      hooks/                         Browser media queries and responsive helpers
+      preferences/                   Pure preference schema/storage and React provider
+      observability/                 Browser tracing and error reporting
     styles/                          Theme, base rules and shared motion
   tests/
     setup.ts                         DOM cleanup and Vitest mock/timer restoration
@@ -43,24 +57,25 @@ web/
     e2e/                             Playwright regression and live smoke suites
 ```
 
-There is one conversation feature, including its chat UI. `pages/chat` is its route entry. The component workspace owns development-only editor state and examples; shared A2UI processing stays in the A2UI feature.
+There is one conversation feature, including its chat UI. `pages/chat` coordinates routing and provider identity; `layouts/ChatLayout.tsx` arranges its public UI components. The conversation feature's `ui/navigation/ConversationToolbar.tsx` owns its header controls and activity badge, while panel geometry and browser persistence live in `layouts/useStoredPanelSize.ts`. Capability-specific UI belongs to features; layouts compose that UI and own panel geometry. Knowledge and memory pages wrap their feature UI in `layouts/ManagementLayout.tsx`. The memory page owns the back-link ref and supplies an action-focus fallback when a removed row can no longer receive focus. Features do not own the page shell or back navigation. The component workspace owns development-only editor state and examples; shared A2UI processing stays in the A2UI feature.
 
-The knowledge feature owns shared-document management. `useKnowledgeDocuments` owns Query reads, TanStack mutations, retry identity and request cancellation; `KnowledgeWorkspace` composes the page, and `DocumentRow` presents each document. Citation presentation belongs to conversation messages because it uses that reply's archived search results; both use `shared/knowledge.ts` rather than importing the other feature's private modules.
+The knowledge feature owns shared-document management. `useKnowledgeDocuments` owns Query reads, TanStack mutations, retry identity and request cancellation; `KnowledgeWorkspace` presents the management content, and `DocumentRow` presents each document. Citation presentation belongs to conversation messages because it uses that reply's archived search results; both use `shared/knowledge.ts` rather than importing the other feature's private modules.
 
 The memory feature manages saved Agent entries through `shared/memory.ts`. `useMemories` owns paginated Query reads, mutation cancellation and cache updates; dialogs own drafts and explicit revision-conflict review. Visiting its page does not enable memory: Python integrates recall and tools into normal chat by default.
 
 ## Dependencies
 
 ```text
-app → pages → features → components / lib / observability / shared contracts
-                   conversation → a2ui
+app → pages → layouts → features → components → shared foundations
+                           conversation → a2ui
+Application contracts live separately in repository shared/.
 ```
 
-`main.tsx` starts the app. Pages import a feature's `index.ts`; the A2UI renderer has a separate public entry so it can load lazily. Features cannot import pages or application configuration. Shared foundations cannot import a feature. Pages cannot import another page's private modules.
+`main.tsx` starts the app. Pages and application layouts import a feature's `index.ts`; the A2UI renderer and development Activity panel have separate public entries so they can load lazily. Pages may use features directly when they need no application layout. Layouts cannot import pages; features cannot import application layouts, pages or app configuration. Application page shells and back navigation belong in `layouts`; capability controls stay in feature UI. `components/ui` contains domain-independent primitives; reusable application widgets live elsewhere in `components`. Components cannot import features. Shared foundations cannot import application components or features. Pages cannot import another page's private modules.
 
-Conversation API and model code cannot import its runtime, UI or React provider. Runtime can depend on API and model code; UI subscribes through the provider and cannot import runtime internals. Feature internals use local imports rather than their own barrel, preventing a cycle through the public entry. ESLint enforces these boundaries, including dynamic imports and re-exports.
+Feature API and model code cannot import runtime, UI, hooks or React providers. Runtime can depend on API and model code; UI subscribes through the provider and cannot import runtime internals. Pure logic stays in `model`; Query/React integrations live in `hooks` and `providers`. Feature internals use local imports rather than their own barrel, preventing a cycle through the public entry. ESLint enforces these boundaries, including dynamic imports and re-exports.
 
-Protocol types and parsing remain owned by the official AG-UI and A2UI libraries. Repository-level `shared/` contains application contracts such as run status and context usage, accessed through `@shared/*`.
+Protocol types and parsing remain owned by the official AG-UI and A2UI libraries. Repository-level `shared/` contains application contracts such as run status and context usage, accessed through `@shared/*`; `@/shared/*` refers to browser-only foundations. Application components use PascalCase file names, custom Hooks use `useName.ts`, and pure helpers/runtime modules use kebab-case. shadcn/ui primitives retain their registry file names. Tests share their implementation's name and directory.
 
 ## State and resources
 
@@ -94,17 +109,17 @@ A fresh conversation does not query an absent snapshot before its first stream s
 
 The root route starts with an unallocated draft. The session allocates its thread ID on the first valid submission, before attachment upload. Route promotion keeps the same provider key and mounted session; explicit conversation switching changes that key and releases the previous session. See [conversation behavior](conversations.md#drafts-and-the-first-submission).
 
-`conversationView` groups assistant/tool messages by user turn, attaches surfaces once, preserves unattached surfaces and places pending review editors. `ChatPane` memoizes this work by the four relevant data arrays, so context/activity updates do not rebuild the view model.
+`conversationView` groups assistant/tool messages by user turn, attaches surfaces once, preserves unattached surfaces and places pending review editors. `ConversationTimeline` memoizes this work by the four relevant data arrays, so context/activity updates do not rebuild the view model.
 
 The session keeps message timestamps separately from official AG-UI messages. It records provisional submission/event times, preserves them on retry, and accepts saved timestamps only from current snapshots. Workflow-output replies use the same map. `AssistantText` tracks its own Markdown display buffer to enable Copy all after both execution and presentation settle. Selection copying uses Turndown with GFM support. It normalizes cloned Streamdown code, link and partial-table markup before conversion; the live renderer keeps its existing navigation and link-safety flow.
 
 ## Application and styling
 
-`app/config.ts` validates browser environment flags with Zod. `app/providers.tsx` creates the app's QueryClient. `PageBoundary` reports page rendering failures and presents a reload action. Individual A2UI rendering failures retain their surface-level boundary.
+`app/config.ts` validates browser environment flags with Zod. `app/AppProviders.tsx` creates the app's QueryClient. `app/PageBoundary.tsx` wraps the routed page tree, reports page rendering failures and presents a full-page reload action. It belongs to application assembly because it owns the global page-failure policy. Individual A2UI rendering failures retain their surface-level boundary.
 
 The development gallery and Activity panel imports are guarded directly by Vite's compile-time `import.meta.env.DEV`; SDK event collection uses the same guard. Keep those static guards when changing routing; a parsed runtime configuration object cannot provide the same elimination guarantee. The production build fails if emitted chunks include `pages/dev`, Monaco or Activity implementation modules. Components and Activity controls are development-only; `/dev/a2ui-components` is unavailable in production.
 
-`app/providers.tsx` also mounts the shared preferences provider from `lib/preferences.tsx`. It validates browser-local preferences, applies theme changes and releases its system-appearance listener. `components/SettingsControl.tsx` provides shared settings triggers and owns Radix Dialog settings and AlertDialog destructive confirmations. `ChatPage` mounts `SettingsProvider` outside the keyed conversation provider so settings stay open when clearing history switches conversations. Conversation UI reads the shared preference hook without depending on another feature.
+`app/AppProviders.tsx` mounts `shared/preferences/UserPreferencesProvider.tsx`, which applies theme changes and releases its system-appearance listener. Preference schemas, defaults and storage parsing live in the pure `preferences.ts` module. `components/settings/SettingsProvider.tsx` owns dialog state, deletion requests and focus restoration; `PreferencesForm.tsx` and `ClearConversationsDialog.tsx` render the preference controls and destructive confirmation. `SettingsControl.tsx` supplies the trigger. `ChatPage` mounts `SettingsProvider` outside the keyed conversation provider so settings stay open when clearing history switches conversations. Conversation UI reads the shared preference hook without depending on another feature.
 
 `ChatPage` supplies a clear-history callback to the shared settings provider, and sidebar triggers open the same settings dialog through context. Standalone previews can still mount their own settings control. The conversation feature owns the bulk API call and success coordination: cancel pending history/snapshot reads, remove conversation caches and browser pointers, and switch the keyed provider to a fresh conversation. Preferences and navigation storage remain untouched. The separate confirmation dialog uses Radix modal focus handling; cancellation restores focus to the clear-history trigger, pending deletion prevents dismissal, and success closes only confirmation. Request errors stay in confirmation; rejected deletion does not modify local conversation state.
 
@@ -112,7 +127,7 @@ The development gallery and Activity panel imports are guarded directly by Vite'
 
 `styles/motion.css` defines shared feedback, content, panel and exit durations (120/180/220/140 ms). Dialog, AlertDialog, DropdownMenu, Popover, Select, Tooltip and Sheet share CSS entrance/exit animations. Sheet direction follows its edge. Motion handles collapsible height, list layout and retained exits through `components/ui/motion.tsx`. Motion-retained exiting content becomes inert and hidden from assistive technology immediately. Reduced-motion preferences disable CSS movement and set Motion durations to zero. Streaming text pacing remains independent; completed history messages do not replay submission animations.
 
-Streaming text pacing uses the shared `hooks/use-media-query` subscription for reduced-motion changes. The installed Motion hook caches its initial preference, so it does not replace this live subscription.
+Streaming text pacing uses the shared `shared/hooks/useMediaQuery` subscription for reduced-motion changes. The installed Motion hook caches its initial preference, so it does not replace this live subscription.
 
 Select menu spacing uses Radix's `sideOffset` (4 px by default). Keep persistent positioning offsets out of animation transforms so the final animated frame and resting menu bounds agree, including when collision handling flips the menu above its trigger.
 
@@ -132,7 +147,7 @@ Resizable uses `react-resizable-panels` for pointer capture, separator keyboard 
 
 ScrollArea wraps conversation history, Activity and the source reader. History's IntersectionObserver uses the actual viewport as its root; the closed mobile Sheet releases that observer. The reader scrolls its passage while navigation and download actions stay available. Activity disclosures use Collapsible, render JSON on first expansion and retain nested display state until the event is removed.
 
-To add one, run `pnpm dlx shadcn@latest add <component>` from `web/`; `components.json` contains registry settings. The A2UI catalog keeps each component schema and renderer together in `features/a2ui/catalog/components/`, registered by `catalog/index.tsx`.
+To add one, run `pnpm dlx shadcn@latest add <component>` from `web/`; `components.json` contains registry settings. UI code imports class composition directly from `cn`. The generator's `utils` alias points to the small `shared/utils/cn.ts` entry, and its `lib` alias targets `shared/utils` for non-component helpers. These utilities stay separate from `components/ui` primitives. The A2UI catalog keeps each component schema and renderer together in `features/a2ui/catalog/components/`, registered by `catalog/workflow-catalog.tsx`.
 
 Inter weights 400, 500, 600 and 700 are bundled with Fontsource rather than downloaded from Google Fonts at runtime. The development gallery bundles Monaco feature registrations, JSON support and local workers. **Components** opens `/dev/a2ui-components` in another tab; its JSON examples live in `pages/dev/a2ui-components/examples/`. A valid complete surface updates the preview; invalid JSON keeps the last valid result. Chat ingestion separately accepts update-only batches. Preview models are released on replacement, reset and unmount. A2UI actions do not submit backend operations.
 

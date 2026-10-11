@@ -5,7 +5,7 @@ import { createElement } from "react";
 import { render, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ReviewPanel } from "./ReviewPanel";
-import type { PlanReviewResponse } from "../../model/planReview";
+import type { PlanReviewResponse } from "../../model/plan-review";
 
 test("review approval submits edited values and running prevents another decision", async () => {
   const decisions: PlanReviewResponse[][] = [];

@@ -11,9 +11,9 @@ import {
 import { hasMessageText, messageText } from "../../model/presentation";
 import MarkdownMessage from "./MarkdownMessage";
 import { uploadedMessageContent } from "@shared/uploaded-files";
-import { UploadedAttachments } from "../Attachments";
+import { UploadedAttachments } from "../attachments/MessageAttachments";
 import { AssistantMessageFooter, MessageTimestamp } from "./MessageMetadata";
-import { copyMarkdownSelection } from "./markdownSelection";
+import { copyMarkdownSelection } from "./markdown-selection";
 
 export function MessageRow({
   message,

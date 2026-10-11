@@ -1,6 +1,6 @@
 import { StackIcon } from "@phosphor-icons/react/dist/csr/Stack";
 import { Badge } from "./ui/badge";
-import { cn } from "@/lib/utils";
+import { cn } from "cn";
 
 export function AppBrand({
   subtitle,

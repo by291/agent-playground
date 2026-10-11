@@ -1,6 +1,7 @@
 {
   "name": "agent-playground",
   "private": true,
+  "type": "module",
   "packageManager": "pnpm@12.6.0",
   "scripts": {
     "dev:server": "pnpm --filter agent-playground-server dev",

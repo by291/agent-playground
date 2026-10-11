@@ -37,7 +37,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { KnowledgeCitationProvider } from "./knowledgeCitations";
+import { KnowledgeCitationProvider } from "./knowledge-citations";
 
 type RetrievedSource = KnowledgeSource & { number: number };
 

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { useMediaQuery } from "@/hooks/use-media-query";
-import { useUserPreferences } from "@/lib/preferences";
+import { useMediaQuery } from "@/shared/hooks/useMediaQuery";
+import { useUserPreferences } from "@/shared/preferences/UserPreferencesProvider";
 
 // Adapted from assistant-ui's TextStreamAnimator (MIT); see usePacedText.LICENSE.txt.
 // https://github.com/assistant-ui/assistant-ui/blob/main/packages/react/src/utils/smooth/useSmooth.ts

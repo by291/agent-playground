@@ -6,7 +6,7 @@ import userEvent from "@testing-library/user-event";
 import type { Message } from "@ag-ui/client";
 import { AssistantReply } from "./AssistantReply";
 import { chatTurns } from "../../model/turns";
-import { conversationView } from "../../model/view";
+import { conversationView } from "../../model/conversation-view";
 
 test("reasoning opens while thinking and folds on visible answer text without overriding later user choices", async () => {
   const messages: Message[] = [

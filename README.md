@@ -45,16 +45,16 @@ A native Jetpack Compose client is available in [`android/`](android/README.md).
 
 Use the [documentation index](docs/README.md) to find setup, feature guides, architecture and historical records. [AGENTS.md](AGENTS.md) contains contribution and code-style rules.
 
-| Directory                  | Purpose                                                                               |
-| -------------------------- | ------------------------------------------------------------------------------------- |
-| `agent_playground/`        | Python agent, workflows, APIs, Skills, knowledge retrieval and long-term memory.       |
-| `server/`                  | AG-UI/HTTP adaptation, conversation lifecycle, persistence and shared S3 storage.     |
-| `web/`                     | React pages, conversation/knowledge/memory UI and A2UI runtime/catalog.                |
-| `android/`                 | Native Compose client, JVM protocol/session core and Android tests.                   |
-| `shared/`                  | TypeScript application contracts; protocol types come from official libraries.        |
-| `skills/`                  | Maintainer-published Skill bundles and their scripts/resources.                       |
-| `infra/`, `compose.yaml`   | Local infrastructure and Skill runtime image.                                         |
-| `tests/`, `web/tests/e2e/` | Python checks and browser regression/live smoke.                                      |
+| Directory                  | Purpose                                                                             |
+| -------------------------- | ----------------------------------------------------------------------------------- |
+| `agent_playground/`        | Python agent, workflows, APIs, Skills, knowledge retrieval and long-term memory.    |
+| `server/`                  | AG-UI/HTTP adaptation, conversation lifecycle, persistence and shared S3 storage.   |
+| `web/`                     | React app, pages, layouts, capability features, components and browser foundations. |
+| `android/`                 | Native Compose client, JVM protocol/session core and Android tests.                 |
+| `shared/`                  | TypeScript application contracts; protocol types come from official libraries.      |
+| `skills/`                  | Maintainer-published Skill bundles and their scripts/resources.                     |
+| `infra/`, `compose.yaml`   | Local infrastructure and Skill runtime image.                                       |
+| `tests/`, `web/tests/e2e/` | Python checks and browser regression/live smoke.                                    |
 
 ## Validation
 

@@ -1,4 +1,4 @@
-import type { ConversationReference } from "./storage";
+import type { ConversationReference } from "./conversation-storage";
 
 export interface ConversationLifecycle {
   hydration: "fresh" | "restoring" | "ready";

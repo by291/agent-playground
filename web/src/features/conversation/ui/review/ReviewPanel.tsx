@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
-import type { PlanReview, PlanReviewResponse } from "../../model/planReview";
+import type { PlanReview, PlanReviewResponse } from "../../model/plan-review";
 import { AnimatePresence } from "motion/react";
 import { AnimatedDiv } from "@/components/ui/motion";
 

@@ -1,6 +1,6 @@
 import { createComponentImplementation } from "@a2ui/react/v0_9";
 import { z } from "zod";
-import { dynamicText } from "../../runtime/dynamicBinding";
+import { dynamicText } from "../../runtime/dynamic-binding";
 
 const textApi = {
   name: "WorkflowText",

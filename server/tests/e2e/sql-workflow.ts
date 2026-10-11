@@ -1,11 +1,11 @@
 import { randomUUID } from "node:crypto";
 import { sql } from "drizzle-orm";
-import type { db } from "../../db/database";
+import type { db } from "../../src/db/database.js";
 import {
   workflowReviewSchema,
   type WorkflowReviewResponse,
-} from "../../../shared/workflow-review";
-import type { SqlCard } from "../../../shared/sql-card";
+} from "../../../shared/workflow-review.js";
+import type { SqlCard } from "../../../shared/sql-card.js";
 
 export class ControlledSqlWorkflow {
   revision = 2;

@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { filenameSchema, maxFileBytes } from "./files";
+import { filenameSchema, maxFileBytes } from "./files.js";
 
 export const maxSkillFileBytes = maxFileBytes;
 export const skillFilenameSchema = filenameSchema;

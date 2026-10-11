@@ -2,6 +2,7 @@ import js from "@eslint/js";
 import { defineConfig } from "eslint/config";
 import tseslint from "typescript-eslint";
 import codeStyle from "../eslint.style.mjs";
+import { architectureRule } from "./eslint.architecture.js";
 
 export default defineConfig([
   {
@@ -21,5 +22,14 @@ export default defineConfig([
     rules: {
       "@typescript-eslint/no-deprecated": "error",
     },
+  },
+  {
+    files: ["src/**/*.ts"],
+    plugins: { architecture: { rules: { boundaries: architectureRule } } },
+    rules: { "architecture/boundaries": "error" },
+  },
+  {
+    files: ["*.js", "tests/**/*.js"],
+    extends: [js.configs.recommended, codeStyle],
   },
 ]);

@@ -1,11 +1,18 @@
 import path from "node:path";
 
 const sourceRoot = path.resolve(import.meta.dirname, "src");
-const ranks = { app: 3, pages: 2, features: 1 };
+const ranks = {
+  app: 5,
+  pages: 4,
+  layouts: 3,
+  features: 2,
+  components: 1,
+  shared: 0,
+};
 const publicEntries = {
   memory: new Set(["index", ""]),
   knowledge: new Set(["index", ""]),
-  conversation: new Set(["index", ""]),
+  conversation: new Set(["index", "", "ActivityPanel"]),
   a2ui: new Set(["index", "", "A2UISurface"]),
 };
 
@@ -30,16 +37,23 @@ function boundaryIssue(from, to) {
   const toRank = ranks[to[0]] ?? 0;
 
   if (fromRank < toRank) {
-    return "Imports must point from application to pages, features, and shared foundations.";
+    return "Imports must point from app to pages, layouts, features, components and shared foundations.";
   }
 
-  const conversationLogic =
-    from[0] === "features" &&
-    from[1] === "conversation" &&
-    ["api", "model", "runtime"].includes(from[2]);
+  const featureLogic =
+    from[0] === "features" && ["api", "model", "runtime"].includes(from[2]);
 
-  if (conversationLogic && to[0] === "components") {
-    return "Conversation API, model and runtime must stay independent of shared UI.";
+  if (featureLogic && to[0] === "components") {
+    return "Feature API, model and runtime must stay independent of UI components.";
+  }
+
+  if (
+    from[0] === "components" &&
+    from[1] === "ui" &&
+    to[0] === "components" &&
+    to[1] !== "ui"
+  ) {
+    return "UI primitives must stay independent of application widgets.";
   }
 
   const sameFeature =
@@ -56,14 +70,14 @@ function boundaryIssue(from, to) {
     }
 
     const forbiddenLayers = {
-      api: new Set(["model", "runtime", "ui", "ConversationProvider"]),
-      model: new Set(["runtime", "ui", "ConversationProvider"]),
-      runtime: new Set(["ui", "ConversationProvider"]),
+      api: new Set(["model", "runtime", "ui", "hooks", "providers"]),
+      model: new Set(["runtime", "ui", "hooks", "providers"]),
+      runtime: new Set(["ui", "hooks", "providers"]),
       ui: new Set(["runtime"]),
     };
 
     if (forbiddenLayers[from[2]]?.has(targetLayer)) {
-      return "Feature models and runtime must not depend on their UI or React provider.";
+      return "Feature APIs, models and runtime must not depend on UI, hooks or React providers.";
     }
 
     return null;

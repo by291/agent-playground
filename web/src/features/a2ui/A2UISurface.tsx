@@ -1,8 +1,8 @@
 import { A2uiSurface } from "@a2ui/react/v0_9";
 import { Component, type ReactNode } from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import type { A2UISurfaceView } from "./runtime/runtime";
-import { reportClientError } from "@/observability/tracing";
+import type { A2UISurfaceView } from "./runtime/a2ui-runtime";
+import { reportClientError } from "@/shared/observability/tracing";
 
 export function A2UISurface({
   view,

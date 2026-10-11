@@ -1,6 +1,6 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { catalogExamples } from "@/pages/dev/a2ui-components/model/examples";
-import { createGalleryPreviews } from "./galleryPreviews";
+import { createGalleryPreviews } from "./gallery-previews";
 
 export function useGalleryPreviews() {
   const [owner] = useState(() => createGalleryPreviews(catalogExamples));
