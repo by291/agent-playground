@@ -2,14 +2,14 @@
 
 from typing import Literal
 
-from a2ui.core.schema import (
+from a2ui.core.schema.v0_9 import (
     A2uiMessageListWrapper,
     CreateSurface,
     CreateSurfaceMessage,
     UpdateComponents,
     UpdateComponentsMessage,
 )
-from a2ui.core.schema.common_types import ComponentId
+from a2ui.core.schema.v0_9.common_types import ComponentId
 from pydantic import BaseModel
 
 from agent_playground.services.sql.models import SqlCheck
@@ -41,6 +41,19 @@ def sql_card(state: SqlState) -> A2uiMessageListWrapper:
         raise ValueError("SQL card requires a check result")
 
     surface_id = f"sql-{state.workflow_call_id}-{state.round}"
+    component = WorkflowSql(
+        workflowCallId=state.workflow_call_id,
+        sql=state.sql,
+        originalSql=state.original_sql,
+        revision=state.revision,
+        round=state.round,
+        status=state.status,
+        check=state.check,
+        receiptId=state.submission.id if state.submission else None,
+    )
+    component_payload = component.model_dump(
+        mode="json", by_alias=True, exclude_none=True
+    )
 
     return A2uiMessageListWrapper(
         messages=[
@@ -52,18 +65,7 @@ def sql_card(state: SqlState) -> A2uiMessageListWrapper:
             UpdateComponentsMessage(
                 update_components=UpdateComponents(
                     surface_id=surface_id,
-                    components=[
-                        WorkflowSql(
-                            workflowCallId=state.workflow_call_id,
-                            sql=state.sql,
-                            originalSql=state.original_sql,
-                            revision=state.revision,
-                            round=state.round,
-                            status=state.status,
-                            check=state.check,
-                            receiptId=state.submission.id if state.submission else None,
-                        )
-                    ],
+                    components=[component_payload],
                 )
             ),
         ]

@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 import { fireEvent, render, waitFor } from "@testing-library/react";
 import { createElement, Fragment } from "react";
-import { HttpAgent, InterruptSchema } from "@ag-ui/client";
+import { InterruptSchema } from "@shared/ag-ui-schemas";
+import { HttpAgent } from "@ag-ui/client";
 import { expect, onTestFinished, test, vi } from "vitest";
 import { useStore } from "zustand";
 import { parseWorkflowReview } from "@shared/workflow-review";

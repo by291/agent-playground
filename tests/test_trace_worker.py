@@ -40,7 +40,7 @@ def free_port() -> int:
 
 
 @pytest.fixture
-def worker(tmp_path: Path) -> Iterator[tuple[str, list[Span]]]:
+def worker(tmp_path: Path) -> Iterator[tuple[str, list[Span], Path]]:
     spans: list[Span] = []
 
     class Receiver(BaseHTTPRequestHandler):
@@ -74,14 +74,24 @@ def worker(tmp_path: Path) -> Iterator[tuple[str, list[Span]]]:
     graph_path = Path(
         os.path.relpath(ROOT / "tests/fixtures/trace_agent.py", config.parent)
     ).as_posix()
+    app_path = Path(
+        os.path.relpath(ROOT / "agent_playground/app.py", config.parent)
+    ).as_posix()
 
-    config.write_text(json.dumps({"graphs": {"agent": f"{graph_path}:graph"}}))
+    config.write_text(
+        json.dumps(
+            {
+                "graphs": {"agent": f"{graph_path}:graph"},
+                "http": {"app": f"{app_path}:app"},
+            }
+        )
+    )
     log_path = tmp_path / "aegra.log"
 
     try:
         with (
             PostgresContainer(
-                "postgres:18-alpine",
+                "pgvector/pgvector:0.8.7-pg18",
                 username="agent",
                 password="agent",
                 dbname="agent_playground",
@@ -97,6 +107,12 @@ def worker(tmp_path: Path) -> Iterator[tuple[str, list[Span]]]:
                 connection.execute(
                     (ROOT / "infra/postgres/init/01-schemas.sql").read_bytes()
                 )
+
+                # The real custom app starts its knowledge worker on server-owned DDL.
+                for migration in sorted(
+                    (ROOT / "server/drizzle").glob("*_knowledge*.sql")
+                ):
+                    connection.execute(migration.read_bytes())
 
             agent_database = database.replace("agent:agent@", "aegra:aegra@")
             update_agent_config("database", application_url=database)
@@ -151,7 +167,7 @@ def worker(tmp_path: Path) -> Iterator[tuple[str, list[Span]]]:
                     else:
                         pytest.fail(log_path.read_text()[-6000:])
 
-                yield url, spans
+                yield url, spans, log_path
             finally:
                 process.terminate()
 
@@ -166,9 +182,9 @@ def worker(tmp_path: Path) -> Iterator[tuple[str, list[Span]]]:
 
 
 def test_redis_worker_keeps_trace_after_browser_disconnect(
-    worker: tuple[str, list[Span]],
+    worker: tuple[str, list[Span], Path],
 ):
-    url, spans = worker
+    url, spans, log_path = worker
     provider = TracerProvider()
     parent = provider.get_tracer("test-browser").start_span("web.submit")
     carrier: dict[str, str] = {}
@@ -226,13 +242,25 @@ def test_redis_worker_keeps_trace_after_browser_disconnect(
 
     assert execution.trace_id == expected_trace
     assert execution.parent_span_id == expected_parent
-    assert len(spans) > 3
-    assert all(span.trace_id == expected_trace for span in spans)
-    assert any(span.name == "get_current_time" for span in spans)
-    assert any("TraceModel" in span.name for span in spans)
-    by_id = {span.span_id: span for span in spans}
+    assert "Overriding of current TracerProvider" not in log_path.read_text()
 
-    for span in spans:
+    assert any(
+        attribute.key == "code.function.name"
+        and attribute.value.string_value == "aegra_api.api.threads.create_thread"
+        for span in spans
+        for attribute in span.attributes
+    )
+
+    # FastAPI also exports independent thread-creation and polling HTTP traces.
+    # Require the model/tool spans and complete parent chain in the browser trace.
+    run_spans = [span for span in spans if span.trace_id == expected_trace]
+
+    assert len(run_spans) > 3
+    assert any(span.name == "get_current_time" for span in run_spans)
+    assert any("TraceModel" in span.name for span in run_spans)
+    by_id = {span.span_id: span for span in run_spans}
+
+    for span in run_spans:
         assert span.parent_span_id == expected_parent or span.parent_span_id in by_id
 
     provider.shutdown()

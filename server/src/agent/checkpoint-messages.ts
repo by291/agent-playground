@@ -1,4 +1,6 @@
-import { MessageSchema, ToolCallSchema, type Message } from "@ag-ui/client";
+import { MessageSchema } from "../../../shared/ag-ui-schemas.js";
+import { ToolCallSchema } from "@ag-ui/core/schemas";
+import { type Message } from "@ag-ui/client";
 
 export const reasoningMessageSuffix = "-reasoning";
 

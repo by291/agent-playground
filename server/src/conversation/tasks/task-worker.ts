@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { RunAgentInputSchema } from "@ag-ui/client";
+import { RunAgentInputSchema } from "../../../../shared/ag-ui-schemas.js";
 import { db } from "../../db/database.js";
 import { aegraUrl, prepareAegraRequest } from "../../agent/aegra-client.js";
 import { Client } from "@langchain/langgraph-sdk";

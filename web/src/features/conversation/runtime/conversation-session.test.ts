@@ -8,12 +8,8 @@ import {
   SimpleSpanProcessor,
 } from "@opentelemetry/sdk-trace-web";
 import { setTimeout as delay } from "node:timers/promises";
-import {
-  HttpAgent,
-  InterruptSchema,
-  RunAgentInputSchema,
-  type RunAgentInput,
-} from "@ag-ui/client";
+import { InterruptSchema, RunAgentInputSchema } from "@shared/ag-ui-schemas";
+import { HttpAgent, type RunAgentInput } from "@ag-ui/client";
 import { createConversationSession } from "./conversation-session";
 import {
   canSelectModel,

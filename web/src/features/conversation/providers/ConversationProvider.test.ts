@@ -5,7 +5,7 @@ import { createElement, useState } from "react";
 import { act, fireEvent, render, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { RunAgentInputSchema } from "@ag-ui/client";
+import { RunAgentInputSchema } from "@shared/ag-ui-schemas";
 import { ConversationProvider, useConversation } from "./ConversationProvider";
 import { MessageComposer } from "../ui/composer/MessageComposer";
 import type { ConversationSnapshot } from "../api/contracts";

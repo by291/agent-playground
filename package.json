@@ -22,6 +22,7 @@
     "prettier": "^3.9.9"
   },
   "dependencies": {
+    "@ag-ui/core": "1.0.1",
     "yaml": "^2.9.1",
     "zod": "3.25.76"
   }

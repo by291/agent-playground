@@ -1,3 +1,4 @@
+import { messageText } from "../../model/presentation";
 import {
   knowledgeFileUrl,
   knowledgeSearchSchema,
@@ -53,7 +54,7 @@ function collectRetrievedSources(process: ReturnType<typeof toolProcess>) {
 
     try {
       const result = knowledgeSearchSchema.safeParse(
-        JSON.parse(step.result.content),
+        JSON.parse(messageText(step.result)),
       );
 
       if (result.success) {

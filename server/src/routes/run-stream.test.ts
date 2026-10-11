@@ -1,6 +1,7 @@
 import { test } from "vitest";
 import assert from "node:assert/strict";
-import { EventType, EventSchemas, type RunAgentInput } from "@ag-ui/client";
+import { EventSchemas } from "@ag-ui/core/schemas";
+import { EventType, type RunAgentInput } from "@ag-ui/client";
 import { Hono } from "hono";
 import { of } from "rxjs";
 import { streamAgent } from "./run-stream.js";

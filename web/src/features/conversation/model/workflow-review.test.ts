@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { InterruptSchema } from "@ag-ui/client";
+import { InterruptSchema } from "@shared/ag-ui-schemas";
 import { parseWorkflowReview, reviewResponse } from "@shared/workflow-review";
 import { workflowReplyMessages } from "@shared/workflow-output";
 

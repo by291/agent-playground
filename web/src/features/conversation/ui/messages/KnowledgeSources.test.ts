@@ -6,87 +6,96 @@ import { expect, test } from "vitest";
 import { AssistantReply } from "./AssistantReply";
 import { chatTurns } from "../../model/turns";
 
-test("restored sources open a reader with document and passage navigation", async () => {
-  const turn = chatTurns(
-    [
-      {
-        id: "call",
-        role: "assistant",
-        content: "",
-        toolCalls: [
-          {
-            id: "search",
-            type: "function",
-            function: { name: "search_knowledge", arguments: "{}" },
-          },
-        ],
-      },
-      {
-        id: "result",
-        role: "tool",
-        toolCallId: "search",
-        content: JSON.stringify({
-          kind: "knowledge_search_result",
-          query: "returns",
-          error: null,
-          sources: [
+test.each([false, true])(
+  "restored sources open a reader with document and passage navigation",
+  async (multipart) => {
+    const resultContent = JSON.stringify({
+      kind: "knowledge_search_result",
+      query: "returns",
+      error: null,
+      sources: [
+        {
+          chunkId: "00000000-0000-4000-8000-000000000001",
+          documentId: "00000000-0000-4000-8000-000000000002",
+          name: "policy.pdf",
+          page: 3,
+          excerpt: "Returns within 30 days.",
+          distance: 0.1,
+        },
+        {
+          chunkId: "00000000-0000-4000-8000-000000000003",
+          documentId: "00000000-0000-4000-8000-000000000002",
+          name: "policy.pdf",
+          page: 4,
+          excerpt: "Bring the original receipt.",
+          distance: 0.2,
+        },
+        {
+          chunkId: "00000000-0000-4000-8000-000000000004",
+          documentId: "00000000-0000-4000-8000-000000000005",
+          name: "delivery.md",
+          page: null,
+          excerpt: "Delivery takes two days.",
+          distance: 0.3,
+        },
+      ],
+    });
+
+    const turn = chatTurns(
+      [
+        {
+          id: "call",
+          role: "assistant",
+          content: "",
+          toolCalls: [
             {
-              chunkId: "00000000-0000-4000-8000-000000000001",
-              documentId: "00000000-0000-4000-8000-000000000002",
-              name: "policy.pdf",
-              page: 3,
-              excerpt: "Returns within 30 days.",
-              distance: 0.1,
-            },
-            {
-              chunkId: "00000000-0000-4000-8000-000000000003",
-              documentId: "00000000-0000-4000-8000-000000000002",
-              name: "policy.pdf",
-              page: 4,
-              excerpt: "Bring the original receipt.",
-              distance: 0.2,
-            },
-            {
-              chunkId: "00000000-0000-4000-8000-000000000004",
-              documentId: "00000000-0000-4000-8000-000000000005",
-              name: "delivery.md",
-              page: null,
-              excerpt: "Delivery takes two days.",
-              distance: 0.3,
+              id: "search",
+              type: "function",
+              function: { name: "search_knowledge", arguments: "{}" },
             },
           ],
-        }),
-      },
-    ],
-    [],
-  )[0]!;
-  const view = render(
-    createElement(AssistantReply, { turn, animatedMessageId: null }),
-  );
+        },
+        {
+          id: "result",
+          role: "tool",
+          toolCallId: "search",
+          content: multipart
+            ? [{ type: "text", text: resultContent }]
+            : resultContent,
+        },
+      ],
+      [],
+    )[0]!;
+    const view = render(
+      createElement(AssistantReply, { turn, animatedMessageId: null }),
+    );
 
-  const user = userEvent.setup();
-  const trigger = view.getByRole("button", { name: /Sources.*2 documents/ });
+    const user = userEvent.setup();
+    const trigger = view.getByRole("button", { name: /Sources.*2 documents/ });
 
-  expect(view.queryByText("Returns within 30 days.")).toBeNull();
-  await user.click(trigger);
-  const reader = within(view.getByRole("dialog", { name: "Sources" }));
+    expect(view.queryByText("Returns within 30 days.")).toBeNull();
+    await user.click(trigger);
+    const reader = within(view.getByRole("dialog", { name: "Sources" }));
 
-  expect(reader.getByText("Returns within 30 days.")).toBeInTheDocument();
-  expect(reader.getByText("Page 3")).toBeInTheDocument();
-  await user.click(reader.getByRole("button", { name: "Next passage" }));
-  expect(reader.getByText("Bring the original receipt.")).toBeInTheDocument();
-  expect(reader.getByRole("combobox", { name: "Document" })).toHaveTextContent(
-    "policy.pdf",
-  );
-  expect(
-    reader
-      .getByRole("link", { name: "Download original" })
-      .getAttribute("href"),
-  ).toBe("/api/knowledge/documents/00000000-0000-4000-8000-000000000002/file");
-  await user.keyboard("{Escape}");
-  expect(view.queryByRole("dialog")).toBeNull();
-  expect(trigger).toHaveFocus();
-});
+    expect(reader.getByText("Returns within 30 days.")).toBeInTheDocument();
+    expect(reader.getByText("Page 3")).toBeInTheDocument();
+    await user.click(reader.getByRole("button", { name: "Next passage" }));
+    expect(reader.getByText("Bring the original receipt.")).toBeInTheDocument();
+    expect(
+      reader.getByRole("combobox", { name: "Document" }),
+    ).toHaveTextContent("policy.pdf");
+    expect(
+      reader
+        .getByRole("link", { name: "Download original" })
+        .getAttribute("href"),
+    ).toBe(
+      "/api/knowledge/documents/00000000-0000-4000-8000-000000000002/file",
+    );
+    await user.keyboard("{Escape}");
+    expect(view.queryByRole("dialog")).toBeNull();
+    expect(trigger).toHaveFocus();
+  },
+);
 
 test.each([
   {

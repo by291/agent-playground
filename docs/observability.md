@@ -16,6 +16,8 @@ Python uses Aegra's supported context-manager factory to restore OTel context du
 
 For schema, checkpoint and conversation reads, the factory identifies non-execution requests through `runtime.execution_runtime` and does not create an `agent.execute` span.
 
+FastAPI also emits HTTP and endpoint spans when OpenTelemetry is configured. Thread creation and run polling can have independent traces; inspect the worker's model/tool spans using the propagated execution trace ID. The custom HTTP app disables FastAPI's automatic exporter configuration so Aegra remains the owner of providers and exporters selected by the Agent settings.
+
 ## Identities and lifecycle
 
 | Identity                       | Meaning                                 |

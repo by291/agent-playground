@@ -1,6 +1,7 @@
 import { test } from "vitest";
 import assert from "node:assert/strict";
-import { InterruptSchema, type Message } from "@ag-ui/client";
+import { InterruptSchema } from "@shared/ag-ui-schemas";
+import { type Message } from "@ag-ui/client";
 import {
   createA2UIRuntime,
   workflowCatalog,

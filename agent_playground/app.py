@@ -50,7 +50,12 @@ async def lifespan(app: FastAPI):
             await run_database_operation(close_app_store)
 
 
-app = FastAPI(title="Agent Playground", lifespan=lifespan)
+# Aegra owns telemetry providers/exporters configured by the Agent launcher.
+app = FastAPI(
+    title="Agent Playground",
+    lifespan=lifespan,
+    telemetry={"auto_configure": False},
+)
 app.include_router(sql_router)
 app.include_router(report_router)
 app.include_router(a2a_router)

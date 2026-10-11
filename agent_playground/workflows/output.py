@@ -1,6 +1,6 @@
 """Publish durable A2UI workflow outputs using the current LangGraph runtime."""
 
-from a2ui.core.schema import A2uiMessageListWrapper
+from a2ui.core.schema.v0_9 import A2uiMessageListWrapper
 from langchain_core.callbacks.manager import adispatch_custom_event
 from langgraph.config import get_config
 from pydantic import BaseModel, ConfigDict, Field

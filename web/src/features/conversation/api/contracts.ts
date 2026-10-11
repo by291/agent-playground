@@ -1,8 +1,8 @@
 import {
   InterruptSchema,
   MessageSchema,
-  RunAgentInputSchema,
-} from "@ag-ui/client";
+  ResumeEntrySchema,
+} from "@shared/ag-ui-schemas";
 import { z } from "zod";
 import { externalTaskSnapshotSchema } from "@shared/external-task";
 import { runStatuses } from "@shared/run-status";
@@ -17,7 +17,7 @@ export const pendingSubmissionSchema = z.object({
   messages: MessageSchema.array(),
   state: z.record(z.unknown()),
   modelId: selectConversationModelSchema.shape.modelId.optional(),
-  resume: RunAgentInputSchema.shape.resume,
+  resume: ResumeEntrySchema.array().optional(),
 });
 
 export type PendingSubmission = z.infer<typeof pendingSubmissionSchema>;

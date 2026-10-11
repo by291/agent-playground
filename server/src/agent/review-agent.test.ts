@@ -1,5 +1,6 @@
 import { onTestFinished, test } from "vitest";
-import { EventSchemas, EventType, type ResumeEntry } from "@ag-ui/client";
+import { EventSchemas } from "@ag-ui/core/schemas";
+import { EventType, type ResumeEntry } from "@ag-ui/client";
 import { LangGraphEventTypes, type ProcessedEvents } from "@ag-ui/langgraph";
 import assert from "node:assert/strict";
 import { Observable } from "rxjs";

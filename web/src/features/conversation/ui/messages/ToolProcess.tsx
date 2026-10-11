@@ -147,7 +147,7 @@ function ToolDetails({ step }: { step: ToolStep }) {
           <p className="mb-1 text-xs font-medium text-muted">Result</p>
           <pre className="max-h-60 overflow-auto rounded-lg bg-sidebar p-3 font-mono text-xs whitespace-pre-wrap wrap-anywhere">
             {step.result
-              ? readableJson(step.result.content) || "Empty result"
+              ? readableJson(messageText(step.result)) || "Empty result"
               : statuses[step.status]}
           </pre>
         </div>

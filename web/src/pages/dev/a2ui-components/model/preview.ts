@@ -1,3 +1,4 @@
+import type { ReactComponentImplementation } from "@a2ui/react/v0_9";
 import { MessageProcessor, NodeResolver } from "@a2ui/web_core/v0_9";
 import { z } from "zod";
 import { workflowCatalog } from "@/features/a2ui";
@@ -31,7 +32,9 @@ export function createGalleryPreview(
   error: string | null;
   dispose: () => void;
 } {
-  const processor = new MessageProcessor([workflowCatalog]);
+  const processor = new MessageProcessor<ReactComponentImplementation>([
+    workflowCatalog,
+  ]);
 
   try {
     processor.processMessages(parsePreviewSource(source));

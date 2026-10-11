@@ -8,3 +8,8 @@ allowBuilds:
   ssh2: false
 patchedDependencies:
   yet-another-react-lightbox@3.32.2: patches/yet-another-react-lightbox@3.32.2.patch
+
+# SDK clients and RxJS streams cross package boundaries and need one class identity.
+overrides:
+  rxjs@7.8.1: 7.8.2
+  "@langchain/langgraph-sdk": 1.12.3
