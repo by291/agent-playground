@@ -123,7 +123,7 @@ services:
 
   otel-collector:
     profiles: [observability]
-    image: otel/opentelemetry-collector-contrib:0.161.0
+    image: otel/opentelemetry-collector-contrib:0.162.0
     command: ["--config=/etc/otelcol/config.yaml"]
     environment:
       LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-pk-lf-playground}
