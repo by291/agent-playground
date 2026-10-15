@@ -196,6 +196,11 @@ fun executionGroups(steps: List<ToolStep>): List<ExecutionGroup> {
     val groups = mutableListOf<ExecutionGroup>()
 
     for (step in steps) {
+        // Clarification is part of the conversation, including malformed or incomplete asks.
+        if (step.call.function.name == "ask_user") {
+            continue
+        }
+
         val skill = skillIdentity(step)
         val kind =
             when {

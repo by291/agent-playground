@@ -115,9 +115,16 @@ internal fun SelectedAttachments(
     uploading: Boolean,
     onRemove: (String) -> Unit,
     loadImage: AttachmentImageLoader,
+    displayed: Boolean = true,
 ) {
     var selected by remember(files) { mutableStateOf<String?>(null) }
     val images = files.filter { isPreviewImage(it.name) }
+
+    LaunchedEffect(displayed) {
+        if (!displayed) {
+            selected = null
+        }
+    }
 
     FlowRow(
         Modifier.padding(horizontal = 8.dp),
@@ -178,17 +185,19 @@ internal fun SelectedAttachments(
         }
     }
 
-    selected?.let { id ->
-        AttachmentImageViewer(
-            images.map { file ->
-                MessageAttachment(file.name, preview = ImagePreview(file.name, file.uri))
-            },
-            images.indexOfFirst { it.id == id },
-            {},
-            loadImage,
-            onDismiss = { selected = null },
-        )
-    }
+    selected
+        ?.takeIf { displayed }
+        ?.let { id ->
+            AttachmentImageViewer(
+                images.map { file ->
+                    MessageAttachment(file.name, preview = ImagePreview(file.name, file.uri))
+                },
+                images.indexOfFirst { it.id == id },
+                {},
+                loadImage,
+                onDismiss = { selected = null },
+            )
+        }
 }
 
 internal sealed interface AttachmentImageState {

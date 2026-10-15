@@ -39,6 +39,7 @@ data class SessionState(
     val missingOutputSequence: Int? = null,
     val planDecisions: Map<String, String> = emptyMap(),
     val planDrafts: Map<String, PlanDraft> = emptyMap(),
+    val interactionDrafts: Map<Interrupt, InteractionDraft> = emptyMap(),
 ) {
     val canSelectModel
         get() =

@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.agentplayground.domain.conversation.ConversationHistoryLoader
 import com.agentplayground.domain.conversation.ConversationSession
+import com.agentplayground.domain.conversation.InteractionDraft
 import com.agentplayground.domain.conversation.PlanDraft
 import com.agentplayground.domain.model.Download
 import com.agentplayground.domain.model.MessageAttachment
@@ -13,6 +14,7 @@ import com.agentplayground.domain.presentation.UploadedAttachment
 import com.agentplayground.domain.presentation.messageWithAttachments
 import com.agentplayground.domain.repository.ConversationRepository
 import com.agentplayground.domain.repository.RepositoryProvider
+import com.agui.core.types.Interrupt
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedFactory
 import dagger.assisted.AssistedInject
@@ -264,6 +266,14 @@ class ConversationViewModel(private val repository: ConversationRepository) : Vi
 
     fun editPlan(id: String, draft: PlanDraft) {
         session?.editPlan(id, draft)
+    }
+
+    fun editInteraction(expected: Interrupt, draft: InteractionDraft) {
+        session?.editInteraction(expected, draft)
+    }
+
+    fun respondToInteraction(expected: Interrupt) {
+        viewModelScope.launch { action { session?.respondToInteraction(expected) } }
     }
 
     fun review(

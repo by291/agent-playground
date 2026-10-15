@@ -17,9 +17,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.key.*
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.hideFromAccessibility
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
@@ -48,6 +51,9 @@ internal fun Composer(
     loadImage: AttachmentImageLoader,
     onAttach: () -> Unit,
     onSelectModel: (String) -> Unit,
+    applyWindowInsets: Boolean = true,
+    displayed: Boolean = true,
+    compact: Boolean = false,
 ) {
     val session = state.session ?: return
 
@@ -55,6 +61,13 @@ internal fun Composer(
     var contextDetails by remember(session.threadId) { mutableStateOf(false) }
     var field by remember(session.threadId) { mutableStateOf(TextFieldValue(session.draft)) }
     var pendingInput by remember(session.threadId) { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(displayed) {
+        if (!displayed) {
+            context = false
+            contextDetails = false
+        }
+    }
 
     LaunchedEffect(state.draftRevision, session.threadId) {
         pendingInput = null
@@ -101,11 +114,32 @@ internal fun Composer(
             else -> "Describe a task or ask a question…"
         }
 
-    Surface(color = MaterialTheme.colorScheme.surface) {
+    val windowInsets =
+        if (applyWindowInsets) Modifier.navigationBarsPadding().imePadding() else Modifier
+    // Keep attachment resources and the editor's local draft composed while interaction takes
+    // over the input area. Hidden content is neither measured nor exposed to accessibility.
+    val visibility =
+        if (displayed) {
+            Modifier
+        } else {
+            Modifier.clearAndSetSemantics { hideFromAccessibility() }
+        }
+
+    Surface(
+        Modifier.testTag("conversation-composer").then(visibility).layout { measurable, constraints
+            ->
+            if (displayed) {
+                val placeable = measurable.measure(constraints)
+                layout(placeable.width, placeable.height) { placeable.placeRelative(0, 0) }
+            } else {
+                layout(0, 0) {}
+            }
+        },
+        color = MaterialTheme.colorScheme.surface,
+    ) {
         Column(
             Modifier.fillMaxWidth()
-                .navigationBarsPadding()
-                .imePadding()
+                .then(windowInsets)
                 .padding(horizontal = 16.dp, vertical = 12.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
@@ -129,6 +163,7 @@ internal fun Composer(
                             state.uploading,
                             onRemoveAttachment,
                             loadImage,
+                            displayed = displayed,
                         )
                     }
 
@@ -273,7 +308,40 @@ internal fun Composer(
         }
     }
 
-    if (context) {
+    if (compact) {
+        Surface(
+            Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                .widthIn(max = 760.dp)
+                .fillMaxWidth()
+                .testTag("conversation-composer-compact"),
+            shape = RoundedCornerShape(22.dp),
+            color = MaterialTheme.colorScheme.surface,
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+        ) {
+            Row(
+                Modifier.heightIn(min = 48.dp).padding(horizontal = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                IconButton(onClick = {}, enabled = false) {
+                    Icon(Icons.Outlined.Add, "Attach files", Modifier.size(20.dp))
+                }
+                Text(
+                    field.text.ifBlank { "Respond above to continue" },
+                    Modifier.weight(1f),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                IconButton(onClick = {}, enabled = false) {
+                    Icon(Icons.Outlined.ArrowUpward, "Send message", Modifier.size(20.dp))
+                }
+            }
+        }
+    }
+
+    if (context && displayed) {
         ModalBottomSheet(
             onDismissRequest = { context = false },
             sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
@@ -291,7 +359,7 @@ internal fun Composer(
                         "Applies to your next message.",
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    state.agentInfo?.models?.forEach { option ->
+                    state.agentInfo.models.forEach { option ->
                         val selected =
                             option.id == (session.modelId ?: state.agentInfo.defaultModelId)
                         val optionEnabled = state.canSelectModel && option.available

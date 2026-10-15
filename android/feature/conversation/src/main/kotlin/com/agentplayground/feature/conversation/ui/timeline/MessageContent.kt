@@ -11,6 +11,7 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.agentplayground.design.Details
@@ -19,10 +20,13 @@ import com.agentplayground.domain.model.MessageAttachment
 import com.agentplayground.domain.model.SkillFile
 import com.agentplayground.domain.model.isActiveRun
 import com.agentplayground.domain.model.isReasoning
+import com.agentplayground.domain.presentation.AssistantTranscriptPart
 import com.agentplayground.domain.presentation.ConversationTurn
 import com.agentplayground.domain.presentation.ExecutionKind
 import com.agentplayground.domain.presentation.UploadedAttachment
+import com.agentplayground.domain.presentation.assistantTranscript
 import com.agentplayground.domain.presentation.executionGroups
+import com.agentplayground.domain.presentation.latestAgentPlan
 import com.agentplayground.domain.presentation.skillFiles
 import com.agentplayground.domain.presentation.userMessagePresentation
 import com.agentplayground.feature.conversation.ui.attachments.MessageAttachments
@@ -133,6 +137,7 @@ internal fun AssistantTurnContent(
     var selectedSource by rememberSaveable(turn.id) { mutableStateOf<String?>(null) }
     var sourceUnavailable by rememberSaveable(turn.id) { mutableStateOf(false) }
     val toolGroups = executionGroups(turn.toolCalls)
+    val plan = remember(turn.toolCalls) { latestAgentPlan(turn.toolCalls) }
 
     val replyLink: (String) -> Unit = { link ->
         if (link.startsWith("#knowledge-source-", ignoreCase = true)) {
@@ -150,6 +155,10 @@ internal fun AssistantTurnContent(
     }
 
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        if (plan != null) {
+            AgentPlanContent(plan, turn.status, Modifier.testTag("agent-plan-${turn.id}"))
+        }
+
         if (reasoning.isNotEmpty() || toolGroups.isNotEmpty()) {
             Column(Modifier.fillMaxWidth()) {
                 if (reasoning.isNotEmpty()) {
@@ -173,36 +182,43 @@ internal fun AssistantTurnContent(
         }
 
         children()
-        val answers =
-            turn.messages.filterIsInstance<AssistantMessage>().filter {
-                !isReasoning(it) && !it.content.isNullOrBlank()
-            }
+        val transcript = assistantTranscript(turn)
 
-        if (answers.isNotEmpty()) {
+        if (transcript.isNotEmpty()) {
             MarkdownSelection {
                 Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    answers.forEach { message ->
-                        Column {
-                            Markdown(
-                                message.content.orEmpty(),
-                                replyLink,
-                                settled = !active,
-                                citations = turn.sources,
-                                onTextVisible = {
-                                    if (
-                                        turn.messages.indexOf(message) > lastReasoningIndex &&
-                                            message.toolCalls.isNullOrEmpty()
-                                    ) {
-                                        visibleAnswerPhase = reasoning.size
-                                    }
-                                },
-                            )
-                            AssistantMessageFooter(
-                                message.id,
-                                message.content.orEmpty(),
-                                messageTimestamps[message.id],
-                                !active,
-                            )
+                    transcript.forEach { part ->
+                        when (part) {
+                            is AssistantTranscriptPart.Question ->
+                                ClarificationQuestionContent(part)
+                            is AssistantTranscriptPart.Answer ->
+                                ClarificationAnswerContent(part, messageTimestamps[part.resultId])
+                            is AssistantTranscriptPart.Reply -> {
+                                val message = part.message
+                                Column {
+                                    Markdown(
+                                        message.content.orEmpty(),
+                                        replyLink,
+                                        settled = !active,
+                                        citations = turn.sources,
+                                        onTextVisible = {
+                                            if (
+                                                turn.messages.indexOf(message) >
+                                                    lastReasoningIndex &&
+                                                    message.toolCalls.isNullOrEmpty()
+                                            ) {
+                                                visibleAnswerPhase = reasoning.size
+                                            }
+                                        },
+                                    )
+                                    AssistantMessageFooter(
+                                        message.id,
+                                        message.content.orEmpty(),
+                                        messageTimestamps[message.id],
+                                        !active,
+                                    )
+                                }
+                            }
                         }
                     }
                 }

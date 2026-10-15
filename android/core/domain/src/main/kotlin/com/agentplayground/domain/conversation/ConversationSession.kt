@@ -20,6 +20,8 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.jsonObject
 
+private data class AdmissionRejection(val runId: String, val error: ApiException)
+
 /**
  * One instance owns one thread. Android lifecycle and navigation release its jobs.
  *
@@ -47,6 +49,7 @@ class ConversationSession(
     val threadId = saved.threadId
     private var saved = saved
     private var pending = saved.pending
+    private var admissionRejection: AdmissionRejection? = null
     private var hasPersistedConversation = !saved.empty
     private var modelRevision = 0L
     private var modelMutationActive = false
@@ -407,6 +410,62 @@ class ConversationSession(
         applyReviewResolution(resolution)
     }
 
+    fun editInteraction(expected: Interrupt, draft: InteractionDraft) {
+        if (closed || admitting || settling || state.value.busy || state.value.loading) {
+            return
+        }
+
+        val request = InteractionRequest.from(expected) ?: return
+        val current = state.value.interrupts.filter { it.id == expected.id }.singleOrNull()
+
+        if (
+            current != expected ||
+                request.expiredAt(now()) ||
+                draft.decisions.size != request.actions.size
+        ) {
+            return
+        }
+
+        mutableState.update {
+            it.copy(interactionDrafts = it.interactionDrafts + (expected to draft))
+        }
+    }
+
+    suspend fun respondToInteraction(expected: Interrupt) {
+        if (
+            closed ||
+                admitting ||
+                settling ||
+                state.value.busy ||
+                state.value.loading ||
+                pending != null
+        ) {
+            return
+        }
+
+        val current = state.value
+        val draft =
+            current.interactionDrafts[expected]
+                ?: InteractionRequest.from(expected)?.initialDraft()
+                ?: return
+        val response = resolveInteraction(current, expected, draft, now()) ?: return
+        val runId = UUID.randomUUID().toString()
+
+        submit(
+            PendingSubmission(
+                newSubmission(
+                    threadId,
+                    runId,
+                    resume = listOf(response),
+                    modelId = submissionModelId(true),
+                ),
+                runId,
+            ),
+            null,
+            preserveDraft = true,
+        )
+    }
+
     suspend fun submitPlanReviews(planInterruptIds: Set<String>? = null) {
         if (closed || admitting || settling || state.value.busy || state.value.loading) {
             return
@@ -473,7 +532,11 @@ class ConversationSession(
         }
     }
 
-    private suspend fun submit(submission: PendingSubmission, message: UserMessage?) {
+    private suspend fun submit(
+        submission: PendingSubmission,
+        message: UserMessage?,
+        preserveDraft: Boolean = false,
+    ) {
         // A review pins its admission model while preserving the next-turn conversation choice.
         val conversationModelId =
             if (submission.input.resume.isNullOrEmpty()) {
@@ -491,7 +554,7 @@ class ConversationSession(
                 it.copy(
                     pending = submission,
                     empty = false,
-                    draft = "",
+                    draft = if (preserveDraft) state.value.draft else "",
                     modelSelectionLocal = false,
                     modelId = conversationModelId,
                 )
@@ -513,6 +576,7 @@ class ConversationSession(
 
         admitting = false
         pending = submission
+        admissionRejection = null
         hasPersistedConversation = true
 
         if (closed) {
@@ -521,7 +585,7 @@ class ConversationSession(
 
         mutableState.update {
             it.copy(
-                draft = "",
+                draft = if (preserveDraft) it.draft else "",
                 pendingSubmission = true,
                 modelId = conversationModelId,
                 modelSelectionLocal = false,
@@ -561,11 +625,28 @@ class ConversationSession(
         val generation = ++streamGeneration
 
         streamJob = scope.launch {
+            var accepted = false
+
             try {
-                api.run(submission.input).collect { event -> receive(event) }
+                api.run(submission.input).collect { event ->
+                    if (event is RunStartedEvent && event.runId == submission.input.runId) {
+                        accepted = true
+                    }
+
+                    receive(event)
+                }
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Exception) {
+                if (
+                    generation == streamGeneration &&
+                        !accepted &&
+                        error is ApiException &&
+                        error.status in setOf(400, 404, 409, 413)
+                ) {
+                    admissionRejection = AdmissionRejection(submission.input.runId, error)
+                }
+
                 mutableState.update {
                     it.copy(
                         error = error.message ?: "Agent connection failed. Recover before retrying."
@@ -621,6 +702,28 @@ class ConversationSession(
             try {
                 val snapshot = api.snapshot(threadId)
                 val locallyActive = admitting || (settling && !settlement)
+                val rejectedPending = admissionRejection?.takeIf { rejection ->
+                    !locallyActive &&
+                        pending?.input?.runId == rejection.runId &&
+                        snapshot?.runs.orEmpty().none { it.runId == rejection.runId }
+                }
+                var rejectedMessage: String? = null
+
+                if (rejectedPending != null) {
+                    // A 4xx alone is insufficient: the canonical snapshot must also confirm that
+                    // this operation was never admitted before edited input can replace it.
+                    updateSaved { current ->
+                        if (current.pending?.input?.runId == rejectedPending.runId) {
+                            current.copy(pending = null)
+                        } else {
+                            current
+                        }
+                    }
+                    pending = null
+                    admissionRejection = null
+                    rejectedMessage = rejectedPending.error.message
+                }
+
                 val result = reconcile(snapshot, pending, state.value.messages)
 
                 if (
@@ -707,6 +810,14 @@ class ConversationSession(
                             } else {
                                 current.interrupts
                             },
+                        interactionDrafts =
+                            if (useCanonicalMessages && pending == null) {
+                                current.interactionDrafts.filterKeys {
+                                    it in snapshot?.interrupts.orEmpty()
+                                }
+                            } else {
+                                current.interactionDrafts
+                            },
                         externalTasks =
                             mergeExternalTasks(
                                 current.externalTasks,
@@ -733,7 +844,9 @@ class ConversationSession(
                                 current.outputError != null,
                         loading = false,
                         error =
-                            if (snapshot?.runs?.lastOrNull()?.status == "failed") {
+                            if (rejectedMessage != null) {
+                                rejectedMessage
+                            } else if (snapshot?.runs?.lastOrNull()?.status == "failed") {
                                 current.error ?: "The agent run failed. You can send a new message."
                             } else {
                                 null

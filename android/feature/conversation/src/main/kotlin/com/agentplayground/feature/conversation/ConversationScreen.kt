@@ -10,6 +10,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.agentplayground.domain.conversation.InteractionDraft
+import com.agentplayground.domain.conversation.InteractionRequest
 import com.agentplayground.domain.conversation.PlanDraft
 import com.agentplayground.domain.model.Download
 import com.agentplayground.domain.model.MessageAttachment
@@ -18,7 +20,9 @@ import com.agentplayground.domain.presentation.UploadedAttachment
 import com.agentplayground.domain.settings.AppPreferences
 import com.agentplayground.feature.conversation.ui.attachments.AttachmentImageLoader
 import com.agentplayground.feature.conversation.ui.composer.Composer
+import com.agentplayground.feature.conversation.ui.review.InteractionPanel
 import com.agentplayground.feature.conversation.ui.timeline.ConversationTimeline
+import com.agui.core.types.Interrupt
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -47,11 +51,16 @@ internal fun ConversationScreen(
     onCancelExternalTask: (String) -> Unit,
     onOpenNavigation: (() -> Unit)?,
     onActivity: () -> Unit,
+    onEditInteraction: (Interrupt, InteractionDraft) -> Unit = { _, _ -> },
+    onSubmitInteraction: (Interrupt) -> Unit = {},
 ) {
     var menu by remember { mutableStateOf(false) }
+    val interactionActive =
+        state.session?.interrupts?.any { InteractionRequest.from(it) != null } == true
 
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val compactHeight = maxHeight < 600.dp
+        val bottomBarHeight = (maxHeight - 96.dp).coerceAtLeast(0.dp)
 
         Scaffold(
             modifier = Modifier.fillMaxSize(),
@@ -122,17 +131,40 @@ internal fun ConversationScreen(
                 )
             },
             bottomBar = {
-                Composer(
-                    state = state,
-                    preferences = preferences,
-                    currentDraft = currentDraft,
-                    onEditInput = onEditInput,
-                    onSend = onSend,
-                    onRemoveAttachment = onRemoveAttachment,
-                    loadImage = loadImage,
-                    onAttach = onAttach,
-                    onSelectModel = onSelectModel,
-                )
+                Column(
+                    Modifier.fillMaxWidth()
+                        .heightIn(max = bottomBarHeight)
+                        .navigationBarsPadding()
+                        .imePadding(),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    state.session?.let { session ->
+                        InteractionPanel(
+                            session,
+                            onEditInteraction,
+                            onSubmitInteraction,
+                            Modifier.weight(1f, fill = false)
+                                .padding(horizontal = 16.dp, vertical = 12.dp)
+                                .widthIn(max = 760.dp)
+                                .heightIn(max = if (compactHeight) 320.dp else 400.dp),
+                        )
+                    }
+
+                    Composer(
+                        state = state,
+                        preferences = preferences,
+                        currentDraft = currentDraft,
+                        onEditInput = onEditInput,
+                        onSend = onSend,
+                        onRemoveAttachment = onRemoveAttachment,
+                        loadImage = loadImage,
+                        onAttach = onAttach,
+                        onSelectModel = onSelectModel,
+                        applyWindowInsets = false,
+                        displayed = !interactionActive,
+                        compact = interactionActive,
+                    )
+                }
             },
         ) { padding ->
             val session = state.session

@@ -80,5 +80,7 @@ fun ConversationRoute(
         onCancelExternalTask = vm::cancelExternalTask,
         onOpenNavigation = onOpenNavigation,
         onActivity = onActivity,
+        onEditInteraction = vm::editInteraction,
+        onSubmitInteraction = vm::respondToInteraction,
     )
 }
