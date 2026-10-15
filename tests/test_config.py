@@ -107,6 +107,8 @@ def test_yaml_is_not_overridden_by_process_environment_or_dotenv(
         ("skills", "script_environment", {"KEY": 42}),
         ("skills", "command_timeout", 0),
         ("skills", "allowed_hosts", ["http://private-host-key"]),
+        ("approvals", "mode", "private-invalid-value"),
+        ("approvals", "tools", {"remember_memory": "private-invalid-value"}),
         ("observability", "targets", ["private-target-key"]),
     ],
 )

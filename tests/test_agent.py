@@ -432,13 +432,19 @@ def test_skill_tools_run_in_existing_agent_and_preserve_official_results(
         }
 
         async with skill_execution(catalog):
-            result = await graph.ainvoke(
+            paused = await graph.ainvoke(
                 {
                     "messages": [
                         HumanMessage(content="$csv-summary summarize the sample.")
                     ]
                 },
                 config,
+            )
+
+            assert paused["__interrupt__"]
+            assert calls == []
+            result = await graph.ainvoke(
+                Command(resume={"decisions": [{"type": "approve"}]}), config
             )
 
         tool_result = next(

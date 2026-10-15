@@ -3,9 +3,11 @@
 import sys
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
+from typing import Any
 
 from async_lru import alru_cache
 from langchain.agents import create_agent
+from langchain.agents.middleware import AgentMiddleware
 from langchain.tools import tool
 from langchain_core.language_models import BaseChatModel
 from langchain_core.runnables import RunnableConfig
@@ -14,14 +16,21 @@ from langchain_mcp_adapters.client import MultiServerMCPClient
 from langgraph.types import Checkpointer
 from langgraph_sdk.runtime import ServerRuntime
 
+from agent_playground.config.agent import ApprovalSettings, load_agent_config
 from agent_playground.context import ContextMiddleware
 from agent_playground.db.connection import prepare_app_store
+from agent_playground.interactions import InteractionMiddleware, ask_user
 from agent_playground.knowledge.tools import search_knowledge
 from agent_playground.memory.middleware import MemoryMiddleware
 from agent_playground.memory.models import MEMORY_TOKEN_BUDGET
 from agent_playground.memory.tools import MEMORY_INSTRUCTIONS, memory_tools
 from agent_playground.models.catalog import create_chat_model, model_configuration
 from agent_playground.observability import execution_trace
+from agent_playground.planning import (
+    PLANNING_TOKEN_BUDGET,
+    PLANNING_TOOL_DESCRIPTION,
+    PlanningMiddleware,
+)
 from agent_playground.prompts import SYSTEM_PROMPT
 from agent_playground.skills.catalog import SkillCatalog
 from agent_playground.skills.sandbox import skill_execution
@@ -58,6 +67,7 @@ def make_graph(
     summary_model: BaseChatModel | None = None,
     skills: SkillCatalog | None = None,
     model_id: str | None = None,
+    approval_settings: ApprovalSettings | None = None,
 ):
     """Assemble one conversation agent with model-scoped budgets and tools."""
     configuration = model_configuration(model_id)
@@ -74,6 +84,7 @@ def make_graph(
     catalog = skills if skills is not None else default_catalog()
     prompt = SYSTEM_PROMPT + catalog.prompt() + MEMORY_INSTRUCTIONS
     tools = [
+        ask_user,
         get_current_time,
         search_knowledge,
         *memory_tools(),
@@ -85,23 +96,34 @@ def make_graph(
         *skill_tools(catalog),
     ]
 
+    planning = PlanningMiddleware(tool_description=PLANNING_TOOL_DESCRIPTION)
+    # create_agent merges the middleware-owned schemas into one checkpoint state.
+    middleware: list[AgentMiddleware[Any, Any, Any]] = [
+        MemoryMiddleware(),
+        InteractionMiddleware(
+            tools,
+            mcp_tools or [],
+            approval_settings or load_agent_config().approvals,
+        ),
+        planning,
+        ContextMiddleware(
+            model,
+            summary_model or model,
+            prompt + "\n\n" + planning.system_prompt,
+            [*tools, *planning.tools],
+            settings,
+            image_tokens,
+            memory_token_budget=MEMORY_TOKEN_BUDGET,
+            planning_token_budget=PLANNING_TOKEN_BUDGET,
+        ),
+    ]
+
     return create_agent(
         model=model,
         tools=tools,
         checkpointer=checkpointer,
         system_prompt=prompt,
-        middleware=[
-            MemoryMiddleware(),
-            ContextMiddleware(
-                model,
-                summary_model or model,
-                prompt,
-                tools,
-                settings,
-                image_tokens,
-                memory_token_budget=MEMORY_TOKEN_BUDGET,
-            ),
-        ],
+        middleware=middleware,
     )
 
 

@@ -1,8 +1,8 @@
-"""Checkpoint state shared by the agent's memory and context middleware."""
+"""Checkpoint state shared by planning, memory and context middleware."""
 
 from typing import Annotated, Any, NotRequired, TypedDict
 
-from langchain.agents.middleware import AgentState
+from langchain.agents.middleware.todo import PlanningState
 from langchain.agents.middleware.types import OmitFromInput, PrivateStateAttr
 from langchain_core.messages import AIMessage, ToolMessage
 
@@ -38,7 +38,7 @@ def latest_memory_project(_previous: str, project: str) -> str:
     return project
 
 
-class ContextState(AgentState[Any]):
+class ContextState(PlanningState[Any]):
     """Keep private recall/replies separate from client-writable conversation input."""
 
     memory_context: NotRequired[Annotated[str, OmitFromInput, PrivateStateAttr]]

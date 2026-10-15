@@ -103,6 +103,13 @@ class SkillSettings(SettingsModel):
         return values
 
 
+class ApprovalSettings(SettingsModel):
+    """Select per-operation approval gates without granting persistent permissions."""
+
+    mode: Literal["side_effects", "all", "configured"] = "side_effects"
+    tools: dict[str, bool] = Field(default_factory=dict)
+
+
 class ObservabilitySettings(SettingsModel):
     service_name: str = Field(default="agent-playground-agent", min_length=1)
     targets: list[Literal["GENERIC", "LANGFUSE", "PHOENIX"]] = Field(
@@ -135,6 +142,7 @@ class AgentConfig(SettingsModel):
     services: ServiceSettings = Field(default_factory=ServiceSettings)
     a2a: A2aSettings = Field(default_factory=A2aSettings)
     skills: SkillSettings = Field(default_factory=SkillSettings)
+    approvals: ApprovalSettings = Field(default_factory=ApprovalSettings)
     observability: ObservabilitySettings = Field(default_factory=ObservabilitySettings)
 
 

@@ -23,6 +23,7 @@ from agent_playground.context_state import (
     ContextUsage,
 )
 from agent_playground.models.tokens import ContextSettings, estimate_tokens
+from agent_playground.planning import planning_context
 
 
 def recoverable_responses(state: ContextState) -> list[AIMessage | ToolMessage]:
@@ -70,6 +71,7 @@ class ContextMiddleware(SummarizationMiddleware):
         settings: ContextSettings | None = None,
         tokens_per_image: int = 1024,
         memory_token_budget: int = 0,
+        planning_token_budget: int = 0,
     ):
         self.settings = settings or ContextSettings.from_model(model)
         self.tokens_per_image = tokens_per_image
@@ -80,7 +82,12 @@ class ContextMiddleware(SummarizationMiddleware):
             [], tools=[*tools], chars_per_token=2.0
         )
         self.trigger_tokens = int(self.settings.window * self.settings.compact_ratio)
-        fixed_tokens = self.system_tokens + self.tool_tokens + memory_token_budget
+        fixed_tokens = (
+            self.system_tokens
+            + self.tool_tokens
+            + memory_token_budget
+            + planning_token_budget
+        )
 
         if fixed_tokens >= self.trigger_tokens:
             raise ValueError(
@@ -201,6 +208,11 @@ class ContextMiddleware(SummarizationMiddleware):
 
         if memory_context:
             system_tokens += estimate_tokens([SystemMessage(content=memory_context)])
+
+        plan = planning_context(state.get("todos", []))
+
+        if plan:
+            system_tokens += estimate_tokens([SystemMessage(content=plan)])
 
         breakdown: ContextBreakdown = {
             "system": system_tokens,

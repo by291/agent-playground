@@ -11,6 +11,7 @@ from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from langchain_core.outputs import ChatResult
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.store.memory import InMemoryStore
+from langgraph.types import Command
 from pydantic import Field
 
 from agent_playground.graph import make_graph
@@ -63,7 +64,8 @@ def test_preference_saved_by_agent_is_loaded_in_a_new_thread(
         graph = make_graph(model=model, checkpointer=InMemorySaver()).copy(
             update={"store": memory_service.store}
         )
-        await graph.ainvoke(
+        config = {"configurable": {"thread_id": "thread-one"}}
+        paused = await graph.ainvoke(
             {
                 "messages": [
                     HumanMessage(
@@ -72,7 +74,13 @@ def test_preference_saved_by_agent_is_loaded_in_a_new_thread(
                     )
                 ]
             },
-            {"configurable": {"thread_id": "thread-one"}},
+            config,
+        )
+
+        assert paused["__interrupt__"]
+        assert await memory_service.recall(scope()) == []
+        await graph.ainvoke(
+            Command(resume={"decisions": [{"type": "approve"}]}), config
         )
         saved = await memory_service.recall(scope())
 
@@ -203,13 +211,21 @@ def test_parallel_memory_tools_merge_project_selection(memory_service: MemorySer
         graph = make_graph(model=model, checkpointer=InMemorySaver()).copy(
             update={"store": memory_service.store}
         )
-        output = await graph.ainvoke(
+        config = {"configurable": {"thread_id": "parallel-project"}}
+        paused = await graph.ainvoke(
             {
                 "messages": [
                     HumanMessage(content="Remember these two facts for Playground.")
                 ]
             },
-            {"configurable": {"thread_id": "parallel-project"}},
+            config,
+        )
+
+        assert paused["__interrupt__"]
+        assert await memory_service.recall(scope("project", "Playground")) == []
+        output = await graph.ainvoke(
+            Command(resume={"decisions": [{"type": "approve"}, {"type": "approve"}]}),
+            config,
         )
         stored = await memory_service.recall(scope("project", "Playground"))
 

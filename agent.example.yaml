@@ -27,6 +27,12 @@ a2a:
   reviewer_url: http://127.0.0.1:2032
   demo_api_url: http://127.0.0.1:2026/a2a-demo
 
+approvals:
+  mode: side_effects
+  # Explicit per-tool overrides for side_effects, or the gate list for configured.
+  # all requires approval for every execution except clarification and plan updates.
+  tools: {}
+
 skills:
   directory: skills
   sandbox_url: http://127.0.0.1:8080

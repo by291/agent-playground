@@ -156,7 +156,7 @@ def test_image_pixels_survive_checkpoint_and_followup(asynchronous: bool):
 def test_compaction_keeps_early_facts_and_survives_graph_recreation(
     model_config: ModelConfigFile, asynchronous: bool
 ):
-    model_config.chat(max_input_tokens=20000)
+    model_config.chat(max_input_tokens=30000)
     model_config.settings["chat"]["compact_ratio"] = 0.5
     model_config.save()
     summary_model = RecordingModel(
@@ -189,7 +189,7 @@ def test_compaction_keeps_early_facts_and_survives_graph_recreation(
     assert "LATEST REQUEST" in str(model._inputs[0])
     assert result["context_usage"]["compactions"] == 1
     assert result["context_usage"]["breakdown"]["summary"] > 0
-    assert result["context_usage"]["usedTokens"] < 10000
+    assert result["context_usage"]["usedTokens"] < 15000
 
     recreated = make_graph(model=model, summary_model=summary_model, checkpointer=saver)
     followup = recreated.invoke(
@@ -247,7 +247,7 @@ def test_usage_includes_fixed_context_tools_and_provider_input_tokens():
 def test_a_single_oversized_request_fails_without_silently_dropping_it(
     model_config: ModelConfigFile,
 ):
-    model_config.chat(max_input_tokens=10000)
+    model_config.chat(max_input_tokens=20000)
     model = RecordingModel(responses=[AIMessage(content="Should not be called.")])
     graph = make_graph(model=model)
 
@@ -261,7 +261,7 @@ def test_a_single_oversized_request_fails_without_silently_dropping_it(
 def test_public_tool_messages_survive_compaction_within_a_turn(
     model_config: ModelConfigFile, asynchronous: bool
 ):
-    model_config.chat(max_input_tokens=20000)
+    model_config.chat(max_input_tokens=30000)
     model_config.settings["chat"]["compact_ratio"] = 0.5
     model_config.save()
 
@@ -269,6 +269,8 @@ def test_public_tool_messages_survive_compaction_within_a_turn(
     def lookup_fact() -> str:
         """Return a known fact for the test."""
         return "Project Cedar launched in 2024."
+
+    lookup_fact.metadata = {"readOnlyHint": True}
 
     model = RecordingModel(
         responses=[
