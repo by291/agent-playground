@@ -57,6 +57,8 @@ Deleting a conversation immediately revokes file downloads. The server attempts 
 
 Each Aegra worker execution lazily creates one Docker sandbox. Calls in that execution share `/workspace`, which is destroyed on completion, failure or cancellation. A 20-minute TTL collects sandboxes left by process crashes. A later conversation turn or review resume creates a new workspace, requiring input file IDs to be supplied again.
 
+Main-agent script execution requires tool approval by default. An approval pause also ends the worker execution and releases its workspace. Publish files needed after a later approval through `output_files`, then pass their returned IDs as `input_files`; do not rely on temporary paths surviving that pause. See [approvals and clarification](conversations.md#approvals-and-clarification).
+
 | Limit                   | Current value                                                                                            |
 | ----------------------- | -------------------------------------------------------------------------------------------------------- |
 | Identity                | UID/GID 1000.                                                                                            |

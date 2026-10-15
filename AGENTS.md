@@ -19,6 +19,8 @@
 
 ## Implementation conventions
 
+- Autonomous task planning adapts LangChain's official middleware in `agent_playground/planning.py`; the existing agent loop owns tool execution. Keep canonical plans outside summarized messages, account for their bounded model context, and recover client presentation from committed tool records.
+- Main-agent approvals and clarification adapt LangChain's official human-in-the-loop middleware in `agent_playground/interactions.py`. Keep decisions bound to checkpoint interrupt identities, validate complete batches before resuming, and present pending interactions above the composer through the existing conversation session and submission journal.
 - Keep agent logic in Python, protocol/HTTP adaptation in `server/`, and interaction/presentation in `web/`. Confirm each layer's responsibility before changing a cross-layer path.
 - Prefer existing library/protocol types, models and adapters over handwritten AG-UI or A2UI implementations.
 - Use uv for Python and pnpm for TypeScript. Add/remove dependencies through the package manager and update lockfiles. Introduce libraries or infrastructure only when the verification or implementation requires them.

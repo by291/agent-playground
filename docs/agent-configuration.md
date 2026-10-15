@@ -5,7 +5,7 @@ Agent configuration lives in two private YAML files. `make setup` creates them f
 | File          | Configuration                                                                                                            |
 | ------------- | ------------------------------------------------------------------------------------------------------------------------ |
 | `models.yaml` | Chat catalog, default model, provider keys/addresses, context budgets, independent A2A model and embedding settings.     |
-| `agent.yaml`  | HTTP listener, databases, Redis, workflow callbacks, demo services, A2A mode/addresses, Skill sandbox and observability. |
+| `agent.yaml`  | HTTP listener, databases, Redis, workflow callbacks, demo services, A2A mode/addresses, tool approvals, Skill sandbox and observability. |
 | `server/.env` | TypeScript server configuration and storage credentials.                                                                 |
 | `web/.env`    | Web development configuration.                                                                                           |
 
@@ -42,12 +42,32 @@ Both providers use identical chat fields. Only `provider` and `model` are requir
 - `workflow`: TypeScript callback address and internal API token.
 - `services`: SQL/report demonstration service addresses.
 - `a2a`: Independent child-agent mode and service addresses.
+- `approvals`: Tool execution approval policy and explicit per-tool choices.
 - `skills`: Published bundle directory, sandbox address/key/image, timeout, allowed hosts and explicit script environment values.
 - `observability`: Trace targets, collectors, service name, metrics and exporter credentials.
 
 The callback token at `workflow.api_token` must match `WORKFLOW_API_TOKEN` in `server/.env`. Setup fills a blank value from the existing other side, or generates one token when both are blank. Conflicting values fail without rewriting either file.
 
 Skill scripts receive only the explicit `skills.script_environment` mapping. Put a script-only credential there when needed; it is not automatically shared with all model calls or tools.
+
+### Tool approval policy
+
+The main agent uses LangChain's native human-in-the-loop middleware to pause before protected tool execution. An approval authorizes the displayed operation once; it does not grant session permissions or allow tool edits. A rejection returns an error tool result without running the operation. The checkpoint retains the pending calls across reconnects and process restarts.
+
+The effective tool policy and review descriptions are saved privately before each model call. A paused review keeps that policy when the graph is recreated, so a configuration change cannot apply the user's decision to another operation or silently remove its approval gate. Updated policy applies at the next model call after the pending batch settles.
+
+```yaml
+approvals:
+  mode: side_effects
+  tools:
+    run_skill_script: true
+```
+
+- `side_effects` is the default. Skill scripts and memory writes/deletions require approval. Built-in queries and business workflow wrappers use their existing behavior; workflows retain their own review flows. Discovered MCP tools require approval unless their `readOnlyHint` is explicitly `true`; `destructiveHint: true` always takes priority over that annotation. Explicit `tools` booleans override this mode, including workflow wrappers.
+- `all` requires approval for every exposed runtime tool. Per-tool exemptions do not bypass this mode.
+- `configured` gates only tools explicitly set to `true` in `tools`.
+
+`ask_user` clarification and `write_todos` plan bookkeeping are exceptions in every mode. Clarification always waits for an answer or rejection; plan bookkeeping executes without an approval gate. A clarification contains one to three uniquely identified questions. Optional two-to-four suggested choices never restrict free-text answers. Answer payloads must contain a nonblank answer of at most 4,000 characters for each requested ID in the original order. Invalid questions return normal tool-validation errors, and invalid native answer payloads fail before execution can continue.
 
 ## Startup and deployment
 
