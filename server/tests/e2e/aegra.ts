@@ -15,6 +15,11 @@ import {
   type WorkflowReview,
 } from "../../../shared/workflow-review.js";
 import type { WorkflowOutputMetadata } from "../../../shared/workflow-output.js";
+import {
+  parseAgentInteraction,
+  interactionResponse,
+  type AgentInteraction,
+} from "../../../shared/agent-interaction.js";
 
 const resumeSchema = z.object({
   decision: z.literal("approve"),
@@ -63,6 +68,10 @@ interface Thread {
           workflowCallId: string;
         }
       | Omit<WorkflowReview, "interruptId">
+      | (Omit<AgentInteraction, "interruptId"> & {
+          kind?: never;
+          workflowCallId?: never;
+        })
       | {
           kind: string;
           workflowCallId: string;
@@ -79,6 +88,9 @@ interface Thread {
   release?: () => void;
   sql?: ControlledSqlWorkflow;
   externalWorkflow?: "report" | "a2a";
+  interactionCall?: { callId: string; name: string };
+  holdInteractionReply?: boolean;
+  followupApproval?: boolean;
 }
 
 // Only the Aegra HTTP boundary is controlled. The browser, adapter, server and
@@ -374,29 +386,37 @@ export function controlledAegra(database: typeof db) {
         });
       }
 
-      async function toolResult(message: LangGraphPlatformMessage) {
+      async function toolResult(
+        message: LangGraphPlatformMessage,
+        toolName?: string,
+      ) {
+        // The CSV tool returns its own ToolMessage without a name or ID; the
+        // graph reducer supplies the canonical archived identity afterward.
+        const output =
+          toolName === "run_skill_script"
+            ? { ...message, name: null, id: null }
+            : message;
+
         await event("events", {
           event: LangGraphEventTypes.OnToolEnd,
+          name: toolName ?? message.name,
           metadata: { langgraph_node: "tools" },
-          data: { input: {}, output: message },
+          data: { input: {}, output },
         });
       }
 
-      async function reply(text: string, held = false) {
+      async function reply(text: string, heldPrefix?: string) {
         const messageId = randomUUID();
 
-        if (held) {
+        if (heldPrefix !== undefined) {
           const released = new Promise<void>((resolve) => {
             thread.release = resolve;
           });
 
-          await modelChunk(messageId, "Here is a C example.\n\n");
+          await modelChunk(messageId, heldPrefix);
           await released;
           delete thread.release;
-          await modelChunk(
-            messageId,
-            text.slice("Here is a C example.\n\n".length),
-          );
+          await modelChunk(messageId, text.slice(heldPrefix.length));
         } else {
           await modelChunk(messageId, text);
         }
@@ -412,7 +432,146 @@ export function controlledAegra(database: typeof db) {
 
       await event("metadata", { run_id: run.run_id, thread_id: threadId });
 
-      if (input.command && thread.sql) {
+      async function requestInteraction(
+        name: string,
+        args: Record<string, unknown>,
+      ) {
+        const callId = randomUUID();
+        const messageId = randomUUID();
+
+        await modelChunk(messageId, "", [
+          { id: callId, name, args: "", index: 0 },
+        ]);
+        await modelChunk(messageId, "", [
+          { args: JSON.stringify(args), index: 0 },
+        ]);
+        await endModel();
+        thread.messages.push({
+          id: messageId,
+          type: "ai",
+          role: "assistant",
+          content: "",
+          tool_calls: [{ id: callId, name, args }],
+        });
+        thread.interactionCall = { callId, name };
+        thread.review = {
+          id: randomUUID(),
+          value: {
+            action_requests: [
+              {
+                name,
+                args,
+                description: "Export the report using the published script.",
+              },
+            ],
+            review_configs: [
+              {
+                action_name: name,
+                allowed_decisions:
+                  name === "ask_user"
+                    ? ["respond", "reject"]
+                    : ["approve", "reject"],
+              },
+            ],
+          },
+        };
+      }
+
+      if (input.command && thread.interactionCall && thread.review) {
+        const interaction = parseAgentInteraction({
+          id: thread.review.id,
+          metadata: { langgraph: { raw: thread.review.value } },
+        })!;
+        const wrapped = z.record(z.unknown()).parse(input.command.resume);
+        const response = interactionResponse(
+          interaction,
+          wrapped[interaction.interruptId] ?? wrapped,
+        );
+
+        if (!response) {
+          throw new Error("Invalid native HITL fixture response");
+        }
+
+        const decisions = z
+          .object({
+            decisions: z.array(
+              z.object({ type: z.string(), message: z.string().optional() }),
+            ),
+          })
+          .parse(response.payload).decisions;
+        const decision = decisions[0]!;
+        const { callId, name } = thread.interactionCall;
+        let content = decision.message ?? "Report exported";
+
+        if (decision.type === "reject") {
+          // Match LangChain's error ToolMessage so clients can distinguish a
+          // skipped question from execution failure without displaying diagnostics.
+          content = decision.message
+            ? `User rejected the tool call for \`${name}\` with reason: ${decision.message}`
+            : `User rejected the tool call for \`${name}\` with id ${callId}. The tool was not executed. Do not retry this tool call unless the user explicitly requests it.`;
+        }
+
+        const result = {
+          id: randomUUID(),
+          type: "tool" as const,
+          role: "tool",
+          name,
+          tool_call_id: callId,
+          content,
+          status: decision.type === "reject" ? "error" : "success",
+        };
+
+        thread.review = null;
+        delete thread.interactionCall;
+        thread.messages.push(result);
+
+        if (decision.type === "respond" || decision.type === "reject") {
+          // Native HITL decisions bypass tool execution and return from this
+          // middleware node before the next model starts.
+          await event("events", {
+            event: LangGraphEventTypes.OnChainEnd,
+            name: "InteractionMiddleware.after_model",
+            metadata: { langgraph_node: "InteractionMiddleware.after_model" },
+            data: { output: { messages: [result] } },
+          });
+        } else {
+          await toolResult(result, name);
+        }
+
+        if (
+          name === "ask_user" &&
+          decision.type === "respond" &&
+          thread.holdInteractionReply
+        ) {
+          delete thread.holdInteractionReply;
+          await reply(
+            "I received your report preferences. The report is ready.",
+            "I received your report preferences.",
+          );
+        } else if (name === "ask_user" && decision.type === "respond") {
+          await requestInteraction("run_skill_script", {
+            skill_name: "reports",
+            script_path: "scripts/export.py",
+            arguments: ["--audience", "engineering"],
+          });
+        } else if (
+          name === "run_skill_script" &&
+          decision.type === "approve" &&
+          thread.followupApproval
+        ) {
+          delete thread.followupApproval;
+          await requestInteraction("remember_memory", {
+            text: "Reports are intended for engineering.",
+            category: "preference",
+          });
+        } else {
+          await reply(
+            decision.type === "reject"
+              ? "Report export was not run."
+              : "Report export completed.",
+          );
+        }
+      } else if (input.command && thread.sql) {
         const currentReview = thread.sql.review;
         const wrapped = z.record(z.unknown()).parse(input.command.resume);
         const response = workflowReviewResponseSchema.parse(
@@ -542,6 +701,101 @@ export function controlledAegra(database: typeof db) {
           }
 
           await reply("The previous image is still in model history.");
+        } else if (
+          prompt === "Prepare a report with user input and approval." ||
+          prompt ===
+            "Prepare a report with user input and consecutive approvals." ||
+          prompt === "Ask for report preferences and keep the response open."
+        ) {
+          thread.holdInteractionReply =
+            prompt === "Ask for report preferences and keep the response open.";
+          thread.followupApproval =
+            prompt ===
+            "Prepare a report with user input and consecutive approvals.";
+          await requestInteraction("ask_user", {
+            questions: [
+              {
+                id: "audience",
+                question: "Who will read this report?",
+                options: [
+                  {
+                    label: "Engineering",
+                    description: "Include technical details and evidence.",
+                  },
+                  {
+                    label: "Leadership",
+                    description: "Focus on outcomes and decisions.",
+                  },
+                ],
+              },
+              { id: "deadline", question: "When do you need the report?" },
+            ],
+          });
+        } else if (prompt === "Investigate a reliability regression.") {
+          async function updatePlan(
+            todos: {
+              content: string;
+              status: "pending" | "in_progress" | "completed";
+            }[],
+          ) {
+            const messageId = randomUUID();
+            const callId = randomUUID();
+            const args = { todos };
+
+            await modelChunk(messageId, "", [
+              { id: callId, name: "write_todos", args: "", index: 0 },
+            ]);
+            await modelChunk(messageId, "", [
+              { args: JSON.stringify(args), index: 0 },
+            ]);
+            await endModel();
+            thread.messages.push({
+              id: messageId,
+              type: "ai",
+              role: "assistant",
+              content: "",
+              tool_calls: [{ id: callId, name: "write_todos", args }],
+            });
+            const result = {
+              id: randomUUID(),
+              type: "tool" as const,
+              role: "tool",
+              name: "write_todos",
+              tool_call_id: callId,
+              content: `Updated todo list to ${JSON.stringify(todos)}`,
+            };
+
+            // Official planning tools return Command updates rather than a bare result.
+            await event("events", {
+              event: LangGraphEventTypes.OnToolEnd,
+              name: "write_todos",
+              metadata: { langgraph_node: "tools" },
+              data: {
+                input: args,
+                output: { update: { todos, messages: [result] } },
+              },
+            });
+            thread.messages.push(result);
+          }
+
+          const released = new Promise<void>((resolve) => {
+            thread.release = resolve;
+          });
+
+          await updatePlan([
+            { content: "Compare failure rates", status: "in_progress" },
+            { content: "Summarize the evidence", status: "pending" },
+          ]);
+          await released;
+          delete thread.release;
+          await updatePlan([
+            { content: "Compare failure rates", status: "completed" },
+            { content: "Check deployment changes", status: "completed" },
+            { content: "Summarize the evidence", status: "completed" },
+          ]);
+          await reply(
+            "The deployment change explains the increased failure rate.",
+          );
         } else if (prompt === "Compare approaches with reasoning.") {
           const messageId = randomUUID();
           const reasoning =
@@ -577,7 +831,7 @@ export function controlledAegra(database: typeof db) {
         } else if (prompt.startsWith("Stream a code sample.")) {
           await reply(
             "Here is a C example.\n\n```c\nint main(void) {\n  return 0;\n}\n```",
-            true,
+            "Here is a C example.\n\n",
           );
         } else if (prompt === "Write a long reply.") {
           const paragraphs = Array.from(

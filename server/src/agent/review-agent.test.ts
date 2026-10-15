@@ -29,6 +29,123 @@ function streamingAgent() {
   return { agent, events };
 }
 
+function interactionNodeEnd(messages: unknown[]) {
+  return {
+    event: LangGraphEventTypes.OnChainEnd,
+    name: "InteractionMiddleware.after_model",
+    metadata: { langgraph_node: "InteractionMiddleware.after_model" },
+    data: { output: { messages } },
+  };
+}
+
+test("native clarification receipts stream before the resumed model starts replying", () => {
+  const { agent, events } = streamingAgent();
+  const content = JSON.stringify({
+    answers: [{ id: "style", answer: "Concise" }],
+  });
+
+  agent.handleSingleEvent(
+    interactionNodeEnd([
+      {
+        type: "tool",
+        id: "human-answer",
+        name: "ask_user",
+        tool_call_id: "question-call",
+        content,
+        status: "success",
+      },
+    ]),
+  );
+
+  assert.deepEqual(
+    events.map((event) => event.type),
+    [EventType.TOOL_CALL_RESULT],
+  );
+  assert.deepEqual(events[0], {
+    type: EventType.TOOL_CALL_RESULT,
+    toolCallId: "question-call",
+    messageId: "human-answer",
+    role: "tool",
+    content,
+  });
+  agent.handleSingleEvent({
+    event: LangGraphEventTypes.OnChatModelStream,
+    metadata: { langgraph_node: "model" },
+    data: {
+      chunk: {
+        id: "reply",
+        content: "I received your preference.",
+        response_metadata: {},
+      },
+    },
+  });
+
+  assert.ok(
+    events.findIndex((event) => event.type === EventType.TOOL_CALL_RESULT) <
+      events.findIndex(
+        (event) => event.type === EventType.TEXT_MESSAGE_CONTENT,
+      ),
+  );
+  assert.ok(events.every((event) => EventSchemas.safeParse(event).success));
+});
+
+test("native receipts deduplicate within one run and keep later runs independent", () => {
+  const { agent, events } = streamingAgent();
+  const event = interactionNodeEnd([
+    {
+      type: "tool",
+      id: "answer",
+      name: "ask_user",
+      tool_call_id: "question",
+      content: "Answer",
+      status: "success",
+    },
+  ]);
+
+  agent.handleSingleEvent(event);
+  agent.handleSingleEvent(event);
+  assert.equal(
+    events.filter((item) => item.type === EventType.TOOL_CALL_RESULT).length,
+    1,
+  );
+  assert.ok(agent.activeRun);
+  agent.activeRun.id = "next-run";
+  agent.handleSingleEvent(event);
+  assert.equal(
+    events.filter((item) => item.type === EventType.TOOL_CALL_RESULT).length,
+    2,
+  );
+});
+
+test("native receipt adaptation excludes errors, malformed messages and other chain outputs", () => {
+  const { agent, events } = streamingAgent();
+  const error = {
+    type: "tool",
+    id: "rejected",
+    name: "ask_user",
+    tool_call_id: "question",
+    content: "User rejected the question",
+    status: "error",
+  };
+
+  agent.handleSingleEvent(
+    interactionNodeEnd([
+      error,
+      { type: "tool", tool_call_id: "missing-id", content: "Invalid" },
+    ]),
+  );
+  agent.handleSingleEvent({
+    ...interactionNodeEnd([{ ...error, status: "success" }]),
+    name: "LangGraph",
+  });
+  agent.handleSingleEvent({
+    ...interactionNodeEnd([{ ...error, status: "success" }]),
+    metadata: { langgraph_node: "internal" },
+  });
+
+  assert.deepEqual(events, []);
+});
+
 test("nested memory writes cannot interrupt the public tool stream", () => {
   const { agent, events } = streamingAgent();
 
@@ -169,6 +286,38 @@ test("ordinary ToolMessage results retain the official adapter lifecycle", () =>
       EventType.TOOL_CALL_RESULT,
     ],
   );
+});
+
+test("resumed tool receipts without an embedded name retain the execution event's name", () => {
+  const { agent, events } = streamingAgent();
+
+  agent.handleSingleEvent({
+    event: LangGraphEventTypes.OnToolEnd,
+    name: "run_skill_script",
+    metadata: { langgraph_node: "tools" },
+    data: {
+      input: { skill_name: "csv-summary" },
+      output: {
+        type: "tool",
+        id: null,
+        name: null,
+        tool_call_id: "approved-script",
+        content: '{"exitCode":0}',
+        status: "success",
+      },
+    },
+  });
+
+  assert.ok(events.every((event) => EventSchemas.safeParse(event).success));
+  assert.equal(events[0]?.type, EventType.TOOL_CALL_START);
+  const start = events.find(
+    (event) => event.type === EventType.TOOL_CALL_START,
+  );
+
+  assert.ok(start);
+  assert.equal(start.toolCallId, "approved-script");
+  assert.equal(start.toolCallName, "run_skill_script");
+  assert.ok(events.some((event) => event.type === EventType.TOOL_CALL_RESULT));
 });
 
 test("sends only the resume command to Aegra", () => {

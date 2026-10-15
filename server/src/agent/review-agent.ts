@@ -1,4 +1,4 @@
-import type { Interrupt, ResumeEntry } from "@ag-ui/client";
+import { EventType, type Interrupt, type ResumeEntry } from "@ag-ui/client";
 import {
   LangGraphAgent,
   LangGraphEventTypes,
@@ -6,20 +6,39 @@ import {
 } from "@ag-ui/langgraph";
 import { z } from "zod";
 import { workflowReviewResponseSchema } from "../../../shared/workflow-review.js";
+import { completedMessages } from "./checkpoint-messages.js";
 
-const toolResultSchema = z.object({
-  type: z.literal("tool"),
-  tool_call_id: z.string().min(1),
-});
-const commandResultSchema = z.object({
-  update: z.object({ messages: z.array(z.unknown()) }),
-});
-const toolEndEventSchema = z.object({
-  event: z.literal(LangGraphEventTypes.OnToolEnd),
-  data: z.object({ output: z.unknown() }),
+const toolResultSchema = z
+  .object({
+    type: z.literal("tool"),
+    tool_call_id: z.string().min(1),
+  })
+  .passthrough();
+const commandResultSchema = z
+  .object({
+    update: z.object({ messages: z.array(z.unknown()) }).passthrough(),
+  })
+  .passthrough();
+const toolEndEventSchema = z
+  .object({
+    event: z.literal(LangGraphEventTypes.OnToolEnd),
+    name: z.string().min(1).optional(),
+    data: z.object({ output: z.unknown() }).passthrough(),
+  })
+  .passthrough();
+const interactionEndEventSchema = z.object({
+  event: z.literal(LangGraphEventTypes.OnChainEnd),
+  name: z.literal("InteractionMiddleware.after_model"),
+  metadata: z.object({
+    langgraph_node: z.literal("InteractionMiddleware.after_model"),
+  }),
+  data: z.object({ output: z.object({ messages: z.array(z.unknown()) }) }),
 });
 
 export class ReviewLangGraphAgent extends LangGraphAgent {
+  private interactionRunId: string | undefined;
+  private readonly interactionResults = new Set<string>();
+
   constructor(
     config: LangGraphAgentConfig,
     private readonly onProducerSettled?: () => Promise<void>,
@@ -40,6 +59,38 @@ export class ReviewLangGraphAgent extends LangGraphAgent {
   }
 
   override handleSingleEvent(event: unknown): void {
+    const interactionEnd = interactionEndEventSchema.safeParse(event);
+
+    if (interactionEnd.success && this.activeRun) {
+      if (this.interactionRunId !== this.activeRun.id) {
+        this.interactionRunId = this.activeRun.id;
+        this.interactionResults.clear();
+      }
+
+      // Native HITL responses are committed by after_model without executing a
+      // tool. Publish their real receipts before the next model starts streaming.
+      for (const message of completedMessages(
+        interactionEnd.data.data.output,
+      )) {
+        if (
+          message.role !== "tool" ||
+          message.error !== undefined ||
+          this.interactionResults.has(message.toolCallId)
+        ) {
+          continue;
+        }
+
+        this.interactionResults.add(message.toolCallId);
+        this.dispatchEvent({
+          type: EventType.TOOL_CALL_RESULT,
+          toolCallId: message.toolCallId,
+          messageId: message.id,
+          role: "tool",
+          content: message.content,
+        });
+      }
+    }
+
     const toolEnd = toolEndEventSchema.safeParse(event);
 
     if (toolEnd.success) {
@@ -54,6 +105,35 @@ export class ReviewLangGraphAgent extends LangGraphAgent {
       // model tool-call ID. The adapter assumes every on_tool_end is a public
       // ToolMessage and otherwise emits invalid AG-UI lifecycle events.
       if (!hasToolResult) {
+        return;
+      }
+
+      const toolName = toolEnd.data.name;
+
+      if (toolName) {
+        // Tools returning their own ToolMessage may omit its name. On approval
+        // replay the SDK re-announces that call, which requires a real tool name.
+        const namedResults = results.map((result) => {
+          const message = toolResultSchema.safeParse(result);
+
+          if (!message.success || typeof message.data.name === "string") {
+            return result;
+          }
+
+          return { ...message.data, name: toolName };
+        });
+        const namedOutput = command.success
+          ? {
+              ...command.data,
+              update: { ...command.data.update, messages: namedResults },
+            }
+          : namedResults[0];
+
+        super.handleSingleEvent({
+          ...toolEnd.data,
+          data: { ...toolEnd.data.data, output: namedOutput },
+        });
+
         return;
       }
     }

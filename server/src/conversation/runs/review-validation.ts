@@ -14,6 +14,10 @@ import {
   parseWorkflowReview,
   workflowReviewResponseSchema,
 } from "../../../../shared/workflow-review.js";
+import {
+  interactionResponse,
+  parseAgentInteraction,
+} from "../../../../shared/agent-interaction.js";
 
 function workflowCallId(interrupt: Interrupt): string | null {
   const metadata: unknown = interrupt.metadata?.langgraph;
@@ -77,10 +81,12 @@ export async function validateReview(
   const allowsPartial = interrupts.some(
     (interrupt) =>
       parseWorkflowReview(interrupt) !== null ||
+      parseAgentInteraction(interrupt) !== null ||
       parseExternalWait(interrupt) !== null,
   );
   const userInterrupts = interrupts.filter(
-    (interrupt) => !parseExternalWait(interrupt),
+    (interrupt) =>
+      !parseExternalWait(interrupt) && !parseAgentInteraction(interrupt),
   );
   const invalidReviewShape =
     run?.status !== "interrupted" ||
@@ -108,12 +114,30 @@ export async function validateReview(
 
   // Admission holds the conversation lock while checking the published review outputs.
   if (
+    userInterrupts.length > 0 &&
     !(await reviewOutputsPersisted(input.threadId, userInterrupts, database))
   ) {
     throw new SubmissionError("Review is no longer current", 409);
   }
 
   for (const interrupt of interrupts) {
+    const interaction = parseAgentInteraction(interrupt);
+    const submittedEntry = submitted.find(
+      (item) => item.interruptId === interrupt.id,
+    );
+
+    if (interaction && submittedEntry) {
+      // Validate against the checkpoint request while admission still holds its lock.
+      if (
+        submittedEntry.status !== "resolved" ||
+        !interactionResponse(interaction, submittedEntry.payload)
+      ) {
+        throw new SubmissionError("Invalid agent interaction response", 400);
+      }
+
+      continue;
+    }
+
     const review = parseWorkflowReview(interrupt);
 
     if (!review) {
