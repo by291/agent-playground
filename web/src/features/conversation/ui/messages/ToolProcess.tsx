@@ -26,6 +26,8 @@ import { messageText } from "../../model/presentation";
 import type { toolProcess, ToolStep } from "../../model/turns";
 
 const toolLabels: Record<string, string> = {
+  ask_user: "Ask for input",
+  write_todos: "Update plan",
   search_memory: "Search memory",
   remember_memory: "Remember a fact",
   forget_memory: "Forget a fact",
@@ -174,11 +176,15 @@ export function ToolProcess({
   const statusLabel = processStatusLabel(steps);
   const error = steps.find((step) => step.result?.error)?.result?.error;
   const countLabel = category === "Memory" ? "operations" : "tools";
-  const name =
+  let name =
     skillName ??
     (steps.length === 1
       ? steps[0]!.call.function.name
       : `${steps.length} ${countLabel}`);
+
+  if (name === "write_todos") {
+    name = "Update plan";
+  }
 
   let Icon = WrenchIcon;
 

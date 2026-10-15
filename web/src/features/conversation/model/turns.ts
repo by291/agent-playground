@@ -83,12 +83,13 @@ export function chatTurns(
 export function toolProcess(
   turn: ChatTurn,
   externalWaitCallIds: readonly string[] = [],
+  resultMessages: readonly Message[] = turn.messages,
 ): {
   message: AssistantMessage;
   calls: ToolStep[];
 }[] {
   const results = new Map(
-    turn.messages.flatMap((message) =>
+    resultMessages.flatMap((message) =>
       message.role === "tool" ? [[message.toolCallId, message] as const] : [],
     ),
   );

@@ -83,9 +83,11 @@ function collectRetrievedSources(process: ReturnType<typeof toolProcess>) {
 export function KnowledgeSources({
   process,
   children,
+  showSummary = true,
 }: {
   process: ReturnType<typeof toolProcess>;
   children?: ReactNode;
+  showSummary?: boolean;
 }) {
   const documentControlId = useId();
   const [open, setOpen] = useState(false);
@@ -175,20 +177,22 @@ export function KnowledgeSources({
     <KnowledgeCitationProvider value={{ sources, onSelect: openCitation }}>
       <Sheet open={open} onOpenChange={setOpen}>
         {children}
-        <div className="pt-1">
-          <SheetTrigger asChild>
-            <Button
-              variant="outline"
-              onClick={() => {
-                citationOpener.current = null;
-              }}
-              className="min-h-10 gap-2 rounded-full border-line px-3 text-xs text-muted"
-            >
-              <BooksIcon size={16} aria-hidden="true" />
-              {label}
-            </Button>
-          </SheetTrigger>
-        </div>
+        {showSummary && (
+          <div className="pt-1">
+            <SheetTrigger asChild>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  citationOpener.current = null;
+                }}
+                className="min-h-10 gap-2 rounded-full border-line px-3 text-xs text-muted"
+              >
+                <BooksIcon size={16} aria-hidden="true" />
+                {label}
+              </Button>
+            </SheetTrigger>
+          </div>
+        )}
         <SheetContent
           side="right"
           showCloseButton={false}

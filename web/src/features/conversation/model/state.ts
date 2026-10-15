@@ -6,6 +6,10 @@ import type { ConversationSnapshot } from "../api/contracts";
 import type { ConversationLifecycle } from "./lifecycle";
 import type { PlanReviewResponse } from "./plan-review";
 import type { WorkflowReview } from "@shared/workflow-review";
+import type {
+  AgentInteraction,
+  InteractionResponse,
+} from "@shared/agent-interaction";
 
 export interface Activity {
   id: string;
@@ -40,6 +44,10 @@ export interface ConversationState {
   send: (content: string, onAccepted?: () => void) => Promise<void>;
   clearActivity: () => void;
   reviewPlan: (responses: PlanReviewResponse[]) => Promise<void>;
+  respondToInteraction: (
+    interaction: AgentInteraction,
+    response: InteractionResponse,
+  ) => Promise<void>;
   reviewWorkflow: (
     review: WorkflowReview,
     action: "accept" | "abandon",

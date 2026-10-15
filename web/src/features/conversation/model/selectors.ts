@@ -2,6 +2,7 @@ import type { ConversationState } from "./state";
 import { parseExternalWait } from "@shared/external-task";
 import { parseWorkflowReview } from "@shared/workflow-review";
 import { isRunFinished } from "@shared/run-status";
+import { parseAgentInteraction } from "@shared/agent-interaction";
 
 export function isRunning(state: ConversationState) {
   return state.lifecycle.execution !== "idle";
@@ -58,6 +59,9 @@ export function composerState(state: ConversationState) {
   );
 
   return {
+    waitingForInteraction: state.pendingInterrupts.some(
+      (interrupt) => parseAgentInteraction(interrupt) !== null,
+    ),
     waitingForExternalTask,
     running: isRunning(state),
     recovering: isRestoring(state),

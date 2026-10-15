@@ -62,6 +62,140 @@ function page(
   );
 }
 
+test.each(["model details", "image preview"])(
+  "a pending question closes %s and restores the untouched draft and attachments afterwards",
+  async (openPanel) => {
+    let completedRunId: string | undefined;
+    const onPromptChange = vi.fn();
+    const createPreview = vi
+      .spyOn(URL, "createObjectURL")
+      .mockReturnValue("blob:draft");
+    const revokePreview = vi.spyOn(URL, "revokeObjectURL");
+    const interrupt = {
+      id: "question-state",
+      reason: "Input required",
+      metadata: {
+        langgraph: {
+          raw: {
+            action_requests: [
+              {
+                name: "ask_user",
+                args: {
+                  questions: [
+                    {
+                      id: "format",
+                      question: "Choose a format",
+                      options: [{ label: "Short" }, { label: "Detailed" }],
+                    },
+                  ],
+                },
+              },
+            ],
+            review_configs: [
+              {
+                action_name: "ask_user",
+                allowed_decisions: ["respond", "reject"],
+              },
+            ],
+          },
+        },
+      },
+    };
+
+    const pauseGate: { release?: () => void } = {};
+    const showPause = new Promise<void>((resolve) => {
+      pauseGate.release = resolve;
+    });
+
+    vi.stubGlobal("fetch", (url: string, init?: RequestInit) => {
+      if (url === "/agent-info") {
+        return Promise.resolve(Response.json({ model: "test-model" }));
+      }
+
+      if (url === "/agent") {
+        completedRunId = (JSON.parse(init?.body as string) as { runId: string })
+          .runId;
+
+        return Promise.resolve(acceptedResponse(init));
+      }
+
+      return showPause.then(() =>
+        Response.json({
+          messages: [],
+          outputs: [],
+          interrupts: completedRunId ? [] : [interrupt],
+          runs: [
+            {
+              runId: completedRunId ?? "paused",
+              status: completedRunId ? "completed" : "interrupted",
+            },
+          ],
+        }),
+      );
+    });
+    const view = page(
+      { threadId, empty: false },
+      undefined,
+      createElement(MessageComposer, {
+        prompt: "Keep my unsent draft",
+        onPromptChange,
+      }),
+    );
+    const composer = view.getByLabelText("Message");
+
+    fireEvent.change(view.getByLabelText("Choose files"), {
+      target: { files: [new File(["image"], "draft.png")] },
+    });
+
+    if (openPanel === "model details") {
+      fireEvent.click(
+        await view.findByRole("button", { name: /test-model.*Show details/ }),
+      );
+      expect(view.getByText("Context window", { exact: true })).toBeVisible();
+    } else {
+      fireEvent.click(view.getByRole("button", { name: "Preview draft.png" }));
+      expect(view.getByRole("dialog", { name: "draft.png" })).toBeVisible();
+    }
+
+    pauseGate.release?.();
+
+    await waitFor(() =>
+      expect(
+        view.getByRole("region", { name: "Agent needs your response" }),
+      ).toBeVisible(),
+    );
+    expect(composer).not.toBeVisible();
+    expect(
+      view.getByRole("group", { name: "Conversation input collapsed" }),
+    ).toBeVisible();
+    expect(composer).toHaveValue("Keep my unsent draft");
+    expect(
+      view.queryByText("Context window", { exact: true }),
+    ).not.toBeInTheDocument();
+    expect(view.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(revokePreview).not.toHaveBeenCalled();
+    fireEvent.click(view.getByRole("button", { name: "Skip" }));
+
+    await waitFor(() => expect(composer).toBeVisible());
+    expect(
+      view.queryByRole("group", { name: "Conversation input collapsed" }),
+    ).not.toBeInTheDocument();
+    expect(composer).toHaveValue("Keep my unsent draft");
+    expect(
+      view.queryByText("Context window", { exact: true }),
+    ).not.toBeInTheDocument();
+    expect(view.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(view.getByRole("img", { name: "draft.png" })).toHaveAttribute(
+      "src",
+      "blob:draft",
+    );
+    expect(createPreview).toHaveBeenCalledTimes(1);
+    expect(revokePreview).not.toHaveBeenCalled();
+    expect(onPromptChange).not.toHaveBeenCalled();
+    expect(composer).not.toHaveFocus();
+  },
+);
+
 test("the composer owns local image URLs and releases them on removal or unmount", () => {
   const create = vi
     .spyOn(URL, "createObjectURL")

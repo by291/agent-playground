@@ -1,5 +1,11 @@
 import { parseExternalWait } from "@shared/external-task";
 import {
+  interactionResponse,
+  parseAgentInteraction,
+  type AgentInteraction,
+  type InteractionResponse,
+} from "@shared/agent-interaction";
+import {
   configureConversationAgent,
   subscribeConversationAgent,
 } from "./http-agent";
@@ -117,6 +123,7 @@ export function createConversationSession(
     clearActivity: () => store.setState({ activity: [], activityReceived: 0 }),
     reviewPlan,
     reviewWorkflow,
+    respondToInteraction,
   }));
 
   const submission = createSubmissionRunner(ensureThreadId, agent, {
@@ -332,6 +339,13 @@ export function createConversationSession(
 
       receiveContextUsage(snapshot?.contextUsage);
       agent.setMessages(result.messages);
+
+      if (!locallyActive) {
+        // Recovery can discover the next approval after a lost terminal event.
+        // Keep the SDK's resume guard on the same request as the visible form.
+        agent.pendingInterrupts = structuredClone(result.interrupts);
+      }
+
       store.setState({
         title: snapshot?.title,
         modelId: preserveLocalModel
@@ -735,6 +749,44 @@ export function createConversationSession(
 
     if (!entry) {
       return Promise.resolve();
+    }
+
+    const runId = crypto.randomUUID();
+
+    return submit({
+      runId,
+      messageId: runId,
+      messages: [...agent.messages],
+      state: structuredClone(agent.state as Record<string, unknown>),
+      resume: [entry],
+    });
+  }
+
+  function respondToInteraction(
+    interaction: AgentInteraction,
+    response: InteractionResponse,
+  ): Promise<void> {
+    const interrupt = store
+      .getState()
+      .pendingInterrupts.find((item) => item.id === interaction.interruptId);
+    const current = interrupt ? parseAgentInteraction(interrupt) : null;
+
+    if (cannotSubmit() || !current) {
+      return Promise.resolve();
+    }
+
+    // Bind the response to the complete displayed request, including tool arguments.
+    const entry =
+      JSON.stringify(current) === JSON.stringify(interaction)
+        ? interactionResponse(current, response)
+        : null;
+
+    if (!entry) {
+      return Promise.reject(
+        new Error(
+          "This request changed. Review the current request before responding.",
+        ),
+      );
     }
 
     const runId = crypto.randomUUID();

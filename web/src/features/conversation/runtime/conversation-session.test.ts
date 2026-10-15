@@ -9,7 +9,7 @@ import {
 } from "@opentelemetry/sdk-trace-web";
 import { setTimeout as delay } from "node:timers/promises";
 import { InterruptSchema, RunAgentInputSchema } from "@shared/ag-ui-schemas";
-import { HttpAgent, type RunAgentInput } from "@ag-ui/client";
+import { HttpAgent, type Interrupt, type RunAgentInput } from "@ag-ui/client";
 import { createConversationSession } from "./conversation-session";
 import {
   canSelectModel,
@@ -19,6 +19,7 @@ import {
   isRestoring,
 } from "../model/selectors";
 import { snapshotPolicy } from "../model/lifecycle";
+import { parseAgentInteraction } from "@shared/agent-interaction";
 import {
   conversationSnapshotSchema,
   type ConversationSnapshot,
@@ -326,16 +327,175 @@ function streamingAgent(threadId: string) {
       );
     },
 
-    finish(input: RunAgentInput) {
+    finish(input: RunAgentInput, interrupts?: Interrupt[]) {
       this.emit({
         type: "RUN_FINISHED",
         threadId: input.threadId,
         runId: input.runId,
+        ...(interrupts ? { outcome: { type: "interrupt", interrupts } } : {}),
       });
       controller.close();
     },
   };
 }
+
+test("native interaction submissions validate the displayed request, journal once and recover the pending response", async () => {
+  const stream = streamingAgent("human-thread");
+  const session = createConversationSession(
+    { threadId: "human-thread" },
+    stream.agent,
+  );
+  const interrupt = InterruptSchema.parse({
+    id: "native-approval",
+    reason: "Approval required",
+    metadata: {
+      langgraph: {
+        raw: {
+          action_requests: [
+            {
+              name: "run_skill_script",
+              args: { script_path: "scripts/export.py" },
+            },
+          ],
+          review_configs: [
+            {
+              action_name: "run_skill_script",
+              allowed_decisions: ["approve", "reject"],
+            },
+          ],
+        },
+      },
+    },
+  });
+  const paused = {
+    ...snapshot("paused-run", "interrupted"),
+    interrupts: [interrupt],
+  };
+  let current = paused;
+  const disconnect = connectSession(session, () => Promise.resolve(current));
+
+  try {
+    session.receiveSnapshot(paused);
+    const interaction = parseAgentInteraction(interrupt)!;
+    const changed = structuredClone(interaction);
+
+    changed.action_requests[0]!.args.script_path = "scripts/delete.py";
+
+    await assert.rejects(
+      session.store
+        .getState()
+        .respondToInteraction(changed, { decisions: [{ type: "approve" }] }),
+      /request changed/,
+    );
+    assert.equal(stream.requests, 0);
+
+    const completion = session.store
+      .getState()
+      .respondToInteraction(interaction, { decisions: [{ type: "approve" }] });
+
+    await session.store
+      .getState()
+      .respondToInteraction(interaction, { decisions: [{ type: "approve" }] });
+    const input = await stream.requested;
+    const saved = loadConversation("human-thread");
+
+    assert.equal(stream.requests, 1);
+    assert.deepEqual(input.resume, [
+      {
+        interruptId: interrupt.id,
+        status: "resolved",
+        payload: { decisions: [{ type: "approve" }] },
+      },
+    ]);
+    assert.deepEqual(saved.pending?.resume, input.resume);
+    assert.equal(
+      input.messages.some((message) => message.role === "user"),
+      false,
+    );
+
+    current = { ...snapshot(input.runId), interrupts: [] };
+    stream.emit({
+      type: "RUN_STARTED",
+      threadId: input.threadId,
+      runId: input.runId,
+    });
+    stream.finish(input);
+    await completion;
+    session.receiveSnapshot(current);
+    assert.deepEqual(session.store.getState().pendingInterrupts, []);
+  } finally {
+    disconnect();
+  }
+});
+
+test("checkpoint recovery replaces the SDK's stale approval before submitting the next request", async () => {
+  const stream = streamingAgent("recovered-approval");
+  const session = createConversationSession(
+    { threadId: "recovered-approval" },
+    stream.agent,
+  );
+  const currentInterrupt = InterruptSchema.parse({
+    id: "memory-approval",
+    reason: "Approval required",
+    metadata: {
+      langgraph: {
+        raw: {
+          action_requests: [
+            {
+              name: "remember_memory",
+              args: { text: "A confirmed preference" },
+            },
+          ],
+          review_configs: [
+            {
+              action_name: "remember_memory",
+              allowed_decisions: ["approve", "reject"],
+            },
+          ],
+        },
+      },
+    },
+  });
+  const paused = {
+    ...snapshot("script-run", "interrupted"),
+    interrupts: [currentInterrupt],
+  };
+  let current: ConversationSnapshot = paused;
+  const disconnect = connectSession(session, () => Promise.resolve(current));
+
+  try {
+    // A disconnected stream left the SDK on the previous script approval.
+    stream.agent.pendingInterrupts = [
+      InterruptSchema.parse({
+        id: "script-approval",
+        reason: "Approval required",
+      }),
+    ];
+    session.receiveSnapshot(paused);
+    assert.deepEqual(stream.agent.pendingInterrupts, [currentInterrupt]);
+
+    const interaction = parseAgentInteraction(currentInterrupt);
+
+    assert.ok(interaction);
+    const completion = session.store
+      .getState()
+      .respondToInteraction(interaction, { decisions: [{ type: "approve" }] });
+    const input = await stream.requested;
+
+    assert.equal(input.resume?.[0]?.interruptId, "memory-approval");
+    current = snapshot(input.runId);
+    stream.emit({
+      type: "RUN_STARTED",
+      threadId: input.threadId,
+      runId: input.runId,
+    });
+    stream.finish(input);
+    await completion;
+    assert.deepEqual(stream.agent.pendingInterrupts, []);
+  } finally {
+    disconnect();
+  }
+});
 
 test("snapshot timestamps survive schema parsing and include workflow replies", () => {
   const saved = conversationSnapshotSchema.parse({
@@ -2444,13 +2604,28 @@ test("an experiment review submits while an external task is still waiting", asy
       input.resume?.map((entry) => entry.interruptId),
       ["plan-review"],
     );
+    assert.deepEqual(
+      stream.agent.pendingInterrupts.map((interrupt) => interrupt.id),
+      ["plan-review"],
+    );
+    assert.deepEqual(
+      session.store.getState().pendingInterrupts,
+      paused.interrupts,
+    );
     stream.emit({
       type: "RUN_STARTED",
       threadId: input.threadId,
       runId: input.runId,
     });
-    stream.finish(input);
+    stream.finish(
+      input,
+      paused.interrupts.filter((interrupt) => interrupt.id === "external-wait"),
+    );
     await submission;
+    assert.deepEqual(
+      stream.agent.pendingInterrupts.map((interrupt) => interrupt.id),
+      ["external-wait"],
+    );
   } finally {
     disconnect();
   }

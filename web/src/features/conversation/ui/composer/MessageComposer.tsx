@@ -28,6 +28,7 @@ import {
 import { useConversation } from "../../providers/ConversationProvider";
 import { useReplyPresentationBusy } from "../outputs/ReplyPresentation";
 import { ContextIndicator } from "./ContextIndicator";
+import { PendingAgentInteraction } from "./AgentInteractionPanel";
 import {
   isImageAttachment,
   SelectedAttachment,
@@ -86,6 +87,7 @@ export function MessageComposer({
     recovering,
     changingModel,
     waitingForReview,
+    waitingForInteraction,
     waitingForExternalTask,
     discussionPlaceholder,
     onSend,
@@ -114,6 +116,9 @@ export function MessageComposer({
     sendLabel = "Sending message";
   } else if (recovering) {
     sendLabel = "Restoring conversation";
+  } else if (waitingForInteraction && !running) {
+    placeholder = "Respond to the request above to continue";
+    sendLabel = "Waiting for your response";
   } else if (waitingForExternalTask && !running) {
     placeholder =
       "The external task is running. You can leave and return later.";
@@ -287,8 +292,44 @@ export function MessageComposer({
 
   return (
     <div className="shrink-0 bg-surface px-4 pt-3 pb-4 sm:px-8 sm:pb-5">
-      <div className="conversation-layout conversation-column">
-        <form onSubmit={submit}>
+      <div
+        className={
+          waitingForInteraction
+            ? "conversation-layout conversation-column flex max-h-[calc(100dvh-6rem)] min-h-0 flex-col"
+            : "conversation-layout conversation-column"
+        }
+      >
+        <PendingAgentInteraction />
+        {waitingForInteraction && (
+          <div
+            role="group"
+            aria-label="Conversation input collapsed"
+            className="mt-2 flex h-12 shrink-0 items-center gap-3 rounded-xl border border-line bg-surface px-4 shadow-[0_3px_12px_rgba(32,36,44,0.04)]"
+          >
+            <PaperclipIcon
+              size={18}
+              className="shrink-0 text-muted"
+              aria-hidden="true"
+            />
+            <p
+              className="min-w-0 flex-1 truncate text-base/6 text-muted"
+              title={prompt || undefined}
+            >
+              {prompt || "Respond above to continue"}
+            </p>
+            <InputGroupButton
+              type="button"
+              variant="default"
+              size="icon-sm"
+              disabled
+              aria-label="Waiting for your response"
+              className="size-8 rounded-md"
+            >
+              <ArrowUpIcon size={17} aria-hidden="true" />
+            </InputGroupButton>
+          </div>
+        )}
+        <form onSubmit={submit} hidden={waitingForInteraction}>
           <input
             ref={picker}
             type="file"
@@ -298,48 +339,51 @@ export function MessageComposer({
             disabled={disabled}
             onChange={selectFiles}
           />
-          <InputGroup className="h-auto flex-col items-stretch gap-1 rounded-xl border-line bg-surface p-3 shadow-[0_3px_12px_rgba(32,36,44,0.04)] transition-colors duration-150 focus-within:border-accent sm:p-4">
-            <div className="flex flex-wrap gap-2 px-1 empty:hidden">
-              <AnimatePresence initial={false}>
-                {files.map(({ id, file, preview }) => (
-                  <AnimatedDiv
-                    key={id}
-                    data-slot="composer-attachment"
-                    layout="position"
-                    exit={{
-                      opacity: 0,
-                      height: 0,
-                      width: 0,
-                      margin: 0,
-                      padding: 0,
-                      borderWidth: 0,
-                    }}
-                    className="max-w-full min-w-0 overflow-hidden"
-                  >
-                    <SelectedAttachment
-                      file={file}
-                      preview={preview}
-                      images={files.flatMap(
-                        ({ file: imageFile, preview: imagePreview }) =>
-                          imagePreview
-                            ? [
-                                {
-                                  name: imageFile.name,
-                                  alt: imageFile.name,
-                                  src: imagePreview,
-                                  thumbnail: imagePreview,
-                                },
-                              ]
-                            : [],
-                      )}
-                      uploading={uploading}
-                      disabled={disabled}
-                      onRemove={() => removeFiles(new Set([id]))}
-                    />
-                  </AnimatedDiv>
-                ))}
-              </AnimatePresence>
-            </div>
+          <InputGroup className="h-auto flex-col items-stretch gap-1 rounded-xl border-line bg-surface p-3 shadow-[0_3px_12px_rgba(32,36,44,0.04)] transition-colors duration-150 focus-within:border-accent sm:p-4 dark:bg-surface">
+            {/* Release gallery portals; the composer retains files and preview URLs. */}
+            {!waitingForInteraction && (
+              <div className="flex flex-wrap gap-2 px-1 empty:hidden">
+                <AnimatePresence initial={false}>
+                  {files.map(({ id, file, preview }) => (
+                    <AnimatedDiv
+                      key={id}
+                      data-slot="composer-attachment"
+                      layout="position"
+                      exit={{
+                        opacity: 0,
+                        height: 0,
+                        width: 0,
+                        margin: 0,
+                        padding: 0,
+                        borderWidth: 0,
+                      }}
+                      className="max-w-full min-w-0 overflow-hidden"
+                    >
+                      <SelectedAttachment
+                        file={file}
+                        preview={preview}
+                        images={files.flatMap(
+                          ({ file: imageFile, preview: imagePreview }) =>
+                            imagePreview
+                              ? [
+                                  {
+                                    name: imageFile.name,
+                                    alt: imageFile.name,
+                                    src: imagePreview,
+                                    thumbnail: imagePreview,
+                                  },
+                                ]
+                              : [],
+                        )}
+                        uploading={uploading}
+                        disabled={disabled}
+                        onRemove={() => removeFiles(new Set([id]))}
+                      />
+                    </AnimatedDiv>
+                  ))}
+                </AnimatePresence>
+              </div>
+            )}
             {uploading && (
               <p
                 role="status"
@@ -391,7 +435,10 @@ export function MessageComposer({
                 )}
               </InputGroupText>
               <div className="ml-auto flex min-w-0 items-center gap-2">
-                <ContextIndicator disabled={disabled} />
+                {/* Release popover portals while the request owns the visible input. */}
+                {!waitingForInteraction && (
+                  <ContextIndicator disabled={disabled} />
+                )}
                 <InputGroupButton
                   type="submit"
                   variant="default"
@@ -410,7 +457,13 @@ export function MessageComposer({
             </InputGroupAddon>
           </InputGroup>
         </form>
-        <p className="mt-3 hidden text-center text-[11px] text-soft sm:block">
+        <p
+          className={
+            waitingForInteraction
+              ? "hidden"
+              : "mt-3 hidden text-center text-[11px] text-soft sm:block"
+          }
+        >
           Review important information before acting.
         </p>
       </div>
