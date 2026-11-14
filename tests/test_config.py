@@ -249,8 +249,8 @@ def test_a2a_launcher_uses_configured_endpoint_and_retains_explicit_cli_override
     cards: list[tuple[str, str]] = []
     listeners: list[dict[str, Any]] = []
 
-    def create_app(role: str, url: str):
-        cards.append((role, url))
+    def create_app(config: server.A2aAppConfig) -> str:
+        cards.append((config.role, config.base_url))
 
         return "application"
 

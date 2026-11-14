@@ -23,7 +23,7 @@ from agent_playground.memory.routes import (
 from agent_playground.memory.routes import (
     router as memory_router,
 )
-from agent_playground.memory.service import MemoryService
+from agent_playground.memory.service import MemoryService, MemoryWrite
 
 
 @asynccontextmanager
@@ -69,11 +69,13 @@ async def seed_memory(thread_id: str, input: MemoryEdit, request: Request):
     # Seed through the production LangMem persistence boundary, with provenance
     # pointing to a conversation owned by this isolated browser fixture.
     saved = await MemoryService(request.app.state.memory_store).save(
-        input,
-        input.text,
-        str(uuid4()),
-        source_thread_id=thread_id,
-        source_message_id=str(uuid4()),
+        MemoryWrite(
+            scope=input,
+            text=input.text,
+            memory_id=str(uuid4()),
+            source_thread_id=thread_id,
+            source_message_id=str(uuid4()),
+        )
     )
 
     return saved.model_dump(mode="json", by_alias=True)

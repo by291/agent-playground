@@ -8,9 +8,13 @@ import yaml
 
 MAX_FILE_BYTES = 10 * 1024 * 1024
 MAX_TEXT_BYTES = 32 * 1024
+MAX_BUNDLE_FILES = 200
+MAX_DESCRIPTION_CHARS = 1024
+FRONTMATTER_PARTS = 3
 
 
 def relative_path(value: str) -> str:
+    """Normalize a path confined to a published bundle or sandbox workspace."""
     path = PurePosixPath(value)
 
     if not value or path.is_absolute() or ".." in path.parts or "\\" in value:
@@ -33,19 +37,22 @@ def _load_skill(directory: Path) -> Skill:
         if path.is_symlink():
             raise ValueError(f"Skill {directory.name} contains a symlink")
 
-        if path.is_file():
-            if path.stat().st_size > MAX_FILE_BYTES:
-                raise ValueError("Published Skill file exceeds 10 MiB")
+        if not path.is_file():
+            continue
 
-            files[path.relative_to(directory).as_posix()] = path.read_bytes()
+        if path.stat().st_size > MAX_FILE_BYTES:
+            raise ValueError("Published Skill file exceeds 10 MiB")
 
-    if len(files) > 200 or sum(map(len, files.values())) > MAX_FILE_BYTES:
+        bundle_path = path.relative_to(directory)
+        files[bundle_path.as_posix()] = path.read_bytes()
+
+    if len(files) > MAX_BUNDLE_FILES or sum(map(len, files.values())) > MAX_FILE_BYTES:
         raise ValueError("Skill bundle exceeds 200 files or 10 MiB")
 
     document = files["SKILL.md"].decode("utf-8")
     parts = re.split(r"(?m)^---[ \t]*\r?$", document, maxsplit=2)
 
-    if len(parts) != 3 or parts[0].strip():
+    if len(parts) != FRONTMATTER_PARTS or parts[0].strip():
         raise ValueError("SKILL.md requires YAML frontmatter")
 
     metadata = yaml.safe_load(parts[1])
@@ -65,7 +72,7 @@ def _load_skill(directory: Path) -> Skill:
     if (
         not isinstance(description, str)
         or not description.strip()
-        or len(description) > 1024
+        or len(description) > MAX_DESCRIPTION_CHARS
     ):
         raise ValueError("Skill description must contain 1 to 1024 characters")
 
@@ -78,7 +85,7 @@ def _load_skill(directory: Path) -> Skill:
 class SkillCatalog:
     """Snapshot validated bundles so later reads never access arbitrary host paths."""
 
-    def __init__(self, root: Path):
+    def __init__(self, root: Path) -> None:
         self.skills: dict[str, Skill] = {}
 
         if not root.exists():
@@ -95,23 +102,27 @@ class SkillCatalog:
             self.skills[skill.name] = skill
 
     def get(self, name: str) -> Skill:
+        """Resolve a Skill from the validated process-local snapshot."""
         if name not in self.skills:
             raise ValueError(f"Unknown Skill: {name}")
 
         return self.skills[name]
 
     def read(self, name: str, path: str) -> str:
-        data = self.get(name).files.get(relative_path(path))
+        """Read bounded UTF-8 resource text from the published snapshot."""
+        skill = self.get(name)
+        content = skill.files.get(relative_path(path))
 
-        if data is None:
+        if content is None:
             raise ValueError("File is not present in the published Skill")
 
-        if len(data) > MAX_TEXT_BYTES:
+        if len(content) > MAX_TEXT_BYTES:
             raise ValueError("Text resource exceeds 32 KiB; use it from a script")
 
-        return data.decode("utf-8")
+        return content.decode("utf-8")
 
     def prompt(self) -> str:
+        """Describe the available Skills and their tool usage in the agent prompt."""
         if not self.skills:
             return ""
 

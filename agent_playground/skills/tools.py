@@ -7,16 +7,24 @@ from pathlib import Path
 
 from langchain.tools import ToolRuntime, tool
 from langchain_core.messages import ToolMessage
+from langchain_core.tools import BaseTool
 
 from agent_playground.config.agent import load_agent_config
 from agent_playground.config.reader import PROJECT_ROOT
 from agent_playground.skills.catalog import SkillCatalog
 from agent_playground.skills.files import SkillFileClient
-from agent_playground.skills.sandbox import current_session
+from agent_playground.skills.sandbox import (
+    MAX_SCRIPT_FILES,
+    ScriptInvocation,
+    current_session,
+)
+
+MAX_SCRIPT_ERROR_CHARS = 2000
 
 
 @cache
 def default_catalog() -> SkillCatalog:
+    """Load the process-local catalog from the configured publishing directory."""
     root = Path(load_agent_config().skills.directory)
 
     if not root.is_absolute():
@@ -25,7 +33,9 @@ def default_catalog() -> SkillCatalog:
     return SkillCatalog(root)
 
 
-def skill_tools(catalog: SkillCatalog):
+def skill_tools(catalog: SkillCatalog) -> list[BaseTool]:
+    """Bind the Skill toolset to a published catalog."""
+
     @tool
     def load_skill(skill_name: str) -> str:
         """Read a published Skill's SKILL.md instructions before using its scripts."""
@@ -42,6 +52,7 @@ def skill_tools(catalog: SkillCatalog):
         except (ValueError, UnicodeDecodeError) as error:
             return f"Skill resource reading failed: {error}"
 
+    # LangChain derives the existing model-facing argument schema from this signature.
     @tool
     async def run_skill_script(
         skill_name: str,
@@ -62,7 +73,13 @@ def skill_tools(catalog: SkillCatalog):
         }
 
         try:
-            if len(input_files or []) > 4 or len(output_files or []) > 4:
+            requested_inputs = input_files or []
+            requested_outputs = output_files or []
+
+            if (
+                len(requested_inputs) > MAX_SCRIPT_FILES
+                or len(requested_outputs) > MAX_SCRIPT_FILES
+            ):
                 raise ValueError("Use at most four input files and four outputs")
 
             session = current_session.get()
@@ -91,13 +108,20 @@ def skill_tools(catalog: SkillCatalog):
                     )
 
                 files = SkillFileClient(thread_id, run_id, runtime.tool_call_id)
-                inputs = await files.inputs(input_files or [])
+                inputs = await files.inputs(requested_inputs)
 
             # Script execution and output publication have different retry safety:
             # publication failure must not cause an already completed script to rerun.
             result = await session.run(
-                skill_name, script_path, arguments or [], inputs, output_files or []
+                ScriptInvocation(
+                    skill_name=skill_name,
+                    script_path=script_path,
+                    arguments=arguments or [],
+                    inputs=inputs,
+                    output_files=requested_outputs,
+                )
             )
+
             payload.update(
                 {
                     "exitCode": result.exit_code,
@@ -129,13 +153,22 @@ def skill_tools(catalog: SkillCatalog):
         except Exception as error:
             logging.getLogger(__name__).exception("Skill script invocation failed")
             payload["error"] = (
-                f"Script failed or its outcome could not be confirmed: {error}"[:2000]
+                f"Script failed or its outcome could not be confirmed: {error}"[
+                    :MAX_SCRIPT_ERROR_CHARS
+                ]
             )
 
+        content = json.dumps(payload)
+        status = "error" if payload["error"] else "success"
+
         return ToolMessage(
-            content=json.dumps(payload),
+            content=content,
             tool_call_id=runtime.tool_call_id or "skill-script",
-            status="error" if payload["error"] else "success",
+            status=status,
         )
 
-    return [load_skill, read_skill_file, run_skill_script]
+    return [
+        load_skill,
+        read_skill_file,
+        run_skill_script,
+    ]

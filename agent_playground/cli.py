@@ -33,10 +33,17 @@ def aegra_environment(config: AgentConfig) -> dict[str, str]:
 
 
 def main() -> None:
+    """Launch Aegra with the validated Agent runtime settings."""
     config = load_agent_config()
 
     # YAML settings replace inherited values before Aegra's dotenv loading runs.
     os.environ.update(aegra_environment(config))
     os.environ.setdefault("AEGRA_CONFIG", str(PROJECT_ROOT / "aegra.json"))
 
-    cli.main(args=["serve", "--config", os.environ["AEGRA_CONFIG"]])
+    cli.main(
+        args=[
+            "serve",
+            "--config",
+            os.environ["AEGRA_CONFIG"],
+        ]
+    )

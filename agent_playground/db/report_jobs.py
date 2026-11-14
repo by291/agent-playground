@@ -20,6 +20,14 @@ class ReportJob:
     created_at: datetime
 
 
+@dataclass(frozen=True, kw_only=True)
+class CreateReportJob:
+    job_id: str
+    task: str
+    callback_token: str
+    outcome: str
+
+
 def _decode_report_job(row: RowMapping) -> ReportJob:
     return ReportJob(
         id=row["id"],
@@ -31,9 +39,7 @@ def _decode_report_job(row: RowMapping) -> ReportJob:
     )
 
 
-def create_report_job(
-    *, job_id: str, task: str, callback_token: str, outcome: str
-) -> ReportJob:
+def create_report_job(request: CreateReportJob) -> ReportJob:
     """Create or replay a job only when its immutable request fields match."""
     with app_engine().begin() as connection:
         # A concurrent creator may win the key; read its committed identity
@@ -41,19 +47,27 @@ def create_report_job(
         connection.execute(
             insert(report_jobs)
             .values(
-                id=job_id, task=task, callback_token=callback_token, outcome=outcome
+                id=request.job_id,
+                task=request.task,
+                callback_token=request.callback_token,
+                outcome=request.outcome,
             )
             .on_conflict_do_nothing()
         )
-        row = (
-            connection.execute(select(report_jobs).where(report_jobs.c.id == job_id))
-            .mappings()
-            .one()
-        )
+        statement = select(report_jobs).where(report_jobs.c.id == request.job_id)
+        row = connection.execute(statement).mappings().one()
         job = _decode_report_job(row)
 
-        stored_identity = (job.task, job.callback_token, job.outcome)
-        requested_identity = (task, callback_token, outcome)
+        stored_identity = (
+            job.task,
+            job.callback_token,
+            job.outcome,
+        )
+        requested_identity = (
+            request.task,
+            request.callback_token,
+            request.outcome,
+        )
 
         if stored_identity != requested_identity:
             raise ValueError("Report job identity conflict")
@@ -62,6 +76,7 @@ def create_report_job(
 
 
 def pending_report_jobs(final_revision: int) -> list[ReportJob]:
+    """Load jobs with revisions still pending delivery."""
     with app_engine().connect() as connection:
         rows = (
             connection.execute(
@@ -101,6 +116,7 @@ def stop_report_job(job_id: str, final_revision: int) -> None:
 
 
 def read_report_job(job_id: str) -> ReportJob | None:
+    """Read a persisted report job by its request identity."""
     with app_engine().connect() as connection:
         row = (
             connection.execute(select(report_jobs).where(report_jobs.c.id == job_id))

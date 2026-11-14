@@ -5,14 +5,71 @@ import threading
 from concurrent.futures import ThreadPoolExecutor
 
 import pytest
+from aegra_api.services.graph_factory import build_server_runtime
+from langchain_core.tools import BaseTool
 from sqlalchemy import event, inspect
 from sqlalchemy.engine import Engine
 
 from agent_playground import app as http
+from agent_playground import graph as conversation_graph
 from agent_playground.db.connection import app_engine, prepare_app_store
 from agent_playground.knowledge import worker as knowledge_worker_module
 from agent_playground.services.report import worker as report_worker_module
 from tests.agent_config import update_agent_config
+
+
+def test_graph_inspection_does_not_connect_to_application_storage(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    update_agent_config(
+        "database", application_url="postgresql://unused:unused@127.0.0.1:1/unused"
+    )
+    conversation_graph.base_graph.cache_clear()
+
+    async def discover_tools() -> list[BaseTool]:
+        return []
+
+    monkeypatch.setattr(conversation_graph, "shared_mcp_tools", discover_tools)
+
+    async def inspect_graph() -> None:
+        runtime = build_server_runtime(access_context="assistants.read", store=None)
+
+        async with conversation_graph.graph({}, runtime) as compiled:
+            assert compiled.get_input_jsonschema()
+
+    try:
+        asyncio.run(inspect_graph())
+    finally:
+        conversation_graph.base_graph.cache_clear()
+
+
+def test_graph_execution_waits_for_schema_readiness_off_the_event_loop(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    event_loop_thread = threading.get_ident()
+    prepared_on: list[int] = []
+    conversation_graph.base_graph.cache_clear()
+
+    def prepare() -> None:
+        prepared_on.append(threading.get_ident())
+
+    async def discover_tools() -> list[BaseTool]:
+        return []
+
+    monkeypatch.setattr(conversation_graph, "prepare_app_store", prepare, raising=False)
+    monkeypatch.setattr(conversation_graph, "shared_mcp_tools", discover_tools)
+
+    async def execute() -> None:
+        runtime = build_server_runtime(access_context="threads.create_run", store=None)
+
+        async with conversation_graph.graph({}, runtime):
+            assert len(prepared_on) == 1
+            assert prepared_on[0] != event_loop_thread
+
+    try:
+        asyncio.run(execute())
+    finally:
+        conversation_graph.base_graph.cache_clear()
 
 
 def test_schema_preparation_creates_only_python_owned_tables(
