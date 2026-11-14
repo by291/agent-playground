@@ -2,7 +2,6 @@ package com.agentplayground.domain.presentation
 
 import com.agentplayground.domain.conversation.InteractionQuestion
 import com.agentplayground.domain.conversation.parseInteractionQuestions
-import com.agentplayground.domain.model.isReasoning
 import com.agui.core.types.AssistantMessage
 import com.agui.core.types.ToolMessage
 import kotlinx.serialization.json.*
@@ -48,7 +47,7 @@ fun assistantTranscript(turn: ConversationTurn): List<AssistantTranscriptPart> {
     for (message in turn.messages) {
         when (message) {
             is AssistantMessage -> {
-                if (!isReasoning(message) && !message.content.isNullOrBlank()) {
+                if (!message.content.isNullOrBlank()) {
                     parts.add(AssistantTranscriptPart.Reply(message))
                 }
 

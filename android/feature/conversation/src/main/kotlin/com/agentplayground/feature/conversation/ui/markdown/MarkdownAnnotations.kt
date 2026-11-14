@@ -26,14 +26,24 @@ import org.intellij.markdown.ast.ASTNode
 import org.intellij.markdown.ast.findChildOfType
 import org.intellij.markdown.ast.getTextInNode
 
+/** Settings shared by the reply annotator and the inline link labels it renders. */
+internal data class ReplyMarkdownAnnotationOptions(
+    val sources: ReplySources?,
+    val foreground: Color,
+    val codeStyle: SpanStyle,
+    val highlightStyle: SpanStyle,
+    val onLink: (String) -> Unit,
+    val referenceLinks: ReferenceLinkHandler? = null,
+)
+
 /** Preserve CommonMark text and saved passage targets when using the Compose renderer. */
-internal fun replyMarkdownAnnotator(
-    sources: ReplySources?,
-    foreground: Color,
-    codeStyle: SpanStyle,
-    referenceLinks: ReferenceLinkHandler? = null,
-    onLink: (String) -> Unit,
-): MarkdownAnnotator {
+internal fun replyMarkdownAnnotator(options: ReplyMarkdownAnnotationOptions): MarkdownAnnotator {
+    val sources = options.sources
+    val foreground = options.foreground
+    val codeStyle = options.codeStyle
+    val referenceLinks = options.referenceLinks
+    val onLink = options.onLink
+
     val linkStyles =
         TextLinkStyles(
             style = SpanStyle(color = foreground, textDecoration = TextDecoration.Underline)
@@ -103,7 +113,13 @@ internal fun replyMarkdownAnnotator(
             } else if (node.type == MarkdownElementTypes.INLINE_LINK && destination != null) {
                 val linkText = node.findChildOfType(MarkdownElementTypes.LINK_TEXT)!!
                 val settings =
-                    DefaultAnnotatorSettings(linkStyles, codeStyle, annotator, referenceLinks)
+                    DefaultAnnotatorSettings(
+                        linkTextSpanStyle = linkStyles,
+                        codeSpanStyle = codeStyle,
+                        annotator = annotator,
+                        referenceLinkHandler = referenceLinks,
+                        highlightSpanStyle = options.highlightStyle,
+                    )
 
                 withLink(LinkAnnotation.Url(destination, linkStyles) { onLink(destination) }) {
                     buildMarkdownAnnotatedString(
