@@ -90,7 +90,7 @@ class InteractionSessionTest {
                 "review",
                 "human_approval",
                 metadata =
-                    Json.parseToJsonElement(
+                    Json.decodeFromString(
                         """
                         {"langgraph":{"raw":{"kind":"workflow_review","workflowCallId":"call",
                         "revision":1,"round":1,"outputStepId":"review","canAccept":true}}}
@@ -369,7 +369,7 @@ class InteractionSessionTest {
             id,
             "human_approval",
             metadata =
-                Json.parseToJsonElement(
+                Json.decodeFromString(
                     """{"langgraph":{"raw":{"action_requests":[{"name":"ask_user","args":{"questions":[{"id":"answer","question":"Clarify the task"}]}},{"name":"forget_memory","args":{"id":"memory"}}],"review_configs":[{"action_name":"ask_user","allowed_decisions":["respond","reject"]},{"action_name":"forget_memory","allowed_decisions":["approve","reject"]}]}}}"""
                 ),
         )

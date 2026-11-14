@@ -91,7 +91,7 @@ class ReviewPolicyTest {
             "human_approval",
             expiresAt = expiresAt,
             metadata =
-                protocolJson.parseToJsonElement(
+                protocolJson.decodeFromString(
                     """{"langgraph":{"raw":{"kind":"experiment_plan_review","title":"Plan","steps":["Step"]}}}"""
                 ),
         )
