@@ -92,7 +92,7 @@ class ReviewPanelTest {
                 "plan",
                 "human_approval",
                 metadata =
-                    protocolJson.parseToJsonElement(
+                    protocolJson.decodeFromString(
                         """{"langgraph":{"raw":{"kind":"experiment_plan_review","title":"Original title","steps":["Original step"]}}}"""
                     ),
             )
@@ -129,7 +129,7 @@ class ReviewPanelTest {
                     id,
                     "human_approval",
                     metadata =
-                        protocolJson.parseToJsonElement(
+                        protocolJson.decodeFromString(
                             """{"langgraph":{"raw":{"kind":"experiment_plan_review","title":"Plan","steps":["Step"]}}}"""
                         ),
                 )
@@ -188,7 +188,7 @@ class ReviewPanelTest {
                 "single",
                 "human_approval",
                 metadata =
-                    protocolJson.parseToJsonElement(
+                    protocolJson.decodeFromString(
                         """{"langgraph":{"raw":{"kind":"experiment_plan_review","title":"Plan","steps":["Step"]}}}"""
                     ),
             )

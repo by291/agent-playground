@@ -1,6 +1,7 @@
 package com.agentplayground.feature.conversation
 
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLinkStyles
@@ -8,6 +9,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.BaselineShift
 import com.agentplayground.domain.presentation.KnowledgeSource
 import com.agentplayground.domain.presentation.ReplySources
+import com.agentplayground.feature.conversation.ui.markdown.ReplyMarkdownAnnotationOptions
 import com.agentplayground.feature.conversation.ui.markdown.replyMarkdownAnnotator
 import com.mikepenz.markdown.annotator.DefaultAnnotatorSettings
 import com.mikepenz.markdown.annotator.buildMarkdownAnnotatedString
@@ -43,6 +45,22 @@ class KnowledgeCitationsTest {
         link.linkInteractionListener!!.onClick(link)
 
         assertEquals("https://target.example", opened)
+    }
+
+    @Test
+    fun `highlighted text inside a link uses the surrounding Markdown highlight style`() {
+        val rendered = render("See ==note== and [==details==](https://example.com).") {}
+
+        assertEquals("See note and details.", rendered.toString())
+        val highlightedText =
+            rendered.spanStyles
+                .filter { it.item.background == Color.Yellow }
+                .map {
+                    rendered.text.substring(it.start, it.end)
+                }
+
+        assertEquals(listOf("note", "details"), highlightedText)
+        assertEquals(1, rendered.getLinkAnnotations(0, rendered.length).size)
     }
 
     @Test
@@ -108,16 +126,28 @@ class KnowledgeCitationsTest {
         assertEquals("https://example.com", opened)
     }
 
-    private fun render(content: String, onLink: (String) -> Unit) =
-        content.buildMarkdownAnnotatedString(
+    private fun render(content: String, onLink: (String) -> Unit): AnnotatedString {
+        val highlightStyle = SpanStyle(background = Color.Yellow)
+
+        return content.buildMarkdownAnnotatedString(
             style = TextStyle.Default,
             annotatorSettings =
                 DefaultAnnotatorSettings(
                     linkTextSpanStyle = TextLinkStyles(),
                     codeSpanStyle = SpanStyle(),
+                    highlightSpanStyle = highlightStyle,
                     annotator =
-                        replyMarkdownAnnotator(sources, Color.Blue, SpanStyle(), onLink = onLink),
+                        replyMarkdownAnnotator(
+                            ReplyMarkdownAnnotationOptions(
+                                sources = sources,
+                                foreground = Color.Blue,
+                                codeStyle = SpanStyle(),
+                                highlightStyle = highlightStyle,
+                                onLink = onLink,
+                            )
+                        ),
                     linkInteractionListener = { onLink((it as LinkAnnotation.Url).url) },
                 ),
         )
+    }
 }
