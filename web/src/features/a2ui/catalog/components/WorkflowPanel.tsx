@@ -1,6 +1,6 @@
 import { Fragment } from "react";
 import { createComponentImplementation } from "@a2ui/react/v0_9";
-import { ComponentIdSchema } from "@a2ui/web_core/v0_9";
+import { ComponentIdSchema, type ResolvedChildRef } from "@a2ui/web_core/v0_9";
 import { z } from "zod";
 import { Card, CardContent } from "@/components/ui/card";
 
@@ -15,7 +15,7 @@ export const WorkflowPanel = createComponentImplementation(
     <section className="motion-item-enter">
       <Card className="gap-0 p-5">
         <CardContent className="flex flex-col gap-3 p-0">
-          {props.children.map((child) => (
+          {props.children.map((child: string | ResolvedChildRef) => (
             <Fragment key={typeof child === "string" ? child : child.id}>
               {typeof child === "string"
                 ? buildChild(child)
