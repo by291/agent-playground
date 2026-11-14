@@ -35,7 +35,11 @@ test("official protocol validators compose with application contracts and preser
     context: [],
     forwardedProps: {},
     resume: [
-      { interruptId: "review", status: "resolved", value: { approved: true } },
+      {
+        interruptId: "review",
+        status: "resolved",
+        value: { approved: true },
+      },
     ],
   };
   const parsed = schema.parse({
@@ -57,7 +61,13 @@ test("official protocol validators compose with application contracts and preser
   assert.equal(
     RunAgentInputSchema.safeParse({
       ...input,
-      messages: [{ id: "bad", role: "tool", content: "missing caller" }],
+      messages: [
+        {
+          id: "bad",
+          role: "tool",
+          content: "missing caller",
+        },
+      ],
     }).success,
     false,
   );

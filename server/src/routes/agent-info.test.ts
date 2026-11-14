@@ -64,7 +64,12 @@ test("the public model catalog preserves availability and removes provider secre
         model: "deepseek-flash",
         available: true,
       },
-      { id: "qwen", label: "Qwen", model: "qwen3.8-flash", available: false },
+      {
+        id: "qwen",
+        label: "Qwen",
+        model: "qwen3.8-flash",
+        available: false,
+      },
     ],
   });
 });

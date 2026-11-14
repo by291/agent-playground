@@ -1,5 +1,7 @@
 import { defineConfig } from "drizzle-kit";
 
+const LOCAL_DATABASE_URL = "postgresql://localhost/agent_playground";
+
 export default defineConfig({
   dialect: "postgresql",
   schema: [
@@ -10,7 +12,6 @@ export default defineConfig({
   ],
   out: "./drizzle",
   dbCredentials: {
-    url:
-      process.env.APP_DATABASE_URL ?? "postgresql://localhost/agent_playground",
+    url: process.env.APP_DATABASE_URL ?? LOCAL_DATABASE_URL,
   },
 });

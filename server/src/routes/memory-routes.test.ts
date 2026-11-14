@@ -14,7 +14,11 @@ const memory = {
   createdAt: "2026-10-10T00:00:00Z",
   updatedAt: "2026-10-10T01:00:00+00:00",
 };
-const mutation = { category: "preference", project: null, revision: 2 };
+const mutation = {
+  category: "preference",
+  project: null,
+  revision: 2,
+};
 
 beforeEach(() => {
   vi.stubEnv("AEGRA_URL", "https://agent.example/runtime/");
@@ -178,7 +182,12 @@ test("accepts astral characters at the shared UTF16 text, project and provenance
   vi.stubGlobal("fetch", () => Promise.resolve(Response.json(record)));
   const response = await app.request(
     `/api/memories/${id}`,
-    jsonRequest("PATCH", { category: "project", project, revision: 2, text }),
+    jsonRequest("PATCH", {
+      category: "project",
+      project,
+      revision: 2,
+      text,
+    }),
   );
 
   assert.equal(response.status, 200);
@@ -186,15 +195,51 @@ test("accepts astral characters at the shared UTF16 text, project and provenance
 });
 
 test.each([
-  { category: "preference", project: "unexpected", revision: 2 },
-  { category: "project", project: null, revision: 2 },
-  { category: "project", project: "   ", revision: 2 },
-  { category: "project", project: "x".repeat(101), revision: 2 },
-  { category: "project", project: "🦊".repeat(51), revision: 2 },
-  { category: "other", project: null, revision: 2 },
-  { category: "preference", project: null, revision: 0 },
-  { category: "preference", project: null, revision: 1.5 },
-  { category: "preference", project: null, revision: "2" },
+  {
+    category: "preference",
+    project: "unexpected",
+    revision: 2,
+  },
+  {
+    category: "project",
+    project: null,
+    revision: 2,
+  },
+  {
+    category: "project",
+    project: "   ",
+    revision: 2,
+  },
+  {
+    category: "project",
+    project: "x".repeat(101),
+    revision: 2,
+  },
+  {
+    category: "project",
+    project: "🦊".repeat(51),
+    revision: 2,
+  },
+  {
+    category: "other",
+    project: null,
+    revision: 2,
+  },
+  {
+    category: "preference",
+    project: null,
+    revision: 0,
+  },
+  {
+    category: "preference",
+    project: null,
+    revision: 1.5,
+  },
+  {
+    category: "preference",
+    project: null,
+    revision: "2",
+  },
   { category: "preference", project: null },
   { ...mutation, upstreamUrl: "https://malicious.example" },
 ])("rejects invalid mutation scope or revision %j", async (body) => {
@@ -215,20 +260,26 @@ test.each([
   }
 });
 
-test.each(["", "   ", "x".repeat(1001), "🦊".repeat(501), 3, null])(
-  "rejects invalid memory edit text %j",
-  async (text) => {
-    vi.stubGlobal("fetch", () => {
-      assert.fail("Invalid input reached the upstream");
-    });
-    const response = await app.request(
-      `/api/memories/${id}`,
-      jsonRequest("PATCH", { ...mutation, text }),
-    );
+test.each(
+  /* prettier-ignore */ [
+  "",
+  "   ",
+  "x".repeat(1001),
+  "🦊".repeat(501),
+  3,
+  null,
+],
+)("rejects invalid memory edit text %j", async (text) => {
+  vi.stubGlobal("fetch", () => {
+    assert.fail("Invalid input reached the upstream");
+  });
+  const response = await app.request(
+    `/api/memories/${id}`,
+    jsonRequest("PATCH", { ...mutation, text }),
+  );
 
-    assert.equal(response.status, 400);
-  },
-);
+  assert.equal(response.status, 400);
+});
 
 test("rejects malformed JSON and invalid UUIDs before contacting Python", async () => {
   vi.stubGlobal("fetch", () => {
@@ -251,7 +302,11 @@ test("rejects malformed JSON and invalid UUIDs before contacting Python", async 
   }
 });
 
-test.each([404, 409, 422])(
+test.each(/* prettier-ignore */ [
+  404,
+  409,
+  422,
+])(
   "preserves actionable upstream mutation status %s without exposing its error body",
   async (status) => {
     vi.stubGlobal("fetch", () =>
@@ -280,7 +335,12 @@ test.each([404, 409, 422])(
   },
 );
 
-test.each([401, 403, 500, 503])(
+test.each(/* prettier-ignore */ [
+  401,
+  403,
+  500,
+  503,
+])(
   "turns unavailable upstream status %s into a sanitized service error",
   async (status) => {
     vi.stubGlobal("fetch", () =>
@@ -301,11 +361,23 @@ test.each([
   { items: [{ ...memory, id: "invalid" }], nextOffset: null },
   { items: [{ ...memory, revision: 0 }], nextOffset: null },
   {
-    items: [{ ...memory, category: "project", project: null }],
+    items: [
+      {
+        ...memory,
+        category: "project",
+        project: null,
+      },
+    ],
     nextOffset: null,
   },
   {
-    items: [{ ...memory, category: "project", project: "🦊".repeat(51) }],
+    items: [
+      {
+        ...memory,
+        category: "project",
+        project: "🦊".repeat(51),
+      },
+    ],
     nextOffset: null,
   },
   { items: [{ ...memory, sourceThreadId: "x".repeat(257) }], nextOffset: null },

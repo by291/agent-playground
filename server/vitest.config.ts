@@ -1,5 +1,14 @@
 import { configDefaults, defineConfig } from "vitest/config";
 
+const INTEGRATION_TEST_TIMEOUT_MS = 60_000;
+const INTEGRATION_HOOK_TIMEOUT_MS = 120_000;
+// prettier-ignore
+const coverageReporters = [
+  "text",
+  "html",
+  "lcov",
+] as const;
+
 export default defineConfig({
   test: {
     environment: "node",
@@ -18,8 +27,8 @@ export default defineConfig({
           name: "integration",
           include: ["**/*.integration.test.ts"],
           globalSetup: ["./tests/postgres.ts"],
-          testTimeout: 60_000,
-          hookTimeout: 120_000,
+          testTimeout: INTEGRATION_TEST_TIMEOUT_MS,
+          hookTimeout: INTEGRATION_HOOK_TIMEOUT_MS,
         },
       },
     ],
@@ -27,7 +36,7 @@ export default defineConfig({
       provider: "v8",
       include: ["src/**/*.ts"],
       exclude: ["**/*.test.ts"],
-      reporter: ["text", "html", "lcov"],
+      reporter: [...coverageReporters],
     },
   },
 });

@@ -93,7 +93,11 @@ const upstream = createServer((request, response) => {
                     type: "ai",
                     content: "I'll check.",
                     tool_calls: [
-                      { id: "clock", name: "get_current_time", args: {} },
+                      {
+                        id: "clock",
+                        name: "get_current_time",
+                        args: {},
+                      },
                     ],
                   },
                   {
@@ -135,7 +139,11 @@ const upstream = createServer((request, response) => {
               }
             : {}),
           messages: [
-            { id: "checkpoint-reply", type: "ai", content: "Saved reply" },
+            {
+              id: "checkpoint-reply",
+              type: "ai",
+              content: "Saved reply",
+            },
             {
               id: "checkpoint-followup",
               type: "ai",
@@ -217,7 +225,13 @@ function inputFor(threadId: string): RunAgentInput {
   return {
     threadId,
     runId: `${threadId}-run`,
-    messages: [{ id: `${threadId}-message`, role: "user", content: "Hello" }],
+    messages: [
+      {
+        id: `${threadId}-message`,
+        role: "user",
+        content: "Hello",
+      },
+    ],
     tools: [],
     context: [],
     state: {},
@@ -324,7 +338,13 @@ test("generic workflow feedback validates its persisted round and cannot overrid
   };
   const request: RunAgentInput = {
     ...input,
-    resume: [{ interruptId: "copy-review", status: "resolved", payload }],
+    resume: [
+      {
+        interruptId: "copy-review",
+        status: "resolved",
+        payload,
+      },
+    ],
   };
 
   await validateReview(request, current, database.db);
@@ -456,7 +476,11 @@ test("an unavailable upstream is reported as unavailable rather than an admissio
       ...inputFor(row.threadId),
       runId: "next-run",
       messages: [
-        { id: "next-message", role: "user" as const, content: "Next" },
+        {
+          id: "next-message",
+          role: "user" as const,
+          content: "Next",
+        },
       ],
     };
     const response = await app.request("/agent", {
@@ -485,6 +509,56 @@ test("an older running observation cannot reopen a completed run", async () => {
   const reconciled = await recovery.reconcileRun(stale);
 
   assert.equal(reconciled.status, "completed");
+});
+
+test("admission waits for the previous terminal run's archive", async () => {
+  const { synchronizeConversation } = await import("./checkpoint-sync.js");
+  const previous = await admit("archive-before-admission");
+  const input = inputFor(previous.threadId);
+  const message = {
+    id: "next-message",
+    role: "user" as const,
+    content: "Next",
+  };
+  const request = {
+    ...input,
+    runId: "next-run",
+    messages: [message],
+  };
+  const submission = {
+    threadId: request.threadId,
+    runId: request.runId,
+    messageId: message.id,
+    request,
+    userMessage: message,
+    isResume: false,
+  };
+
+  // An earlier synchronization observed an active run, then another request
+  // committed its terminal status before reading the upstream checkpoint.
+  await runStore.recordAegraRun(previous.aguiRunId, "upstream-run");
+  await synchronizeConversation(previous.threadId);
+  await database.db
+    .update(schema.conversationRuns)
+    .set({ status: "completed" })
+    .where(eq(schema.conversationRuns.aguiRunId, previous.aguiRunId));
+
+  await assert.rejects(admission.admitRun(submission), { status: 409 });
+  await synchronizeConversation(previous.threadId);
+  const admitted = await admission.admitRun(submission);
+  const { conversationSnapshot } = await import("../history/snapshot.js");
+  const snapshot = await conversationSnapshot(previous.threadId);
+
+  assert.equal(admitted.row.submitSeq, 2);
+  assert.deepEqual(
+    snapshot?.messages.map((entry) => entry.id),
+    [
+      `${previous.threadId}-message`,
+      "checkpoint-reply",
+      "checkpoint-followup",
+      message.id,
+    ],
+  );
 });
 
 test("a completed checkpoint is synchronized once and only adds missing messages", async () => {
@@ -525,7 +599,11 @@ test("a completed checkpoint is synchronized once and only adds missing messages
 
   assert.deepEqual(
     snapshot?.messages.map((message) => message.id),
-    [`${run.threadId}-message`, "checkpoint-reply", "checkpoint-followup"],
+    /* prettier-ignore */ [
+      `${run.threadId}-message`,
+      "checkpoint-reply",
+      "checkpoint-followup",
+    ],
   );
   assert.equal(
     snapshot?.messageTimestamps["checkpoint-reply"],
@@ -554,7 +632,13 @@ test("reasoning from an already archived answer cannot move into a later user tu
   const next: RunAgentInput = {
     ...inputFor(first.threadId),
     runId: "historical-reasoning-next",
-    messages: [{ id: "next-question", role: "user", content: "Next question" }],
+    messages: [
+      {
+        id: "next-question",
+        role: "user",
+        content: "Next question",
+      },
+    ],
   };
 
   await admission.admitRun({
@@ -613,7 +697,11 @@ test("a compacted checkpoint recovers usage and replies removed from model histo
     assert.deepEqual(snapshot?.contextUsage, contextUsage);
     assert.deepEqual(
       snapshot?.messages.map((message) => message.id),
-      [`${run.threadId}-message`, "earlier-reply", "latest-reply"],
+      /* prettier-ignore */ [
+        `${run.threadId}-message`,
+        "earlier-reply",
+        "latest-reply",
+      ],
     );
     await synchronizeConversation(run.threadId);
     assert.equal(stateReads, beforeReads);
@@ -639,7 +727,12 @@ test("tool calls and errors survive archival and repeated conversation refreshes
 
     assert.deepEqual(
       saved?.messages.map((message) => message.role),
-      ["user", "assistant", "tool", "assistant"],
+      /* prettier-ignore */ [
+        "user",
+        "assistant",
+        "tool",
+        "assistant",
+      ],
     );
     const caller = saved?.messages[1];
     const result = saved?.messages[2];
@@ -678,7 +771,11 @@ test("a resumed review no longer blocks the next ordinary message", async () => 
     ...inputFor(interrupted.threadId),
     runId: "after-review",
     messages: [
-      { id: "after-review-message", role: "user" as const, content: "Next" },
+      {
+        id: "after-review-message",
+        role: "user" as const,
+        content: "Next",
+      },
     ],
   };
   const admitted = await admission.admitRun({

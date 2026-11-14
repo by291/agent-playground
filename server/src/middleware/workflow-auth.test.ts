@@ -5,7 +5,7 @@ import { afterEach, test, vi } from "vitest";
 vi.mock("../conversation/files/skill-files.js", () => ({
   storeSkillFile: () => Promise.resolve({}),
   readSkillFile: () =>
-    Promise.resolve({ name: "file.txt", data: Buffer.from("skill") }),
+    Promise.resolve({ name: "file.txt", bytes: Buffer.from("skill") }),
 }));
 vi.mock("../knowledge/documents.js", () => ({
   changeDocument: () => Promise.resolve({}),

@@ -52,7 +52,7 @@ AG-UI, A2UI and A2A protocol schemas remain owned by the official libraries. SQL
 
 Python table declarations share `db/schema.py`; obtaining an engine does not create tables. The HTTP lifespan explicitly prepares Python-owned tables before starting workers, drains those workers on shutdown, then disposes and clears the cached engine. `db/async_operations.py` waits for worker database threads to finish before propagating cancellation; cancelled startup also drains schema preparation and releases the engine. Repositories depend on schema and connections, without initialization-time circular imports.
 
-The server entry owns termination signals and drains HTTP connections, background workers, shared conversation subscriptions, object storage and the database before flushing telemetry. Telemetry bootstrap exposes an awaitable shutdown rather than installing another process termination handler. Database pool background errors are logged; the pool discards failed idle connections and acquires replacements as needed.
+The server entry owns termination signals and drains HTTP connections, background workers, shared conversation subscriptions, object storage and the database before flushing telemetry. After closing HTTP connections it gives pending dispatch claims up to five seconds to persist their upstream identities and release their leases. It then closes local Aegra SDK requests. Aegra continues accepted runs after disconnect, and a surviving replica can reconcile a missing run identity through PostgreSQL and the upstream run list. Telemetry bootstrap exposes an awaitable shutdown rather than installing another process termination handler. Database pool background errors are logged; the pool discards failed idle connections and acquires replacements as needed.
 
 ## State and storage
 
@@ -74,7 +74,7 @@ See [development](development.md#database-and-data-ownership) for schema roles a
 
 ## Admission and recovery consistency
 
-Admission checks the newest run under the conversation lock. An identical submission is recognized before validating a new review, allowing a prepared review to be retried after restart. Run updates are conditional on the mapping/state originally observed; a late callback or older upstream response cannot reopen a terminal run or overwrite a newer mapping.
+Admission checks the newest run under the conversation lock. A mapped terminal run blocks a new submission until its checkpoint archive commits, so a racing admission cannot make that run unreachable to recovery. An identical submission is recognized before validating a new review, allowing a prepared review to be retried after restart. Run updates are conditional on the mapping/state originally observed; a late callback or older upstream response cannot reopen a terminal run or overwrite a newer mapping.
 
 The server synchronizes the latest run before reading a snapshot. Completed and interrupted checkpoints have a durable synchronization marker, including interrupts; later reads use saved messages and outputs without re-fetching that checkpoint. Message IDs are inserted in a batch with explicit checkpoint order.
 

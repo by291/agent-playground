@@ -2,138 +2,123 @@ import { and, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import { db } from "../../db/database.js";
 import { conversations } from "../../db/conversation-schema.js";
 import { skillFiles } from "../../db/skill-file-schema.js";
-import { logger } from "../../observability/logger.js";
-import { deleteObject, listObjects } from "../../storage/object-store.js";
+import {
+  createObjectReconciler,
+  startObjectCleanup,
+} from "../../storage/object-cleanup.js";
+import { deleteObject } from "../../storage/object-store.js";
 
-let continuationToken: string | undefined;
+const cleanupBatchSize = 50;
+const deletedConversation = and(
+  eq(conversations.threadId, skillFiles.threadId),
+  isNotNull(conversations.deletedAt),
+);
 
-export async function cleanupDeletedSkillFiles(signal?: AbortSignal) {
-  const failures: unknown[] = [];
+async function enqueueDeletedSkillFiles(objectKeys: string[]) {
+  await db
+    .update(skillFiles)
+    .set({ objectDeletedAt: null })
+    .where(
+      and(
+        inArray(skillFiles.objectKey, objectKeys),
+        sql`EXISTS (
+          SELECT 1
+          FROM conversations
+          WHERE thread_id = ${skillFiles.threadId} AND deleted_at IS NOT NULL
+        )`,
+      ),
+    );
+}
 
-  try {
-    // A timed-out PUT may commit after deletion. Retained intents make it discoverable.
-    const page = await listObjects("skill-files/", continuationToken, signal);
-
-    continuationToken = page.continuationToken;
-
-    if (page.keys.length) {
-      await db
-        .update(skillFiles)
-        .set({ objectDeletedAt: null })
-        .where(
-          and(
-            inArray(skillFiles.objectKey, page.keys),
-            sql`EXISTS (SELECT 1 FROM conversations WHERE thread_id = ${skillFiles.threadId} AND deleted_at IS NOT NULL)`,
-          ),
-        );
-    }
-  } catch (error) {
-    continuationToken = undefined;
-    failures.push(error);
-  }
-
-  const candidates = await db
+function listCleanupCandidates() {
+  const deletedFiles = db
     .select({ id: skillFiles.id })
     .from(skillFiles)
-    .innerJoin(
-      conversations,
-      and(
-        eq(conversations.threadId, skillFiles.threadId),
-        isNotNull(conversations.deletedAt),
-      ),
-    )
+    .innerJoin(conversations, deletedConversation);
+
+  return deletedFiles
     .where(isNull(skillFiles.objectDeletedAt))
     .orderBy(
       sql`${skillFiles.cleanupAttemptedAt} ASC NULLS FIRST`,
       skillFiles.id,
     )
-    .limit(50);
-
-  for (const candidate of candidates) {
-    if (signal?.aborted) {
-      break;
-    }
-
-    try {
-      // Commit each removal separately; one denied object must not block other conversations.
-      await db.transaction(async (tx) => {
-        const [row] = await tx
-          .select({ file: skillFiles })
-          .from(skillFiles)
-          .innerJoin(
-            conversations,
-            and(
-              eq(conversations.threadId, skillFiles.threadId),
-              isNotNull(conversations.deletedAt),
-            ),
-          )
-          .where(
-            and(
-              eq(skillFiles.id, candidate.id),
-              isNull(skillFiles.objectDeletedAt),
-            ),
-          )
-          .for("update");
-
-        if (!row) {
-          return;
-        }
-
-        await deleteObject(row.file.objectKey, signal);
-
-        // Keep the object key so a remote upload that finishes later can be deleted again.
-        await tx
-          .update(skillFiles)
-          .set({ objectDeletedAt: new Date(), cleanupAttemptedAt: new Date() })
-          .where(eq(skillFiles.id, row.file.id));
-      });
-    } catch (error) {
-      failures.push(error);
-
-      // Move failures behind unattempted candidates while retaining their object intent.
-      await db
-        .update(skillFiles)
-        .set({ cleanupAttemptedAt: new Date() })
-        .where(eq(skillFiles.id, candidate.id));
-    }
-  }
-
-  if (failures.length) {
-    throw new AggregateError(failures, "Some Skill files could not be deleted");
-  }
+    .limit(cleanupBatchSize);
 }
 
-export function startSkillFileCleanup() {
-  const controller = new AbortController();
-  let stopped = false;
-  let active: Promise<void> | undefined;
+async function removeSkillFile(id: string, signal?: AbortSignal) {
+  // Commit each removal separately; one denied object must not block other conversations.
+  await db.transaction(async (transaction) => {
+    const deletedFiles = transaction
+      .select({ file: skillFiles })
+      .from(skillFiles)
+      .innerJoin(conversations, deletedConversation);
+    const [fileToRemove] = await deletedFiles
+      .where(and(eq(skillFiles.id, id), isNull(skillFiles.objectDeletedAt)))
+      .for("update");
 
-  function tick() {
-    if (stopped || active) {
+    if (!fileToRemove) {
       return;
     }
 
-    active = cleanupDeletedSkillFiles(controller.signal)
-      .catch((error: unknown) => {
-        if (!stopped) {
-          logger.error({ err: error }, "Skill file cleanup failed; will retry");
-        }
-      })
-      .finally(() => {
-        active = undefined;
-      });
-  }
+    await deleteObject(fileToRemove.file.objectKey, signal);
 
-  const timer = setInterval(tick, 30_000);
+    // Keep the object key so a remote upload that finishes later can be deleted again.
+    await transaction
+      .update(skillFiles)
+      .set({ objectDeletedAt: new Date(), cleanupAttemptedAt: new Date() })
+      .where(eq(skillFiles.id, id));
+  });
+}
 
-  timer.unref();
-  tick();
+/** Creates a cleanup that reconciles late uploads and retries deleted Skill files in batches. */
+export function createSkillFileCleanup() {
+  const reconcileObjects = createObjectReconciler(
+    "skill-files/",
+    enqueueDeletedSkillFiles,
+  );
 
-  return async () => {
-    stopped = true;
-    clearInterval(timer);
-    controller.abort();
+  return async (signal?: AbortSignal) => {
+    const failures: unknown[] = [];
 
-    await active;
+    try {
+      await reconcileObjects(signal);
+    } catch (error) {
+      failures.push(error);
+    }
+
+    const candidates = await listCleanupCandidates();
+
+    for (const { id } of candidates) {
+      if (signal?.aborted) {
+        break;
+      }
+
+      try {
+        await removeSkillFile(id, signal);
+      } catch (error) {
+        failures.push(error);
+
+        // Move failures behind unattempted candidates while retaining their object intent.
+        await db
+          .update(skillFiles)
+          .set({ cleanupAttemptedAt: new Date() })
+          .where(eq(skillFiles.id, id));
+      }
+    }
+
+    if (failures.length) {
+      throw new AggregateError(
+        failures,
+        "Some Skill files could not be deleted",
+      );
+    }
   };
+}
+
+/** Starts the conversation file cleanup worker with a fresh pagination cursor. */
+export function startSkillFileCleanup() {
+  return startObjectCleanup(
+    createSkillFileCleanup(),
+    "Skill file cleanup failed; will retry",
+  );
 }

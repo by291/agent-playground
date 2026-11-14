@@ -15,6 +15,7 @@ function externalRunId(run: Run): unknown {
   return stored.config?.metadata?.agui_run_id;
 }
 
+/** Resolve a native run by the application identity recorded at dispatch. */
 export async function findLatestAegraRun(
   threadId: string,
   aguiRunId: string,

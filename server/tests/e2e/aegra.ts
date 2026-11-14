@@ -21,6 +21,17 @@ import {
   type AgentInteraction,
 } from "../../../shared/agent-interaction.js";
 
+const FIRST_TOOL_CALL_INDEX = 0;
+const EXPERIMENT_REVIEW_STEP = 3;
+const EXPERIMENT_REVIEWED_STEP = 4;
+const LONG_REPLY_PARAGRAPH_COUNT = 8;
+// prettier-ignore
+const EXTERNAL_TASK_STATUSES = [
+  "succeeded",
+  "failed",
+  "cancelled",
+] as const;
+
 const resumeSchema = z.object({
   decision: z.literal("approve"),
   title: z.string(),
@@ -89,12 +100,21 @@ interface Thread {
   sql?: ControlledSqlWorkflow;
   externalWorkflow?: "report" | "a2a";
   interactionCall?: { callId: string; name: string };
-  holdInteractionReply?: boolean;
-  followupApproval?: boolean;
+  shouldHoldInteractionReply?: boolean;
+  shouldRequestFollowupApproval?: boolean;
 }
 
-// Only the Aegra HTTP boundary is controlled. The browser, adapter, server and
-// PostgreSQL use the real application code and do not intercept frontend traffic.
+interface PublishCardOptions {
+  threadId: string;
+  runId: string;
+  callId: string;
+  stage: "review" | "reviewed";
+  title: string;
+  steps: string[];
+  presentation?: WorkflowOutputMetadata["presentation"];
+}
+
+/** Simulates the Aegra HTTP boundary for the real browser, server and database. */
 export function controlledAegra(database: typeof db) {
   const api = new Hono();
   const threads = new Map<string, Thread>();
@@ -110,7 +130,12 @@ export function controlledAegra(database: typeof db) {
           model: "test-model",
           available: true,
         },
-        { id: "qwen", label: "Qwen", model: "test-qwen", available: true },
+        {
+          id: "qwen",
+          label: "Qwen",
+          model: "test-qwen",
+          available: true,
+        },
       ],
     }),
   );
@@ -119,7 +144,11 @@ export function controlledAegra(database: typeof db) {
     let thread = threads.get(id);
 
     if (!thread) {
-      thread = { messages: [], review: null, runs: [] };
+      thread = {
+        messages: [],
+        review: null,
+        runs: [],
+      };
       threads.set(id, thread);
     }
 
@@ -132,7 +161,13 @@ export function controlledAegra(database: typeof db) {
     return {
       values: { messages: thread.messages },
       tasks: thread.review
-        ? [{ id: "review-task", name: "tools", interrupts: [thread.review] }]
+        ? [
+            {
+              id: "review-task",
+              name: "tools",
+              interrupts: [thread.review],
+            },
+          ]
         : [],
       next: thread.review ? ["tools"] : [],
       checkpoint: {
@@ -146,17 +181,14 @@ export function controlledAegra(database: typeof db) {
     };
   }
 
-  async function publishCard(
-    threadId: string,
-    runId: string,
-    callId: string,
-    stage: "review" | "reviewed",
-    title: string,
-    steps: string[],
-    presentation?: WorkflowOutputMetadata["presentation"],
-  ) {
+  async function publishCard(options: PublishCardOptions) {
+    const { threadId, runId, callId, stage, title, steps, presentation } =
+      options;
     const surfaceId =
       presentation?.surfaceId ?? `experiment-${callId}-${stage}`;
+    const stepSequence =
+      stage === "review" ? EXPERIMENT_REVIEW_STEP : EXPERIMENT_REVIEWED_STEP;
+
     const payload = {
       ...(presentation ? { workflow: { presentation } } : {}),
       messages: [
@@ -194,18 +226,23 @@ export function controlledAegra(database: typeof db) {
         },
       ],
     };
-    const id = randomUUID();
-    const outputSeq = await database.transaction(async (tx) => {
-      const result = await tx.execute<{ output_seq: string }>(sql`
-        UPDATE conversations SET next_output_seq = next_output_seq + 1
-        WHERE thread_id = ${threadId} RETURNING next_output_seq - 1 AS output_seq
-      `);
-      const sequence = Number(result.rows[0]!.output_seq);
 
-      await tx.execute(sql`
+    const id = randomUUID();
+    const outputSeq = await database.transaction(async (transaction) => {
+      // Allocate the sequence with its insert so the fixture commits a complete output.
+      const output = await transaction.execute<{ output_seq: string }>(sql`
+        UPDATE conversations SET next_output_seq = next_output_seq + 1
+        WHERE thread_id = ${threadId}
+        RETURNING next_output_seq - 1 AS output_seq
+      `);
+      const sequence = Number(output.rows[0]!.output_seq);
+
+      await transaction.execute(sql`
         INSERT INTO workflow_outputs
-          (id, thread_id, agui_run_id, workflow_call_id, step_id, step_seq, output_seq, kind, version, payload)
-        VALUES (${id}, ${threadId}, ${runId}, ${callId}, ${stage}, ${stage === "review" ? 3 : 4}, ${sequence}, 'a2ui', 1, ${JSON.stringify(payload)}::jsonb)
+          (id, thread_id, agui_run_id, workflow_call_id, step_id, step_seq,
+           output_seq, kind, version, payload)
+        VALUES (${id}, ${threadId}, ${runId}, ${callId}, ${stage}, ${stepSequence},
+                ${sequence}, 'a2ui', 1, ${JSON.stringify(payload)}::jsonb)
       `);
 
       return sequence;
@@ -222,7 +259,13 @@ export function controlledAegra(database: typeof db) {
   }
 
   api.post("/assistants/search", (context) =>
-    context.json([{ assistant_id: "agent", graph_id: "agent", config: {} }]),
+    context.json([
+      {
+        assistant_id: "agent",
+        graph_id: "agent",
+        config: {},
+      },
+    ]),
   );
   api.get("/assistants/agent/schemas", (context) => context.json({}));
   api.get("/assistants/agent/graph", (context) =>
@@ -261,7 +304,7 @@ export function controlledAegra(database: typeof db) {
       .object({
         kind: z.literal("external_task_result"),
         taskId: z.string(),
-        status: z.enum(["succeeded", "failed", "cancelled"]),
+        status: z.enum(EXTERNAL_TASK_STATUSES),
         result: z.record(z.unknown()).optional(),
         error: z.string().optional(),
       })
@@ -320,20 +363,22 @@ export function controlledAegra(database: typeof db) {
       role: "assistant",
       content: replies[workflow][result.status],
     });
-    await publishCard(
+    await publishCard({
       threadId,
-      input.metadata.agui_run_id,
-      wait.value.workflowCallId,
-      "reviewed",
-      workflow === "a2a" ? titles[result.status] : "Generated report",
-      lines,
-      workflow === "a2a"
+      runId: input.metadata.agui_run_id,
+      callId: wait.value.workflowCallId,
+      stage: "reviewed",
+      title: workflow === "a2a" ? titles[result.status] : "Generated report",
+      steps: lines,
+      ...(workflow === "a2a"
         ? {
-            surfaceId: `a2a-${wait.value.workflowCallId}-result`,
-            groupId: wait.value.workflowCallId,
+            presentation: {
+              surfaceId: `a2a-${wait.value.workflowCallId}-result`,
+              groupId: wait.value.workflowCallId,
+            },
           }
-        : undefined,
-    );
+        : {}),
+    });
     thread.review = null;
     delete thread.externalWorkflow;
 
@@ -353,15 +398,20 @@ export function controlledAegra(database: typeof db) {
     thread.runs.push(run);
 
     return streamSSE(context, async (stream) => {
-      async function event(event: string, data: unknown) {
-        await stream.writeSSE({ event, data: JSON.stringify(data) });
+      async function event(eventName: string, payload: unknown) {
+        await stream.writeSSE({
+          event: eventName,
+          data: JSON.stringify(payload),
+        });
       }
 
       async function modelChunk(
         messageId: string,
         content: string,
-        toolCallChunks?: object[],
-        additionalKwargs?: Record<string, unknown>,
+        options: {
+          toolCallChunks?: object[];
+          additionalKwargs?: Record<string, unknown>;
+        } = {},
       ) {
         await event("events", {
           event: LangGraphEventTypes.OnChatModelStream,
@@ -371,8 +421,8 @@ export function controlledAegra(database: typeof db) {
               id: messageId,
               content,
               response_metadata: {},
-              additional_kwargs: additionalKwargs ?? {},
-              tool_call_chunks: toolCallChunks ?? [],
+              additional_kwargs: options.additionalKwargs ?? {},
+              tool_call_chunks: options.toolCallChunks ?? [],
             },
           },
         });
@@ -394,7 +444,11 @@ export function controlledAegra(database: typeof db) {
         // graph reducer supplies the canonical archived identity afterward.
         const output =
           toolName === "run_skill_script"
-            ? { ...message, name: null, id: null }
+            ? {
+                ...message,
+                name: null,
+                id: null,
+              }
             : message;
 
         await event("events", {
@@ -430,29 +484,53 @@ export function controlledAegra(database: typeof db) {
         });
       }
 
-      await event("metadata", { run_id: run.run_id, thread_id: threadId });
-
-      async function requestInteraction(
+      async function submitToolCall(
         name: string,
         args: Record<string, unknown>,
-      ) {
+      ): Promise<string> {
         const callId = randomUUID();
         const messageId = randomUUID();
 
-        await modelChunk(messageId, "", [
-          { id: callId, name, args: "", index: 0 },
-        ]);
-        await modelChunk(messageId, "", [
-          { args: JSON.stringify(args), index: 0 },
-        ]);
+        await modelChunk(messageId, "", {
+          toolCallChunks: [
+            {
+              id: callId,
+              name,
+              args: "",
+              index: FIRST_TOOL_CALL_INDEX,
+            },
+          ],
+        });
+        await modelChunk(messageId, "", {
+          toolCallChunks: [
+            { args: JSON.stringify(args), index: FIRST_TOOL_CALL_INDEX },
+          ],
+        });
         await endModel();
+
         thread.messages.push({
           id: messageId,
           type: "ai",
           role: "assistant",
           content: "",
-          tool_calls: [{ id: callId, name, args }],
+          tool_calls: [
+            {
+              id: callId,
+              name,
+              args,
+            },
+          ],
         });
+
+        return callId;
+      }
+
+      async function requestInteraction(
+        name: string,
+        args: Record<string, unknown>,
+      ) {
+        const callId = await submitToolCall(name, args);
+
         thread.interactionCall = { callId, name };
         thread.review = {
           id: randomUUID(),
@@ -476,6 +554,8 @@ export function controlledAegra(database: typeof db) {
           },
         };
       }
+
+      await event("metadata", { run_id: run.run_id, thread_id: threadId });
 
       if (input.command && thread.interactionCall && thread.review) {
         const interaction = parseAgentInteraction({
@@ -541,9 +621,9 @@ export function controlledAegra(database: typeof db) {
         if (
           name === "ask_user" &&
           decision.type === "respond" &&
-          thread.holdInteractionReply
+          thread.shouldHoldInteractionReply
         ) {
-          delete thread.holdInteractionReply;
+          delete thread.shouldHoldInteractionReply;
           await reply(
             "I received your report preferences. The report is ready.",
             "I received your report preferences.",
@@ -557,9 +637,9 @@ export function controlledAegra(database: typeof db) {
         } else if (
           name === "run_skill_script" &&
           decision.type === "approve" &&
-          thread.followupApproval
+          thread.shouldRequestFollowupApproval
         ) {
-          delete thread.followupApproval;
+          delete thread.shouldRequestFollowupApproval;
           await requestInteraction("remember_memory", {
             text: "Reports are intended for engineering.",
             category: "preference",
@@ -627,14 +707,14 @@ export function controlledAegra(database: typeof db) {
 
         thread.messages.push(result);
         await toolResult(result);
-        const card = await publishCard(
+        const card = await publishCard({
           threadId,
-          input.metadata.agui_run_id,
+          runId: input.metadata.agui_run_id,
           callId,
-          "reviewed",
+          stage: "reviewed",
           title,
           steps,
-        );
+        });
 
         await event("events", {
           event: LangGraphEventTypes.OnCustomEvent,
@@ -683,7 +763,7 @@ export function controlledAegra(database: typeof db) {
 
           await reply("The uploaded PNG pixel data reached the model.");
         } else if (prompt === "Is the previous image still available?") {
-          const previousImage = thread.messages.some(
+          const hasPreviousImage = thread.messages.some(
             (message) =>
               message.type === "human" &&
               Array.isArray(message.content) &&
@@ -696,7 +776,7 @@ export function controlledAegra(database: typeof db) {
               ),
           );
 
-          if (!previousImage) {
+          if (!hasPreviousImage) {
             throw new Error("Fixture lost the image from checkpoint history");
           }
 
@@ -707,9 +787,9 @@ export function controlledAegra(database: typeof db) {
             "Prepare a report with user input and consecutive approvals." ||
           prompt === "Ask for report preferences and keep the response open."
         ) {
-          thread.holdInteractionReply =
+          thread.shouldHoldInteractionReply =
             prompt === "Ask for report preferences and keep the response open.";
-          thread.followupApproval =
+          thread.shouldRequestFollowupApproval =
             prompt ===
             "Prepare a report with user input and consecutive approvals.";
           await requestInteraction("ask_user", {
@@ -738,24 +818,9 @@ export function controlledAegra(database: typeof db) {
               status: "pending" | "in_progress" | "completed";
             }[],
           ) {
-            const messageId = randomUUID();
-            const callId = randomUUID();
             const args = { todos };
+            const callId = await submitToolCall("write_todos", args);
 
-            await modelChunk(messageId, "", [
-              { id: callId, name: "write_todos", args: "", index: 0 },
-            ]);
-            await modelChunk(messageId, "", [
-              { args: JSON.stringify(args), index: 0 },
-            ]);
-            await endModel();
-            thread.messages.push({
-              id: messageId,
-              type: "ai",
-              role: "assistant",
-              content: "",
-              tool_calls: [{ id: callId, name: "write_todos", args }],
-            });
             const result = {
               id: randomUUID(),
               type: "tool" as const,
@@ -789,9 +854,18 @@ export function controlledAegra(database: typeof db) {
           await released;
           delete thread.release;
           await updatePlan([
-            { content: "Compare failure rates", status: "completed" },
-            { content: "Check deployment changes", status: "completed" },
-            { content: "Summarize the evidence", status: "completed" },
+            {
+              content: "Compare failure rates",
+              status: "completed",
+            },
+            {
+              content: "Check deployment changes",
+              status: "completed",
+            },
+            {
+              content: "Summarize the evidence",
+              status: "completed",
+            },
           ]);
           await reply(
             "The deployment change explains the increased failure rate.",
@@ -804,11 +878,15 @@ export function controlledAegra(database: typeof db) {
             thread.release = resolve;
           });
 
-          await modelChunk(messageId, "", undefined, {
-            reasoning_content: "First, compare the constraints. ",
+          await modelChunk(messageId, "", {
+            additionalKwargs: {
+              reasoning_content: "First, compare the constraints. ",
+            },
           });
-          await modelChunk(messageId, "", undefined, {
-            reasoning_content: "Then check the tradeoffs.",
+          await modelChunk(messageId, "", {
+            additionalKwargs: {
+              reasoning_content: "Then check the tradeoffs.",
+            },
           });
           await thoughtReleased;
           delete thread.release;
@@ -835,56 +913,43 @@ export function controlledAegra(database: typeof db) {
           );
         } else if (prompt === "Write a long reply.") {
           const paragraphs = Array.from(
-            { length: 8 },
+            { length: LONG_REPLY_PARAGRAPH_COUNT },
             (_, index) =>
               `Paragraph ${index + 1}: This reply contains enough text to exercise the message viewport as more content appears.`,
           );
 
           await reply([...paragraphs, "End of the long reply."].join("\n\n"));
         } else {
-          const workflow = prompt.includes("run_experiment_workflow");
-          const sqlWorkflow =
+          const isExperimentWorkflow = prompt.includes(
+            "run_experiment_workflow",
+          );
+          const isSqlWorkflow =
             prompt.includes("run_sql_workflow") ||
             prompt.includes("SQL review workflow");
-          const reportWorkflow = prompt.includes("report workflow");
-          const a2aWorkflow = prompt.includes("run_a2a_workflow");
-          const memoryTool = prompt === "Remember a durable preference.";
+          const isReportWorkflow = prompt.includes("report workflow");
+          const isA2aWorkflow = prompt.includes("run_a2a_workflow");
+          const isMemoryTool = prompt === "Remember a durable preference.";
+
           let name = "get_current_time";
 
-          if (memoryTool) {
+          if (isMemoryTool) {
             name = "remember_memory";
-          } else if (a2aWorkflow) {
+          } else if (isA2aWorkflow) {
             name = "run_a2a_workflow";
-          } else if (reportWorkflow) {
+          } else if (isReportWorkflow) {
             name = "run_report_workflow";
-          } else if (workflow) {
+          } else if (isExperimentWorkflow) {
             name = "run_experiment_workflow";
-          } else if (sqlWorkflow) {
+          } else if (isSqlWorkflow) {
             name = "run_sql_workflow";
           }
 
-          const callId = randomUUID();
-          const messageId = randomUUID();
-          const args = memoryTool
+          const args = isMemoryTool
             ? { text: "Prefer concise answers.", category: "preference" }
             : {};
+          const callId = await submitToolCall(name, args);
 
-          await modelChunk(messageId, "", [
-            { id: callId, name, args: "", index: 0 },
-          ]);
-          await modelChunk(messageId, "", [
-            { args: JSON.stringify(args), index: 0 },
-          ]);
-          await endModel();
-          thread.messages.push({
-            id: messageId,
-            type: "ai",
-            role: "assistant",
-            content: "",
-            tool_calls: [{ id: callId, name, args }],
-          });
-
-          if (reportWorkflow || a2aWorkflow) {
+          if (isReportWorkflow || isA2aWorkflow) {
             const { registerExternalTask } =
               await import("../../src/conversation/tasks/task-store.js");
             const taskId = randomUUID();
@@ -894,10 +959,10 @@ export function controlledAegra(database: typeof db) {
               threadId,
               runId: input.metadata.agui_run_id,
               workflowCallId: callId,
-              stepId: a2aWorkflow ? "a2a" : "report",
-              label: a2aWorkflow ? "A2A collaboration" : "Generate report",
+              stepId: isA2aWorkflow ? "a2a" : "report",
+              label: isA2aWorkflow ? "A2A collaboration" : "Generate report",
             });
-            thread.externalWorkflow = a2aWorkflow ? "a2a" : "report";
+            thread.externalWorkflow = isA2aWorkflow ? "a2a" : "report";
             thread.review = {
               id: randomUUID(),
               value: {
@@ -906,7 +971,7 @@ export function controlledAegra(database: typeof db) {
                 workflowCallId: callId,
               },
             };
-          } else if (sqlWorkflow) {
+          } else if (isSqlWorkflow) {
             thread.sql = new ControlledSqlWorkflow(database, threadId, callId);
             const card = await thread.sql.publish(input.metadata.agui_run_id);
 
@@ -917,7 +982,7 @@ export function controlledAegra(database: typeof db) {
               metadata: { langgraph_node: "tools" },
               data: card,
             });
-          } else if (workflow) {
+          } else if (isExperimentWorkflow) {
             const value = {
               kind: "experiment_plan_review",
               workflowCallId: callId,
@@ -926,14 +991,14 @@ export function controlledAegra(database: typeof db) {
             };
 
             thread.review = { id: randomUUID(), value };
-            const card = await publishCard(
+            const card = await publishCard({
               threadId,
-              input.metadata.agui_run_id,
+              runId: input.metadata.agui_run_id,
               callId,
-              "review",
-              value.title,
-              value.steps,
-            );
+              stage: "review",
+              title: value.title,
+              steps: value.steps,
+            });
 
             await event("events", {
               event: LangGraphEventTypes.OnCustomEvent,
@@ -941,7 +1006,7 @@ export function controlledAegra(database: typeof db) {
               metadata: { langgraph_node: "tools" },
               data: card,
             });
-          } else if (memoryTool) {
+          } else if (isMemoryTool) {
             const result = {
               type: "tool" as const,
               role: "tool",
@@ -966,7 +1031,11 @@ export function controlledAegra(database: typeof db) {
               metadata: { langgraph_node: "tools" },
               data: { input: args, output: { update: { messages: [result] } } },
             });
-            thread.messages.push({ ...result, id: randomUUID(), name });
+            thread.messages.push({
+              ...result,
+              id: randomUUID(),
+              name,
+            });
 
             // Keep the run open so the test observes success before checkpoint
             // recovery can overwrite a transient stream failure.
@@ -1005,6 +1074,7 @@ export function controlledAegra(database: typeof db) {
     ),
   );
 
+  /** Resolves a held stream when the browser is ready for the remaining events. */
   function release(threadId: string) {
     const thread = threads.get(threadId);
 
@@ -1017,15 +1087,22 @@ export function controlledAegra(database: typeof db) {
     return true;
   }
 
+  /** Resolves every currently held stream during shutdown. */
   function releaseAll() {
     for (const thread of threads.values()) {
       thread.release?.();
     }
   }
 
+  /** Seeds checkpoint messages for fixtures that begin with persisted history. */
   function seedConversation(id: string, messages: LangGraphPlatformMessage[]) {
     threadFor(id).messages = messages;
   }
 
-  return { api, release, releaseAll, seedConversation };
+  return {
+    api,
+    release,
+    releaseAll,
+    seedConversation,
+  };
 }

@@ -6,7 +6,7 @@ import {
   type RunStartedEvent,
 } from "@ag-ui/client";
 import type { Context } from "hono";
-import { streamSSE } from "hono/streaming";
+import { streamSSE, type SSEStreamingApi } from "hono/streaming";
 import {
   concatMap,
   filter,
@@ -21,6 +21,13 @@ import { normalizeRunEvent } from "../agent/run-events.js";
 import { observeAgentStream } from "./run-observation.js";
 import { logger } from "../observability/logger.js";
 import { publicToolErrors } from "../agent/checkpoint-messages.js";
+
+interface ForwardAgentEventsOptions {
+  events: AgentExecution["events"];
+  detached: Subject<void>;
+  runId: string;
+  writeEvent: (event: Record<string, unknown>) => Promise<void>;
+}
 
 function publicRunEvent(
   event: AGUIEvent,
@@ -51,6 +58,115 @@ function publicRunEvent(
   return publicEvent;
 }
 
+// Keep the written lifecycle available if forwarding or settlement fails.
+function createRunEventWriter(stream: SSEStreamingApi, input: RunAgentInput) {
+  let hasRunStarted = false;
+  let hasTerminalEvent = false;
+
+  async function writeRunStart() {
+    const runStart: RunStartedEvent = {
+      type: EventType.RUN_STARTED,
+      threadId: input.threadId,
+      runId: input.runId,
+    };
+
+    await stream.writeSSE({ data: JSON.stringify(runStart) });
+    hasRunStarted = true;
+  }
+
+  async function writeEvent(event: Record<string, unknown>) {
+    const isTerminalEvent =
+      event.type === EventType.RUN_ERROR ||
+      event.type === EventType.RUN_FINISHED;
+
+    // Creation may fail before the adapter starts the public run lifecycle.
+    if (!hasRunStarted && isTerminalEvent) {
+      await writeRunStart();
+    }
+
+    await stream.writeSSE({ data: JSON.stringify(event) });
+
+    if (event.type === EventType.RUN_STARTED) {
+      hasRunStarted = true;
+    }
+
+    if (isTerminalEvent) {
+      hasTerminalEvent = true;
+    }
+  }
+
+  async function reportFailure() {
+    if (stream.aborted || hasTerminalEvent) {
+      return;
+    }
+
+    if (!hasRunStarted) {
+      await writeRunStart();
+    }
+
+    const runError: RunErrorEvent = {
+      type: EventType.RUN_ERROR,
+      message: "Agent run failed",
+    };
+
+    await stream.writeSSE({ data: JSON.stringify(runError) });
+  }
+
+  return { writeEvent, reportFailure };
+}
+
+async function forwardAgentEvents({
+  events,
+  detached,
+  runId,
+  writeEvent,
+}: ForwardAgentEventsOptions) {
+  let lastPublicSnapshot: string | undefined;
+  const publicEvents = events.pipe(
+    filter(
+      (event) =>
+        event.type !== EventType.RAW &&
+        event.type !== EventType.MESSAGES_SNAPSHOT,
+    ),
+    map((event) => publicRunEvent(event, runId)),
+    filter((event) => {
+      if (event.type !== EventType.STATE_SNAPSHOT) {
+        return true;
+      }
+
+      // Compare only the public state so model-history changes do not republish it.
+      const snapshot = JSON.stringify(event.snapshot);
+
+      if (snapshot === lastPublicSnapshot) {
+        return false;
+      }
+
+      lastPublicSnapshot = snapshot;
+
+      return true;
+    }),
+  );
+
+  const forwarded = publicEvents.pipe(
+    // Queue an upstream error after earlier writes.
+    materialize(),
+    concatMap(async (notification) => {
+      if (notification.kind === "E") {
+        throw notification.error instanceof Error
+          ? notification.error
+          : new Error("Agent stream failed");
+      }
+
+      if (notification.kind === "N") {
+        await writeEvent(notification.value);
+      }
+    }),
+    takeUntil(detached),
+  );
+
+  await lastValueFrom(forwarded, { defaultValue: undefined });
+}
+
 /** Detaches the HTTP consumer on abort while Aegra continues the admitted run. */
 export function streamAgent(
   context: Context,
@@ -64,12 +180,10 @@ export function streamAgent(
     context,
     observeAgentStream(trustedInput, async (stream, observation) => {
       const detached = new Subject<void>();
-      let lastPublicSnapshot: string | undefined;
-      let runStarted = false;
-      let terminalEventSent = false;
+      const writer = createRunEventWriter(stream, trustedInput);
 
       stream.onAbort(() => {
-        // Aegra continues the run; the browser can recover from persisted state.
+        // Aegra continues the run and the browser can recover from persistence.
         detached.next();
         detached.complete();
       });
@@ -77,80 +191,18 @@ export function streamAgent(
       try {
         const execution = createExecution(observation.runCreated);
 
-        await lastValueFrom(
-          execution.events.pipe(
-            filter((event) => {
-              return !(
-                event.type === EventType.RAW ||
-                event.type === EventType.MESSAGES_SNAPSHOT
-              );
-            }),
-            map((event) => publicRunEvent(event, trustedInput.runId)),
-            filter((event) => {
-              if (event.type !== EventType.STATE_SNAPSHOT) {
-                return true;
-              }
+        await forwardAgentEvents({
+          events: execution.events,
+          detached,
+          runId: trustedInput.runId,
+          writeEvent(event) {
+            observation.event(event);
 
-              // Compare the small public state, not private model history.
-              const snapshot = JSON.stringify(event.snapshot);
+            return writer.writeEvent(event);
+          },
+        });
 
-              if (snapshot === lastPublicSnapshot) {
-                return false;
-              }
-
-              lastPublicSnapshot = snapshot;
-
-              return true;
-            }),
-            // Treat an upstream error as the last queued item so earlier writes finish.
-            materialize(),
-            concatMap(async (notification) => {
-              if (notification.kind === "E") {
-                throw notification.error instanceof Error
-                  ? notification.error
-                  : new Error("Agent stream failed");
-              }
-
-              if (notification.kind !== "N") {
-                return;
-              }
-
-              const event = notification.value;
-
-              observation.event(event);
-
-              const terminalEvent =
-                event.type === EventType.RUN_ERROR ||
-                event.type === EventType.RUN_FINISHED;
-
-              // Creation may fail before the adapter starts its public run lifecycle.
-              if (!runStarted && terminalEvent) {
-                const runStart: RunStartedEvent = {
-                  type: EventType.RUN_STARTED,
-                  threadId: trustedInput.threadId,
-                  runId: trustedInput.runId,
-                };
-
-                await stream.writeSSE({ data: JSON.stringify(runStart) });
-                runStarted = true;
-              }
-
-              await stream.writeSSE({ data: JSON.stringify(event) });
-
-              if (event.type === EventType.RUN_STARTED) {
-                runStarted = true;
-              }
-
-              if (terminalEvent) {
-                terminalEventSent = true;
-              }
-            }),
-            takeUntil(detached),
-          ),
-          { defaultValue: undefined },
-        );
-
-        // Wait for the mapping write and checkpoint sync after forwarding has stopped.
+        // This callback reconciles checkpoints after forwarding stops.
         await execution.settle();
       } catch (error) {
         observation.failed(error);
@@ -163,26 +215,7 @@ export function streamAgent(
           "Agent stream failed",
         );
 
-        if (!stream.aborted && !terminalEventSent) {
-          if (!runStarted) {
-            const runStart: RunStartedEvent = {
-              type: EventType.RUN_STARTED,
-              threadId: trustedInput.threadId,
-              runId: trustedInput.runId,
-            };
-
-            await stream.writeSSE({ data: JSON.stringify(runStart) });
-          }
-
-          const runError: RunErrorEvent = {
-            type: EventType.RUN_ERROR,
-            message: "Agent run failed",
-          };
-
-          await stream.writeSSE({
-            data: JSON.stringify(runError),
-          });
-        }
+        await writer.reportFailure();
       }
     }),
   );
