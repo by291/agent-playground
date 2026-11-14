@@ -1,9 +1,12 @@
 package com.agentplayground.data.network
 
 import com.agentplayground.domain.conversation.newSubmission
+import com.agentplayground.domain.files.PickedFile
 import com.agentplayground.domain.model.ApiException
 import com.agentplayground.domain.model.protocolJson
 import com.agui.core.types.*
+import java.io.ByteArrayOutputStream
+import java.io.IOException
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
@@ -68,6 +71,45 @@ class TransportTest {
                 }
             }
         }
+
+    @Test
+    fun `downloads block cross-origin redirects before connecting`() = runBlocking {
+        MockWebServer().use { server ->
+            MockWebServer().use { otherServer ->
+                otherServer.enqueue(MockResponse().setBody("unexpected bytes"))
+                server.enqueue(
+                    MockResponse()
+                        .setResponseCode(302)
+                        .setHeader("Location", otherServer.url("/private-preview"))
+                )
+                val target = ByteArrayOutputStream()
+
+                PlaygroundApi(server.url("/workspace/").toString()).use { api ->
+                    val preview = api.filePreviewPath("thread", "file", thumbnail = true)
+                    val failure = runCatching { api.download(preview, target) }.exceptionOrNull()
+
+                    assertTrue(failure is IOException || failure is ApiException)
+                    assertEquals(0, otherServer.requestCount)
+                    assertEquals(0, target.size())
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `downloads follow relative redirects on the configured origin`() = runBlocking {
+        MockWebServer().use { server ->
+            server.enqueue(MockResponse().setResponseCode(302).setHeader("Location", "/download"))
+            server.enqueue(MockResponse().setBody("document bytes"))
+            val target = ByteArrayOutputStream()
+
+            PlaygroundApi(server.url("/workspace/").toString()).use { api ->
+                api.download(api.documentPath("document"), target)
+
+                assertEquals("document bytes", target.toString("UTF-8"))
+            }
+        }
+    }
 
     @Test
     fun `canceling a download after headers closes the active body promptly`() = runBlocking {
@@ -139,16 +181,28 @@ class TransportTest {
                         .setBody("""{"id":"file","threadId":"thread","name":"报告 1.txt","size":3}""")
                 )
 
-                assertEquals(
-                    "报告 1.txt",
-                    api.uploadFile("thread", "file", "报告 1.txt", byteArrayOf(1, 2, 3)).name,
-                )
+                val contents =
+                    byteArrayOf(
+                        1,
+                        2,
+                        3,
+                    )
+                val file =
+                    PickedFile(
+                        uri = "content://picked/report",
+                        name = "报告 1.txt",
+                        size = contents.size.toLong(),
+                        id = "file",
+                    )
 
+                val uploaded = api.uploadFile("thread", file, contents)
                 val request = server.takeRequest(2, TimeUnit.SECONDS)!!
 
+                assertEquals("报告 1.txt", uploaded.name)
                 assertEquals("/conversations/thread/files", request.path)
+                assertEquals("file", request.getHeader("X-File-Id"))
                 assertEquals("%E6%8A%A5%E5%91%8A%201.txt", request.getHeader("X-Filename"))
-                assertArrayEquals(byteArrayOf(1, 2, 3), request.body.readByteArray())
+                assertArrayEquals(contents, request.body.readByteArray())
             } finally {
                 server.shutdown()
             }
@@ -202,7 +256,10 @@ class TransportTest {
         PlaygroundApi(server.url("/").toString()).use { api ->
             try {
                 server.enqueue(MockResponse().setResponseCode(404))
-                assertNull(api.snapshot("missing"))
+
+                val snapshot = api.snapshot("missing")
+
+                assertNull(snapshot)
 
                 server.enqueue(
                     MockResponse()

@@ -67,20 +67,32 @@ test("merged content preserves receive order and separates interleaved text, rea
       messageId: "reason",
       delta: "Think ",
     },
-    { type: EventType.TOOL_CALL_ARGS, toolCallId: "tool", delta: '{"count":' },
-    { type: EventType.TEXT_MESSAGE_CONTENT, messageId: "text", delta: "world" },
+    {
+      type: EventType.TOOL_CALL_ARGS,
+      toolCallId: "tool",
+      delta: '{"count":',
+    },
+    {
+      type: EventType.TEXT_MESSAGE_CONTENT,
+      messageId: "text",
+      delta: "world",
+    },
     {
       type: EventType.REASONING_MESSAGE_CONTENT,
       messageId: "reason",
       delta: "first",
     },
-    { type: EventType.TOOL_CALL_ARGS, toolCallId: "tool", delta: "2}" },
+    {
+      type: EventType.TOOL_CALL_ARGS,
+      toolCallId: "tool",
+      delta: "2}",
+    },
     { type: EventType.TEXT_MESSAGE_END, messageId: "text" },
     { type: EventType.REASONING_MESSAGE_END, messageId: "reason" },
     { type: EventType.TOOL_CALL_END, toolCallId: "tool" },
   ]);
   const before = JSON.stringify(activity);
-  const rows = activityRows(activity, true);
+  const rows = activityRows(activity, { merge: true });
   const streams = rows.filter((row) => row.stream);
 
   expect(rows).toHaveLength(9);
@@ -102,9 +114,9 @@ test("merged content preserves receive order and separates interleaved text, rea
     "2}",
   ]);
   expect(JSON.stringify(activity)).toBe(before);
-  expect(activityRows(activity, false).map((row) => row.entry)).toEqual(
-    activity,
-  );
+  expect(
+    activityRows(activity, { merge: false }).map((row) => row.entry),
+  ).toEqual(activity);
 });
 
 test("merged streams do not cross runs or restarted message boundaries and keep stable IDs as content arrives", () => {
@@ -114,14 +126,22 @@ test("merged streams do not cross runs or restarted message boundaries and keep 
       messageId: "same",
       role: "assistant",
     },
-    { type: EventType.TEXT_MESSAGE_CONTENT, messageId: "same", delta: "one" },
+    {
+      type: EventType.TEXT_MESSAGE_CONTENT,
+      messageId: "same",
+      delta: "one",
+    },
     { type: EventType.TEXT_MESSAGE_END, messageId: "same" },
     {
       type: EventType.TEXT_MESSAGE_START,
       messageId: "same",
       role: "assistant",
     },
-    { type: EventType.TEXT_MESSAGE_CONTENT, messageId: "same", delta: "two" },
+    {
+      type: EventType.TEXT_MESSAGE_CONTENT,
+      messageId: "same",
+      delta: "two",
+    },
   ]);
   const second = entries(
     [
@@ -138,7 +158,7 @@ test("merged streams do not cross runs or restarted message boundaries and keep 
     ],
     "run-b",
   );
-  const streams = activityRows([...second, ...first], true).filter(
+  const streams = activityRows([...second, ...first], { merge: true }).filter(
     (row) => row.stream,
   );
 
@@ -147,7 +167,7 @@ test("merged streams do not cross runs or restarted message boundaries and keep 
     "two",
     "one",
   ]);
-  const live = activityRows(first, true).find(
+  const live = activityRows(first, { merge: true }).find(
     (row) => row.stream?.content === "two",
   )!;
   const extra: Activity = {
@@ -160,7 +180,7 @@ test("merged streams do not cross runs or restarted message boundaries and keep 
       delta: " more",
     },
   };
-  const updated = activityRows([extra, ...first], true).find(
+  const updated = activityRows([extra, ...first], { merge: true }).find(
     (row) => row.stream?.content === "two more",
   )!;
 
@@ -177,12 +197,20 @@ test("truncated or cleared streams are marked partial and unknown delta payloads
       delta: "tail",
     },
     { type: EventType.REASONING_MESSAGE_END, messageId: "reason" },
-    { type: EventType.CUSTOM, name: "custom", delta: "a" },
-    { type: EventType.CUSTOM, name: "custom", delta: "b" },
+    {
+      type: EventType.CUSTOM,
+      name: "custom",
+      delta: "a",
+    },
+    {
+      type: EventType.CUSTOM,
+      name: "custom",
+      delta: "b",
+    },
     { type: EventType.TEXT_MESSAGE_CONTENT, delta: "unidentified a" },
     { type: EventType.TEXT_MESSAGE_CONTENT, delta: "unidentified b" },
   ]);
-  const rows = activityRows(activity, true);
+  const rows = activityRows(activity, { merge: true });
   const stream = rows.find((row) => row.stream)!;
 
   expect(rows).toHaveLength(6);
@@ -208,10 +236,16 @@ test("a merged row keeps its identity when the retention window drops its earlie
       messageId: "long",
       delta: "middle ",
     },
-    { type: EventType.TEXT_MESSAGE_CONTENT, messageId: "long", delta: "tail" },
+    {
+      type: EventType.TEXT_MESSAGE_CONTENT,
+      messageId: "long",
+      delta: "tail",
+    },
   ]);
-  const complete = activityRows(activity, true).find((row) => row.stream)!;
-  const retained = activityRows(activity.slice(0, 2), true).find(
+  const complete = activityRows(activity, { merge: true }).find(
+    (row) => row.stream,
+  )!;
+  const retained = activityRows(activity.slice(0, 2), { merge: true }).find(
     (row) => row.stream,
   )!;
 
@@ -245,7 +279,7 @@ test("a terminal run stops an unterminated stream and a repeated start separates
       },
       { type: EventType.RUN_ERROR, message: "connection lost" },
     ]),
-    true,
+    { merge: true },
   );
   const streams = rows.filter((row) => row.stream);
 

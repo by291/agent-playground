@@ -71,4 +71,5 @@ async def store_sql_submission(*, submission_id: str, sql: str) -> SqlSubmission
 
 
 async def read_sql_submission(submission_id: str) -> SqlSubmissionRecord | None:
+    """Look up a SQL receipt by its durable submission key."""
     return await asyncio.to_thread(_read, submission_id)

@@ -9,12 +9,30 @@ from langchain_deepseek import ChatDeepSeek
 from langchain_openai.chat_models.base import BaseChatOpenAI
 from langchain_qwq import ChatQwen
 
+from agent_playground.models.tokens import DEFAULT_IMAGE_TOKENS
+
 ChatProvider = Literal["deepseek", "qwen"]
 ThinkingLevel = Literal["disabled", "low", "medium", "high"]
 
+QWEN_IMAGE_TOKENS = 16_384
+SUPPORTED_THINKING_LEVELS: tuple[ThinkingLevel, ...] = (
+    "disabled",
+    "low",
+    "medium",
+    "high",
+)
+
 NATIVE_REASONING_EFFORTS: dict[ChatProvider, dict[ThinkingLevel, str]] = {
-    "deepseek": {"low": "low", "medium": "high", "high": "max"},
-    "qwen": {"low": "low", "medium": "medium", "high": "xhigh"},
+    "deepseek": {
+        "low": "low",
+        "medium": "high",
+        "high": "max",
+    },
+    "qwen": {
+        "low": "low",
+        "medium": "medium",
+        "high": "xhigh",
+    },
 }
 
 
@@ -27,15 +45,17 @@ class ModelInformation:
     thinking_levels: tuple[ThinkingLevel, ...] = ("disabled",)
     thinking_input_tokens: int | None = None
     output_defaults: Mapping[ThinkingLevel, int] = field(default_factory=dict)
-    image_tokens: int = 1024
+    image_tokens: int = DEFAULT_IMAGE_TOKENS
 
     def input_limit(self, thinking: ThinkingLevel) -> int:
+        """Resolve the capacity for the selected thinking level."""
         if thinking != "disabled" and self.thinking_input_tokens is not None:
             return self.thinking_input_tokens
 
         return self.max_input_tokens
 
     def output_budget(self, thinking: ThinkingLevel) -> int:
+        """Resolve the advertised default output budget for a thinking level."""
         return self.output_defaults.get(thinking, self.max_output_tokens)
 
 
@@ -49,7 +69,7 @@ VERIFIED_MODELS: dict[tuple[ChatProvider, str], ModelInformation] = {
         context_window=1_000_000,
         max_input_tokens=1_000_000,
         max_output_tokens=393_216,
-        thinking_levels=("disabled", "low", "medium", "high"),
+        thinking_levels=SUPPORTED_THINKING_LEVELS,
         output_defaults={
             "disabled": 8192,
             "low": 65_536,
@@ -62,14 +82,15 @@ VERIFIED_MODELS: dict[tuple[ChatProvider, str], ModelInformation] = {
         context_window=1_000_000,
         max_input_tokens=991_808,
         max_output_tokens=131_072,
-        thinking_levels=("disabled", "low", "medium", "high"),
+        thinking_levels=SUPPORTED_THINKING_LEVELS,
         thinking_input_tokens=983_616,
-        image_tokens=16_384,
+        image_tokens=QWEN_IMAGE_TOKENS,
     ),
 }
 
 
 def library_model_profile(provider: ChatProvider, model: str) -> ModelProfile:
+    """Read provider-scoped SDK metadata without opening a client."""
     if (
         provider == "qwen"
         and ChatQwen._resolve_model_profile is BaseChatOpenAI._resolve_model_profile
@@ -124,5 +145,5 @@ def model_information(provider: ChatProvider, model: str) -> ModelInformation:
         max_input_tokens=context_window,
         max_output_tokens=output_limit,
         thinking_levels=tuple(thinking_levels),
-        image_tokens=16_384 if provider == "qwen" else 1024,
+        image_tokens=QWEN_IMAGE_TOKENS if provider == "qwen" else DEFAULT_IMAGE_TOKENS,
     )

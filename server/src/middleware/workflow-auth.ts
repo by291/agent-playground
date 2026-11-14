@@ -2,6 +2,7 @@ import type { Env, MiddlewareHandler } from "hono";
 import { bearerAuth } from "hono/bearer-auth";
 import { HTTPException } from "hono/http-exception";
 
+/** Rejects requests without a valid private workflow bearer credential. */
 export function workflowAuth(message: string): MiddlewareHandler<Env> {
   return async (context, next) => {
     const token = process.env.WORKFLOW_API_TOKEN ?? "";

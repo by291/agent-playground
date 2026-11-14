@@ -12,10 +12,18 @@ export interface A2UISurfaceView {
   presentation?: WorkflowOutputMetadata["presentation"];
 }
 
-export type A2UIIngestResult =
-  | { kind: "ready"; surfaces: A2UISurfaceView[] }
-  | { kind: "waiting"; surfaces: A2UISurfaceView[]; missingOutputSeq: number }
-  | { kind: "failed"; surfaces: A2UISurfaceView[]; error: string };
+interface AppliedOutputState {
+  surfaces: A2UISurfaceView[];
+  /** Includes recovered buffered outputs and replayed inputs that were already applied. */
+  appliedOutputs: A2UIOutput[];
+}
+
+export type A2UIIngestResult = AppliedOutputState &
+  (
+    | { kind: "ready" }
+    | { kind: "waiting"; missingOutputSeq: number }
+    | { kind: "failed"; error: string }
+  );
 
 /** Owns ordered output replay and SDK surface subscriptions; its caller must dispose it. */
 export function createA2UIRuntime() {
@@ -100,7 +108,7 @@ export function createA2UIRuntime() {
     }
   }
 
-  function applyBufferedOutputs() {
+  function applyBufferedOutputs(applied: Map<number, A2UIOutput>) {
     // Database sequence order is shared by the live stream and recovery snapshots.
     // A gap waits for recovery instead of applying an update before its creation.
     while (!failure) {
@@ -115,6 +123,7 @@ export function createA2UIRuntime() {
       try {
         // Data binding must not mutate the saved payload used to detect duplicates.
         processor.processMessages(structuredClone(output.messages));
+        applied.set(output.outputSeq, output);
         nextOutputSeq += 1;
       } catch (error) {
         const detail =
@@ -129,20 +138,49 @@ export function createA2UIRuntime() {
   }
 
   function ingest(incoming: A2UIOutput[]): A2UIIngestResult {
+    const applied = new Map<number, A2UIOutput>();
+
     if (!disposed) {
       bufferOutputs(incoming);
-      applyBufferedOutputs();
+      applyBufferedOutputs(applied);
     }
 
     if (failure) {
-      return { kind: "failed", surfaces, error: failure };
+      return {
+        kind: "failed",
+        surfaces,
+        appliedOutputs: [],
+        error: failure,
+      };
     }
+
+    // Snapshots replay applied outputs to restore replies missing from their message archive.
+    for (const input of incoming) {
+      const known = outputs.get(input.outputSeq);
+
+      if (known && known.outputSeq < nextOutputSeq) {
+        applied.set(known.outputSeq, known);
+      }
+    }
+
+    const appliedOutputs = [...applied.values()];
+
+    appliedOutputs.sort((left, right) => left.outputSeq - right.outputSeq);
 
     if (!disposed && highestOutputSeq >= nextOutputSeq) {
-      return { kind: "waiting", surfaces, missingOutputSeq: nextOutputSeq };
+      return {
+        kind: "waiting",
+        surfaces,
+        appliedOutputs,
+        missingOutputSeq: nextOutputSeq,
+      };
     }
 
-    return { kind: "ready", surfaces };
+    return {
+      kind: "ready",
+      surfaces,
+      appliedOutputs,
+    };
   }
 
   function dispose() {

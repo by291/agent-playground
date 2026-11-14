@@ -20,6 +20,7 @@ export interface PlanReviewResponse extends PlanReview {
   decision: "approve" | "reject";
 }
 
+/** Reads the experiment plan from a compatible interrupt payload. */
 export function parsePlanReview(interrupt: Interrupt): PlanReview | null {
   const parsed = reviewMetadataSchema.safeParse(interrupt.metadata?.langgraph);
 
@@ -58,6 +59,10 @@ export function reviewEntries(
   return responses.map(({ interruptId, decision, title, steps }) => ({
     interruptId,
     status: "resolved",
-    payload: { decision, title, steps },
+    payload: {
+      decision,
+      title,
+      steps,
+    },
   }));
 }

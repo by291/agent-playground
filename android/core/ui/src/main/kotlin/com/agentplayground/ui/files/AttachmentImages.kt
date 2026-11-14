@@ -35,7 +35,7 @@ internal class AttachmentImages(context: Context) : AutoCloseable {
         }
 
         val uri = source.toUri()
-        val data =
+        val imageSource =
             if (uri.scheme == "http" || uri.scheme == "https") {
                 // Remote requests use the API owner's same-server validation and cancellation.
                 // Private previews are decoded in memory and never written to a disk cache.
@@ -46,7 +46,7 @@ internal class AttachmentImages(context: Context) : AutoCloseable {
         val result =
             loader.execute(
                 ImageRequest.Builder(application)
-                    .data(data)
+                    .data(imageSource)
                     .memoryCacheKey(cacheKey)
                     .size(maxDimension, maxDimension)
                     .scale(Scale.FIT)

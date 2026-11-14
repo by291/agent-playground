@@ -14,6 +14,7 @@ class SettingsModel(BaseModel):
 
 
 def validate_url(value: str, schemes: tuple[str, ...]) -> str:
+    """Validate and normalize an absolute URL for the allowed schemes."""
     try:
         parsed = urlsplit(value)
         port = parsed.port

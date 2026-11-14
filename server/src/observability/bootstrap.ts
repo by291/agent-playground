@@ -14,6 +14,25 @@ import {
 import { OTLPMetricExporter } from "@opentelemetry/exporter-metrics-otlp-http";
 import { metrics } from "@opentelemetry/api";
 
+const metricExportIntervalMs = 10_000;
+// prettier-ignore
+const durationBucketsSeconds = [
+  0.01,
+  0.025,
+  0.05,
+  0.1,
+  0.25,
+  0.5,
+  1,
+  2.5,
+  5,
+  10,
+  30,
+  60,
+  120,
+  300,
+];
+
 const endpoint = process.env.OTEL_EXPORTER_OTLP_ENDPOINT;
 let shutdownProviders: (() => Promise<void>) | undefined;
 let shutdown: Promise<void> | undefined;
@@ -45,10 +64,7 @@ if (endpoint) {
         aggregation: {
           type: AggregationType.EXPLICIT_BUCKET_HISTOGRAM,
           options: {
-            boundaries: [
-              0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60, 120,
-              300,
-            ],
+            boundaries: durationBucketsSeconds,
           },
         },
       },
@@ -58,7 +74,7 @@ if (endpoint) {
         exporter: new OTLPMetricExporter({
           url: `${endpoint.replace(/\/$/, "")}/v1/metrics`,
         }),
-        exportIntervalMillis: 10_000,
+        exportIntervalMillis: metricExportIntervalMs,
       }),
     ],
   });
@@ -80,6 +96,7 @@ if (endpoint) {
   };
 }
 
+/** Flushes and shuts down configured trace and metric providers once. */
 export function shutdownTelemetry(): Promise<void> {
   // Both signal paths share one flush; providers must not be shut down twice.
   shutdown ??= shutdownProviders?.() ?? Promise.resolve();

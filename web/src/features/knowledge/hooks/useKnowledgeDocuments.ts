@@ -2,11 +2,13 @@ import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   maxKnowledgeBytes,
+  type KnowledgeDocument,
   type KnowledgeTextEncoding,
 } from "@shared/knowledge";
 import { knowledgeRequest, listKnowledge } from "../api/documents";
 
 const queryKey = ["knowledge", "documents"];
+const indexingStatusPollIntervalMs = 2000;
 
 export interface KnowledgeOperation {
   kind: "upload" | "reindex" | "delete";
@@ -20,29 +22,53 @@ interface DocumentRequest {
   controller: AbortController;
 }
 
+/** Owns document mutations, aborts them on unmount, and retains failed upload identities. */
 export function useKnowledgeDocuments() {
   const client = useQueryClient();
+
   const controller = useRef<AbortController | null>(null);
   const mounted = useRef(true);
   const pending = useRef<{ id: string; file: File } | null>(null);
+
   const [validationError, setValidationError] = useState<string | null>(null);
   const [retryUpload, setRetryUpload] = useState(false);
 
   const documents = useQuery({
     queryKey,
     queryFn: ({ signal }) => listKnowledge(signal),
-    refetchInterval: (query) =>
-      query.state.data?.some((document) =>
-        ["uploading", "queued", "indexing"].includes(document.status),
-      )
-        ? 2000
-        : false,
+    refetchInterval: (query) => {
+      const hasUnfinishedDocument = query.state.data?.some(
+        ({ status }) =>
+          status === "uploading" ||
+          status === "queued" ||
+          status === "indexing",
+      );
+
+      return hasUnfinishedDocument ? indexingStatusPollIntervalMs : false;
+    },
   });
 
   const mutation = useMutation({
     mutationFn: ({ path, init, controller }: DocumentRequest) =>
       knowledgeRequest(path, { ...init, signal: controller.signal }),
-    onSettled: async (_data, _error, request) => {
+    onSuccess: async (_response, request) => {
+      if (request.operation.kind !== "delete" || !mounted.current) {
+        return;
+      }
+
+      // Stop reads that may predate the deletion before updating cached rows.
+      await client.cancelQueries({ queryKey });
+
+      if (!mounted.current || request.controller.signal.aborted) {
+        return;
+      }
+
+      // A failed refresh must not bring back a document the server deleted.
+      client.setQueryData<KnowledgeDocument[]>(queryKey, (documents) =>
+        documents?.filter((document) => document.id !== request.operation.id),
+      );
+    },
+    onSettled: async (_response, _error, request) => {
       if (mounted.current && !request.controller.signal.aborted) {
         await client.invalidateQueries({ queryKey });
       }

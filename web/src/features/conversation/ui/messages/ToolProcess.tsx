@@ -26,6 +26,8 @@ import { messageText } from "../../model/presentation";
 import type { toolProcess, ToolStep } from "../../model/turns";
 
 const toolLabels: Record<string, string> = {
+  ask_user: "Ask for input",
+  write_todos: "Update plan",
   search_memory: "Search memory",
   remember_memory: "Remember a fact",
   forget_memory: "Forget a fact",
@@ -156,29 +158,34 @@ function ToolDetails({ step }: { step: ToolStep }) {
   );
 }
 
+/** Shows a group of tool calls and retains their details in a disclosure. */
 export function ToolProcess({
-  process,
+  toolHistory,
   children,
   skillName,
   category = skillName ? "Skill" : "Tool",
 }: {
-  process: ReturnType<typeof toolProcess>;
+  toolHistory: ReturnType<typeof toolProcess>;
   children?: ReactNode;
   skillName?: string;
   category?: "Tool" | "Skill" | "Memory";
 }) {
   const [open, setOpen] = useState(false);
-  const steps = process.flatMap((entry) => entry.calls);
+  const steps = toolHistory.flatMap((entry) => entry.calls);
   const failed = steps.some((step) => step.status === "failed");
   const running = steps.some((step) => step.status === "running");
   const statusLabel = processStatusLabel(steps);
   const error = steps.find((step) => step.result?.error)?.result?.error;
   const countLabel = category === "Memory" ? "operations" : "tools";
-  const name =
+  let name =
     skillName ??
     (steps.length === 1
       ? steps[0]!.call.function.name
       : `${steps.length} ${countLabel}`);
+
+  if (name === "write_todos") {
+    name = "Update plan";
+  }
 
   let Icon = WrenchIcon;
 
@@ -236,7 +243,7 @@ export function ToolProcess({
         </Alert>
       )}
       <CollapsibleContent className="mt-2 space-y-3 border-l border-line pl-3">
-        {process.map((entry, index) => {
+        {toolHistory.map((entry, index) => {
           const text = messageText(entry.message);
 
           return (

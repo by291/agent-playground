@@ -14,15 +14,23 @@ import {
   isExternalTaskTerminal,
   type ExternalTaskSnapshot,
 } from "@shared/external-task";
+import {
+  controlExternalTask,
+  externalTaskControlError,
+} from "../../api/external-tasks";
 import { AgentTaskOutputs } from "./AgentTaskOutputs";
 
+const maximumInputCharacters = 4000;
+
 function AgentTaskControls({ task }: { task: ExternalTaskSnapshot }) {
+  const inputId = useId();
   const [input, setInput] = useState("");
   const [pending, setPending] = useState<"input" | "cancel" | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const request = useRef<AbortController | null>(null);
-  const inputId = useId();
 
+  const request = useRef<AbortController | null>(null);
+
+  // The request belongs to this card; late responses must not update an unmounted control.
   useEffect(() => () => request.current?.abort(), []);
 
   async function control(action: "input" | "cancel") {
@@ -37,33 +45,12 @@ function AgentTaskControls({ task }: { task: ExternalTaskSnapshot }) {
     setError(null);
 
     try {
-      const response = await fetch(
-        `/external-tasks/${encodeURIComponent(task.taskId)}/${action}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          ...(action === "input"
-            ? { body: JSON.stringify({ input: input.trim() }) }
-            : {}),
-          signal: controller.signal,
-        },
-      );
-
-      if (!response.ok) {
-        const body: unknown = await response.json().catch(() => null);
-        let message = "Agent control failed. Please retry.";
-
-        if (
-          body &&
-          typeof body === "object" &&
-          "error" in body &&
-          typeof body.error === "string"
-        ) {
-          message = body.error;
-        }
-
-        throw new Error(message);
-      }
+      await controlExternalTask({
+        taskId: task.taskId,
+        action,
+        input: input.trim(),
+        signal: controller.signal,
+      });
 
       if (!controller.signal.aborted && action === "input") {
         setInput("");
@@ -71,9 +58,7 @@ function AgentTaskControls({ task }: { task: ExternalTaskSnapshot }) {
     } catch (failure) {
       if (!controller.signal.aborted) {
         setError(
-          failure instanceof Error
-            ? failure.message
-            : "Agent control failed. Please retry.",
+          failure instanceof Error ? failure.message : externalTaskControlError,
         );
       }
     } finally {
@@ -97,7 +82,7 @@ function AgentTaskControls({ task }: { task: ExternalTaskSnapshot }) {
           <Textarea
             id={inputId}
             value={input}
-            maxLength={4000}
+            maxLength={maximumInputCharacters}
             disabled={pending !== null}
             onChange={(event) => setInput(event.target.value)}
           />
@@ -127,6 +112,7 @@ function AgentTaskControls({ task }: { task: ExternalTaskSnapshot }) {
   );
 }
 
+/** Displays the saved task progress and exposes controls while the task can act. */
 export function ExternalTaskPanel({ task }: { task: ExternalTaskSnapshot }) {
   const requiresReconciliation =
     task.continuationStatus === "submission_unknown" ||

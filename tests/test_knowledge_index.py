@@ -20,12 +20,16 @@ from pypdf.generic import DecodedStreamObject, DictionaryObject, NameObject
 from sqlalchemy import create_engine, text
 from sqlalchemy.ext.asyncio import create_async_engine
 
-from agent_playground.db.knowledge import KnowledgeRepository, publish_index
+from agent_playground.db.knowledge import (
+    IndexPublication,
+    KnowledgeRepository,
+    publish_index,
+)
 from agent_playground.knowledge.config import EmbeddingConfig
 from agent_playground.knowledge.documents import split_document
 from agent_playground.knowledge.store import open_store
 from agent_playground.knowledge.tools import retrieve
-from agent_playground.knowledge.worker import index_job
+from agent_playground.knowledge.worker import IndexAttempt, index_job
 from tests.agent_config import update_agent_config
 from tests.model_config import ModelConfigFile
 
@@ -182,7 +186,11 @@ def test_index_retrieve_reindex_and_deleted_generation(
                 lambda request: httpx.Response(200, content=data)
             )
         ) as source:
-            assert await index_job(job, repository, config, source)
+            assert await index_job(
+                IndexAttempt(
+                    job=job, repository=repository, config=config, source_client=source
+                )
+            )
             hits = await retrieve("What is the return policy?", config, repository)
             assert hits[0]["documentId"] == document_id
             assert hits[0]["name"] == "policy.md"
@@ -229,9 +237,20 @@ def test_index_retrieve_reindex_and_deleted_generation(
 
             recovered = repository.claim()
             assert recovered is not None and recovered.generation != old.generation
-            assert not await index_job(old, repository, config, source)
+            assert not await index_job(
+                IndexAttempt(
+                    job=old, repository=repository, config=config, source_client=source
+                )
+            )
             assert await retrieve("returns", config, repository) == []
-            assert await index_job(recovered, repository, config, source)
+            assert await index_job(
+                IndexAttempt(
+                    job=recovered,
+                    repository=repository,
+                    config=config,
+                    source_client=source,
+                )
+            )
             assert len(await retrieve("returns", config, repository)) == 1
 
             with engine.begin() as connection:
@@ -269,7 +288,14 @@ def test_index_retrieve_reindex_and_deleted_generation(
                 )
 
             publishing = asyncio.create_task(
-                publish_index(pool, cancelled_job, config.profile(2), 1)
+                publish_index(
+                    IndexPublication(
+                        engine=pool,
+                        job=cancelled_job,
+                        profile=config.profile(2),
+                        chunk_count=1,
+                    )
+                )
             )
 
             try:
@@ -299,7 +325,14 @@ def test_index_retrieve_reindex_and_deleted_generation(
 
             successful = repository.claim()
             assert successful is not None
-            assert await index_job(successful, repository, config, source)
+            assert await index_job(
+                IndexAttempt(
+                    job=successful,
+                    repository=repository,
+                    config=config,
+                    source_client=source,
+                )
+            )
 
             with engine.begin() as connection:
                 connection.execute(
@@ -310,7 +343,14 @@ def test_index_retrieve_reindex_and_deleted_generation(
                 connection.execute(text("UPDATE knowledge_chunks SET visible=false"))
 
             assert await retrieve("returns", config, repository) == []
-            assert not await index_job(recovered, repository, config, source)
+            assert not await index_job(
+                IndexAttempt(
+                    job=recovered,
+                    repository=repository,
+                    config=config,
+                    source_client=source,
+                )
+            )
             repository.fail(old, "late failure")
             with engine.connect() as connection:
                 assert (
@@ -473,10 +513,12 @@ def test_deleted_document_stops_embedding_after_its_source_download(
     async def run():
         async with httpx.AsyncClient(transport=httpx.MockTransport(download)) as source:
             assert not await index_job(
-                job,
-                repository,
-                EmbeddingConfig(embedding_api, "deleted", "test-key"),
-                source,
+                IndexAttempt(
+                    job=job,
+                    repository=repository,
+                    config=EmbeddingConfig(embedding_api, "deleted", "test-key"),
+                    source_client=source,
+                )
             )
 
     try:
@@ -517,12 +559,17 @@ def test_index_deadline_includes_slow_source_download(
         async with httpx.AsyncClient(transport=httpx.MockTransport(download)) as source:
             with pytest.raises(TimeoutError):
                 await index_job(
-                    job,
-                    repository,
-                    EmbeddingConfig(
-                        embedding_api, "deadline", "test-key", index_timeout=1
-                    ),
-                    source,
+                    IndexAttempt(
+                        job=job,
+                        repository=repository,
+                        config=EmbeddingConfig(
+                            base_url=embedding_api,
+                            model="deadline",
+                            api_key="test-key",
+                            index_timeout=1,
+                        ),
+                        source_client=source,
+                    )
                 )
 
     try:

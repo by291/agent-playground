@@ -8,6 +8,7 @@ import {
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
+import type { conversationSnapshot } from "../history/snapshot.js";
 import { InterruptSchema } from "../../../../shared/ag-ui-schemas.js";
 import { eq, sql } from "drizzle-orm";
 import {
@@ -27,7 +28,7 @@ let controlStatus = 202;
 const stalledResponses = new Map<string, ServerResponse>();
 const creationModes = new Map<
   string,
-  "lost-response" | "unconfirmed" | "stall" | "stall-read"
+  "lost-response" | "unconfirmed" | "hold-response" | "stall" | "stall-read"
 >();
 const creationGates = new Map<
   string,
@@ -75,7 +76,11 @@ async function handleRequest(
   if (pathname === "/assistants/search") {
     response.end(
       JSON.stringify([
-        { assistant_id: "agent", graph_id: "agent", config: {} },
+        {
+          assistant_id: "agent",
+          graph_id: "agent",
+          config: {},
+        },
       ]),
     );
 
@@ -131,9 +136,16 @@ async function handleRequest(
 
     runs.set(threadId, run);
 
-    if (creationModes.get(threadId) === "lost-response") {
+    const mode = creationModes.get(threadId);
+
+    if (mode === "lost-response" || mode === "hold-response") {
       run.status = "success";
       completed.add(threadId);
+
+      if (mode === "hold-response") {
+        await gate.finish;
+      }
+
       response.destroy();
       gate.finished?.();
 
@@ -345,7 +357,11 @@ async function register() {
     reason: "Waiting for external task",
     metadata: {
       langgraph: {
-        raw: { kind: "workflow_external_wait", taskId, workflowCallId: callId },
+        raw: {
+          kind: "workflow_external_wait",
+          taskId,
+          workflowCallId: callId,
+        },
       },
     },
   });
@@ -394,16 +410,30 @@ async function register() {
 
   assert.ok(body.callbackToken);
 
-  return { threadId, taskId, request, token: body.callbackToken, interrupt };
+  return {
+    threadId,
+    taskId,
+    request,
+    token: body.callbackToken,
+    interrupt,
+  };
 }
 
-async function update(
-  taskId: string,
-  token: string,
-  revision: number,
+interface CallbackUpdate {
+  taskId: string;
+  token: string;
+  revision: number;
+  status?: string;
+  message?: string;
+}
+
+async function sendTaskUpdate({
+  taskId,
+  token,
+  revision,
   status = "running",
   message = "Building",
-) {
+}: CallbackUpdate) {
   return app.request(`/external-tasks/${taskId}/events`, {
     method: "POST",
     headers: {
@@ -425,19 +455,79 @@ async function update(
 test("task callbacks are authenticated, ordered and durable without exposing credentials", async () => {
   const task = await register();
 
-  assert.equal((await update(task.taskId, "wrong", 1)).status, 401);
-  assert.equal((await update(task.taskId, task.token, 2)).status, 200);
-  assert.equal((await update(task.taskId, task.token, 2)).status, 200);
   assert.equal(
-    (await update(task.taskId, task.token, 2, "running", "Conflict")).status,
-    409,
+    (
+      await sendTaskUpdate({
+        taskId: task.taskId,
+        token: "wrong",
+        revision: 1,
+      })
+    ).status,
+    401,
   );
-  assert.equal((await update(task.taskId, task.token, 1)).status, 200);
   assert.equal(
-    (await update(task.taskId, task.token, 3, "succeeded")).status,
+    (
+      await sendTaskUpdate({
+        taskId: task.taskId,
+        token: task.token,
+        revision: 2,
+      })
+    ).status,
     200,
   );
-  assert.equal((await update(task.taskId, task.token, 4)).status, 409);
+  assert.equal(
+    (
+      await sendTaskUpdate({
+        taskId: task.taskId,
+        token: task.token,
+        revision: 2,
+      })
+    ).status,
+    200,
+  );
+  assert.equal(
+    (
+      await sendTaskUpdate({
+        taskId: task.taskId,
+        token: task.token,
+        revision: 2,
+        status: "running",
+        message: "Conflict",
+      })
+    ).status,
+    409,
+  );
+  assert.equal(
+    (
+      await sendTaskUpdate({
+        taskId: task.taskId,
+        token: task.token,
+        revision: 1,
+      })
+    ).status,
+    200,
+  );
+  assert.equal(
+    (
+      await sendTaskUpdate({
+        taskId: task.taskId,
+        token: task.token,
+        revision: 3,
+        status: "succeeded",
+      })
+    ).status,
+    200,
+  );
+  assert.equal(
+    (
+      await sendTaskUpdate({
+        taskId: task.taskId,
+        token: task.token,
+        revision: 4,
+      })
+    ).status,
+    409,
+  );
   const { externalTaskSnapshots } = await import("./task-store.js");
   const snapshots = await externalTaskSnapshots(task.threadId);
 
@@ -512,7 +602,13 @@ test("A2A snapshots keep latest child text while durable history stays bounded",
     200,
   );
   assert.equal(
-    (await callback({ ...payload, revision: 3, status: "running" })).status,
+    (
+      await callback({
+        ...payload,
+        revision: 3,
+        status: "running",
+      })
+    ).status,
     409,
   );
 });
@@ -657,7 +753,14 @@ test("a completed external task resumes and archives a workflow with no browser"
   const task = await register();
 
   assert.equal(
-    (await update(task.taskId, task.token, 1, "succeeded")).status,
+    (
+      await sendTaskUpdate({
+        taskId: task.taskId,
+        token: task.token,
+        revision: 1,
+        status: "succeeded",
+      })
+    ).status,
     200,
   );
   const { processExternalTasks } = await import("./task-worker.js");
@@ -690,7 +793,14 @@ test("background continuation inherits the paused run's pinned model after resta
     .set({ modelId: "deepseek" })
     .where(eq(schema.conversations.threadId, task.threadId));
   assert.equal(
-    (await update(task.taskId, task.token, 1, "succeeded")).status,
+    (
+      await sendTaskUpdate({
+        taskId: task.taskId,
+        token: task.token,
+        revision: 1,
+        status: "succeeded",
+      })
+    ).status,
     200,
   );
   const { processExternalTasks } = await import("./task-worker.js");
@@ -784,7 +894,11 @@ test("users cannot submit an external task result through the review endpoint", 
         {
           interruptId: task.interrupt.id,
           status: "resolved",
-          payload: { taskId: task.taskId, status: "succeeded", result: {} },
+          payload: {
+            taskId: task.taskId,
+            status: "succeeded",
+            result: {},
+          },
         },
       ],
     }),
@@ -800,7 +914,12 @@ test("an early terminal callback waits for its durable interrupt", async () => {
     .update(schema.conversationRuns)
     .set({ status: "prepared", interrupts: [] })
     .where(eq(schema.conversationRuns.aguiRunId, task.request.runId));
-  await update(task.taskId, task.token, 1, "succeeded");
+  await sendTaskUpdate({
+    taskId: task.taskId,
+    token: task.token,
+    revision: 1,
+    status: "succeeded",
+  });
   const { processExternalTasks } = await import("./task-worker.js");
 
   await processExternalTasks();
@@ -818,7 +937,12 @@ test("an accepted continuation with a lost response is recovered without a secon
   const task = await register();
 
   creationModes.set(task.threadId, "lost-response");
-  await update(task.taskId, task.token, 1, "succeeded");
+  await sendTaskUpdate({
+    taskId: task.taskId,
+    token: task.token,
+    revision: 1,
+    status: "succeeded",
+  });
   const { processExternalTasks } = await import("./task-worker.js");
 
   await processExternalTasks();
@@ -850,7 +974,12 @@ test.each(["accepted", "unconfirmed"] as const)(
       creationModes.set(task.threadId, "unconfirmed");
     }
 
-    await update(task.taskId, task.token, 1, "succeeded");
+    await sendTaskUpdate({
+      taskId: task.taskId,
+      token: task.token,
+      revision: 1,
+      status: "succeeded",
+    });
     const { processExternalTasks } = await import("./task-worker.js");
     const { synchronizeConversation } =
       await import("../runs/checkpoint-sync.js");
@@ -893,7 +1022,13 @@ test.each(["accepted", "unconfirmed"] as const)(
   },
 );
 
-test.each(["accepted", "lost-response", "unconfirmed"] as const)(
+test.each(
+  /* prettier-ignore */ [
+  "accepted",
+  "lost-response",
+  "unconfirmed",
+] as const,
+)(
   "a disconnected HTTP consumer preserves its %s producer dispatch until creation settles",
   async (outcome) => {
     const threadId = randomUUID();
@@ -929,15 +1064,20 @@ test.each(["accepted", "lost-response", "unconfirmed"] as const)(
     const { synchronizeConversation } =
       await import("../runs/checkpoint-sync.js");
     const { conversationSnapshot } = await import("../history/snapshot.js");
-    const { hasRunDispatchOwner, latestRun } =
-      await import("../runs/run-store.js");
+    const { latestRun } = await import("../runs/run-store.js");
     const response = await app.request("/agent", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         threadId,
         runId,
-        messages: [{ id: randomUUID(), role: "user", content: "Hello" }],
+        messages: [
+          {
+            id: randomUUID(),
+            role: "user",
+            content: "Hello",
+          },
+        ],
         tools: [],
         context: [],
         state: {},
@@ -951,14 +1091,17 @@ test.each(["accepted", "lost-response", "unconfirmed"] as const)(
       await entered;
       await reader.read();
       await reader.cancel();
-      assert.equal(hasRunDispatchOwner(runId), true);
       await synchronizeConversation(threadId);
       const pending = await conversationSnapshot(threadId);
 
       assert.equal(pending?.runs.at(-1)?.status, "dispatching");
       assert.equal(pending?.runs.at(-1)?.aegraRunId, null);
       releaseCreation();
-      await vi.waitUntil(() => !hasRunDispatchOwner(runId));
+      await vi.waitUntil(async () => {
+        const current = await latestRun(threadId);
+
+        return current?.dispatchLeaseUntil === null;
+      });
 
       if (outcome === "accepted") {
         assert.ok((await latestRun(threadId))?.aegraRunId);
@@ -968,7 +1111,11 @@ test.each(["accepted", "lost-response", "unconfirmed"] as const)(
       releaseCreation();
       finishStream();
       await finished;
-      await vi.waitUntil(() => !hasRunDispatchOwner(runId));
+      await vi.waitUntil(async () => {
+        const current = await latestRun(threadId);
+
+        return current?.dispatchLeaseUntil === null;
+      });
       reader?.releaseLock();
       creationGates.delete(threadId);
     }
@@ -988,7 +1135,12 @@ test("an unconfirmed continuation stays unknown and is never blindly re-created"
   const task = await register();
 
   creationModes.set(task.threadId, "unconfirmed");
-  await update(task.taskId, task.token, 1, "succeeded");
+  await sendTaskUpdate({
+    taskId: task.taskId,
+    token: task.token,
+    revision: 1,
+    status: "succeeded",
+  });
   const { processExternalTasks } = await import("./task-worker.js");
 
   await processExternalTasks();
@@ -1004,13 +1156,25 @@ test("an unconfirmed continuation stays unknown and is never blindly re-created"
 test("deleted conversations reject callbacks and do not create continuations", async () => {
   const task = await register();
 
-  await update(task.taskId, task.token, 1, "succeeded");
+  await sendTaskUpdate({
+    taskId: task.taskId,
+    token: task.token,
+    revision: 1,
+    status: "succeeded",
+  });
   await database.db
     .update(schema.conversations)
     .set({ deletedAt: new Date() })
     .where(eq(schema.conversations.threadId, task.threadId));
   assert.equal(
-    (await update(task.taskId, task.token, 1, "succeeded")).status,
+    (
+      await sendTaskUpdate({
+        taskId: task.taskId,
+        token: task.token,
+        revision: 1,
+        status: "succeeded",
+      })
+    ).status,
     404,
   );
   const { processExternalTasks } = await import("./task-worker.js");
@@ -1049,12 +1213,399 @@ test("registration is authenticated and replay keeps the callback identity", asy
 test("external failures also resume the workflow with a terminal result", async () => {
   const task = await register();
 
-  await update(task.taskId, task.token, 1, "failed");
+  await sendTaskUpdate({
+    taskId: task.taskId,
+    token: task.token,
+    revision: 1,
+    status: "failed",
+  });
   const { processExternalTasks } = await import("./task-worker.js");
 
   await processExternalTasks();
   await processExternalTasks();
   assert.equal(creations.get(task.threadId), 1);
+});
+
+function dispatchGate() {
+  let resolve!: () => void;
+  const promise = new Promise<void>((complete) => {
+    resolve = complete;
+  });
+
+  return { promise, resolve };
+}
+
+async function startDispatchServer() {
+  const probe = createServer();
+
+  await new Promise<void>((resolve) => probe.listen(0, "127.0.0.1", resolve));
+  const address = probe.address();
+
+  assert.ok(address && typeof address !== "string");
+  await new Promise<void>((resolve) => probe.close(() => resolve()));
+  const child = spawn(
+    process.execPath,
+    /* prettier-ignore */ [
+      "--import",
+      "tsx",
+      "--import",
+      "./tests/signal-control.ts",
+      "src/main.ts",
+    ],
+    {
+      cwd: fileURLToPath(new URL("../../../", import.meta.url)),
+      env: { ...process.env, SERVER_PORT: String(address.port) },
+      stdio:
+        /* prettier-ignore */ [
+        "ignore",
+        "pipe",
+        "pipe",
+        "ipc",
+      ],
+    },
+  );
+  const exited = new Promise<number | null>((resolve, reject) => {
+    child.once("exit", resolve);
+    child.once("error", reject);
+  });
+  let output = "";
+
+  child.stdout?.on("data", (chunk: Buffer) => {
+    output += chunk.toString();
+  });
+  child.stderr?.on("data", (chunk: Buffer) => {
+    output += chunk.toString();
+  });
+
+  async function crash() {
+    if (child.pid && child.exitCode === null && child.signalCode === null) {
+      child.kill("SIGKILL");
+    }
+
+    await exited;
+  }
+
+  try {
+    await Promise.race([
+      vi.waitUntil(() => output.includes("AG-UI server listening"), {
+        timeout: 10_000,
+        interval: 20,
+      }),
+      exited.then(() => {
+        throw new Error(`Server exited during startup: ${output}`);
+      }),
+    ]);
+
+    return {
+      url: `http://127.0.0.1:${address.port}`,
+      crash,
+      beginShutdown: () => child.send("shutdown-test"),
+      exited,
+    };
+  } catch (error) {
+    await crash();
+    throw error;
+  }
+}
+
+async function readLatestDispatch(url: string, threadId: string) {
+  const response = await fetch(`${url}/conversations/${threadId}`);
+
+  assert.equal(response.status, 200);
+  const snapshot = (await response.json()) as NonNullable<
+    Awaited<ReturnType<typeof conversationSnapshot>>
+  >;
+
+  return snapshot.runs.at(-1);
+}
+
+type DispatchServer = Awaited<ReturnType<typeof startDispatchServer>>;
+type DispatchGate = ReturnType<typeof dispatchGate>;
+interface CrashScenario {
+  outcome: "lost-response" | "unconfirmed";
+  threadId: string;
+  runId: string;
+  owner: DispatchServer;
+  peer: DispatchServer;
+  release: DispatchGate;
+  sendResponse: DispatchGate;
+  finished: DispatchGate;
+  submission: RequestInit;
+}
+
+async function verifyDispatchRecovery({
+  outcome,
+  threadId,
+  runId,
+  owner,
+  peer,
+  release,
+  sendResponse,
+  finished,
+  submission,
+}: CrashScenario) {
+  const pending = await readLatestDispatch(peer.url, threadId);
+
+  assert.equal(pending?.status, "dispatching");
+  assert.equal(pending?.aegraRunId, null);
+
+  if (outcome === "lost-response") {
+    const { latestRun } = await import("../runs/run-store.js");
+    const initialLease = (await latestRun(threadId))?.dispatchLeaseUntil;
+
+    assert.ok(initialLease);
+
+    await vi.waitUntil(
+      async () => {
+        const renewedLease = (await latestRun(threadId))?.dispatchLeaseUntil;
+
+        return (
+          renewedLease !== null &&
+          renewedLease !== undefined &&
+          renewedLease > initialLease
+        );
+      },
+      { timeout: 15_000, interval: 100 },
+    );
+
+    release.resolve();
+    await vi.waitUntil(() => completed.has(threadId));
+  }
+
+  await owner.crash();
+  release.resolve();
+  sendResponse.resolve();
+  await finished.promise;
+
+  if (outcome === "unconfirmed") {
+    const duringLease = await readLatestDispatch(peer.url, threadId);
+
+    assert.equal(duringLease?.status, "dispatching");
+
+    // Advance only the lease expiration without waiting for the production TTL.
+    await database.db.execute(sql`
+      UPDATE conversation_runs SET dispatch_lease_until = now() - interval '1 second'
+      WHERE agui_run_id = ${runId}
+    `);
+  }
+
+  const recovered = await readLatestDispatch(peer.url, threadId);
+  const expectedStatus =
+    outcome === "unconfirmed" ? "submission_unknown" : "completed";
+
+  assert.equal(recovered?.status, expectedStatus);
+  assert.equal(Boolean(recovered?.aegraRunId), outcome === "lost-response");
+  const retry = await fetch(`${peer.url}/agent`, submission);
+
+  assert.equal(retry.status, 409);
+  await retry.text();
+  assert.equal(creations.get(threadId), 1);
+}
+
+test.each(["lost-response", "unconfirmed"] as const)(
+  "a second server preserves a live dispatch and reconciles a %s crash without resending",
+  async (outcome) => {
+    const threadId = randomUUID();
+    const runId = randomUUID();
+    const entered = dispatchGate();
+    const release = dispatchGate();
+    const finished = dispatchGate();
+    const sendResponse = dispatchGate();
+
+    creationGates.set(threadId, {
+      entered: entered.resolve,
+      release: release.promise,
+      finished: finished.resolve,
+      finish: sendResponse.promise,
+    });
+    const mode = outcome === "lost-response" ? "hold-response" : outcome;
+
+    creationModes.set(threadId, mode);
+
+    const input = JSON.stringify({
+      threadId,
+      runId,
+      messages: [
+        {
+          id: randomUUID(),
+          role: "user",
+          content: "Hello",
+        },
+      ],
+      tools: [],
+      context: [],
+      state: {},
+    });
+    const submission = {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: input,
+    };
+    const first = await startDispatchServer();
+
+    try {
+      const second = await startDispatchServer();
+
+      try {
+        const [firstResponse, secondResponse] = await Promise.all([
+          fetch(`${first.url}/agent`, submission),
+          fetch(`${second.url}/agent`, submission),
+        ]);
+
+        assert.deepEqual(
+          [firstResponse.status, secondResponse.status].sort(),
+          [200, 409],
+        );
+        const firstOwnsDispatch = firstResponse.status === 200;
+        const owner = firstOwnsDispatch ? first : second;
+        const peer = firstOwnsDispatch ? second : first;
+        const conflict = firstOwnsDispatch ? secondResponse : firstResponse;
+        const stream = firstOwnsDispatch ? firstResponse : secondResponse;
+
+        await conflict.text();
+        await entered.promise;
+        assert.equal(creations.get(threadId), 1);
+        await verifyDispatchRecovery({
+          outcome,
+          threadId,
+          runId,
+          owner,
+          peer,
+          release,
+          sendResponse,
+          finished,
+          submission,
+        });
+        await stream.body?.cancel().catch(() => undefined);
+      } finally {
+        await second.crash();
+      }
+    } finally {
+      release.resolve();
+      sendResponse.resolve();
+      await first.crash();
+    }
+  },
+);
+
+test("shutdown drains detached creation and saves its mapping before closing PostgreSQL", async () => {
+  const threadId = randomUUID();
+  const runId = randomUUID();
+  const entered = dispatchGate();
+  const release = dispatchGate();
+  const finished = dispatchGate();
+
+  creationGates.set(threadId, {
+    entered: entered.resolve,
+    release: release.promise,
+    finished: finished.resolve,
+  });
+
+  const server = await startDispatchServer();
+
+  try {
+    const response = await fetch(`${server.url}/agent`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        threadId,
+        runId,
+        messages: [
+          {
+            id: randomUUID(),
+            role: "user",
+            content: "Hello",
+          },
+        ],
+        tools: [],
+        context: [],
+        state: {},
+      }),
+    });
+
+    assert.equal(response.status, 200);
+    await entered.promise;
+    server.beginShutdown();
+
+    // The listener must stop before the delayed creation response arrives.
+    await vi.waitUntil(async () => {
+      try {
+        const health = await fetch(`${server.url}/health`);
+
+        await health.text();
+
+        return false;
+      } catch {
+        return true;
+      }
+    });
+    release.resolve();
+    await finished.promise;
+    const exitCode = await server.exited;
+    const { latestRun } = await import("../runs/run-store.js");
+    const saved = await latestRun(threadId);
+
+    assert.equal(exitCode, 0);
+    assert.ok(saved?.aegraRunId);
+    assert.equal(saved.dispatchLeaseUntil, null);
+    await response.body?.cancel().catch(() => undefined);
+  } finally {
+    release.resolve();
+    await server.crash();
+  }
+});
+
+test("shutdown exits when Aegra leaves creation unanswered past the drain deadline", async () => {
+  const threadId = randomUUID();
+  const runId = randomUUID();
+  const entered = dispatchGate();
+  const release = dispatchGate();
+
+  creationGates.set(threadId, {
+    entered: entered.resolve,
+    release: release.promise,
+  });
+
+  const server = await startDispatchServer();
+  let hasExited = false;
+
+  void server.exited.then(() => {
+    hasExited = true;
+  });
+
+  try {
+    const response = await fetch(`${server.url}/agent`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        threadId,
+        runId,
+        messages: [
+          {
+            id: randomUUID(),
+            role: "user",
+            content: "Hello",
+          },
+        ],
+        tools: [],
+        context: [],
+        state: {},
+      }),
+    });
+
+    assert.equal(response.status, 200);
+    await entered.promise;
+    server.beginShutdown();
+
+    // Leave the upstream socket open until the child exits on its own.
+    await vi.waitUntil(() => hasExited, { timeout: 10_000, interval: 50 });
+
+    assert.equal(await server.exited, 0);
+    await response.body?.cancel().catch(() => undefined);
+  } finally {
+    release.resolve();
+    await server.crash();
+  }
 });
 
 test("telemetry-enabled server shutdown releases its subscription and exports work before exit", async () => {
@@ -1102,7 +1653,13 @@ test("telemetry-enabled server shutdown releases its subscription and exports wo
         SERVER_PORT: String(port),
         OTEL_EXPORTER_OTLP_ENDPOINT: `http://127.0.0.1:${collectorAddress.port}`,
       },
-      stdio: ["ignore", "pipe", "pipe", "ipc"],
+      stdio:
+        /* prettier-ignore */ [
+        "ignore",
+        "pipe",
+        "pipe",
+        "ipc",
+      ],
     },
   );
   const exited = new Promise<number | null>((resolve) =>
@@ -1216,7 +1773,12 @@ test.each(["stall", "stall-read"] as const)(
     const task = await register();
 
     creationModes.set(task.threadId, mode);
-    await update(task.taskId, task.token, 1, "succeeded");
+    await sendTaskUpdate({
+      taskId: task.taskId,
+      token: task.token,
+      revision: 1,
+      status: "succeeded",
+    });
     const { startExternalTaskWorker } = await import("./task-worker.js");
     const stop = startExternalTaskWorker();
     let stopped: Promise<void> | undefined;
@@ -1256,8 +1818,18 @@ test("a bounded stalled creation does not block another completed external task"
   const other = await register();
 
   creationModes.set(stalled.threadId, "stall");
-  await update(stalled.taskId, stalled.token, 1, "succeeded");
-  await update(other.taskId, other.token, 1, "succeeded");
+  await sendTaskUpdate({
+    taskId: stalled.taskId,
+    token: stalled.token,
+    revision: 1,
+    status: "succeeded",
+  });
+  await sendTaskUpdate({
+    taskId: other.taskId,
+    token: other.token,
+    revision: 1,
+    status: "succeeded",
+  });
   const { Client } = await import("@langchain/langgraph-sdk");
   const client = new Client({
     apiUrl: process.env.AEGRA_URL!,

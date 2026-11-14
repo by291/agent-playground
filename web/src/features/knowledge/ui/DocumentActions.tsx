@@ -24,6 +24,7 @@ interface DocumentActionsProps {
   onDelete: (opener: HTMLButtonElement | null) => void;
 }
 
+/** Presents the actions available for a document's current indexing status. */
 export function DocumentActions({
   document,
   busy,
@@ -34,6 +35,7 @@ export function DocumentActions({
 }: DocumentActionsProps) {
   const trigger = useRef<HTMLButtonElement>(null);
   const openingDialog = useRef(false);
+
   const canReindex = ["ready", "failed"].includes(document.status);
   const canChooseEncoding = canReindex && /\.(txt|md)$/i.test(document.name);
 
@@ -57,6 +59,7 @@ export function DocumentActions({
           </a>
         </Button>
       )}
+
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button
@@ -70,6 +73,7 @@ export function DocumentActions({
             <DotsThreeIcon aria-hidden="true" />
           </Button>
         </DropdownMenuTrigger>
+
         <DropdownMenuContent
           align="end"
           collisionPadding={12}
@@ -89,6 +93,7 @@ export function DocumentActions({
               {document.status === "failed" ? "Retry indexing" : "Reindex"}
             </DropdownMenuItem>
           )}
+
           {canChooseEncoding && (
             <DropdownMenuItem
               onSelect={() => {
@@ -100,6 +105,7 @@ export function DocumentActions({
               Text encoding
             </DropdownMenuItem>
           )}
+
           {canReindex && <DropdownMenuSeparator />}
           <DropdownMenuItem
             variant="destructive"

@@ -20,7 +20,11 @@ export function configureConversationAgent(agent: HttpAgent) {
     delete state.response_messages;
     delete state.toolErrors;
 
-    return next.run({ ...input, messages, state });
+    return next.run({
+      ...input,
+      messages,
+      state,
+    });
   });
 }
 

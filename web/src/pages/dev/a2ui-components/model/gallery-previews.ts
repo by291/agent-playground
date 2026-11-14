@@ -6,6 +6,7 @@ interface Example {
 }
 
 type Resource = ReturnType<typeof createGalleryPreview>;
+
 export interface GalleryPreview {
   draft: string;
   source: string;
@@ -13,23 +14,26 @@ export interface GalleryPreview {
   error: string | null;
 }
 
-// This owner is created without models; initialization happens after mount.
+/** Owns the last valid preview and allocates models only after initialization. */
 export function createGalleryPreviews(
   examples: Example[],
   createPreview = createGalleryPreview,
 ) {
   const resources = new Map<string, Resource>();
   const listeners = new Set<() => void>();
+
   let snapshot: Record<string, GalleryPreview> = {};
 
   function update(component: string, draft: string) {
     const replacement = createPreview(component, draft);
     const previous = snapshot[component];
+
     let preview: GalleryPreview;
 
     if (replacement.surfaces) {
       resources.get(component)?.dispose();
       resources.set(component, replacement);
+
       preview = {
         draft,
         source: draft,
@@ -38,6 +42,7 @@ export function createGalleryPreviews(
       };
     } else {
       replacement.dispose();
+
       preview = {
         draft,
         source: previous?.source ?? "",

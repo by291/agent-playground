@@ -26,6 +26,7 @@ export type LifecycleEvent =
       empty: boolean;
     };
 
+/** Defers snapshots for a fresh draft and restores saved threads before enabling input. */
 export function initialLifecycle(
   saved: ConversationReference,
 ): ConversationLifecycle {
@@ -39,6 +40,7 @@ export function initialLifecycle(
   };
 }
 
+/** Applies one conversation event to hydration, execution and synchronization. */
 export function transitionLifecycle(
   state: ConversationLifecycle,
   event: LifecycleEvent,
@@ -95,6 +97,7 @@ function activeSynchronization(
   return state.synchronization === "deferred" ? "deferred" : "on-demand";
 }
 
+/** Exposes the fetch and poll policy without coupling session state to Query. */
 export function snapshotPolicy(state: ConversationLifecycle) {
   return {
     enabled: state.synchronization !== "deferred",

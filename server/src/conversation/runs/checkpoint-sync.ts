@@ -21,8 +21,11 @@ import { conversationExists } from "../history/management.js";
 import { workflowOutputs } from "../../db/workflow-schema.js";
 import { workflowReplyMessages } from "../../../../shared/workflow-output.js";
 
+const CHECKPOINT_READ_ATTEMPTS = 5;
+const CHECKPOINT_RETRY_DELAY_MS = 150;
+
 async function readCompletedCheckpoint(run: RunRow, client: Client) {
-  for (let attempt = 0; attempt < 5; attempt += 1) {
+  for (let attempt = 0; attempt < CHECKPOINT_READ_ATTEMPTS; attempt += 1) {
     const state = await client.threads.getState(run.threadId);
     const interrupts = langGraphInterruptsToAGUI(
       state.tasks.flatMap((task) => task.interrupts),
@@ -33,7 +36,9 @@ async function readCompletedCheckpoint(run: RunRow, client: Client) {
     }
 
     // The interrupt outcome can arrive just before its checkpoint is committed.
-    await new Promise((resolve) => setTimeout(resolve, 150));
+    await new Promise((resolve) =>
+      setTimeout(resolve, CHECKPOINT_RETRY_DELAY_MS),
+    );
   }
 
   throw new Error("Interrupted checkpoint is not ready");
@@ -44,7 +49,8 @@ async function saveCheckpoint(
   checkpoint: Awaited<ReturnType<typeof readCompletedCheckpoint>>,
 ) {
   const messages = completedMessages(checkpoint.state.values);
-  const outputs = await db
+
+  const runOutputsQuery = db
     .select({ payload: workflowOutputs.payload })
     .from(workflowOutputs)
     .where(
@@ -52,8 +58,9 @@ async function saveCheckpoint(
         eq(workflowOutputs.threadId, run.threadId),
         eq(workflowOutputs.aguiRunId, run.aguiRunId),
       ),
-    )
-    .orderBy(asc(workflowOutputs.outputSeq));
+    );
+
+  const outputs = await runOutputsQuery.orderBy(asc(workflowOutputs.outputSeq));
 
   // Nested workflow replies live in their checkpointed workflow outputs, not
   // the paused parent agent's message state. Archive them before its final reply.
@@ -69,16 +76,19 @@ async function saveCheckpoint(
 
   await db.transaction(async (tx) => {
     // Admission uses the same lock: checkpoint ownership cannot change mid-save.
-    await tx
+    const conversationLockQuery = tx
       .select({ id: conversations.threadId })
       .from(conversations)
-      .where(eq(conversations.threadId, run.threadId))
-      .for("update");
+      .where(eq(conversations.threadId, run.threadId));
 
-    const [current] = await tx
+    await conversationLockQuery.for("update");
+
+    const latestRunQuery = tx
       .select()
       .from(conversationRuns)
-      .where(eq(conversationRuns.threadId, run.threadId))
+      .where(eq(conversationRuns.threadId, run.threadId));
+
+    const [current] = await latestRunQuery
       .orderBy(desc(conversationRuns.submitSeq))
       .limit(1);
 

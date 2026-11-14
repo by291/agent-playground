@@ -9,7 +9,7 @@ import {
   type RunRow,
 } from "../../db/conversation-schema.js";
 import { SubmissionError } from "../errors.js";
-import { isRunActive } from "../../../../shared/run-status.js";
+import { isRunActive, isRunFinished } from "../../../../shared/run-status.js";
 import {
   validateReview,
   validateExternalContinuation,
@@ -45,11 +45,12 @@ export async function admitRun({
     await tx.insert(conversations).values({ threadId }).onConflictDoNothing();
 
     // Management, model selection and checkpoint publication use this same lock.
-    const [conversation] = await tx
+    const conversationLockQuery = tx
       .select()
       .from(conversations)
-      .where(eq(conversations.threadId, threadId))
-      .for("update");
+      .where(eq(conversations.threadId, threadId));
+
+    const [conversation] = await conversationLockQuery.for("update");
 
     if (!conversation) {
       throw new Error("Conversation admission failed");
@@ -94,17 +95,28 @@ export async function admitRun({
       return { row };
     }
 
-    const [current] = await tx
+    const latestRunQuery = tx
       .select()
       .from(conversationRuns)
-      .where(eq(conversationRuns.threadId, threadId))
+      .where(eq(conversationRuns.threadId, threadId));
+
+    const [current] = await latestRunQuery
       .orderBy(desc(conversationRuns.submitSeq))
       .limit(1);
+
+    // Recovery archives only the latest run. A terminal observation may commit
+    // while another request that saw the run still active is entering admission.
+    const isAwaitingArchive =
+      current !== undefined &&
+      Boolean(current.aegraRunId) &&
+      isRunFinished(current.status) &&
+      !current.checkpointSynced;
 
     // Historical pauses remain immutable; only the newest run can block admission.
     const blocksAdmission =
       current &&
-      (isRunActive(current.status) ||
+      (isAwaitingArchive ||
+        isRunActive(current.status) ||
         current.status === "submission_unknown" ||
         (!isResume && current.status === "interrupted"));
 
@@ -119,12 +131,12 @@ export async function admitRun({
     // under the same conversation lock that protects its admission.
     if (isResume) {
       if (externalTaskId) {
-        await validateExternalContinuation(
-          request,
-          current ?? null,
-          tx,
-          externalTaskId,
-        );
+        await validateExternalContinuation({
+          input: request,
+          run: current ?? null,
+          database: tx,
+          taskId: externalTaskId,
+        });
       } else {
         await validateReview(request, current ?? null, tx);
       }

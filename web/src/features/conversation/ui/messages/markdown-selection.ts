@@ -6,8 +6,7 @@ import { gfm } from "turndown-plugin-gfm";
 type Element = NonNullable<ExtraProps["node"]>;
 type Parent = Pick<Element, "children">;
 
-// Streamdown's safe links render as buttons. Keep their source destination on
-// a wrapper without replacing the library's navigation or confirmation flow.
+/** Saves source destinations for copy because Streamdown's safe links render as buttons. */
 export function markdownCopyAnnotations() {
   function annotate(parent: Parent) {
     parent.children = parent.children.map((child) => {
@@ -57,6 +56,7 @@ converter.addRule("tableCellPipes", {
   },
 });
 
+/** Writes selected reply content as Markdown while leaving other selections to the browser. */
 export function copyMarkdownSelection(event: ClipboardEvent<HTMLDivElement>) {
   const root = event.currentTarget;
   const selection = root.ownerDocument.getSelection();

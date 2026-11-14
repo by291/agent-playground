@@ -12,6 +12,10 @@ from langchain_core.messages.utils import (
 )
 from pydantic import BaseModel, Field
 
+DEFAULT_CONTEXT_WINDOW = 1_000_000
+DEFAULT_IMAGE_TOKENS = 1024
+TOKEN_ESTIMATE_CHARS_PER_TOKEN = 2.0
+
 
 class ContextSettings(BaseModel):
     """Resolved input window and compaction trigger for one selected model."""
@@ -27,7 +31,9 @@ class ContextSettings(BaseModel):
         window: int | None = None,
         compact_ratio: float = 0.8,
     ) -> Self:
+        """Resolve an explicit window or fall back to the model's reported capacity."""
         profile = model.profile or {}
+
         if window is None:
             model_window = profile.get("max_input_tokens")
 
@@ -38,7 +44,7 @@ class ContextSettings(BaseModel):
                     "Set max_input_tokens in models.yaml for an unknown model"
                 )
             else:
-                window = 1000000
+                window = DEFAULT_CONTEXT_WINDOW
 
         return cls(
             window=window,
@@ -47,14 +53,18 @@ class ContextSettings(BaseModel):
 
 
 def estimate_tokens(
-    messages: Iterable[MessageLikeRepresentation], *, tokens_per_image: int = 1024
+    messages: Iterable[MessageLikeRepresentation],
+    *,
+    tokens_per_image: int = DEFAULT_IMAGE_TOKENS,
 ) -> int:
     """Estimate input history conservatively, including provider reasoning replay."""
     # A conservative character ratio also accommodates the playground's Chinese text.
     # Image pixels are charged by the provider; base64 length is not a token estimate.
     history = convert_to_messages(messages)
     tokens = count_tokens_approximately(
-        history, chars_per_token=2.0, tokens_per_image=tokens_per_image
+        history,
+        chars_per_token=TOKEN_ESTIMATE_CHARS_PER_TOKEN,
+        tokens_per_image=tokens_per_image,
     )
 
     # The library counter excludes additional_kwargs, while thinking tool calls
@@ -66,6 +76,6 @@ def estimate_tokens(
         reasoning = message.additional_kwargs.get("reasoning_content")
 
         if isinstance(reasoning, str):
-            tokens += ceil(len(reasoning) / 2.0)
+            tokens += ceil(len(reasoning) / TOKEN_ESTIMATE_CHARS_PER_TOKEN)
 
     return tokens

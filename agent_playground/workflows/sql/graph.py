@@ -15,12 +15,25 @@ from agent_playground.workflows.sql.models import (
     SqlState,
 )
 
+_REPLY_BY_STATUS = {
+    "review": "Review this SQL, ask for changes, or abandon it.",
+    "submitted": "The demo API recorded the accepted SQL without executing it.",
+    "abandoned": "The SQL workflow was abandoned. Nothing was submitted.",
+}
+_NODE_BY_ACTION = {
+    "message": "revise",
+    "accept": "submit",
+    "abandon": "abandon",
+}
+
 
 def make_sql_workflow(
     revise: RevisionAgent,
     api: SqlApi,
     checkpointer: Checkpointer | None = None,
 ):
+    """Build the SQL review loop with validation before idempotent submission."""
+
     async def fetch(state: SqlState) -> dict[str, Any]:
         source = await api.fetch(state.task)
 
@@ -43,7 +56,7 @@ def make_sql_workflow(
         if not sql:
             raise ValueError("The SQL agent returned an empty SQL")
 
-        sql_changed = sql != state.sql
+        has_sql_changed = sql != state.sql
         dialogue = [*state.dialogue]
 
         if state.feedback:
@@ -53,23 +66,15 @@ def make_sql_workflow(
 
         return {
             "sql": sql,
-            "revision": state.revision + int(sql_changed),
+            "revision": state.revision + int(has_sql_changed),
             "dialogue": dialogue,
             "reply": result.reply,
         }
 
     async def publish(state: SqlState) -> dict[str, Any]:
-        reply = state.reply
-
-        if not reply:
-            if state.status == "submitted":
-                reply = "The demo API recorded the accepted SQL without executing it."
-            elif state.status == "abandoned":
-                reply = "The SQL workflow was abandoned. Nothing was submitted."
-            else:
-                reply = "Review this SQL, ask for changes, or abandon it."
-
+        reply = state.reply or _REPLY_BY_STATUS[state.status]
         published = state.model_copy(update={"round": state.round + 1, "reply": reply})
+
         await publish_sql_card(state=published)
 
         return {"round": published.round, "reply": reply}
@@ -103,7 +108,9 @@ def make_sql_workflow(
         }
 
     async def submit(state: SqlState) -> dict[str, Any]:
-        thread_id = (get_config().get("configurable") or {}).get("thread_id")
+        config = get_config()
+        configurable = config.get("configurable") or {}
+        thread_id = configurable.get("thread_id")
 
         if not isinstance(thread_id, str):
             raise TypeError("SQL submission requires a conversation ID")
@@ -115,15 +122,19 @@ def make_sql_workflow(
         # the conversation and accepted revision so retries reuse one receipt.
         receipt = await api.submit(state.sql, key)
 
-        return {"submission": receipt, "status": "submitted", "reply": ""}
+        return {
+            "submission": receipt,
+            "status": "submitted",
+            "reply": "",
+        }
 
     def abandon(state: SqlState) -> dict[str, Any]:
         return {"status": "abandoned", "reply": ""}
 
     def after_initial_check(state: SqlState) -> str:
-        check_passed = state.check is not None and state.check.passed
+        has_passed_check = state.check is not None and state.check.passed
 
-        return "publish" if check_passed else "revise"
+        return "publish" if has_passed_check else "revise"
 
     def after_revision(state: SqlState) -> str:
         # A conversational explanation has no new SQL to validate.
@@ -136,9 +147,7 @@ def make_sql_workflow(
         if state.action is None:
             raise ValueError("SQL workflow is missing a user decision")
 
-        return {"message": "revise", "accept": "submit", "abandon": "abandon"}[
-            state.action
-        ]
+        return _NODE_BY_ACTION[state.action]
 
     builder = StateGraph(SqlState)
     builder.add_node("fetch", fetch)

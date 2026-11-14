@@ -6,7 +6,12 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.types import interrupt
 from pydantic import BaseModel, Field
 
-from agent_playground.workflows.experiment.cards import publish_experiment_card
+from agent_playground.workflows.experiment.cards import (
+    ExperimentCard,
+    publish_experiment_card,
+)
+
+_MAX_IDEA_TITLE_LENGTH = 160
 
 
 class ExperimentState(BaseModel):
@@ -39,21 +44,25 @@ class PlanReview(BaseModel):
 
 
 async def prepare_idea(state: ExperimentState) -> TitleUpdate:
-    idea = " ".join(state.idea.split())[:160]
-    title = idea or "Untitled experiment"
+    """Capture the idea as a short title and publish the first stage."""
+    normalized_idea = " ".join(state.idea.split())
+    title = normalized_idea[:_MAX_IDEA_TITLE_LENGTH] or "Untitled experiment"
 
     await publish_experiment_card(
-        workflow_call_id=state.card_group_id,
-        title=title,
-        stage="idea",
-        heading="IDEA CAPTURED",
-        lines=[],
+        ExperimentCard(
+            workflow_call_id=state.card_group_id,
+            title=title,
+            stage="idea",
+            heading="IDEA CAPTURED",
+            lines=[],
+        )
     )
 
     return {"title": title}
 
 
 async def plan_steps(state: ExperimentState) -> StepsUpdate:
+    """Publish a draft plan and save its steps for review."""
     steps = [
         f"Define what success means for {state.title}.",
         "Run the smallest useful trial.",
@@ -61,23 +70,28 @@ async def plan_steps(state: ExperimentState) -> StepsUpdate:
     ]
 
     await publish_experiment_card(
-        workflow_call_id=state.card_group_id,
-        title=state.title,
-        stage="draft",
-        heading="DRAFT PLAN",
-        lines=steps,
+        ExperimentCard(
+            workflow_call_id=state.card_group_id,
+            title=state.title,
+            stage="draft",
+            heading="DRAFT PLAN",
+            lines=steps,
+        )
     )
 
     return {"steps": steps}
 
 
 async def review_plan(state: ExperimentState) -> ReviewUpdate:
+    """Wait for a review decision and apply edits from the approved plan."""
     await publish_experiment_card(
-        workflow_call_id=state.card_group_id,
-        title=state.title,
-        stage="review",
-        heading="REVIEW REQUIRED",
-        lines=["Review the draft plan before continuing."],
+        ExperimentCard(
+            workflow_call_id=state.card_group_id,
+            title=state.title,
+            stage="review",
+            heading="REVIEW REQUIRED",
+            lines=["Review the draft plan before continuing."],
+        )
     )
 
     review = PlanReview.model_validate(
@@ -107,6 +121,7 @@ async def review_plan(state: ExperimentState) -> ReviewUpdate:
 
 
 async def finish_plan(state: ExperimentState) -> dict[str, object]:
+    """Publish the final card for the reviewed plan."""
     if state.review_status == "rejected":
         heading = "PLAN REJECTED"
         lines = ["The reviewer rejected this draft."]
@@ -115,11 +130,13 @@ async def finish_plan(state: ExperimentState) -> dict[str, object]:
         lines = state.steps
 
     await publish_experiment_card(
-        workflow_call_id=state.card_group_id,
-        title=state.title,
-        stage="reviewed",
-        heading=heading,
-        lines=lines,
+        ExperimentCard(
+            workflow_call_id=state.card_group_id,
+            title=state.title,
+            stage="reviewed",
+            heading=heading,
+            lines=lines,
+        )
     )
 
     return {}

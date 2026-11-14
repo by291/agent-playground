@@ -13,6 +13,16 @@ export const textReveal = {
 
 const segmenter = new Intl.Segmenter(undefined, { granularity: "grapheme" });
 
+interface TextCommitOptions {
+  isImmediate?: boolean;
+}
+
+interface TextUpdate {
+  text: string;
+  isEnabled: boolean;
+  isStreaming: boolean;
+}
+
 class TextStreamAnimator {
   private frameId: number | null = null;
   private lastUpdateTime = Date.now();
@@ -23,34 +33,38 @@ class TextStreamAnimator {
 
   constructor(
     text: string,
-    private readonly commit: (text: string, immediate?: boolean) => void,
+    private readonly commit: (
+      text: string,
+      options?: TextCommitOptions,
+    ) => void,
   ) {
     this.currentText = text;
     this.targetText = text;
   }
 
-  update(text: string, enabled: boolean, streaming: boolean) {
+  /** Updates the target and preserves the reveal deadline once the stream closes. */
+  update({ text, isEnabled, isStreaming }: TextUpdate) {
     const replaced = !text.startsWith(this.targetText);
 
     this.targetText = text;
 
-    if (streaming) {
+    if (isStreaming) {
       this.finishBy = null;
     } else {
       this.finishBy ??= Date.now() + textReveal.backlogDrainMs;
     }
 
-    if (!enabled || (replaced && !streaming)) {
+    if (!isEnabled || (replaced && !isStreaming)) {
       this.stop();
       this.currentText = text;
-      this.commit(text, true);
+      this.commit(text, { isImmediate: true });
 
       return;
     }
 
     if (replaced) {
       this.currentText = "";
-      this.commit("", true);
+      this.commit("", { isImmediate: true });
     }
 
     if (this.frameId === null && this.currentText !== text) {
@@ -59,6 +73,7 @@ class TextStreamAnimator {
     }
   }
 
+  /** Releases the pending animation frame when its owner stops presenting. */
   stop() {
     if (this.frameId !== null) {
       cancelAnimationFrame(this.frameId);
@@ -117,8 +132,16 @@ class TextStreamAnimator {
   };
 }
 
-export function usePacedText(text: string, streaming: boolean) {
+/** Paces live text and tracks the final fade for consumers that wait on presentation. */
+export function usePacedText({
+  text,
+  isStreaming: streaming,
+}: {
+  text: string;
+  isStreaming: boolean;
+}) {
   const { preferences } = useUserPreferences();
+
   // The shared query tracks live changes; Motion's installed hook snapshots the setting.
   const reduceMotion = useMediaQuery("(prefers-reduced-motion: reduce)");
   const [hasStreamed, setHasStreamed] = useState(streaming);
@@ -127,21 +150,28 @@ export function usePacedText(text: string, streaming: boolean) {
     revealedAt: number | null;
   }>(() => ({ text: streaming ? "" : text, revealedAt: null }));
   const [settledFrame, setSettledFrame] = useState(frame);
+
   const [animator] = useState(
     () =>
-      new TextStreamAnimator(frame.text, (nextText, immediate = false) => {
-        setFrame((previous) => {
-          const unchanged =
-            previous.text === nextText &&
-            (!immediate || previous.revealedAt === null);
+      new TextStreamAnimator(
+        frame.text,
+        (nextText, { isImmediate = false } = {}) => {
+          setFrame((previous) => {
+            const unchanged =
+              previous.text === nextText &&
+              (!isImmediate || previous.revealedAt === null);
 
-          if (unchanged) {
-            return previous;
-          }
+            if (unchanged) {
+              return previous;
+            }
 
-          return { text: nextText, revealedAt: immediate ? null : Date.now() };
-        });
-      }),
+            return {
+              text: nextText,
+              revealedAt: isImmediate ? null : Date.now(),
+            };
+          });
+        },
+      ),
   );
 
   if (streaming && !hasStreamed) {
@@ -150,36 +180,62 @@ export function usePacedText(text: string, streaming: boolean) {
 
   const enabled = hasStreamed && !reduceMotion && preferences.replyAnimation;
 
-  useEffect(() => {
-    animator.update(text, enabled, streaming);
-  }, [animator, text, enabled, streaming]);
+  useEffect(
+    () => {
+      animator.update({
+        text,
+        isEnabled: enabled,
+        isStreaming: streaming,
+      });
+    },
+    /* prettier-ignore */ [
+      animator,
+      text,
+      enabled,
+      streaming,
+    ],
+  );
 
+  // The animator can keep a frame queued even after its input stops changing.
   useEffect(() => () => animator.stop(), [animator]);
 
-  useEffect(() => {
-    if (
-      !enabled ||
-      streaming ||
-      frame.text !== text ||
-      frame === settledFrame ||
-      frame.revealedAt === null
-    ) {
-      return;
-    }
+  useEffect(
+    () => {
+      if (
+        !enabled ||
+        streaming ||
+        frame.text !== text ||
+        frame === settledFrame ||
+        frame.revealedAt === null
+      ) {
+        return;
+      }
 
-    // Keep the final streaming block mounted until its most recent fade ends.
-    const remaining =
-      textReveal.fadeDurationMs - (Date.now() - frame.revealedAt);
-    const timer = setTimeout(
-      () => setSettledFrame(frame),
-      Math.max(0, remaining),
-    );
+      // Keep the final streaming block mounted until its most recent fade ends.
+      const remaining =
+        textReveal.fadeDurationMs - (Date.now() - frame.revealedAt);
+      const timer = setTimeout(
+        () => setSettledFrame(frame),
+        Math.max(0, remaining),
+      );
 
-    return () => clearTimeout(timer);
-  }, [enabled, streaming, text, frame, settledFrame]);
+      return () => clearTimeout(timer);
+    },
+    /* prettier-ignore */ [
+      enabled,
+      streaming,
+      text,
+      frame,
+      settledFrame,
+    ],
+  );
 
   if (!enabled) {
-    return { text, streaming, animated: false };
+    return {
+      text,
+      streaming,
+      animated: false,
+    };
   }
 
   const visible = text.startsWith(frame.text) ? frame.text : "";

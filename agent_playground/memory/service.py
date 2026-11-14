@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from dataclasses import dataclass
 from uuid import UUID
 
 import psycopg
@@ -21,15 +23,31 @@ from agent_playground.memory.models import (
     memory_view,
 )
 
+MEMORY_RECALL_LIMIT = 100
+RECORD_LOCK_CONNECT_TIMEOUT_SECONDS = 5
+
+
+@dataclass(frozen=True, kw_only=True)
+class MemoryWrite:
+    """Group the identity, content and optional provenance of a memory write."""
+
+    scope: MemoryScope
+    text: str
+    memory_id: str
+    revision: int | None = None
+    source_thread_id: str | None = None
+    source_message_id: str | None = None
+
 
 @asynccontextmanager
-async def record_lock(key: str):
+async def record_lock(key: str) -> AsyncIterator[None]:
+    """Hold a cross-process record lock until the complete mutation finishes."""
     # Store writes use their own transactions. This lock serializes our complete
     # read/check/write operation across processes, including management requests.
     url = load_agent_config().database.aegra_url.get_secret_value()
 
     async with await psycopg.AsyncConnection.connect(
-        url, connect_timeout=5
+        url, connect_timeout=RECORD_LOCK_CONNECT_TIMEOUT_SECONDS
     ) as connection:
         await connection.execute("SET LOCAL lock_timeout = '5s'")
         await connection.execute(
@@ -46,12 +64,14 @@ class MemoryService:
         self.store = store
 
     async def list_memories(self, *, offset: int = 0, limit: int = 50) -> MemoryPage:
+        """Read a page of live memories and report whether more records exist."""
         rows = await self.store.asearch(
             MEMORY_ROOT,
             filter={"content": {"$ne": None}},
             limit=limit + 1,
             offset=offset,
         )
+
         items = [memory for row in rows[:limit] if (memory := memory_view(row))]
 
         return MemoryPage(
@@ -59,27 +79,23 @@ class MemoryService:
         )
 
     async def recall(self, scope: MemoryScope) -> list[MemoryView]:
+        """Return a bounded set of live records in most-recently-edited order."""
         rows = await self.store.asearch(
-            memory_namespace(scope), filter={"content": {"$ne": None}}, limit=100
+            memory_namespace(scope),
+            filter={"content": {"$ne": None}},
+            limit=MEMORY_RECALL_LIMIT,
         )
+
         memories = [memory for row in rows if (memory := memory_view(row))]
 
         return sorted(memories, key=lambda memory: memory.updated_at, reverse=True)
 
-    async def save(
-        self,
-        scope: MemoryScope,
-        text: str,
-        memory_id: str,
-        *,
-        revision: int | None = None,
-        source_thread_id: str | None = None,
-        source_message_id: str | None = None,
-    ) -> MemoryView:
+    async def save(self, write: MemoryWrite) -> MemoryView:
         """Create idempotently or edit the current revision without restoring tombstones."""
-        memory_id = str(UUID(memory_id))
-        namespace = memory_namespace(scope)
+        memory_id = str(UUID(write.memory_id))
+        namespace = memory_namespace(write.scope)
         lock_key = json.dumps([*namespace, memory_id])
+        revision = write.revision
 
         async with record_lock(lock_key):
             previous = await self.store.aget(namespace, memory_id)
@@ -92,12 +108,12 @@ class MemoryService:
             existing = memory_view(previous) if previous is not None else None
 
             content = MemoryContent(
-                category=scope.category,
-                project=scope.project,
-                text=text,
+                category=write.scope.category,
+                project=write.scope.project,
+                text=write.text,
                 revision=(existing.revision + 1) if existing is not None else 1,
-                sourceThreadId=source_thread_id,
-                sourceMessageId=source_message_id,
+                sourceThreadId=write.source_thread_id,
+                sourceMessageId=write.source_message_id,
             )
 
             if revision is None and existing is not None:
@@ -105,8 +121,8 @@ class MemoryService:
                 # identity must never be reused to silently create different content.
                 same_creation = (
                     existing.text == content.text
-                    and existing.source_thread_id == source_thread_id
-                    and existing.source_message_id == source_message_id
+                    and existing.source_thread_id == write.source_thread_id
+                    and existing.source_message_id == write.source_message_id
                 )
 
                 if same_creation:
@@ -122,7 +138,7 @@ class MemoryService:
                     raise ValueError("This memory changed; refresh it before editing")
 
                 # Management edits keep the original user-message provenance.
-                if source_thread_id is None:
+                if write.source_thread_id is None:
                     content.source_thread_id = existing.source_thread_id
                     content.source_message_id = existing.source_message_id
 
@@ -134,6 +150,7 @@ class MemoryService:
                 schema=MemoryContent,
                 actions_permitted=("update",),
             )
+
             await manager.ainvoke(
                 {
                     "action": "update",

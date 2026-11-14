@@ -7,7 +7,14 @@ const textApi = {
   schema: z
     .object({
       text: dynamicText,
-      role: z.enum(["eyebrow", "title", "body", "step"]),
+      role: z.enum(
+        /* prettier-ignore */ [
+          "eyebrow",
+          "title",
+          "body",
+          "step",
+        ],
+      ),
     })
     .strict(),
 };

@@ -8,7 +8,11 @@ async function installConversation(page: Page) {
   const snapshot = {
     title: "Motion fixture",
     messages: [
-      { id: "question", role: "user", content: "Explain the return policy" },
+      {
+        id: "question",
+        role: "user",
+        content: "Explain the return policy",
+      },
       {
         id: "reasoning",
         role: "reasoning",
@@ -54,7 +58,13 @@ async function installConversation(page: Page) {
     ],
     outputs: [],
     interrupts: [],
-    runs: [{ runId: "motion-run", messageId: "question", status: "completed" }],
+    runs: [
+      {
+        runId: "motion-run",
+        messageId: "question",
+        status: "completed",
+      },
+    ],
   };
 
   await page.route(
@@ -189,7 +199,11 @@ test.describe("normal motion", () => {
     });
 
     expect(reversal).toEqual({
-      exiting: { connected: true, inert: true, hidden: "true" },
+      exiting: {
+        connected: true,
+        inert: true,
+        hidden: "true",
+      },
       retained: true,
     });
     await expect(toggle).toHaveAttribute("aria-expanded", "true");

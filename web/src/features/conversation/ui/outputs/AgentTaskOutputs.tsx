@@ -132,6 +132,7 @@ function AgentStepOutput({
   );
 }
 
+/** Presents both child-agent progress and any completed task output. */
 export function AgentTaskOutputs({ task }: { task: ExternalTaskSnapshot }) {
   const outputs = task.outputs ?? [];
   const steps =

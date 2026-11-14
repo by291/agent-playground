@@ -5,6 +5,7 @@ const selectionSchema = selectConversationModelSchema.extend({
   threadId: z.string().min(1),
 });
 
+/** Saves a model selection and returns the server-confirmed model. */
 export async function selectConversationModel(
   threadId: string,
   modelId: string,

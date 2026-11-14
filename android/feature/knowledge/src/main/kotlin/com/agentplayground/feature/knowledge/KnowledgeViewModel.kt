@@ -62,38 +62,19 @@ class KnowledgeViewModel(private val repository: KnowledgeRepository) : ViewMode
         viewModelScope.launch { refresh() }
     }
 
-    private suspend fun refresh(preserveError: Boolean = false) = refreshMutex.withLock {
+    private suspend fun refresh() = refreshMutex.withLock {
         mutable.update { it.copy(loading = true) }
 
         try {
             val documents = repository.documents()
 
-            mutable.update {
-                it.copy(
-                    documents = documents,
-                    error =
-                        if (preserveError || it.pendingUploads.isNotEmpty()) {
-                            it.error
-                        } else {
-                            null
-                        },
-                )
-            }
+            mutable.update { it.copy(documents = documents, listError = null) }
         } catch (error: Exception) {
             if (error is CancellationException) {
                 throw error
             }
 
-            mutable.update {
-                it.copy(
-                    error =
-                        if (preserveError && it.error != null) {
-                            it.error
-                        } else {
-                            error.message ?: "Could not load documents."
-                        }
-                )
-            }
+            mutable.update { it.copy(listError = error.message ?: "Could not load documents.") }
         } finally {
             mutable.update { it.copy(loading = false) }
         }
@@ -176,7 +157,7 @@ class KnowledgeViewModel(private val repository: KnowledgeRepository) : ViewMode
 
                 // A failed response can follow successful server admission. Reconcile it while
                 // retaining the original error and file ID for an explicit retry.
-                refresh(preserveError = true)
+                refresh()
 
                 throw error
             }
@@ -244,7 +225,7 @@ class KnowledgeViewModel(private val repository: KnowledgeRepository) : ViewMode
             mutable.update { it.copy(error = error.message ?: "Document operation failed.") }
 
             if (refreshOnFailure) {
-                refresh(preserveError = true)
+                refresh()
             }
         } finally {
             mutable.update { it.copy(busy = false, operation = null) }

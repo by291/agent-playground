@@ -270,6 +270,7 @@ class KnowledgeUploadTest {
             await { !fixture.vm.state.value.busy }
 
             assertTrue(fixture.vm.state.value.error!!.contains("Response unavailable"))
+            assertTrue(fixture.vm.state.value.listError!!.contains("List unavailable"))
             assertEquals(fixture.uri.toString(), fixture.vm.state.value.pendingUploads.single().uri)
             assertEquals("POST", fixture.request().method)
             assertEquals("GET", fixture.request().method)
@@ -277,7 +278,7 @@ class KnowledgeUploadTest {
     }
 
     @Test
-    fun `failed reindex refreshes server status while keeping its error`() {
+    fun `ongoing document refreshes cannot hide a reindex failure`() {
         Fixture().use { fixture ->
             fixture.server.enqueue(unavailable())
             fixture.server.enqueue(
@@ -288,8 +289,16 @@ class KnowledgeUploadTest {
             await { !fixture.vm.state.value.busy }
 
             assertEquals("indexing", fixture.vm.state.value.documents.single().status)
-            assertTrue(fixture.vm.state.value.error!!.contains("Response unavailable"))
+            val reindexError = fixture.vm.state.value.error.orEmpty()
+            assertTrue(reindexError.contains("Response unavailable"))
             assertEquals("/api/knowledge/documents/original-id/reindex", fixture.request().path)
+            assertEquals("GET", fixture.request().method)
+
+            fixture.server.enqueue(MockResponse().setBody("[${document("original-id", "ready")}]"))
+            fixture.vm.setVisible(true)
+            await { fixture.vm.state.value.documents.single().status == "ready" }
+
+            assertEquals(reindexError, fixture.vm.state.value.error)
             assertEquals("GET", fixture.request().method)
         }
     }

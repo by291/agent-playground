@@ -472,12 +472,12 @@ private fun MarkdownTable(
                         Row(
                             Modifier.fillMaxWidth().background(background).drawBehind {
                                 for (column in 1 until columns) {
-                                    val x = cellWidthPx * column
+                                    val columnBoundary = cellWidthPx * column
 
                                     drawLine(
                                         colors.outlineVariant,
-                                        Offset(x, 0f),
-                                        Offset(x, size.height),
+                                        Offset(columnBoundary, 0f),
+                                        Offset(columnBoundary, size.height),
                                         1.dp.toPx(),
                                     )
                                 }

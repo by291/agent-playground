@@ -16,10 +16,15 @@ from langchain_core.messages import AIMessageChunk, HumanMessage, SystemMessage
 
 from agent_playground.config.agent import load_agent_config
 from agent_playground.config.models import load_model_config
-from agent_playground.models.catalog import create_chat_model
-from agent_playground.services.a2a.contracts import AgentRole
+from agent_playground.models.catalog import ChatModelRequest, create_chat_model
+from agent_playground.services.a2a.contracts import MAX_OUTPUT_CHARACTERS, AgentRole
 
 logger = logging.getLogger(__name__)
+SCRIPTED_CHUNK_DELAY_SECONDS = 0.08
+MODEL_CHUNK_INTERVAL_SECONDS = 0.15
+MODEL_CHUNK_CHARACTERS = 600
+MODEL_OUTPUT_TOKENS = 2_200
+SCRIPTED_SUMMARY_CHARACTERS = 900
 
 SYSTEM_PROMPTS = {
     "planner": (
@@ -44,7 +49,11 @@ SYSTEM_PROMPTS = {
 
 class DemoAgentExecutor(AgentExecutor):
     def __init__(
-        self, role: AgentRole, *, mode: str | None = None, chunk_delay: float = 0.08
+        self,
+        role: AgentRole,
+        *,
+        mode: str | None = None,
+        chunk_delay: float = SCRIPTED_CHUNK_DELAY_SECONDS,
     ) -> None:
         if role not in SYSTEM_PROMPTS:
             raise ValueError("A2A agent role must be planner or reviewer")
@@ -59,6 +68,7 @@ class DemoAgentExecutor(AgentExecutor):
         self.active_task_ids: set[str] = set()
 
     async def execute(self, context: RequestContext, event_queue: EventQueue) -> None:
+        """Run a reserved task and publish its interruption or final artifact."""
         task_id = context.task_id
         context_id = context.context_id
 
@@ -91,37 +101,13 @@ class DemoAgentExecutor(AgentExecutor):
                         [Part(text="Who is the target audience for this plan?")]
                     )
                 )
+
                 return
 
             await updater.start_work()
+
             prompt = "\n\n".join(get_message_text(message) for message in user_messages)
-            first_chunk = True
-            output_characters = 0
-            artifact_id = f"{task_id}:output"
-
-            async with aclosing(self._stream_text(prompt)) as chunks:
-                async for text in chunks:
-                    output_characters += len(text)
-
-                    if output_characters > 100_000:
-                        raise ValueError("Agent output exceeded the demo limit")
-
-                    await updater.add_artifact(
-                        [Part(text=text)],
-                        artifact_id=artifact_id,
-                        name=f"{self.role} output",
-                        append=not first_chunk,
-                        last_chunk=False,
-                    )
-                    first_chunk = False
-
-            if first_chunk:
-                raise ValueError("The model returned no text")
-
-            await updater.add_artifact(
-                [], artifact_id=artifact_id, append=True, last_chunk=True
-            )
-            await updater.complete()
+            await self._publish_artifact(updater, prompt, task_id)
         except asyncio.CancelledError:
             raise
         except Exception as error:
@@ -138,7 +124,39 @@ class DemoAgentExecutor(AgentExecutor):
         finally:
             self.active_task_ids.discard(task_id)
 
+    async def _publish_artifact(
+        self, updater: TaskUpdater, prompt: str, task_id: str
+    ) -> None:
+        first_chunk = True
+        output_characters = 0
+        artifact_id = f"{task_id}:output"
+
+        async with aclosing(self._stream_text(prompt)) as chunks:
+            async for text in chunks:
+                output_characters += len(text)
+
+                if output_characters > MAX_OUTPUT_CHARACTERS:
+                    raise ValueError("Agent output exceeded the demo limit")
+
+                await updater.add_artifact(
+                    [Part(text=text)],
+                    artifact_id=artifact_id,
+                    name=f"{self.role} output",
+                    append=not first_chunk,
+                    last_chunk=False,
+                )
+                first_chunk = False
+
+        if first_chunk:
+            raise ValueError("The model returned no text")
+
+        await updater.add_artifact(
+            [], artifact_id=artifact_id, append=True, last_chunk=True
+        )
+        await updater.complete()
+
     async def cancel(self, context: RequestContext, event_queue: EventQueue) -> None:
+        """Cancel task execution and release the SDK consumer."""
         if not context.task_id or not context.context_id:
             raise ValueError("Cancellation requires task and context IDs")
 
@@ -155,17 +173,19 @@ class DemoAgentExecutor(AgentExecutor):
 
             return
 
+        # Reasoning can consume the visible-answer budget before any artifact text arrives.
         model = create_chat_model(
-            load_model_config().a2a_model,
-            max_tokens=2200,
-            # The demo budgets visible answers; reasoning can otherwise consume
-            # that budget before any artifact text is produced.
-            disable_thinking=True,
+            ChatModelRequest(
+                model_id=load_model_config().a2a_model,
+                max_tokens=MODEL_OUTPUT_TOKENS,
+                should_disable_thinking=True,
+            )
         )
         messages = [
             SystemMessage(content=SYSTEM_PROMPTS[self.role]),
             HumanMessage(content=prompt),
         ]
+
         buffer = ""
         last_emitted_at = time.monotonic()
         first_chunk = True
@@ -183,8 +203,9 @@ class DemoAgentExecutor(AgentExecutor):
 
                 should_emit = (
                     first_chunk
-                    or time.monotonic() - last_emitted_at >= 0.15
-                    or len(buffer) >= 600
+                    or time.monotonic() - last_emitted_at
+                    >= MODEL_CHUNK_INTERVAL_SECONDS
+                    or len(buffer) >= MODEL_CHUNK_CHARACTERS
                 )
 
                 if should_emit:
@@ -197,22 +218,29 @@ class DemoAgentExecutor(AgentExecutor):
             yield buffer
 
     async def _scripted_text(self, prompt: str) -> AsyncGenerator[str, None]:
-        request_summary = " ".join(prompt.split())[:900]
+        request_summary = " ".join(prompt.split())[:SCRIPTED_SUMMARY_CHARACTERS]
 
         if self.role == "planner":
-            _, feedback_marker, feedback = prompt.partition("\nReviewer feedback:\n")
+            (
+                _,
+                feedback_marker,
+                feedback,
+            ) = prompt.partition("\nReviewer feedback:\n")
             stage_revision = prompt.startswith("Stage: Revise\n") and bool(
                 feedback_marker and feedback.strip()
             )
             # Persisted requests retain the coordinator's pre-stage envelope.
-            _, legacy_review_marker, legacy_review = prompt.partition(
-                "\nRevise it using this review:\n"
-            )
+            (
+                _,
+                legacy_review_marker,
+                legacy_review,
+            ) = prompt.partition("\nRevise it using this review:\n")
             legacy_revision = prompt.startswith("Original proposal:\n") and bool(
                 legacy_review_marker and legacy_review.strip()
             )
-            revision = stage_revision or legacy_revision
-            heading = "Revised plan" if revision else "Practical plan"
+
+            is_revision = stage_revision or legacy_revision
+            heading = "Revised plan" if is_revision else "Practical plan"
             paragraphs = [
                 f"## {heading}\n\nRequest: {request_summary}\n\n",
                 "1. Objective and audience: confirm the desired outcome and adapt the scope to the named participants.\n\n",
@@ -222,7 +250,7 @@ class DemoAgentExecutor(AgentExecutor):
                 "5. Risks: prepare a smaller fallback exercise for time pressure, a written guide for absences, and a backup facilitator.\n\n",
                 "6. Success criteria: collect one completed exercise per participant, an anonymous usefulness rating, and a named owner and deadline for each follow-up.\n\n",
                 "Revision notes: made audience, ownership, timing, fallback arrangements, and measurable outcomes explicit in response to the Reviewer feedback.\n"
-                if revision
+                if is_revision
                 else "Handoff: the initial draft is ready for the independent Reviewer.\n",
             ]
         else:

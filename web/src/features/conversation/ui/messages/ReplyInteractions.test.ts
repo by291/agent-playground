@@ -9,7 +9,11 @@ import { animationClock } from "../../../../../tests/animationClock";
 test("message dates use local time and invalid or absent dates stay hidden", () => {
   const page = render(
     createElement(MessageRow, {
-      message: { id: "question", role: "user", content: "Question" },
+      message: {
+        id: "question",
+        role: "user",
+        content: "Question",
+      },
       timestamp: "2026-10-10T18:00:00.000Z",
     }),
   );
@@ -21,7 +25,11 @@ test("message dates use local time and invalid or absent dates stay hidden", () 
   );
   page.rerender(
     createElement(MessageRow, {
-      message: { id: "question", role: "user", content: "Question" },
+      message: {
+        id: "question",
+        role: "user",
+        content: "Question",
+      },
       timestamp: "invalid",
     }),
   );
@@ -48,7 +56,11 @@ test("Copy all writes the original Markdown and reports clipboard rejection", as
   const markdown = "## Reply\n\nA **bold** [link](https://example.com).";
   const page = render(
     createElement(MessageRow, {
-      message: { id: "reply", role: "assistant", content: markdown },
+      message: {
+        id: "reply",
+        role: "assistant",
+        content: markdown,
+      },
     }),
   );
 
@@ -240,7 +252,11 @@ test.each([
 ])("selected Markdown preserves escapes in $source", ({ source, expected }) => {
   const page = render(
     createElement(MessageRow, {
-      message: { id: "reply", role: "assistant", content: source },
+      message: {
+        id: "reply",
+        role: "assistant",
+        content: source,
+      },
     }),
   );
   const answer = page.container.querySelector(".chat-markdown")!;

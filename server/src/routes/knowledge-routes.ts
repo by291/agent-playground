@@ -10,9 +10,11 @@ import {
   readDocument,
   uploadDocument,
 } from "../knowledge/documents.js";
-import { logger } from "../observability/logger.js";
 import { workflowAuth } from "../middleware/workflow-auth.js";
+import { logger } from "../observability/logger.js";
+import { attachmentDisposition } from "./content-disposition.js";
 
+/** Serves shared knowledge documents and authenticated internal downloads. */
 export const knowledgeRoutes = new Hono();
 
 knowledgeRoutes.onError((error, context) => {
@@ -34,9 +36,11 @@ knowledgeRoutes.use(
   workflowAuth("Invalid application credential"),
 );
 
-knowledgeRoutes.get("/api/knowledge/documents", async (context) =>
-  context.json(await listDocuments()),
-);
+knowledgeRoutes.get("/api/knowledge/documents", async (context) => {
+  const documents = await listDocuments();
+
+  return context.json(documents);
+});
 
 knowledgeRoutes.post(
   "/api/knowledge/documents",
@@ -51,12 +55,17 @@ knowledgeRoutes.post(
     }
 
     const id = context.req.header("X-Document-Id") ?? "";
-    const data = Buffer.from(await context.req.arrayBuffer());
+    const bytes = Buffer.from(await context.req.arrayBuffer());
     const textEncoding = parseTextEncoding(
       context.req.header("X-Text-Encoding"),
     );
 
-    const document = await uploadDocument(id, name, data, textEncoding);
+    const document = await uploadDocument({
+      id,
+      name,
+      bytes,
+      textEncoding,
+    });
 
     return context.json(document, 201);
   },
@@ -88,9 +97,9 @@ for (const path of [
   knowledgeRoutes.get(path, async (context) => {
     const file = await readDocument(context.req.param("id") ?? "");
 
-    return context.body(new Uint8Array(file.data), 200, {
+    return context.body(new Uint8Array(file.bytes), 200, {
       "Content-Type": "application/octet-stream",
-      "Content-Disposition": `attachment; filename="document"; filename*=UTF-8''${encodeURIComponent(file.name).replaceAll("'", "%27")}`,
+      "Content-Disposition": attachmentDisposition(file.name, "document"),
       "Cache-Control": "no-store",
       "X-Content-Type-Options": "nosniff",
     });

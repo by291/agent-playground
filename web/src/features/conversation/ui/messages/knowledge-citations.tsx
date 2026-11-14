@@ -19,6 +19,7 @@ const citationContext = createContext<{
 
 export const KnowledgeCitationProvider = citationContext.Provider;
 
+/** Opens the matching passage from the citation embedded in a reply. */
 export function KnowledgeCitation({ chunkId }: { chunkId: string }) {
   const context = useContext(citationContext);
   const source = context?.sources.get(chunkId);
@@ -69,7 +70,14 @@ export function KnowledgeCitation({ chunkId }: { chunkId: string }) {
 
 type Element = NonNullable<ExtraProps["node"]>;
 type Parent = Pick<Element, "children">;
-const excludedTags = new Set(["pre", "code", "svg", "math"]);
+const excludedTags = new Set(
+  /* prettier-ignore */ [
+    "pre",
+    "code",
+    "svg",
+    "math",
+  ],
+);
 const citationPattern =
   /^#knowledge-source-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i;
 
@@ -97,8 +105,7 @@ function markCitations(parent: Parent) {
   }
 }
 
-// Only parsed citation links are transformed; code and ordinary links retain
-// Streamdown's rendering and link-safety behavior.
+/** Annotates parsed citations while preserving Streamdown's ordinary links and code. */
 export function knowledgeCitations() {
   return markCitations;
 }

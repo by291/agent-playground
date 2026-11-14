@@ -5,7 +5,7 @@ import {
   isRunFinished,
   type RunStatus,
 } from "../../../../shared/run-status.js";
-import { hasRunDispatchOwner, saveRunObservation } from "./run-store.js";
+import { saveRunObservation } from "./run-store.js";
 
 function externalRunId(run: Run): unknown {
   const stored = run as Run & {
@@ -15,6 +15,7 @@ function externalRunId(run: Run): unknown {
   return stored.config?.metadata?.agui_run_id;
 }
 
+/** Resolve a native run by the application identity recorded at dispatch. */
 export async function findLatestAegraRun(
   threadId: string,
   aguiRunId: string,
@@ -64,13 +65,14 @@ export async function reconcileRun(
   }
 
   if (!aegraRunId) {
-    // A live local producer can still publish its mapping; only an ownerless claim is unknown.
-    const outcomeUnknown =
-      row.status === "dispatching" && !hasRunDispatchOwner(row.aguiRunId);
+    if (row.status !== "dispatching") {
+      return row;
+    }
 
+    // The database decides if the dispatch is orphaned using its current lease.
     return saveRunObservation(row, {
       aegraRunId: null,
-      status: outcomeUnknown ? "submission_unknown" : row.status,
+      status: "submission_unknown",
     });
   }
 

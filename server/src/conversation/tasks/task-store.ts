@@ -28,10 +28,11 @@ function historyUpdate(update: ExternalTaskUpdate) {
   return history;
 }
 
+/** Persist a retry-stable external task for an admitted conversation run. */
 export async function registerExternalTask(input: ExternalTaskRegistration) {
   return db.transaction(async (tx) => {
     // Registration shares admission's lock so deletion cannot race in a new task.
-    const [conversation] = await tx
+    const conversationLockQuery = tx
       .select()
       .from(conversations)
       .where(
@@ -39,8 +40,9 @@ export async function registerExternalTask(input: ExternalTaskRegistration) {
           eq(conversations.threadId, input.threadId),
           isNull(conversations.deletedAt),
         ),
-      )
-      .for("update");
+      );
+
+    const [conversation] = await conversationLockQuery.for("update");
     const [run] = await tx
       .select()
       .from(conversationRuns)
@@ -98,6 +100,7 @@ export async function registerExternalTask(input: ExternalTaskRegistration) {
   });
 }
 
+/** Advance a callback revision and its history together under the task lock. */
 export async function updateExternalTask(
   taskId: string,
   token: string,
@@ -105,11 +108,12 @@ export async function updateExternalTask(
 ) {
   return db.transaction(async (tx) => {
     // Serialize callbacks so the accepted revision and its history advance together.
-    const [task] = await tx
+    const taskLockQuery = tx
       .select()
       .from(externalTasks)
-      .where(eq(externalTasks.taskId, taskId))
-      .for("update");
+      .where(eq(externalTasks.taskId, taskId));
+
+    const [task] = await taskLockQuery.for("update");
 
     const supplied = Buffer.from(token);
     const expected = Buffer.from(task?.callbackToken ?? "");
@@ -162,7 +166,11 @@ export async function updateExternalTask(
 
     await tx
       .update(externalTasks)
-      .set({ revision: update.revision, status: update.status, update })
+      .set({
+        revision: update.revision,
+        status: update.status,
+        update,
+      })
       .where(eq(externalTasks.taskId, taskId));
 
     await notifyConversation(tx, task.threadId);
@@ -171,21 +179,23 @@ export async function updateExternalTask(
   });
 }
 
+/** Forward a valid user action to the coordinator that owns the task. */
 export async function controlExternalTask(
   taskId: string,
   action: "input" | "cancel",
   input?: string,
 ) {
-  const [owned] = await db
+  const ownedTaskQuery = db
     .select({ task: externalTasks })
     .from(externalTasks)
     .innerJoin(
       conversations,
       eq(externalTasks.threadId, conversations.threadId),
-    )
-    .where(
-      and(eq(externalTasks.taskId, taskId), isNull(conversations.deletedAt)),
     );
+
+  const [owned] = await ownedTaskQuery.where(
+    and(eq(externalTasks.taskId, taskId), isNull(conversations.deletedAt)),
+  );
 
   if (!owned) {
     throw new SubmissionError("External task not found", 404);
@@ -231,8 +241,9 @@ export async function controlExternalTask(
   );
 }
 
+/** Read persisted progress, history and continuation status for a conversation. */
 export async function externalTaskSnapshots(threadId: string) {
-  const tasks = await db
+  const taskProjection = db
     .select({
       task: externalTasks,
       continuationStatus: conversationRuns.status,
@@ -241,10 +252,13 @@ export async function externalTaskSnapshots(threadId: string) {
     .leftJoin(
       conversationRuns,
       eq(externalTasks.continuationRunId, conversationRuns.aguiRunId),
-    )
-    .where(eq(externalTasks.threadId, threadId));
+    );
 
-  const events = await db
+  const tasks = await taskProjection.where(
+    eq(externalTasks.threadId, threadId),
+  );
+
+  const taskHistoryQuery = db
     .select({
       taskId: externalTaskEvents.taskId,
       update: externalTaskEvents.update,
@@ -253,7 +267,9 @@ export async function externalTaskSnapshots(threadId: string) {
     .innerJoin(
       externalTasks,
       eq(externalTaskEvents.taskId, externalTasks.taskId),
-    )
+    );
+
+  const events = await taskHistoryQuery
     .where(eq(externalTasks.threadId, threadId))
     .orderBy(asc(externalTaskEvents.revision));
 

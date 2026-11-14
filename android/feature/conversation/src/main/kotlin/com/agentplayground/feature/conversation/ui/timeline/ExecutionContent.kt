@@ -364,6 +364,7 @@ private fun toolLabel(name: String): String =
         "remember_memory" -> "Remember a fact"
         "forget_memory" -> "Forget a fact"
         "get_current_time" -> "Check the time"
+        "write_todos" -> "Update agent plan"
         "calculate_sum" -> "Calculate a sum"
         "run_experiment_workflow" -> "Build an experiment plan"
         "run_sql_workflow" -> "Review SQL"

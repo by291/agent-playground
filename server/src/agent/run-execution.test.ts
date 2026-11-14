@@ -32,12 +32,13 @@ test("upstream configuration uses the pinned model and discards client provider 
     },
   };
 
-  runAgent(
+  runAgent({
     input,
-    () => undefined,
-    () => Promise.resolve(),
-    "qwen",
-  );
+    onRunCreated: () => undefined,
+    onProducerSettled: () => Promise.resolve(),
+    modelId: "qwen",
+  });
+
   const props = boundary.input?.forwardedProps as {
     config: object;
     graphId?: string;

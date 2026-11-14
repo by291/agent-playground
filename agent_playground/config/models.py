@@ -29,6 +29,7 @@ class ChatModelSettings(BaseModel):
 
     @model_validator(mode="after")
     def validate_generation_settings(self) -> Self:
+        """Validate configured limits and thinking against provider capacities."""
         information = model_information(self.provider, self.model)
 
         if self.thinking not in information.thinking_levels:
@@ -69,6 +70,7 @@ class ChatSettings(BaseModel):
 
     @model_validator(mode="after")
     def require_default_model(self) -> Self:
+        """Require the default model to exist in the chat catalog."""
         if self.default not in self.models:
             raise ValueError("chat.default must name a configured model")
 
@@ -100,6 +102,7 @@ class ModelConfig(BaseModel):
 
     @model_validator(mode="after")
     def require_child_model(self) -> Self:
+        """Require the A2A model to exist in the chat catalog."""
         if self.a2a_model not in self.chat.models:
             raise ValueError("a2a_model must name a configured model")
 

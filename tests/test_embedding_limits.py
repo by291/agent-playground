@@ -14,7 +14,7 @@ import pytest
 from openai import AsyncOpenAI
 
 from agent_playground.knowledge.config import EmbeddingConfig
-from agent_playground.knowledge.embeddings import EmbeddingService
+from agent_playground.knowledge.embeddings import EmbeddingBatch, EmbeddingService
 from agent_playground.knowledge.rate_limits import EmbeddingQuota
 from agent_playground.knowledge.token_estimation import EmbeddingTokenEstimator
 from agent_playground.knowledge.worker import SupersededIndexJob
@@ -389,7 +389,12 @@ def test_split_batches_cannot_reset_an_exhausted_retry_allowance(
         async with controlled_embeddings(quota, embedding_redis_url, reject) as service:
             with pytest.raises(ValueError, match="token rate limit"):
                 await service.embed_batch(
-                    [text] * 8, 0, "index", None, estimator=estimator
+                    EmbeddingBatch(
+                        texts=[text] * 8,
+                        index=0,
+                        operation="index",
+                        estimator=estimator,
+                    )
                 )
 
     asyncio.run(run())

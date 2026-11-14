@@ -73,31 +73,7 @@ internal fun reduceConversationEvent(
         }
 
         is ToolCallArgsEvent ->
-            current.copy(
-                messages =
-                    current.messages.map { message ->
-                        if (message is AssistantMessage) {
-                            message.copy(
-                                toolCalls =
-                                    message.toolCalls?.map { call ->
-                                        if (call.id == event.toolCallId) {
-                                            call.copy(
-                                                function =
-                                                    call.function.copy(
-                                                        arguments =
-                                                            call.function.arguments + event.delta
-                                                    )
-                                            )
-                                        } else {
-                                            call
-                                        }
-                                    }
-                            )
-                        } else {
-                            message
-                        }
-                    }
-            )
+            current.copy(messages = current.messages.map { appendToolArguments(it, event) })
 
         is ToolCallResultEvent ->
             current.copy(
@@ -150,6 +126,24 @@ internal fun reduceConversationEvent(
 
         else -> current
     }
+
+private fun appendToolArguments(message: Message, event: ToolCallArgsEvent): Message {
+    if (message !is AssistantMessage) {
+        return message
+    }
+
+    val calls =
+        message.toolCalls?.map { call ->
+            if (call.id != event.toolCallId) {
+                return@map call
+            }
+
+            val arguments = call.function.arguments + event.delta
+            call.copy(function = call.function.copy(arguments = arguments))
+        }
+
+    return message.copy(toolCalls = calls)
+}
 
 // Decoding is pure; the session owns ordered delivery and records malformed output errors.
 internal fun decodeWorkflowOutput(event: BaseEvent): WorkflowOutput? {

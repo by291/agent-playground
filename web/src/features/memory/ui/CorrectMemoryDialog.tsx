@@ -29,6 +29,7 @@ interface CorrectMemoryDialogProps {
   onCorrect: (memory: Memory, text: string) => Promise<boolean | undefined>;
 }
 
+/** Keeps a draft correction tied to the memory revision the user reviewed. */
 export function CorrectMemoryDialog({
   memory,
   latest,
@@ -107,6 +108,7 @@ export function CorrectMemoryDialog({
             workspace.
           </DialogDescription>
         </DialogHeader>
+
         <form
           className="space-y-5"
           onSubmit={(event) => {
@@ -148,11 +150,13 @@ export function CorrectMemoryDialog({
               </p>
             )}
           </div>
+
           {error && (
             <Alert variant="destructive">
               <AlertDescription>{error}</AlertDescription>
             </Alert>
           )}
+
           {needsReview && !busy && (
             <div className="space-y-3 rounded-lg border border-line bg-canvas p-4">
               <p className="text-sm text-muted">
@@ -197,6 +201,7 @@ export function CorrectMemoryDialog({
               )}
             </div>
           )}
+
           <DialogFooter className="flex-col-reverse sm:flex-row">
             <Button
               type="button"

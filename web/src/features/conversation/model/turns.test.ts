@@ -4,7 +4,11 @@ import type { Message } from "@ag-ui/client";
 import { chatTurns, toolProcess } from "./turns";
 
 const messages: Message[] = [
-  { id: "question", role: "user", content: "What time is it?" },
+  {
+    id: "question",
+    role: "user",
+    content: "What time is it?",
+  },
   {
     id: "note",
     role: "assistant",
@@ -22,27 +26,40 @@ const messages: Message[] = [
       },
     ],
   },
-  { id: "sum-result", role: "tool", toolCallId: "sum", content: "3" },
+  {
+    id: "sum-result",
+    role: "tool",
+    toolCallId: "sum",
+    content: "3",
+  },
   {
     id: "clock-result",
     role: "tool",
     toolCallId: "clock",
     content: "12:00 UTC",
   },
-  { id: "answer", role: "assistant", content: "It is noon." },
+  {
+    id: "answer",
+    role: "assistant",
+    content: "It is noon.",
+  },
 ];
 
 test("a user turn owns one reply with parallel tools matched by call ID", () => {
   const turns = chatTurns(messages, [
-    { runId: "run", messageId: "question", status: "completed" },
+    {
+      runId: "run",
+      messageId: "question",
+      status: "completed",
+    },
   ]);
 
   assert.equal(turns.length, 1);
-  const process = toolProcess(turns[0]!);
+  const toolGroups = toolProcess(turns[0]!);
 
-  assert.equal(process[0]?.message.content, "I'll check.");
+  assert.equal(toolGroups[0]?.message.content, "I'll check.");
   assert.deepEqual(
-    process[0]?.calls.map((call) => [call.result?.content, call.status]),
+    toolGroups[0]?.calls.map((call) => [call.result?.content, call.status]),
     [
       ["12:00 UTC", "completed"],
       ["3", "completed"],
@@ -52,7 +69,11 @@ test("a user turn owns one reply with parallel tools matched by call ID", () => 
 
 test("tool argument completion is not execution completion", () => {
   const turn = chatTurns(messages.slice(0, 2), [
-    { runId: "run", messageId: "question", status: "running" },
+    {
+      runId: "run",
+      messageId: "question",
+      status: "running",
+    },
   ])[0]!;
 
   assert.equal(toolProcess(turn)[0]?.calls[0]?.status, "running");
@@ -60,11 +81,30 @@ test("tool argument completion is not execution completion", () => {
 
 test("review resumes stay in the same reply and a new question starts another", () => {
   const turns = chatTurns(
-    [...messages, { id: "next", role: "user", content: "Hello" }],
     [
-      { runId: "run", messageId: "question", status: "interrupted" },
-      { runId: "resume", messageId: "resume", status: "failed" },
-      { runId: "next-run", messageId: "next", status: "running" },
+      ...messages,
+      {
+        id: "next",
+        role: "user",
+        content: "Hello",
+      },
+    ],
+    [
+      {
+        runId: "run",
+        messageId: "question",
+        status: "interrupted",
+      },
+      {
+        runId: "resume",
+        messageId: "resume",
+        status: "failed",
+      },
+      {
+        runId: "next-run",
+        messageId: "next",
+        status: "running",
+      },
     ],
   );
 
@@ -83,7 +123,13 @@ test("failed results and unfinished interrupted calls retain distinct statuses",
   };
   const turn = chatTurns(
     [...messages.slice(0, 2), failed],
-    [{ runId: "run", messageId: "question", status: "interrupted" }],
+    [
+      {
+        runId: "run",
+        messageId: "question",
+        status: "interrupted",
+      },
+    ],
   )[0]!;
 
   assert.deepEqual(
@@ -96,7 +142,11 @@ test.each(["Submitted", "Abandoned"])(
   "a SQL workflow %s after feedback completes its original tool process",
   (content) => {
     const input: Message[] = [
-      { id: "start", role: "user", content: "Review SQL" },
+      {
+        id: "start",
+        role: "user",
+        content: "Review SQL",
+      },
       {
         id: "caller",
         role: "assistant",
@@ -109,14 +159,39 @@ test.each(["Submitted", "Abandoned"])(
           },
         ],
       },
-      { id: "feedback", role: "user", content: "Only amounts" },
-      { id: "revision", role: "assistant", content: "Selected amounts." },
-      { id: "result", role: "tool", toolCallId: "sql-call", content },
+      {
+        id: "feedback",
+        role: "user",
+        content: "Only amounts",
+      },
+      {
+        id: "revision",
+        role: "assistant",
+        content: "Selected amounts.",
+      },
+      {
+        id: "result",
+        role: "tool",
+        toolCallId: "sql-call",
+        content,
+      },
     ];
     const turns = chatTurns(input, [
-      { runId: "initial", messageId: "start", status: "interrupted" },
-      { runId: "feedback-run", messageId: "feedback", status: "interrupted" },
-      { runId: "accept-run", messageId: "accept-run", status: "completed" },
+      {
+        runId: "initial",
+        messageId: "start",
+        status: "interrupted",
+      },
+      {
+        runId: "feedback-run",
+        messageId: "feedback",
+        status: "interrupted",
+      },
+      {
+        runId: "accept-run",
+        messageId: "accept-run",
+        status: "completed",
+      },
     ]);
 
     assert.equal(toolProcess(turns[0]!)[0]?.calls[0]?.status, "completed");

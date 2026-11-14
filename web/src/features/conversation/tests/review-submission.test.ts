@@ -19,7 +19,11 @@ test.each(["plan", "workflow"] as const)(
     );
     const session = createConversationSession(
       { threadId: "review-storage" },
-      new HttpAgent({ threadId: "review-storage", url: "/agent", fetch }),
+      new HttpAgent({
+        threadId: "review-storage",
+        url: "/agent",
+        fetch,
+      }),
     );
     const interrupt = InterruptSchema.parse({
       id: "review",

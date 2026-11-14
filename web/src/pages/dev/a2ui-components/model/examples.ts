@@ -5,10 +5,17 @@ import sqlExample from "../examples/workflow-sql.json";
 import { createGalleryPreview } from "./preview";
 import { parseA2UIMessages } from "@/features/a2ui";
 
-const exampleFiles = [panelExample, textExample, stepsExample, sqlExample];
+const exampleFiles =
+  /* prettier-ignore */ [
+    panelExample,
+    textExample,
+    stepsExample,
+    sqlExample,
+  ];
 
 export const catalogExamples = exampleFiles.map((example) => {
   const source = JSON.stringify(example, null, 2);
+
   const result = createGalleryPreview(example.component, source);
 
   try {

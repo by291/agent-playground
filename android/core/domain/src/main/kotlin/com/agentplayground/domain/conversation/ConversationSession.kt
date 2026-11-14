@@ -12,6 +12,7 @@ import com.agentplayground.domain.model.WorkflowOutput
 import com.agentplayground.domain.model.isActiveRun
 import com.agentplayground.domain.model.isExternalTaskActive
 import com.agentplayground.domain.model.string
+import com.agentplayground.domain.presentation.userMessagePresentation
 import com.agui.core.types.*
 import java.util.UUID
 import kotlinx.coroutines.*
@@ -19,6 +20,10 @@ import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.jsonObject
+
+private data class AdmissionRejection(val runId: String, val error: ApiException)
+
+private data class RejectedDraft(val text: String?, val error: String?)
 
 /**
  * One instance owns one thread. Android lifecycle and navigation release its jobs.
@@ -47,6 +52,7 @@ class ConversationSession(
     val threadId = saved.threadId
     private var saved = saved
     private var pending = saved.pending
+    private var admissionRejection: AdmissionRejection? = null
     private var hasPersistedConversation = !saved.empty
     private var modelRevision = 0L
     private var modelMutationActive = false
@@ -89,21 +95,15 @@ class ConversationSession(
         )
     val state: StateFlow<SessionState> = mutableState.asStateFlow()
 
-    suspend fun restore() {
-        val snapshot = refresh()
+    /** Restores canonical state and retries any saved request whose admission is absent. */
+    suspend fun restore() = recoverPending()
 
-        if (
-            mutableState.value.error == null &&
-                pending?.let { recoveryDecision(snapshot, it) } == RecoveryDecision.Retry
-        ) {
-            startRun(pending!!)
-        }
-    }
-
+    /** Updates the editor immediately; [saveDraft] persists the latest text. */
     fun editDraft(text: String) {
         mutableState.update { it.copy(draft = text) }
     }
 
+    /** Persists the editor without overwriting a concurrent admission record. */
     suspend fun saveDraft() {
         if (closed) {
             return
@@ -112,10 +112,12 @@ class ConversationSession(
         updateSaved { it.copy(draft = state.value.draft) }
     }
 
+    /** Updates the fallback for new submissions when no conversation model is selected. */
     fun setDefaultModel(modelId: String?) {
         defaultModelId = modelId
     }
 
+    /** Saves the model against the local journal or remote thread, depending on admission. */
     suspend fun selectModel(modelId: String) {
         if (
             closed ||
@@ -202,17 +204,15 @@ class ConversationSession(
         return state.value.modelId ?: defaultModelId
     }
 
+    /** Resumes snapshot observation and retries any unadmitted request after reconciliation. */
     fun observe() {
-        if (observing) {
-            return
-        }
-
-        if (closed) {
+        if (observing || closed) {
             return
         }
 
         attached = true
         observing = true
+
         scope.launch { recoverPending() }
         changeJob = scope.launch {
             while (isActive) {
@@ -249,6 +249,7 @@ class ConversationSession(
         }
     }
 
+    /** Detaches local collectors while leaving admitted server work recoverable. */
     fun stopObserving() {
         observing = false
         attached = false
@@ -263,10 +264,12 @@ class ConversationSession(
         mutableState.update { it.copy(streaming = false) }
     }
 
+    /** Sends additional input to an external agent waiting for it. */
     fun submitExternalTaskInput(taskId: String, input: String) {
         controlExternalTask(taskId, ExternalTaskAction.Input, input)
     }
 
+    /** Requests cancellation of an active external agent while retaining its latest snapshot. */
     fun cancelExternalTask(taskId: String) {
         controlExternalTask(taskId, ExternalTaskAction.Cancel)
     }
@@ -358,7 +361,8 @@ class ConversationSession(
         }
     }
 
-    suspend fun send(text: String) {
+    /** Journals the exact submission plus editable composer text before opening a run stream. */
+    suspend fun send(text: String, composerDraft: String = state.value.draft.ifEmpty { text }) {
         if (closed || admitting || settling || !state.value.canSend || text.isBlank()) {
             return
         }
@@ -384,13 +388,15 @@ class ConversationSession(
                     resume,
                     modelId = submissionModelId(!resume.isNullOrEmpty()),
                 ),
-                message.id,
+                messageId = message.id,
                 submittedAt = now().toString(),
+                composerDraft = composerDraft,
             ),
             message,
         )
     }
 
+    /** Applies the decision against the current workflow interrupt and its displayed batch. */
     suspend fun review(
         interruptId: String,
         action: String,
@@ -407,6 +413,65 @@ class ConversationSession(
         applyReviewResolution(resolution)
     }
 
+    /** Stores an editor draft only while its full interrupt envelope remains current. */
+    fun editInteraction(expected: Interrupt, draft: InteractionDraft) {
+        if (closed || admitting || settling || state.value.busy || state.value.loading) {
+            return
+        }
+
+        val request = InteractionRequest.from(expected) ?: return
+        val current = state.value.interrupts.filter { it.id == expected.id }.singleOrNull()
+
+        if (
+            current != expected ||
+                request.expiredAt(now()) ||
+                draft.decisions.size != request.actions.size
+        ) {
+            return
+        }
+
+        mutableState.update {
+            it.copy(interactionDrafts = it.interactionDrafts + (expected to draft))
+        }
+    }
+
+    /** Journals one atomic interaction response without consuming the composer draft. */
+    suspend fun respondToInteraction(expected: Interrupt) {
+        if (
+            closed ||
+                admitting ||
+                settling ||
+                state.value.busy ||
+                state.value.loading ||
+                pending != null
+        ) {
+            return
+        }
+
+        val current = state.value
+        val draft =
+            current.interactionDrafts[expected]
+                ?: InteractionRequest.from(expected)?.initialDraft()
+                ?: return
+        val response = resolveInteraction(current, expected, draft, now()) ?: return
+        val runId = UUID.randomUUID().toString()
+
+        submit(
+            PendingSubmission(
+                newSubmission(
+                    threadId,
+                    runId,
+                    resume = listOf(response),
+                    modelId = submissionModelId(true),
+                ),
+                runId,
+            ),
+            null,
+            preserveDraft = true,
+        )
+    }
+
+    /** Revalidates current plan decisions immediately before journaling their batch. */
     suspend fun submitPlanReviews(planInterruptIds: Set<String>? = null) {
         if (closed || admitting || settling || state.value.busy || state.value.loading) {
             return
@@ -456,6 +521,7 @@ class ConversationSession(
         }
     }
 
+    /** Revises a pending plan and invalidates any decision based on its previous draft. */
     fun editPlan(interruptId: String, draft: PlanDraft) {
         if (closed || admitting || settling || state.value.busy || state.value.loading) {
             return
@@ -473,7 +539,11 @@ class ConversationSession(
         }
     }
 
-    private suspend fun submit(submission: PendingSubmission, message: UserMessage?) {
+    private suspend fun submit(
+        submission: PendingSubmission,
+        message: UserMessage?,
+        preserveDraft: Boolean = false,
+    ) {
         // A review pins its admission model while preserving the next-turn conversation choice.
         val conversationModelId =
             if (submission.input.resume.isNullOrEmpty()) {
@@ -482,8 +552,8 @@ class ConversationSession(
                 state.value.modelId
             }
 
-        admitting = true
         // Lock the UI before the first suspension so rapid taps cannot create two admissions.
+        admitting = true
         mutableState.update { it.copy(busy = true, executionStatus = "running", error = null) }
 
         try {
@@ -491,7 +561,7 @@ class ConversationSession(
                 it.copy(
                     pending = submission,
                     empty = false,
-                    draft = "",
+                    draft = if (preserveDraft) state.value.draft else "",
                     modelSelectionLocal = false,
                     modelId = conversationModelId,
                 )
@@ -513,6 +583,7 @@ class ConversationSession(
 
         admitting = false
         pending = submission
+        admissionRejection = null
         hasPersistedConversation = true
 
         if (closed) {
@@ -521,7 +592,7 @@ class ConversationSession(
 
         mutableState.update {
             it.copy(
-                draft = "",
+                draft = if (preserveDraft) it.draft else "",
                 pendingSubmission = true,
                 modelId = conversationModelId,
                 modelSelectionLocal = false,
@@ -561,11 +632,28 @@ class ConversationSession(
         val generation = ++streamGeneration
 
         streamJob = scope.launch {
+            var accepted = false
+
             try {
-                api.run(submission.input).collect { event -> receive(event) }
+                api.run(submission.input).collect { event ->
+                    if (event is RunStartedEvent && event.runId == submission.input.runId) {
+                        accepted = true
+                    }
+
+                    receive(event)
+                }
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Exception) {
+                if (
+                    generation == streamGeneration &&
+                        !accepted &&
+                        error is ApiException &&
+                        error.status in setOf(400, 404, 409, 413)
+                ) {
+                    admissionRejection = AdmissionRejection(submission.input.runId, error)
+                }
+
                 mutableState.update {
                     it.copy(
                         error = error.message ?: "Agent connection failed. Recover before retrying."
@@ -576,7 +664,7 @@ class ConversationSession(
                 // a replacement stream, including when its snapshot finishes after reattachment.
                 if (generation == streamGeneration && currentCoroutineContext().isActive) {
                     mutableState.update { it.copy(streaming = false) }
-                    refresh(settlement = true)
+                    reconcileSnapshot(isSettlingStream = true)
 
                     if (generation == streamGeneration) {
                         // Release request ownership before publishing an idle UI.
@@ -598,167 +686,209 @@ class ConversationSession(
         }
     }
 
+    /** Reuses a pending submission's identities only after a successful canonical read. */
     suspend fun recoverPending() {
-        val snapshot = refresh()
-        val current = pending
+        val snapshot = reconcileSnapshot()
+        val current = pending ?: return
 
         if (
-            state.value.error == null &&
+            snapshot.isSuccess &&
                 !state.value.streaming &&
                 streamJob?.isActive != true &&
-                current != null &&
-                recoveryDecision(snapshot, current) == RecoveryDecision.Retry
+                recoveryDecision(snapshot.getOrThrow(), current) == RecoveryDecision.Retry
         ) {
             startRun(current)
         }
     }
 
-    suspend fun refresh(settlement: Boolean = false): ConversationSnapshot? =
-        snapshotMutex.withLock {
-            val before = eventRevision
-            val beforeModel = modelRevision
+    /** Applies current server state while a stream retains ownership of its in-flight messages. */
+    suspend fun refresh() {
+        reconcileSnapshot()
+    }
 
-            try {
-                val snapshot = api.snapshot(threadId)
-                val locallyActive = admitting || (settling && !settlement)
-                val result = reconcile(snapshot, pending, state.value.messages)
+    private suspend fun reconcileSnapshot(
+        isSettlingStream: Boolean = false
+    ): Result<ConversationSnapshot?> = snapshotMutex.withLock {
+        val before = eventRevision
+        val beforeModel = modelRevision
 
-                if (
-                    snapshot != null &&
-                        (!saved.empty ||
-                            snapshot.messages.isNotEmpty() ||
-                            snapshot.runs.isNotEmpty() ||
-                            snapshot.outputs.isNotEmpty())
-                ) {
-                    hasPersistedConversation = true
-                }
+        try {
+            val snapshot = api.snapshot(threadId)
+            val locallyActive = admitting || (settling && !isSettlingStream)
+            val rejectedDraft = if (locallyActive) null else releaseRejectedSubmission(snapshot)
+            val result = reconcile(snapshot, pending, state.value.messages)
 
-                fun canApplyModel(): Boolean =
-                    snapshot != null &&
-                        beforeModel == modelRevision &&
-                        !modelMutationActive &&
-                        !(saved.empty && saved.modelSelectionLocal) &&
-                        (pending == null || result.confirmed)
-
-                // Only a quiet owner can accept canonical messages/interrupts. Settlement is the
-                // stream owner's final reconciliation; polling cannot release that ownership.
-                val useCanonicalMessages = !locallyActive && before == eventRevision
-
-                ingestOutputs(snapshot?.outputs.orEmpty())
-
-                if (result.confirmed && !locallyActive) {
-                    updateSaved {
-                        it.copy(
-                            pending = null,
-                            empty =
-                                snapshot?.messages.isNullOrEmpty() &&
-                                    snapshot?.outputs.isNullOrEmpty(),
-                        )
-                    }
-
-                    pending = null
-                }
-
-                var modelJournalError: String? = null
-
-                if (canApplyModel() && saved.modelId != snapshot?.modelId) {
-                    try {
-                        updateSaved {
-                            if (canApplyModel()) {
-                                it.copy(modelId = snapshot?.modelId, modelSelectionLocal = false)
-                            } else {
-                                it
-                            }
-                        }
-                    } catch (cancelled: CancellationException) {
-                        throw cancelled
-                    } catch (error: Exception) {
-                        // Caching a model choice must not discard canonical run observations.
-                        modelJournalError = "Model choice could not be saved: ${error.message}"
-                    }
-                }
-
-                if (
-                    useCanonicalMessages && snapshot?.interrupts.orEmpty() != state.value.interrupts
-                ) {
-                    mutableState.update {
-                        it.copy(planDecisions = emptyMap(), planDrafts = emptyMap())
-                    }
-                }
-
-                val modelRecovered = modelSelectionNeedsRecovery && canApplyModel()
-
-                mutableState.update { current ->
-                    val usage = latestContextUsage(current.contextUsage, snapshot?.contextUsage)
-
-                    current.copy(
-                        title = snapshot?.title ?: current.title,
-                        messageTimestamps =
-                            current.messageTimestamps + snapshot?.messageTimestamps.orEmpty(),
-                        messages =
-                            if (useCanonicalMessages) {
-                                addOutputReplies(result.messages, current.outputs)
-                            } else {
-                                current.messages
-                            },
-                        interrupts =
-                            if (useCanonicalMessages) {
-                                snapshot?.interrupts.orEmpty()
-                            } else {
-                                current.interrupts
-                            },
-                        externalTasks =
-                            mergeExternalTasks(
-                                current.externalTasks,
-                                snapshot?.externalTasks.orEmpty(),
-                            ),
-                        runs = snapshot?.runs ?: current.runs,
-                        executionStatus =
-                            if (useCanonicalMessages) null else current.executionStatus,
-                        contextUsage = usage,
-                        modelId = if (canApplyModel()) snapshot?.modelId else current.modelId,
-                        modelSelectionLocal =
-                            if (canApplyModel()) false else current.modelSelectionLocal,
-                        pendingSubmission = pending != null,
-                        modelSelectionPending =
-                            if (modelRecovered) false else current.modelSelectionPending,
-                        modelSelectionError =
-                            modelJournalError
-                                ?: if (modelRecovered) null else current.modelSelectionError,
-                        busy =
-                            admitting ||
-                                settling ||
-                                result.needsRecovery ||
-                                outputBuffer.missingSequence != null ||
-                                current.outputError != null,
-                        loading = false,
-                        error =
-                            if (snapshot?.runs?.lastOrNull()?.status == "failed") {
-                                current.error ?: "The agent run failed. You can send a new message."
-                            } else {
-                                null
-                            },
-                    )
-                }
-
-                if (modelRecovered) {
-                    modelSelectionNeedsRecovery = false
-                }
-
-                snapshot
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (error: Exception) {
-                mutableState.update {
-                    it.copy(
-                        loading = false,
-                        error = error.message ?: "Conversation recovery failed.",
-                    )
-                }
-
-                null
+            if (
+                snapshot != null &&
+                    (!saved.empty ||
+                        snapshot.messages.isNotEmpty() ||
+                        snapshot.runs.isNotEmpty() ||
+                        snapshot.outputs.isNotEmpty())
+            ) {
+                hasPersistedConversation = true
             }
+
+            fun canApplyModel(): Boolean =
+                snapshot != null &&
+                    beforeModel == modelRevision &&
+                    !modelMutationActive &&
+                    !(saved.empty && saved.modelSelectionLocal) &&
+                    (pending == null || result.confirmed)
+
+            // Only a quiet owner can accept canonical messages/interrupts. Settlement is the
+            // stream owner's final reconciliation; polling cannot release that ownership.
+            val useCanonicalMessages = !locallyActive && before == eventRevision
+
+            ingestOutputs(snapshot?.outputs.orEmpty())
+
+            if (result.confirmed && !locallyActive) {
+                updateSaved {
+                    it.copy(
+                        pending = null,
+                        empty =
+                            snapshot?.messages.isNullOrEmpty() && snapshot?.outputs.isNullOrEmpty(),
+                    )
+                }
+
+                pending = null
+            }
+
+            var modelJournalError: String? = null
+
+            if (canApplyModel() && saved.modelId != snapshot?.modelId) {
+                try {
+                    updateSaved {
+                        if (canApplyModel()) {
+                            it.copy(modelId = snapshot?.modelId, modelSelectionLocal = false)
+                        } else {
+                            it
+                        }
+                    }
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (error: Exception) {
+                    // Caching a model choice must not discard canonical run observations.
+                    modelJournalError = "Model choice could not be saved: ${error.message}"
+                }
+            }
+
+            if (useCanonicalMessages && snapshot?.interrupts.orEmpty() != state.value.interrupts) {
+                mutableState.update {
+                    it.copy(planDecisions = emptyMap(), planDrafts = emptyMap())
+                }
+            }
+
+            val modelRecovered = modelSelectionNeedsRecovery && canApplyModel()
+
+            mutableState.update { current ->
+                val usage = latestContextUsage(current.contextUsage, snapshot?.contextUsage)
+
+                current.copy(
+                    title = snapshot?.title ?: current.title,
+                    draft = current.draft.ifEmpty { rejectedDraft?.text.orEmpty() },
+                    messageTimestamps =
+                        current.messageTimestamps + snapshot?.messageTimestamps.orEmpty(),
+                    messages =
+                        if (useCanonicalMessages) {
+                            addOutputReplies(result.messages, current.outputs)
+                        } else {
+                            current.messages
+                        },
+                    interrupts =
+                        if (useCanonicalMessages) {
+                            snapshot?.interrupts.orEmpty()
+                        } else {
+                            current.interrupts
+                        },
+                    interactionDrafts =
+                        if (useCanonicalMessages && pending == null) {
+                            current.interactionDrafts.filterKeys {
+                                it in snapshot?.interrupts.orEmpty()
+                            }
+                        } else {
+                            current.interactionDrafts
+                        },
+                    externalTasks =
+                        mergeExternalTasks(
+                            current.externalTasks,
+                            snapshot?.externalTasks.orEmpty(),
+                        ),
+                    runs = snapshot?.runs ?: current.runs,
+                    executionStatus = if (useCanonicalMessages) null else current.executionStatus,
+                    contextUsage = usage,
+                    modelId = if (canApplyModel()) snapshot?.modelId else current.modelId,
+                    modelSelectionLocal =
+                        if (canApplyModel()) false else current.modelSelectionLocal,
+                    pendingSubmission = pending != null,
+                    modelSelectionPending =
+                        if (modelRecovered) false else current.modelSelectionPending,
+                    modelSelectionError =
+                        modelJournalError
+                            ?: if (modelRecovered) null else current.modelSelectionError,
+                    busy =
+                        admitting ||
+                            settling ||
+                            result.needsRecovery ||
+                            outputBuffer.missingSequence != null ||
+                            current.outputError != null,
+                    loading = false,
+                    error =
+                        when {
+                            rejectedDraft != null -> rejectedDraft.error
+                            pending != null -> null
+                            snapshot?.runs?.lastOrNull()?.status == "failed" ->
+                                current.error ?: "The agent run failed. You can send a new message."
+                            else -> null
+                        },
+                )
+            }
+
+            if (modelRecovered) {
+                modelSelectionNeedsRecovery = false
+            }
+
+            Result.success(snapshot)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            mutableState.update {
+                it.copy(
+                    loading = false,
+                    error = error.message ?: "Conversation recovery failed.",
+                )
+            }
+
+            Result.failure(error)
         }
+    }
+
+    private suspend fun releaseRejectedSubmission(snapshot: ConversationSnapshot?): RejectedDraft? {
+        val rejection = admissionRejection ?: return null
+        val submission = pending ?: return null
+        val runId = submission.input.runId
+
+        // A lost response can follow a successful admission. Only release an absent run.
+        if (rejection.runId != runId || snapshot?.runs.orEmpty().any { it.runId == runId }) {
+            return null
+        }
+
+        val draft =
+            submission.composerDraft
+                ?: pendingMessage(submission)?.let { userMessagePresentation(it.content).text }
+
+        // Persist a recoverable editor draft before removing the only durable copy of the input.
+        updateSaved { current ->
+            current.copy(
+                pending = null,
+                draft = state.value.draft.ifEmpty { draft.orEmpty() },
+            )
+        }
+
+        pending = null
+        admissionRejection = null
+
+        return RejectedDraft(draft, rejection.error.message)
+    }
 
     private fun receive(event: BaseEvent) {
         eventRevision += 1
@@ -796,6 +926,7 @@ class ConversationSession(
         }
     }
 
+    /** Discards this session's bounded diagnostic activity without affecting server history. */
     fun clearActivity() {
         mutableState.update { it.copy(activity = emptyList(), receivedEventCount = 0) }
     }
@@ -838,6 +969,7 @@ class ConversationSession(
             saved = next
         }
 
+    /** Releases session jobs. The repository retains transport and saved work. */
     fun close() {
         closed = true
         stopObserving()

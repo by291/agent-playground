@@ -16,13 +16,16 @@ test.describe("activity motion", () => {
       .poll(async () => (await activity.boundingBox())!.width)
       .toBe(520);
     const separator = page.getByRole("separator", { name: "Sidebar width" });
-    const handle = (await separator.boundingBox())!;
+    const separatorBounds = (await separator.boundingBox())!;
     const sidebar = page.getByRole("complementary", {
       name: "Conversation navigation",
     });
     const initialWidth = (await sidebar.boundingBox())!.width;
 
-    await page.mouse.move(handle.x + handle.width / 2, handle.y + 100);
+    await page.mouse.move(
+      separatorBounds.x + separatorBounds.width / 2,
+      separatorBounds.y + 100,
+    );
     await page.mouse.down();
     await expect(separator).toHaveAttribute("data-separator", "active");
 
@@ -35,12 +38,24 @@ test.describe("activity motion", () => {
           ),
         );
 
-      expect(transitions).toEqual(["none", "none", "none", "none"]);
+      expect(transitions).toEqual(
+        /* prettier-ignore */ [
+          "none",
+          "none",
+          "none",
+          "none",
+        ],
+      );
 
-      for (const offset of [32, -24, 56, 0]) {
+      for (const offset of /* prettier-ignore */ [
+        32,
+        -24,
+        56,
+        0,
+      ]) {
         await page.mouse.move(
-          handle.x + handle.width / 2 + offset,
-          handle.y + 100,
+          separatorBounds.x + separatorBounds.width / 2 + offset,
+          separatorBounds.y + 100,
         );
         await expect
           .poll(async () => (await sidebar.boundingBox())!.width)
@@ -162,14 +177,21 @@ test("activity width supports dragging and keyboard bounds and persists without 
     .poll(async () => (await panel.boundingBox())!.width)
     .toBeGreaterThan(520);
   const keyboardWidth = (await panel.boundingBox())!.width;
-  const handle = (await separator.boundingBox())!;
+  const separatorBounds = (await separator.boundingBox())!;
 
-  await page.mouse.move(handle.x + handle.width / 2, handle.y + 100);
+  await page.mouse.move(
+    separatorBounds.x + separatorBounds.width / 2,
+    separatorBounds.y + 100,
+  );
   await page.mouse.down();
   await expect(separator).toHaveAttribute("data-separator", "active");
-  await page.mouse.move(handle.x + handle.width / 2 - 24, handle.y + 100, {
-    steps: 6,
-  });
+  await page.mouse.move(
+    separatorBounds.x + separatorBounds.width / 2 - 24,
+    separatorBounds.y + 100,
+    {
+      steps: 6,
+    },
+  );
   await page.mouse.up();
   await expect(separator).not.toHaveAttribute("data-separator", "active");
   await expect
@@ -393,7 +415,13 @@ test("activity shows every event with categories and highlighted payloads and co
   await expect
     .poll(() => payload.locator("span[style]").count())
     .toBeGreaterThan(0);
-  const categories = ["Run", "Step", "Message", "Tool"];
+  const categories =
+    /* prettier-ignore */ [
+      "Run",
+      "Step",
+      "Message",
+      "Tool",
+    ];
   const colors: string[] = [];
 
   for (const category of categories) {
@@ -427,20 +455,18 @@ test("activity shows every event with categories and highlighted payloads and co
   expect(bounds!.x).toBeGreaterThanOrEqual(0);
   expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(390);
   await capture(page, testInfo, "activity-mobile.png");
-  const lightColor = await finished
+  const highlightedToken = finished
     .getByLabel("Event payload")
     .locator("span[style]")
-    .first()
-    .evaluate((element) => getComputedStyle(element).color);
+    .first();
+  const lightColor = await highlightedToken.evaluate(
+    (element) => getComputedStyle(element).color,
+  );
 
   await page.evaluate(() => document.documentElement.classList.add("dark"));
   await expect
     .poll(() =>
-      finished
-        .getByLabel("Event payload")
-        .locator("span[style]")
-        .first()
-        .evaluate((element) => getComputedStyle(element).color),
+      highlightedToken.evaluate((element) => getComputedStyle(element).color),
     )
     .not.toBe(lightColor);
   await capture(page, testInfo, "activity-dark-mobile.png");

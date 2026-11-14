@@ -24,6 +24,7 @@ async function executeAdminQuery(connectionString: string, statement: string) {
   }
 }
 
+/** Creates a per-suite database and returns its cleanup operation. */
 export async function createIntegrationDatabase(): Promise<IntegrationDatabase> {
   const adminUrl = inject("postgresUrl");
   const name = `test_${randomUUID().replaceAll("-", "")}`;
@@ -35,6 +36,7 @@ export async function createIntegrationDatabase(): Promise<IntegrationDatabase> 
 
   return {
     url: url.toString(),
+    /** Drops the isolated database after the caller closes its pools. */
     async dispose() {
       // File-owned pools must close before dropping their isolated database.
       await executeAdminQuery(adminUrl, `DROP DATABASE "${name}"`);

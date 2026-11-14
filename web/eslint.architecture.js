@@ -12,8 +12,20 @@ const ranks = {
 const publicEntries = {
   memory: new Set(["index", ""]),
   knowledge: new Set(["index", ""]),
-  conversation: new Set(["index", "", "ActivityPanel"]),
-  a2ui: new Set(["index", "", "A2UISurface"]),
+  conversation: new Set(
+    /* prettier-ignore */ [
+      "index",
+      "",
+      "ActivityPanel",
+    ],
+  ),
+  a2ui: new Set(
+    /* prettier-ignore */ [
+      "index",
+      "",
+      "A2UISurface",
+    ],
+  ),
 };
 
 function modulePath(file) {
@@ -41,7 +53,12 @@ function boundaryIssue(from, to) {
   }
 
   const featureLogic =
-    from[0] === "features" && ["api", "model", "runtime"].includes(from[2]);
+    from[0] === "features" &&
+    /* prettier-ignore */ [
+      "api",
+      "model",
+      "runtime",
+    ].includes(from[2]);
 
   if (featureLogic && to[0] === "components") {
     return "Feature API, model and runtime must stay independent of UI components.";
@@ -70,9 +87,30 @@ function boundaryIssue(from, to) {
     }
 
     const forbiddenLayers = {
-      api: new Set(["model", "runtime", "ui", "hooks", "providers"]),
-      model: new Set(["runtime", "ui", "hooks", "providers"]),
-      runtime: new Set(["ui", "hooks", "providers"]),
+      api: new Set(
+        /* prettier-ignore */ [
+          "model",
+          "runtime",
+          "ui",
+          "hooks",
+          "providers",
+        ],
+      ),
+      model: new Set(
+        /* prettier-ignore */ [
+          "runtime",
+          "ui",
+          "hooks",
+          "providers",
+        ],
+      ),
+      runtime: new Set(
+        /* prettier-ignore */ [
+          "ui",
+          "hooks",
+          "providers",
+        ],
+      ),
       ui: new Set(["runtime"]),
     };
 

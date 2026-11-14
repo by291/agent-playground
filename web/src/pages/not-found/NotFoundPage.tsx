@@ -1,6 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { Empty, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 
+/** Provides a route back to chat for an unrecognized page. */
 export function NotFoundPage() {
   return (
     <main className="flex min-h-dvh flex-col items-center justify-center gap-3 bg-canvas p-6 text-ink">

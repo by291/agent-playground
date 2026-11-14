@@ -6,6 +6,7 @@ import okhttp3.RequestBody
 import okhttp3.ResponseBody
 import retrofit2.Call
 import retrofit2.Response
+import retrofit2.SkipCallbackExecutor
 import retrofit2.http.*
 
 /** REST transport. Coroutine cancellation and JSON conversion are owned by Retrofit. */
@@ -75,8 +76,7 @@ internal interface PlaygroundService {
     @POST("conversations/{thread}/files")
     suspend fun uploadFile(
         @Path("thread") thread: String,
-        @Header("X-File-Id") id: String,
-        @Header("X-Filename") filename: String,
+        @HeaderMap headers: Map<String, String>,
         @Body bytes: RequestBody,
     ): Response<SkillFile>
 
@@ -87,5 +87,9 @@ internal interface PlaygroundService {
         @Body bytes: RequestBody,
     ): Response<KnowledgeDocument>
 
-    @Streaming @GET fun download(@Url address: String): Call<ResponseBody>
+    // The streaming callback must receive even cancelled responses so it can close their bodies.
+    @SkipCallbackExecutor
+    @Streaming
+    @GET
+    fun download(@Url address: String, @Tag origin: DownloadOrigin): Call<ResponseBody>
 }

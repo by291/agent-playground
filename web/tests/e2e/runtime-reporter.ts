@@ -43,7 +43,11 @@ export default class RuntimeReporter implements Reporter {
       startedAt: result.startTime.toISOString(),
       elapsedMs: result.duration,
       shard: this.config.shard,
-      reference: { commit: "1d0728d", ciCases: 35, ciTotalTestMs: 206_600 },
+      reference: {
+        commit: "1d0728d",
+        ciCases: 35,
+        ciTotalTestMs: 206_600,
+      },
       ...summary,
       cases: this.cases,
     };

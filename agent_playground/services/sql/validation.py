@@ -19,6 +19,7 @@ ORDERS_SCHEMA: dict[str, object] = {
 
 
 def check_sql(sql: str) -> SqlCheck:
+    """Validate one demo query without executing it."""
     try:
         statements = sqlglot.parse(sql, read="postgres")
 

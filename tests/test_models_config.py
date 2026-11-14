@@ -10,6 +10,7 @@ from pydantic import SecretStr
 
 from agent_playground.knowledge.config import EmbeddingConfig
 from agent_playground.models.catalog import (
+    ChatModelRequest,
     agent_info,
     create_chat_model,
     model_configuration,
@@ -51,7 +52,7 @@ def test_provider_uses_file_credentials_and_address(model_config: ModelConfigFil
         "qwen", api_key="file-qwen-key", base_url="https://private.example/v1"
     )
 
-    model = cast(ChatQwen, create_chat_model("qwen"))
+    model = cast(ChatQwen, create_chat_model(ChatModelRequest(model_id="qwen")))
 
     assert isinstance(model.api_key, SecretStr)
     assert model.api_key.get_secret_value() == "file-qwen-key"

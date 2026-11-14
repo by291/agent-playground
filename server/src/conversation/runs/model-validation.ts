@@ -2,6 +2,7 @@ import type { AgentInfo } from "../../../../shared/agent-info.js";
 import { SubmissionError } from "../errors.js";
 import type { RunAgentInput } from "@ag-ui/client";
 
+/** Read the model selected in the submission metadata. */
 export function requestedModelId(input: RunAgentInput): string | undefined {
   const props: unknown = input.forwardedProps;
 
@@ -22,10 +23,16 @@ export function requestedModelId(input: RunAgentInput): string | undefined {
   return modelId;
 }
 
+/** Resolve a configured and currently available model for admission. */
 export function availableModelId(info: AgentInfo, selected?: string | null) {
   const modelId = selected ?? info.defaultModelId ?? "deepseek";
   const models = info.models ?? [
-    { id: "deepseek", label: "DeepSeek", model: info.model, available: true },
+    {
+      id: "deepseek",
+      label: "DeepSeek",
+      model: info.model,
+      available: true,
+    },
   ];
   const model = models.find((option) => option.id === modelId);
 

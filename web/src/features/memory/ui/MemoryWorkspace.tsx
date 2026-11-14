@@ -26,6 +26,7 @@ import { CorrectMemoryDialog } from "./CorrectMemoryDialog";
 import { MemoryRow } from "./MemoryRow";
 import { useMemories } from "../hooks/useMemories";
 
+/** Coordinates memory management dialogs and their revision review flows. */
 export function MemoryWorkspace({
   onActionFocusFallback,
 }: {
@@ -42,7 +43,9 @@ export function MemoryWorkspace({
     correct,
     forget,
   } = useMemories();
+
   const actionOpener = useRef<HTMLButtonElement | null>(null);
+
   const [correcting, setCorrecting] = useState<Memory | null>(null);
   const [forgetting, setForgetting] = useState<Memory | null>(null);
 
@@ -50,6 +53,7 @@ export function MemoryWorkspace({
     (memory) => memory.id === correcting?.id,
   );
   const latestForget = memories.find((memory) => memory.id === forgetting?.id);
+
   // The confirmation retains the revision the user reviewed even as data refreshes.
   const forgetChanged = Boolean(
     forgetting && latestForget && forgetting.revision !== latestForget.revision,
@@ -107,6 +111,7 @@ export function MemoryWorkspace({
           review and manage saved entries.
         </p>
       </header>
+
       {query.isError && !query.isFetchNextPageError && (
         <Alert variant="destructive" className="mt-5">
           <AlertDescription>Could not load memories.</AlertDescription>
@@ -119,6 +124,7 @@ export function MemoryWorkspace({
           </Button>
         </Alert>
       )}
+
       <Card className="mt-8 gap-0 border border-line bg-surface py-0 ring-0">
         {query.isPending && (
           <div role="status" className="min-h-36 p-6">
@@ -130,6 +136,7 @@ export function MemoryWorkspace({
             </div>
           </div>
         )}
+
         {query.data && memories.length === 0 && (
           <Empty className="min-h-44 p-8">
             <EmptyHeader>
@@ -141,6 +148,7 @@ export function MemoryWorkspace({
             </EmptyHeader>
           </Empty>
         )}
+
         {memories.length > 0 && (
           <ul aria-label="Saved memories" className="divide-y divide-line">
             {memories.map((memory) => (
@@ -163,6 +171,7 @@ export function MemoryWorkspace({
           </ul>
         )}
       </Card>
+
       {query.isFetchNextPageError && (
         <Alert variant="destructive" className="mt-5">
           <AlertDescription>Could not load more memories.</AlertDescription>
@@ -175,6 +184,7 @@ export function MemoryWorkspace({
           </Button>
         </Alert>
       )}
+
       {query.hasNextPage && !query.isFetchNextPageError && (
         <div className="mt-5 flex justify-center">
           <Button
@@ -189,6 +199,7 @@ export function MemoryWorkspace({
           </Button>
         </div>
       )}
+
       {correcting && (
         <CorrectMemoryDialog
           key={correcting.id}
@@ -209,6 +220,7 @@ export function MemoryWorkspace({
           onCorrect={correct}
         />
       )}
+
       <AlertDialog
         open={forgetting !== null}
         onOpenChange={(open) => {
@@ -235,14 +247,17 @@ export function MemoryWorkspace({
               workspace. Existing conversation messages will remain.
             </AlertDialogDescription>
           </AlertDialogHeader>
+
           <p className="max-h-48 overflow-y-auto rounded-lg border border-line bg-canvas p-3 text-sm/6 whitespace-pre-wrap wrap-anywhere">
             {forgetting?.text}
           </p>
+
           {forgetting && error && (
             <Alert variant="destructive">
               <AlertDescription>{error}</AlertDescription>
             </Alert>
           )}
+
           {(forgetChanged || conflict) && !busy && (
             <div className="space-y-3">
               <p className="text-sm text-muted">
@@ -284,6 +299,7 @@ export function MemoryWorkspace({
               )}
             </div>
           )}
+
           <AlertDialogFooter>
             <AlertDialogCancel disabled={busy}>Cancel</AlertDialogCancel>
             <AlertDialogAction

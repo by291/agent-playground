@@ -28,9 +28,25 @@ import com.agentplayground.feature.conversation.ui.activity.ActivityScreen
 import com.agentplayground.feature.knowledge.KnowledgeRoute
 import com.agentplayground.feature.memory.MemoryRoute
 import com.agentplayground.feature.settings.SettingsRoute
+import com.agentplayground.feature.settings.SettingsRouteOptions
 import com.agentplayground.ui.network.ServerNetworkAccess
 import kotlinx.coroutines.launch
 
+private val ExpandedWorkspaceWidth = 840.dp
+private val WorkspaceSidebarWidth = 280.dp
+private const val PredictiveEnterOffsetDivisor = 12
+private const val PredictiveExitOffsetDivisor = 8
+private const val ChatDestinationIndex = 0
+
+private val primaryDestinations =
+    listOf(
+        WorkspaceDestination.Chat,
+        WorkspaceDestination.Knowledge,
+        WorkspaceDestination.Memory,
+        WorkspaceDestination.Settings,
+    )
+
+/** Retains page navigation while the server-scoped models own live work. */
 @Composable
 internal fun PlaygroundWorkspace(
     preferences: AppPreferences,
@@ -41,44 +57,44 @@ internal fun PlaygroundWorkspace(
     val knowledgeStack = rememberNavBackStack(WorkspaceDestination.Knowledge)
     val memoryStack = rememberNavBackStack(WorkspaceDestination.Memory)
     val settingsStack = rememberNavBackStack(WorkspaceDestination.Settings)
-    val stacks = listOf(chatStack, knowledgeStack, memoryStack, settingsStack)
-    val primaryDestinations =
+
+    val stacks =
         listOf(
-            WorkspaceDestination.Chat,
-            WorkspaceDestination.Knowledge,
-            WorkspaceDestination.Memory,
-            WorkspaceDestination.Settings,
+            chatStack,
+            knowledgeStack,
+            memoryStack,
+            settingsStack,
         )
-    var selected by rememberSaveable { mutableIntStateOf(0) }
-    val stack = stacks[selected]
+
+    var selectedIndex by rememberSaveable { mutableIntStateOf(ChatDestinationIndex) }
+    val stack = stacks[selectedIndex]
     val destination = stack.last() as WorkspaceDestination
-
-    val back: () -> Unit = {
-        if (stack.size > 1) {
-            stack.removeLastOrNull()
-        } else {
-            selected = 0
-        }
-    }
-
-    // NavDisplay owns nested back navigation; primary destinations return to chat.
-    BackHandler(enabled = stack.size == 1 && selected != 0, onBack = back)
 
     val chat = models.conversation
     val knowledge = models.knowledge
     val chatState by chat.state.collectAsStateWithLifecycle()
 
-    ObserveWorkspace(destination, models)
-
     val drawer = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     val keyboard = LocalSoftwareKeyboardController.current
 
+    val back: () -> Unit = {
+        if (stack.size > 1) {
+            stack.removeLastOrNull()
+        } else {
+            selectedIndex = ChatDestinationIndex
+        }
+    }
+
+    // NavDisplay owns nested back navigation; primary destinations return to chat.
+    BackHandler(enabled = stack.size == 1 && selectedIndex != ChatDestinationIndex, onBack = back)
     BackHandler(enabled = drawer.isOpen) { scope.launch { drawer.close() } }
+
+    ObserveWorkspace(destination, models)
 
     CompositionLocalProvider(LocalContentColor provides MaterialTheme.colorScheme.onSurface) {
         BoxWithConstraints(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface)) {
-            val expanded = maxWidth >= 840.dp
+            val expanded = maxWidth >= ExpandedWorkspaceWidth
 
             LaunchedEffect(expanded, destination) {
                 if (expanded || destination == WorkspaceDestination.Activity) {
@@ -95,10 +111,10 @@ internal fun PlaygroundWorkspace(
                         scope.launch { drawer.open() }
                     }
                 }
+
             val navigate: (WorkspaceDestination) -> Unit = { route ->
-                // Install the destination before drawer settlement so the new page is revealed
-                // underneath.
-                selected = primaryDestinations.indexOf(route)
+                // Change the route first so the drawer reveals the destination as it closes.
+                selectedIndex = primaryDestinations.indexOf(route)
 
                 if (route == WorkspaceDestination.Chat) {
                     while (chatStack.size > 1) {
@@ -155,12 +171,15 @@ internal fun PlaygroundWorkspace(
 
                     WorkspaceDestination.Settings ->
                         SettingsRoute(
-                            preferences,
-                            chat::clear,
-                            chatState.clearBlocked,
-                            chatState.error,
-                            openNavigation,
-                            networkAccess,
+                            options =
+                                SettingsRouteOptions(
+                                    preferences = preferences,
+                                    networkAccess = networkAccess,
+                                    onClear = chat::clear,
+                                    conversationBusy = chatState.clearBlocked,
+                                    conversationError = chatState.error,
+                                    onOpenNavigation = openNavigation,
+                                )
                         )
 
                     WorkspaceDestination.Chat ->
@@ -196,13 +215,14 @@ internal fun PlaygroundWorkspace(
 
             val display: @Composable () -> Unit = {
                 NavDisplay(
-                    entries = decoratedStacks[selected],
+                    entries = decoratedStacks[selectedIndex],
                     onBack = back,
                     modifier = Modifier.fillMaxSize(),
                     transitionSpec = {
-                        if (
+                        val drawerRevealsPage =
                             !expanded && (drawer.isOpen || drawer.targetValue == DrawerValue.Open)
-                        ) {
+
+                        if (drawerRevealsPage) {
                             EnterTransition.None togetherWith ExitTransition.None
                         } else {
                             fadeIn(tween(Motion.Feedback)) togetherWith
@@ -213,18 +233,19 @@ internal fun PlaygroundWorkspace(
                         fadeIn(tween(Motion.Feedback)) togetherWith fadeOut(tween(Motion.Feedback))
                     },
                     predictivePopTransitionSpec = { _ ->
-                        slideInHorizontally { -it / 12 } togetherWith
-                            slideOutHorizontally { it / 8 }
+                        slideInHorizontally { -it / PredictiveEnterOffsetDivisor } togetherWith
+                            slideOutHorizontally { it / PredictiveExitOffsetDivisor }
                     },
                 )
             }
 
             when {
                 destination == WorkspaceDestination.Activity -> display()
+
                 expanded ->
                     Row(Modifier.fillMaxSize()) {
                         Surface(
-                            Modifier.width(280.dp).fillMaxHeight(),
+                            Modifier.width(WorkspaceSidebarWidth).fillMaxHeight(),
                             color = MaterialTheme.colorScheme.surface,
                         ) {
                             sidebar()
@@ -233,6 +254,7 @@ internal fun PlaygroundWorkspace(
                         VerticalDivider()
                         Box(Modifier.weight(1f)) { display() }
                     }
+
                 else ->
                     RevealNavigationDrawer(
                         drawerState = drawer,
