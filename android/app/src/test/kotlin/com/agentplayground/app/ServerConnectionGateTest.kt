@@ -47,7 +47,7 @@ class ServerConnectionGateTest {
     }
 
     @Test
-    fun `denial keeps settings available and connecting retries permission without starting HTTP`() {
+    fun `denial keeps settings open and retries permission before HTTP`() {
         var requests = 0
         val access =
             ServerNetworkAccess(
@@ -105,7 +105,6 @@ class ServerConnectionGateTest {
     }
 
     private fun fixture(access: ServerNetworkAccess) {
-
         compose.setContent {
             PlaygroundTheme("light") {
                 ServerConnectionGate(AppPreferences(), access) {

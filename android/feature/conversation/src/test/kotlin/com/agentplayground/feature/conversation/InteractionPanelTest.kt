@@ -74,7 +74,7 @@ class InteractionPanelTest {
     }
 
     @Test
-    fun `something else retains custom selection and text equal to a suggested option through failure`() {
+    fun `custom answer matching a suggestion survives submission failure`() {
         val request = interaction(includeTool = false)
         val state = mutableStateOf(session(request))
         var submissions = 0
@@ -119,7 +119,7 @@ class InteractionPanelTest {
     }
 
     @Test
-    fun `one question per page preserves answers and mixed batch waits for explicit tool approval`() {
+    fun `mixed batch retains prior answers and waits for explicit tool approval`() {
         val request =
             interaction(
                 questions =
@@ -157,6 +157,31 @@ class InteractionPanelTest {
             submitted!!.decisions[0].answers,
         )
         assertEquals(InteractionDecisionType.Approve, submitted!!.decisions[1].type)
+    }
+
+    @Test
+    fun `an expired request does not block approval of a separate current request`() {
+        val expired =
+            interaction(includeTool = false)
+                .copy(
+                    id = "expired-request",
+                    expiresAt = "2000-01-01T00:00:00Z",
+                )
+        val current = interaction(questions = emptyList()).copy(id = "current-request")
+        val state = mutableStateOf(session(expired).copy(interrupts = listOf(expired, current)))
+        val submissions = mutableListOf<Interrupt>()
+
+        render(state, onSubmit = { submissions.add(it) })
+
+        compose
+            .onNodeWithText("This request has expired. Refresh the conversation.")
+            .assertIsDisplayed()
+        compose.onNodeWithText("Send").assertIsNotEnabled()
+        compose.onNodeWithContentDescription("Next request").performClick()
+        compose.onNodeWithText("Allow once").performClick()
+
+        assertEquals(listOf(current), submissions)
+        assertFalse(expired in state.value.interactionDrafts)
     }
 
     @Test
@@ -285,7 +310,7 @@ class InteractionPanelTest {
     }
 
     @Test
-    fun `short narrow screen keeps interaction footer visible with custom input and no autofocus`() {
+    fun `interaction footer stays visible without autofocus on a short screen`() {
         val state =
             mutableStateOf(
                 session(
@@ -332,7 +357,7 @@ class InteractionPanelTest {
     }
 
     @Test
-    fun `interaction dismisses attachment preview while selected files survive until composer returns`() {
+    fun `interaction closes the attachment preview and keeps selected files`() {
         val request = interaction(includeTool = false)
         val state = mutableStateOf(session(request).copy(interrupts = emptyList()))
         val files =

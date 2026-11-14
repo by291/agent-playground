@@ -26,7 +26,7 @@ class ProtocolTest {
     }
 
     @Test
-    fun `model metadata and saved selection survive serialization without exposing configuration`() {
+    fun `model metadata and selection serialize without exposing configuration`() {
         val info =
             protocolJson.decodeFromString<AgentInfo>(
                 """{"model":"deepseek-flash","defaultModelId":"deepseek","models":[{"id":"deepseek","label":"DeepSeek","model":"deepseek-flash","available":true},{"id":"qwen","label":"Qwen3.8-Flash","model":"qwen3.8-flash","available":false}]}"""

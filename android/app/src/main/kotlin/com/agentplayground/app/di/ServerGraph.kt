@@ -13,6 +13,7 @@ internal class ServerGraph @Inject constructor() : ViewModel() {
     private var store = ViewModelStore()
     private var currentOwner = ownerFor(store)
 
+    /** Returns the retained owner for the current server, clearing resources on a switch. */
     fun owner(url: String): ViewModelStoreOwner {
         if (url != serverUrl) {
             store.clear()

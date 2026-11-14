@@ -124,15 +124,16 @@ internal fun KnowledgeScreen(
                         )
                     }
 
-                    RevealValue(state.error.takeIf { encodingDocument == null }) { error ->
-                        ErrorNotice(
-                            error,
-                            if (state.pendingUploads.isNotEmpty()) {
-                                onRetryUploads
-                            } else {
-                                onReload
-                            },
-                        )
+                    RevealValue(state.listError) { error -> ErrorNotice(error, onReload) }
+
+                    val operationError =
+                        state.error.takeIf {
+                            encodingDocument == null && deleting == null
+                        }
+
+                    RevealValue(operationError) { error ->
+                        ErrorNotice(error)
+                        TextButton(onClick = onClearError) { Text("Dismiss error") }
                     }
 
                     Reveal(state.pendingUploads.isNotEmpty() && !state.busy) {

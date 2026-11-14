@@ -128,16 +128,18 @@ internal fun AssistantTurnContent(
     messageTimestamps: Map<String, String> = emptyMap(),
     children: @Composable () -> Unit = {},
 ) {
-    val active = isActiveRun(turn.status)
-    val reasoning = turn.messages.filter { isReasoning(it) && !it.content.isNullOrBlank() }
     var visibleAnswerPhase by rememberSaveable(turn.id) { mutableStateOf<Int?>(null) }
-    val lastReasoningIndex =
-        turn.messages.indexOfLast { isReasoning(it) && !it.content.isNullOrBlank() }
     var showSources by rememberSaveable(turn.id) { mutableStateOf(false) }
     var selectedSource by rememberSaveable(turn.id) { mutableStateOf<String?>(null) }
     var sourceUnavailable by rememberSaveable(turn.id) { mutableStateOf(false) }
+
+    val active = isActiveRun(turn.status)
+    val reasoning = turn.messages.filter { isReasoning(it) && !it.content.isNullOrBlank() }
+    val lastReasoningIndex =
+        turn.messages.indexOfLast { isReasoning(it) && !it.content.isNullOrBlank() }
     val toolGroups = executionGroups(turn.toolCalls)
     val plan = remember(turn.toolCalls) { latestAgentPlan(turn.toolCalls) }
+    val transcript = assistantTranscript(turn)
 
     val replyLink: (String) -> Unit = { link ->
         if (link.startsWith("#knowledge-source-", ignoreCase = true)) {
@@ -182,7 +184,6 @@ internal fun AssistantTurnContent(
         }
 
         children()
-        val transcript = assistantTranscript(turn)
 
         if (transcript.isNotEmpty()) {
             MarkdownSelection {
@@ -191,8 +192,10 @@ internal fun AssistantTurnContent(
                         when (part) {
                             is AssistantTranscriptPart.Question ->
                                 ClarificationQuestionContent(part)
+
                             is AssistantTranscriptPart.Answer ->
                                 ClarificationAnswerContent(part, messageTimestamps[part.resultId])
+
                             is AssistantTranscriptPart.Reply -> {
                                 val message = part.message
                                 Column {

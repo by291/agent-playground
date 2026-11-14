@@ -92,7 +92,7 @@ class KnowledgeCitationsTest {
     }
 
     @Test
-    fun `unavailable citations stay explicit while normal links and code retain Markdown rendering`() {
+    fun `missing citations remain explicit alongside Markdown links and code`() {
         var opened: String? = null
         val literal = "[source](#knowledge-source-$first)"
         val markdown =

@@ -1,6 +1,7 @@
 package com.agentplayground.domain.conversation
 
 import com.agentplayground.domain.model.*
+import com.agentplayground.domain.presentation.messageWithAttachments
 import com.agui.core.types.*
 import java.io.IOException
 import kotlinx.coroutines.CompletableDeferred
@@ -13,47 +14,148 @@ import org.junit.Test
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class InteractionSessionTest {
     @Test
-    fun `definitively rejected admission releases only after the snapshot confirms its run is absent`() =
-        runTest {
-            for (status in listOf(400, 404, 409, 413)) {
-                val original = interaction("original")
-                val replacement = interaction("replacement")
-                val api =
-                    Api(snapshot(listOf(original))).apply {
-                        failure = ApiException(status, "The request is no longer current")
-                        beforeRun = { current = snapshot(listOf(replacement)) }
-                    }
-                val saved = SavedConversation("thread", draft = "Keep this draft", empty = false)
-                val journal = Journal(saved)
-                val session = ConversationSession(api, journal, backgroundScope, saved)
-                session.restore()
-                session.editInteraction(original, approved(original))
+    fun `a failed older run does not block retrying a newer pending message`() = runTest {
+        val request = newSubmission("thread", "pending", UserMessage("message", "Retry me"))
+        val saved =
+            SavedConversation(
+                threadId = "thread",
+                pending = PendingSubmission(request, "message"),
+                empty = false,
+            )
+        val api =
+            Api(snapshot(emptyList()).copy(runs = listOf(RunRecord("older", status = "failed"))))
+        val session = ConversationSession(api, Journal(saved), backgroundScope, saved)
 
-                session.respondToInteraction(original)
-                runCurrent()
+        session.restore()
+        runCurrent()
 
-                assertNull("HTTP $status", journal.saved!!.pending)
-                assertFalse(session.state.value.pendingSubmission)
-                assertFalse(session.state.value.busy)
-                assertEquals(listOf(replacement), session.state.value.interrupts)
-                assertEquals("Keep this draft", session.state.value.draft)
-                session.recoverPending()
-                runCurrent()
-                assertEquals(1, api.inputs.size)
+        assertEquals(listOf(request), api.inputs)
+        session.close()
+    }
 
-                api.failure = null
-                api.beforeRun = {}
-                session.editInteraction(replacement, approved(replacement))
-                session.respondToInteraction(replacement)
-                runCurrent()
+    @Test
+    fun `failed canonical read cannot trigger an unconfirmed retry`() = runTest {
+        val request = newSubmission("thread", "pending", UserMessage("message", "Retry me"))
+        val saved =
+            SavedConversation(
+                threadId = "thread",
+                pending = PendingSubmission(request, "message"),
+                empty = false,
+            )
+        val api =
+            Api(snapshot(emptyList())).apply { snapshotFailure = IOException("Connection lost") }
+        val session = ConversationSession(api, Journal(saved), backgroundScope, saved)
 
-                assertEquals(
-                    listOf("original", "replacement"),
-                    api.inputs.map { it.resume!!.single().interruptId },
-                )
-                session.close()
+        session.restore()
+        runCurrent()
+
+        assertTrue(api.inputs.isEmpty())
+        assertEquals("Connection lost", session.state.value.error)
+
+        api.snapshotFailure = null
+        session.recoverPending()
+        runCurrent()
+
+        assertEquals(listOf(request), api.inputs)
+        session.close()
+    }
+
+    @Test
+    fun `rejected wire input restores only the editable message`() = runTest {
+        val text = "Rejected message"
+        val file = SkillFile("0f7f073d-d24a-4b9a-94d2-e76983140c35", "thread", "report.txt", 10)
+        val wireText = messageWithAttachments(text, listOf(file))
+        val saved = SavedConversation("thread", draft = text)
+        val api =
+            Api(snapshot(emptyList()).copy(runs = emptyList())).apply {
+                failure = ApiException(400, "Model unavailable")
             }
+        val journal = Journal(saved)
+        val session = ConversationSession(api, journal, backgroundScope, saved)
+
+        session.send(wireText)
+        runCurrent()
+
+        assertEquals(text, session.state.value.draft)
+        assertEquals(text, journal.saved!!.draft)
+        assertNull(journal.saved!!.pending)
+        assertTrue(session.state.value.messages.isEmpty())
+        session.close()
+    }
+
+    @Test
+    fun `a rejected workflow reply leaves a newer draft intact`() = runTest {
+        val review =
+            Interrupt(
+                "review",
+                "human_approval",
+                metadata =
+                    Json.parseToJsonElement(
+                        """
+                        {"langgraph":{"raw":{"kind":"workflow_review","workflowCallId":"call",
+                        "revision":1,"round":1,"outputStepId":"review","canAccept":true}}}
+                        """
+                            .trimIndent()
+                    ),
+            )
+        val saved = SavedConversation("thread", draft = "First reply", empty = false)
+        val api = Api(snapshot(listOf(review)))
+        val journal = Journal(saved)
+        val session = ConversationSession(api, journal, backgroundScope, saved)
+        session.restore()
+        api.beforeRun = { session.editDraft("Use this newer reply instead") }
+        api.failure = ApiException(409, "Review changed")
+
+        session.send("First reply")
+        runCurrent()
+
+        assertEquals("Use this newer reply instead", session.state.value.draft)
+        assertEquals("Use this newer reply instead", journal.saved!!.draft)
+        assertNull(journal.saved!!.pending)
+        session.close()
+    }
+
+    @Test
+    fun `a definitive rejection releases admission only when its run is absent`() = runTest {
+        for (status in listOf(400, 404, 409, 413)) {
+            val original = interaction("original")
+            val replacement = interaction("replacement")
+            val api =
+                Api(snapshot(listOf(original))).apply {
+                    failure = ApiException(status, "The request is no longer current")
+                    beforeRun = { current = snapshot(listOf(replacement)) }
+                }
+            val saved = SavedConversation("thread", draft = "Keep this draft", empty = false)
+            val journal = Journal(saved)
+            val session = ConversationSession(api, journal, backgroundScope, saved)
+            session.restore()
+            session.editInteraction(original, approved(original))
+
+            session.respondToInteraction(original)
+            runCurrent()
+
+            assertNull("HTTP $status", journal.saved!!.pending)
+            assertFalse(session.state.value.pendingSubmission)
+            assertFalse(session.state.value.busy)
+            assertEquals(listOf(replacement), session.state.value.interrupts)
+            assertEquals("Keep this draft", session.state.value.draft)
+            session.recoverPending()
+            runCurrent()
+            assertEquals(1, api.inputs.size)
+
+            api.failure = null
+            api.beforeRun = {}
+            session.editInteraction(replacement, approved(replacement))
+            session.respondToInteraction(replacement)
+            runCurrent()
+
+            assertEquals(
+                listOf("original", "replacement"),
+                api.inputs.map { it.resume!!.single().interruptId },
+            )
+            session.close()
         }
+    }
 
     @Test
     fun `network server and accepted run failures preserve the exact pending admission`() =
@@ -298,10 +400,15 @@ class InteractionSessionTest {
         val inputs = mutableListOf<RunAgentInput>()
         val finish = CompletableDeferred<Unit>()
         var failure: Exception? = null
+        var snapshotFailure: Exception? = null
         var startedBeforeFailure = false
         var beforeRun: (RunAgentInput) -> Unit = {}
 
-        override suspend fun snapshot(threadId: String) = current
+        override suspend fun snapshot(threadId: String): ConversationSnapshot {
+            snapshotFailure?.let { throw it }
+
+            return current
+        }
 
         override fun run(input: RunAgentInput): Flow<BaseEvent> = flow {
             inputs += input
