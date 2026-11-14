@@ -135,9 +135,13 @@ export function SettingsProvider({
           showCloseButton={false}
           className="fixed top-1/2 left-1/2 z-50 max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-lg origin-top-left transform-[translate(-50%,-50%)] overflow-y-auto rounded-xl border border-line bg-surface p-5 text-ink shadow-xl outline-none sm:p-6"
           onEscapeKeyDown={(event) => {
-            if (settingsCloseBlocked) {
-              event.preventDefault();
+            if (!settingsCloseBlocked) {
+              return;
             }
+
+            // Radix can deliver Escape to the parent while the confirmation is open.
+            event.preventDefault();
+            changeConfirmationOpen(false);
           }}
           onInteractOutside={(event) => {
             if (settingsCloseBlocked) {

@@ -1,4 +1,5 @@
-import { beforeEach, describe, test, vi } from "vitest";
+// @vitest-environment jsdom
+import { describe, test, vi } from "vitest";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { trace, SpanStatusCode } from "@opentelemetry/api";
@@ -270,15 +271,6 @@ test("a handled tool error is visible before the model finishes its fallback rep
   stream.finish(input);
   await run;
   disconnect();
-});
-
-beforeEach(() => {
-  const savedValues = new Map<string, string>();
-
-  vi.stubGlobal("localStorage", {
-    getItem: (key: string) => savedValues.get(key) ?? null,
-    setItem: (key: string, value: string) => savedValues.set(key, value),
-  });
 });
 
 function connectSession(

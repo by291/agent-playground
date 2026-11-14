@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { test, vi } from "vitest";
 import assert from "node:assert/strict";
 import { createElement } from "react";
@@ -15,15 +16,10 @@ function renderInitialPage(
   saved: SavedConversation | null,
   pathname = saved ? `/c/${saved.threadId}` : "/",
 ) {
-  vi.stubGlobal("window", {
-    location: { pathname },
-    addEventListener: () => undefined,
-    removeEventListener: () => undefined,
-  });
-  vi.stubGlobal("localStorage", {
-    getItem: () => JSON.stringify(saved),
-    setItem: () =>
-      assert.fail("Initial rendering must preserve the conversation"),
+  window.history.replaceState(null, "", pathname);
+  vi.spyOn(Storage.prototype, "getItem").mockReturnValue(JSON.stringify(saved));
+  vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+    assert.fail("Initial rendering must preserve the conversation");
   });
   const client = new QueryClient();
 

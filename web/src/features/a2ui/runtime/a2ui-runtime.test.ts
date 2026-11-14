@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { test } from "vitest";
 import assert from "node:assert/strict";
 import { NodeResolver, getValue, type A2uiMessage } from "@a2ui/web_core/v0_9";

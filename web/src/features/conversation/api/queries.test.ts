@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { test, vi } from "vitest";
 import assert from "node:assert/strict";
 import { QueryClient } from "@tanstack/react-query";
