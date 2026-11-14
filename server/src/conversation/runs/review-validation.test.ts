@@ -50,6 +50,8 @@ const run: RunRow = {
   modelId: null,
   aegraRunId: "upstream",
   status: "interrupted",
+  dispatchToken: null,
+  dispatchLeaseUntil: null,
   checkpointSynced: true,
   interrupts: [interrupt],
   createdAt: new Date(),

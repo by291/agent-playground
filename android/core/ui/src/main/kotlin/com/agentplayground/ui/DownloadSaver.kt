@@ -3,6 +3,7 @@ package com.agentplayground.ui
 import androidx.compose.runtime.saveable.listSaver
 import com.agentplayground.domain.model.Download
 
+/** Restores the repository-issued download descriptor after the system save picker returns. */
 val DownloadSaver =
     listSaver<Download?, String>(
         save = {

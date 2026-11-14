@@ -83,6 +83,7 @@ export function startSubmissionTrace(
   };
 }
 
+/** Records a standalone client error when no submission span owns it. */
 export function reportClientError(
   error: unknown,
   attributes: Record<string, string> = {},

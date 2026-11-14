@@ -26,7 +26,12 @@ const catalog = {
       model: "deepseek-flash",
       available: true,
     },
-    { id: "qwen", label: "Qwen", model: "qwen3.8-flash", available: true },
+    {
+      id: "qwen",
+      label: "Qwen",
+      model: "qwen3.8-flash",
+      available: true,
+    },
   ],
 } satisfies AgentInfo;
 
@@ -62,7 +67,13 @@ function inputFor(threadId: string, modelId?: string): RunAgentInput {
   return {
     threadId,
     runId: `${threadId}-run`,
-    messages: [{ id: `${threadId}-message`, role: "user", content: "Hello" }],
+    messages: [
+      {
+        id: `${threadId}-message`,
+        role: "user",
+        content: "Hello",
+      },
+    ],
     state: {},
     tools: [],
     context: [],
@@ -191,7 +202,13 @@ test("a review resumes with its paused run model after selection and default dri
     runId: "resume-review-run",
     messages: [],
     forwardedProps: { modelId: "qwen" },
-    resume: [{ interruptId: "review", status: "resolved", payload: {} }],
+    resume: [
+      {
+        interruptId: "review",
+        status: "resolved",
+        payload: {},
+      },
+    ],
   };
   const resumed = await admission.admitRun({
     threadId: input.threadId,
@@ -234,7 +251,13 @@ test("a review rejects a client model that differs from the paused run", async (
     runId: "conflicting-review-run",
     messages: [],
     forwardedProps: { modelId: "deepseek" },
-    resume: [{ interruptId: "review", status: "resolved", payload: {} }],
+    resume: [
+      {
+        interruptId: "review",
+        status: "resolved",
+        payload: {},
+      },
+    ],
   };
 
   await assert.rejects(
@@ -292,7 +315,13 @@ test("an idle conversation selection governs later admissions and rejects unavai
   const next = {
     ...inputFor(input.threadId),
     runId: "next",
-    messages: [{ id: "next-message", role: "user" as const, content: "Next" }],
+    messages: [
+      {
+        id: "next-message",
+        role: "user" as const,
+        content: "Next",
+      },
+    ],
   };
 
   assert.equal((await admit(next)).row.modelId, "qwen");

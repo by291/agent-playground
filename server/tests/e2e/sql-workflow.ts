@@ -7,8 +7,12 @@ import {
 } from "../../../shared/workflow-review.js";
 import type { SqlCard } from "../../../shared/sql-card.js";
 
+const INITIAL_SQL_REVISION = 2;
+const SQL_OUTPUT_VERSION = 3;
+
+/** Models SQL review decisions and persists the output for each review round. */
 export class ControlledSqlWorkflow {
-  revision = 2;
+  revision = INITIAL_SQL_REVISION;
   round = 0;
   currentSql = "SELECT id, amount FROM orders;";
   passed = true;
@@ -21,6 +25,7 @@ export class ControlledSqlWorkflow {
     readonly callId: string,
   ) {}
 
+  /** Describes the pending decision for the current SQL revision. */
   get review() {
     return {
       id: `sql-${this.callId}-review-${this.round}`,
@@ -44,14 +49,18 @@ export class ControlledSqlWorkflow {
     };
   }
 
+  /** Applies a decision and archives its resulting SQL card in sequence. */
   async publish(runId: string, response?: WorkflowReviewResponse) {
     let reply = "Replaced the wildcard with explicit columns.";
 
     if (response?.action === "message") {
-      if (response.message.toLowerCase().includes("explain")) {
+      const request = response.message.toLowerCase();
+
+      // An explanation leaves the current revision and its check available.
+      if (request.includes("explain")) {
         reply =
           "Explicit columns keep the result predictable when the schema changes.";
-      } else if (response.message.toLowerCase().includes("wildcard")) {
+      } else if (request.includes("wildcard")) {
         this.currentSql = "SELECT * FROM orders;";
         this.revision += 1;
         this.passed = false;
@@ -71,6 +80,7 @@ export class ControlledSqlWorkflow {
     }
 
     this.round += 1;
+
     let status: SqlCard["status"] = "review";
 
     if (this.submitted) {
@@ -117,23 +127,34 @@ export class ControlledSqlWorkflow {
           version: "v0.9",
           updateComponents: {
             surfaceId,
-            components: [{ id: "root", component: "WorkflowSql", ...card }],
+            components: [
+              {
+                id: "root",
+                component: "WorkflowSql",
+                ...card,
+              },
+            ],
           },
         },
       ],
     };
     const id = randomUUID();
-    const outputSeq = await this.database.transaction(async (tx) => {
-      const result = await tx.execute<{ output_seq: string }>(sql`
+    const stepId = `${status}:${this.round}`;
+    const outputSeq = await this.database.transaction(async (transaction) => {
+      // Allocate the sequence with its insert so readers see a complete output.
+      const output = await transaction.execute<{ output_seq: string }>(sql`
         UPDATE conversations SET next_output_seq = next_output_seq + 1
-        WHERE thread_id = ${this.threadId} RETURNING next_output_seq - 1 AS output_seq
+        WHERE thread_id = ${this.threadId}
+        RETURNING next_output_seq - 1 AS output_seq
       `);
-      const sequence = Number(result.rows[0]!.output_seq);
+      const sequence = Number(output.rows[0]!.output_seq);
 
-      await tx.execute(sql`
+      await transaction.execute(sql`
         INSERT INTO workflow_outputs
-          (id, thread_id, agui_run_id, workflow_call_id, step_id, step_seq, output_seq, kind, version, payload)
-        VALUES (${id}, ${this.threadId}, ${runId}, ${this.callId}, ${`${status}:${this.round}`}, ${this.round}, ${sequence}, 'a2ui', 3, ${JSON.stringify(payload)}::jsonb)
+          (id, thread_id, agui_run_id, workflow_call_id, step_id, step_seq,
+           output_seq, kind, version, payload)
+        VALUES (${id}, ${this.threadId}, ${runId}, ${this.callId}, ${stepId}, ${this.round},
+                ${sequence}, 'a2ui', ${SQL_OUTPUT_VERSION}, ${JSON.stringify(payload)}::jsonb)
       `);
 
       return sequence;

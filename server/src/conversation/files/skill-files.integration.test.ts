@@ -104,7 +104,8 @@ test("uploads preserve bytes, reject cross-conversation reads and disappear afte
     404,
   );
   assert.equal((await upload(threadId)).response.status, 404);
-  const { cleanupDeletedSkillFiles } = await import("./skill-file-cleanup.js");
+  const { createSkillFileCleanup } = await import("./skill-file-cleanup.js");
+  const cleanupDeletedSkillFiles = createSkillFileCleanup();
   const failure = vi
     .spyOn(S3Client.prototype, "send")
     .mockRejectedValueOnce(new Error("Storage offline"));
@@ -302,9 +303,9 @@ test("cleanup finds an upload that commits after its timeout and the first delet
   let commitRemoteUpload!: () => Promise<void>;
   const timeout = vi
     .spyOn(store, "putObject")
-    .mockImplementationOnce((key, data) => {
+    .mockImplementationOnce((key, bytes) => {
       // The caller sees a timeout while the accepted remote PUT remains in flight.
-      commitRemoteUpload = () => originalPut(key, data);
+      commitRemoteUpload = () => originalPut(key, bytes);
 
       return Promise.reject(new Error("Remote PUT response timed out"));
     });
@@ -327,7 +328,8 @@ test("cleanup finds an upload that commits after its timeout and the first delet
     .from(skillFiles)
     .where(eq(skillFiles.id, id));
   const { deleteConversation } = await import("../history/management.js");
-  const { cleanupDeletedSkillFiles } = await import("./skill-file-cleanup.js");
+  const { createSkillFileCleanup } = await import("./skill-file-cleanup.js");
+  const cleanupDeletedSkillFiles = createSkillFileCleanup();
 
   await deleteConversation(threadId);
   await cleanupDeletedSkillFiles();
@@ -390,7 +392,8 @@ test("one denied S3 deletion does not block other objects", async () => {
 
       await originalDelete(key, signal);
     });
-  const { cleanupDeletedSkillFiles } = await import("./skill-file-cleanup.js");
+  const { createSkillFileCleanup } = await import("./skill-file-cleanup.js");
+  const cleanupDeletedSkillFiles = createSkillFileCleanup();
 
   try {
     await assert.rejects(cleanupDeletedSkillFiles(), /could not be deleted/);

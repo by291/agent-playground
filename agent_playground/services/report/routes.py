@@ -6,7 +6,11 @@ from typing import Annotated
 
 from fastapi import APIRouter, Header, HTTPException
 
-from agent_playground.db.report_jobs import create_report_job, read_report_job
+from agent_playground.db.report_jobs import (
+    CreateReportJob,
+    create_report_job,
+    read_report_job,
+)
 from agent_playground.services.report.models import ReportJobStatus, ReportRequest
 
 router = APIRouter(prefix="/report-demo", tags=["Report demonstration"])
@@ -14,14 +18,16 @@ router = APIRouter(prefix="/report-demo", tags=["Report demonstration"])
 
 @router.post("/jobs", status_code=202)
 async def start_report(request: ReportRequest) -> dict[str, str]:
+    """Accept a durable report job and return its identity."""
+    job_request = CreateReportJob(
+        job_id=request.id,
+        task=request.task,
+        callback_token=request.callback_token,
+        outcome=request.outcome,
+    )
+
     try:
-        job = await asyncio.to_thread(
-            create_report_job,
-            job_id=request.id,
-            task=request.task,
-            callback_token=request.callback_token,
-            outcome=request.outcome,
-        )
+        job = await asyncio.to_thread(create_report_job, job_request)
     except ValueError as error:
         raise HTTPException(409, str(error)) from error
 
@@ -32,6 +38,7 @@ async def start_report(request: ReportRequest) -> dict[str, str]:
 async def get_report_job(
     job_id: str, authorization: Annotated[str | None, Header()] = None
 ) -> ReportJobStatus:
+    """Read the status of a report job using its callback credential."""
     job = await asyncio.to_thread(read_report_job, job_id)
 
     if job is None:
@@ -47,5 +54,9 @@ async def get_report_job(
         raise HTTPException(401, "Invalid report callback credential")
 
     return ReportJobStatus.model_validate(
-        {"jobId": job.id, "task": job.task, "outcome": job.outcome}
+        {
+            "jobId": job.id,
+            "task": job.task,
+            "outcome": job.outcome,
+        }
     )

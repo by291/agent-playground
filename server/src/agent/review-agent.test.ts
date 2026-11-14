@@ -131,7 +131,11 @@ test("native receipt adaptation excludes errors, malformed messages and other ch
   agent.handleSingleEvent(
     interactionNodeEnd([
       error,
-      { type: "tool", tool_call_id: "missing-id", content: "Invalid" },
+      {
+        type: "tool",
+        tool_call_id: "missing-id",
+        content: "Invalid",
+      },
     ]),
   );
   agent.handleSingleEvent({
@@ -158,7 +162,12 @@ test("nested memory writes cannot interrupt the public tool stream", () => {
         content: "",
         response_metadata: {},
         tool_call_chunks: [
-          { id: "remember", name: "remember_memory", args: "", index: 0 },
+          {
+            id: "remember",
+            name: "remember_memory",
+            args: "",
+            index: 0,
+          },
         ],
       },
     },
@@ -243,7 +252,15 @@ test("nested memory writes cannot interrupt the public tool stream", () => {
   );
 });
 
-test.each([undefined, null, "internal result", {}, { update: { counter: 1 } }])(
+test.each(
+  /* prettier-ignore */ [
+  undefined,
+  null,
+  "internal result",
+  {},
+  { update: { counter: 1 } },
+],
+)(
   "tool executions without a ToolMessage do not emit public lifecycle events: %j",
   (output) => {
     const { agent, events } = streamingAgent();
@@ -403,7 +420,11 @@ test("a conversational decision targets its interrupt even when it is the only s
 
   assert.deepEqual(
     agent.resumeValue([
-      { interruptId: "sql-review", status: "resolved", payload },
+      {
+        interruptId: "sql-review",
+        status: "resolved",
+        payload,
+      },
     ]),
     { "sql-review": payload },
   );

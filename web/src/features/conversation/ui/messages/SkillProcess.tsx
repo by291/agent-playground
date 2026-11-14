@@ -4,18 +4,19 @@ import { ToolProcess } from "./ToolProcess";
 import { skillIdentity } from "../../model/skill-execution";
 import { isMemoryTool } from "../../model/memory-execution";
 
+/** Groups tool history by its Skill or capability for display. */
 export function ExecutionProcess({
-  process,
+  toolHistory,
   children,
 }: {
-  process: ReturnType<typeof toolProcess>;
+  toolHistory: ReturnType<typeof toolProcess>;
   children?: ReactNode;
 }) {
   const groups = new Map<string, ReturnType<typeof toolProcess>>();
   const tools: ReturnType<typeof toolProcess> = [];
   const memories: ReturnType<typeof toolProcess> = [];
 
-  for (const entry of process) {
+  for (const entry of toolHistory) {
     const byCategory = new Map<string, ToolStep[]>();
 
     for (const step of entry.calls) {
@@ -59,13 +60,17 @@ export function ExecutionProcess({
   return (
     <div className="motion-content-enter space-y-2">
       {[...groups].map(([name, entries]) => (
-        <ToolProcess key={`skill:${name}`} process={entries} skillName={name} />
+        <ToolProcess
+          key={`skill:${name}`}
+          toolHistory={entries}
+          skillName={name}
+        />
       ))}
       {memories.length > 0 && (
-        <ToolProcess key="memory" process={memories} category="Memory" />
+        <ToolProcess key="memory" toolHistory={memories} category="Memory" />
       )}
       {tools.length > 0 && (
-        <ToolProcess process={tools}>{children}</ToolProcess>
+        <ToolProcess toolHistory={tools}>{children}</ToolProcess>
       )}
     </div>
   );

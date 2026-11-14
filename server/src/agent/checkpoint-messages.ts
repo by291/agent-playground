@@ -132,6 +132,7 @@ function publicReasoning(value: unknown): Message | null {
   return parsed.success ? parsed.data : null;
 }
 
+/** Recovers handled tool failures from public-eligible checkpoint messages. */
 export function publicToolErrors(values: unknown): Message[] {
   const state = record(values);
   const errors = new Map<string, Message>();
@@ -159,6 +160,7 @@ export function publicToolErrors(values: unknown): Message[] {
   return [...errors.values()];
 }
 
+/** Converts checkpoint responses into ordered public transcript messages. */
 export function completedMessages(values: unknown): Message[] {
   const state = record(values);
 
@@ -198,16 +200,18 @@ export function completedMessages(values: unknown): Message[] {
         message.toolCalls?.some((call) => call.id === result.toolCallId),
     );
 
-    if (callerIndex >= 0) {
-      let insertionIndex = callerIndex + 1;
-
-      while (messages[insertionIndex]?.role === "tool") {
-        insertionIndex += 1;
-      }
-
-      messages.splice(insertionIndex, 0, result);
-      savedIds.add(result.id);
+    if (callerIndex < 0) {
+      continue;
     }
+
+    let insertionIndex = callerIndex + 1;
+
+    while (messages[insertionIndex]?.role === "tool") {
+      insertionIndex += 1;
+    }
+
+    messages.splice(insertionIndex, 0, result);
+    savedIds.add(result.id);
   }
 
   return messages;

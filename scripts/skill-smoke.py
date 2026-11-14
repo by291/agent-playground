@@ -8,20 +8,27 @@ from dataclasses import replace
 from pathlib import Path
 
 from agent_playground.skills.catalog import SkillCatalog
-from agent_playground.skills.sandbox import SandboxSettings, SkillSession
+from agent_playground.skills.sandbox import (
+    SandboxSettings,
+    ScriptInvocation,
+    SkillSession,
+)
 
 
-async def main():
+async def main() -> None:
+    """Verify the published Skill runtime against a live sandbox server."""
     settings = SandboxSettings.from_config()
     catalog = SkillCatalog(Path("skills"))
 
     async with SkillSession(catalog, settings) as session:
         result = await session.run(
-            "csv-summary",
-            "scripts/summarize.py",
-            ["/workspace/inputs/sample.csv", "/workspace/summary.json"],
-            {"inputs/sample.csv": b"item,amount\nalpha,12\nbeta,8\n"},
-            ["summary.json"],
+            ScriptInvocation(
+                skill_name="csv-summary",
+                script_path="scripts/summarize.py",
+                arguments=["/workspace/inputs/sample.csv", "/workspace/summary.json"],
+                inputs={"inputs/sample.csv": b"item,amount\nalpha,12\nbeta,8\n"},
+                output_files=["summary.json"],
+            )
         )
         assert result.exit_code == 0, result
         assert (
@@ -51,11 +58,12 @@ async def main():
             "Sandbox ports must bind only to loopback"
         )
         result = await session.run(
-            "http-query",
-            "scripts/fetch.py",
-            ["https://httpbin.org/get", "/workspace/response.json"],
-            {},
-            ["response.json"],
+            ScriptInvocation(
+                skill_name="http-query",
+                script_path="scripts/fetch.py",
+                arguments=["https://httpbin.org/get", "/workspace/response.json"],
+                output_files=["response.json"],
+            )
         )
         assert result.exit_code == 0, result
         assert (
@@ -64,11 +72,11 @@ async def main():
         )
         assert session.sandbox.id == sandbox_id
         result = await session.run(
-            "http-query",
-            "scripts/fetch.py",
-            ["https://example.com", "/workspace/blocked.json"],
-            {},
-            [],
+            ScriptInvocation(
+                skill_name="http-query",
+                script_path="scripts/fetch.py",
+                arguments=["https://example.com", "/workspace/blocked.json"],
+            )
         )
         assert result.exit_code != 0, "Unlisted network access unexpectedly succeeded"
 
@@ -88,7 +96,9 @@ async def main():
         async with SkillSession(fixture, settings) as session:
             for script, expected in (("main.sh", "bash-ok"), ("main.js", "node-ok")):
                 result = await session.run(
-                    "runtime-check", f"scripts/{script}", [], {}, []
+                    ScriptInvocation(
+                        skill_name="runtime-check", script_path=f"scripts/{script}"
+                    )
                 )
                 assert result.exit_code == 0 and expected in result.stdout, result
 
@@ -96,7 +106,11 @@ async def main():
             fixture, replace(settings, command_timeout=1)
         ) as session:
             try:
-                await session.run("runtime-check", "scripts/sleep.py", [], {}, [])
+                await session.run(
+                    ScriptInvocation(
+                        skill_name="runtime-check", script_path="scripts/sleep.py"
+                    )
+                )
             except TimeoutError:
                 assert session.closed and session.sandbox is None
             else:

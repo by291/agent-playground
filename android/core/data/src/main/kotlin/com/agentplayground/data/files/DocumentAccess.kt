@@ -12,6 +12,8 @@ import java.io.ByteArrayOutputStream
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
+private const val BUFFER_SIZE_BYTES = 16 * 1024
+
 /** Resolves provider URIs and owns each opened cursor/stream for the duration of one operation. */
 internal class DocumentAccess(private val resolver: ContentResolver) {
     suspend fun inspect(source: String): PickedFile =
@@ -49,7 +51,7 @@ internal class DocumentAccess(private val resolver: ContentResolver) {
         withContext(Dispatchers.IO) {
             resolver.openInputStream(file.uri.toUri())?.use { stream ->
                 val output = ByteArrayOutputStream()
-                val buffer = ByteArray(16 * 1024)
+                val buffer = ByteArray(BUFFER_SIZE_BYTES)
                 var total = 0L
 
                 // Providers may omit or misreport size; enforce the limit against actual bytes.

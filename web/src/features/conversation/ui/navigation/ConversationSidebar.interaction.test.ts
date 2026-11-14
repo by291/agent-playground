@@ -66,7 +66,12 @@ function renderSidebar() {
     );
   const page = render(element());
 
-  return { page, history, client, element };
+  return {
+    page,
+    history,
+    client,
+    element,
+  };
 }
 
 test("workspace navigation exposes memory management beside knowledge", () => {

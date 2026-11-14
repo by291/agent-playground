@@ -19,27 +19,29 @@ import { logger } from "../observability/logger.js";
 import { streamConversationChanges } from "./conversation-events.js";
 import { selectConversationModel } from "../conversation/runs/model-selection.js";
 
+const maximumConversationRequestBytes = 4096;
+
+/** Serves conversation management, recovery snapshots, and change notifications. */
 export const conversationRoutes = new Hono();
 
 conversationRoutes.patch(
   "/:threadId/model",
-  bodyLimit({ maxSize: 4096 }),
+  bodyLimit({ maxSize: maximumConversationRequestBytes }),
   async (context) => {
-    const parsed = selectConversationModelSchema.safeParse(
-      await context.req.json().catch(() => null),
-    );
+    const body: unknown = await context.req.json().catch(() => null);
+    const parsed = selectConversationModelSchema.safeParse(body);
 
     if (!parsed.success) {
       return context.json({ error: "Invalid conversation model" }, 400);
     }
 
     try {
-      return context.json(
-        await selectConversationModel(
-          context.req.param("threadId"),
-          parsed.data.modelId,
-        ),
+      const selection = await selectConversationModel(
+        context.req.param("threadId"),
+        parsed.data.modelId,
       );
+
+      return context.json(selection);
     } catch (error) {
       if (error instanceof SubmissionError) {
         return context.json({ error: error.message }, error.status);
@@ -59,7 +61,9 @@ conversationRoutes.get("/", async (context) => {
   try {
     const cursor = parseConversationCursor(context.req.query("cursor"));
 
-    return context.json(await listConversations(cursor));
+    const page = await listConversations(cursor);
+
+    return context.json(page);
   } catch (error) {
     if (error instanceof SubmissionError) {
       return context.json({ error: error.message }, error.status);
@@ -73,7 +77,7 @@ conversationRoutes.get("/", async (context) => {
 
 conversationRoutes.patch(
   "/:threadId",
-  bodyLimit({ maxSize: 4096 }),
+  bodyLimit({ maxSize: maximumConversationRequestBytes }),
   async (context) => {
     const body: unknown = await context.req.json().catch(() => null);
     const parsed = renameConversationSchema.safeParse(body);
@@ -86,12 +90,12 @@ conversationRoutes.patch(
     }
 
     try {
-      return context.json(
-        await renameConversation(
-          context.req.param("threadId"),
-          parsed.data.title,
-        ),
+      const conversation = await renameConversation(
+        context.req.param("threadId"),
+        parsed.data.title,
       );
+
+      return context.json(conversation);
     } catch (error) {
       if (error instanceof SubmissionError) {
         return context.json({ error: error.message }, error.status);
@@ -145,7 +149,6 @@ conversationRoutes.get("/:threadId", async (context) => {
     }
 
     await synchronizeConversation(threadId);
-
     const snapshot = await conversationSnapshot(threadId);
 
     return snapshot

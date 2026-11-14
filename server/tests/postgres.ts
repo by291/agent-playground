@@ -1,6 +1,7 @@
 import { PostgreSqlContainer } from "@testcontainers/postgresql";
 import type { TestProject } from "vitest/node";
 
+/** Owns the PostgreSQL container shared by the integration project. */
 export default async function setup(project: TestProject) {
   const postgres = await new PostgreSqlContainer(
     "pgvector/pgvector:0.8.7-pg18",

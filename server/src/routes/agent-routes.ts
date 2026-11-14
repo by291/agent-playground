@@ -12,12 +12,17 @@ import {
 import { observeRequest } from "../middleware/request-observation.js";
 import { logger } from "../observability/logger.js";
 
+const maximumAgentRequestBytes = 1_000_000;
+
+/** Serves agent metadata and admits AG-UI submissions. */
 export const agentRoutes = new Hono();
 agentRoutes.use("/agent", observeRequest);
 
 agentRoutes.get("/agent-info", async (context) => {
   try {
-    return context.json(await fetchAgentInfo());
+    const metadata = await fetchAgentInfo();
+
+    return context.json(metadata);
   } catch {
     return context.json({ error: "Agent metadata is unavailable" }, 503);
   }
@@ -26,7 +31,7 @@ agentRoutes.get("/agent-info", async (context) => {
 agentRoutes.post(
   "/agent",
   bodyLimit({
-    maxSize: 1_000_000,
+    maxSize: maximumAgentRequestBytes,
     onError: (context) =>
       context.json({ error: "Request body is too large" }, 413),
   }),
@@ -50,7 +55,7 @@ agentRoutes.post(
       );
     } catch (error) {
       // Streaming setup may throw before the producer takes responsibility for this claim.
-      prepared?.releaseDispatch();
+      await prepared?.releaseDispatch();
 
       if (error instanceof SubmissionError) {
         return context.json({ error: error.message }, error.status);

@@ -14,7 +14,7 @@ from langgraph.store.memory import InMemoryStore
 from langgraph.types import Command
 from pydantic import Field
 
-from agent_playground.graph import make_graph
+from agent_playground.graph import AgentGraphOptions, make_graph
 from agent_playground.memory.service import MemoryService
 from tests.memory_fixtures import remember, scope
 
@@ -61,9 +61,9 @@ def test_preference_saved_by_agent_is_loaded_in_a_new_thread(
                 AIMessage(content="Preference saved."),
             ]
         )
-        graph = make_graph(model=model, checkpointer=InMemorySaver()).copy(
-            update={"store": memory_service.store}
-        )
+        graph = make_graph(
+            AgentGraphOptions(model=model, checkpointer=InMemorySaver())
+        ).copy(update={"store": memory_service.store})
         config = {"configurable": {"thread_id": "thread-one"}}
         paused = await graph.ainvoke(
             {
@@ -89,7 +89,7 @@ def test_preference_saved_by_agent_is_loaded_in_a_new_thread(
         assert saved[0].source_message_id == "user-pref"
 
         other_model = RecordingMemoryModel(responses=[AIMessage(content="Hello.")])
-        other_graph = make_graph(model=other_model).copy(
+        other_graph = make_graph(AgentGraphOptions(model=other_model)).copy(
             update={"store": memory_service.store}
         )
         output = await other_graph.ainvoke(
@@ -126,9 +126,9 @@ def test_project_memory_requires_selection_and_does_not_leak_between_threads(
                 AIMessage(content="Playground uses PostgreSQL."),
             ]
         )
-        graph = make_graph(model=model, checkpointer=InMemorySaver()).copy(
-            update={"store": memory_service.store}
-        )
+        graph = make_graph(
+            AgentGraphOptions(model=model, checkpointer=InMemorySaver())
+        ).copy(update={"store": memory_service.store})
         await graph.ainvoke(
             {"messages": [HumanMessage(content="What database does Playground use?")]},
             {"configurable": {"thread_id": "project-thread"}},
@@ -142,7 +142,7 @@ def test_project_memory_requires_selection_and_does_not_leak_between_threads(
             responses=[AIMessage(content="PostgreSQL.")]
         )
         reloaded_graph = make_graph(
-            model=reloaded_model, checkpointer=graph.checkpointer
+            AgentGraphOptions(model=reloaded_model, checkpointer=graph.checkpointer)
         ).copy(update={"store": memory_service.store})
         await reloaded_graph.ainvoke(
             {"messages": [HumanMessage(content="Remind me again.")]},
@@ -153,7 +153,7 @@ def test_project_memory_requires_selection_and_does_not_leak_between_threads(
         assert "Use SQLite." not in str(reloaded_model.received[0][0].content)
 
         other_model = RecordingMemoryModel(responses=[AIMessage(content="Hello.")])
-        other_graph = make_graph(model=other_model).copy(
+        other_graph = make_graph(AgentGraphOptions(model=other_model)).copy(
             update={"store": memory_service.store}
         )
         await other_graph.ainvoke({"messages": [HumanMessage(content="Hello")]})
@@ -167,7 +167,9 @@ def test_client_input_cannot_select_or_inject_memory(memory_service: MemoryServi
     async def check():
         await remember(memory_service, "Use PostgreSQL.", project="Playground")
         model = RecordingMemoryModel(responses=[AIMessage(content="Hello.")])
-        graph = make_graph(model=model).copy(update={"store": memory_service.store})
+        graph = make_graph(AgentGraphOptions(model=model)).copy(
+            update={"store": memory_service.store}
+        )
         output = await graph.ainvoke(
             {
                 "messages": [HumanMessage(content="Hello")],
@@ -208,9 +210,9 @@ def test_parallel_memory_tools_merge_project_selection(memory_service: MemorySer
                 AIMessage(content="Saved both project facts."),
             ]
         )
-        graph = make_graph(model=model, checkpointer=InMemorySaver()).copy(
-            update={"store": memory_service.store}
-        )
+        graph = make_graph(
+            AgentGraphOptions(model=model, checkpointer=InMemorySaver())
+        ).copy(update={"store": memory_service.store})
         config = {"configurable": {"thread_id": "parallel-project"}}
         paused = await graph.ainvoke(
             {
@@ -262,9 +264,9 @@ def test_parallel_searches_select_the_last_explicit_project(
                 AIMessage(content="Project facts recalled."),
             ]
         )
-        graph = make_graph(model=model, checkpointer=InMemorySaver()).copy(
-            update={"store": memory_service.store}
-        )
+        graph = make_graph(
+            AgentGraphOptions(model=model, checkpointer=InMemorySaver())
+        ).copy(update={"store": memory_service.store})
         config = {"configurable": {"thread_id": "parallel-project-search"}}
         await graph.ainvoke(
             {"messages": [HumanMessage(content="Recall these projects.")]}, config
@@ -291,8 +293,12 @@ def test_loaded_memory_has_a_token_budget(memory_service: MemoryService):
 
         model = RecordingMemoryModel(responses=[AIMessage(content="Hello.")])
         plain = RecordingMemoryModel(responses=[AIMessage(content="Hello.")])
-        graph = make_graph(model=model).copy(update={"store": memory_service.store})
-        without_memory = make_graph(model=plain).copy(update={"store": InMemoryStore()})
+        graph = make_graph(AgentGraphOptions(model=model)).copy(
+            update={"store": memory_service.store}
+        )
+        without_memory = make_graph(AgentGraphOptions(model=plain)).copy(
+            update={"store": InMemoryStore()}
+        )
         result = await graph.ainvoke({"messages": [HumanMessage(content="Hello")]})
         baseline = await without_memory.ainvoke(
             {"messages": [HumanMessage(content="Hello")]}
@@ -318,9 +324,9 @@ def test_recall_failure_drops_the_cached_memory_context(
     async def check():
         await remember(memory_service, "Prefer concise answers.")
         model = RecordingMemoryModel(responses=[AIMessage(content="Hello.")])
-        graph = make_graph(model=model, checkpointer=InMemorySaver()).copy(
-            update={"store": memory_service.store}
-        )
+        graph = make_graph(
+            AgentGraphOptions(model=model, checkpointer=InMemorySaver())
+        ).copy(update={"store": memory_service.store})
         config = {"configurable": {"thread_id": "memory-outage"}}
         await graph.ainvoke({"messages": [HumanMessage(content="Hello")]}, config)
 

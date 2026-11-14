@@ -11,6 +11,7 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.types import Command, StateSnapshot
 
 from agent_playground.workflows.external import register_external_task
+from agent_playground.workflows.output import PublishWorkflowOutput
 from agent_playground.workflows.report.graph import ReportState, make_report_workflow
 from tests.agent_config import update_agent_config
 
@@ -99,7 +100,7 @@ def configure_report_api(monkeypatch: pytest.MonkeyPatch, outcome: str):
     def client_factory(**kwargs: Any):
         return client_class(transport=transport, **kwargs)
 
-    async def publish(**kwargs: Any):
+    async def publish(request: PublishWorkflowOutput) -> None:
         return None
 
     monkeypatch.setattr(httpx, "AsyncClient", client_factory)

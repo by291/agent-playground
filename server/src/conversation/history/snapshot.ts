@@ -31,36 +31,39 @@ export async function conversationSnapshot(threadId: string) {
     return null;
   }
 
+  const outputQuery = db
+    .select()
+    .from(workflowOutputs)
+    .where(eq(workflowOutputs.threadId, threadId));
+
+  const messageProjection = db
+    .select({
+      message: conversationMessages.message,
+      createdAt: conversationMessages.createdAt,
+    })
+    .from(conversationMessages)
+    .where(eq(conversationMessages.threadId, threadId));
+
+  const runProjection = db
+    .select({
+      runId: conversationRuns.aguiRunId,
+      aegraRunId: conversationRuns.aegraRunId,
+      status: conversationRuns.status,
+      messageId: conversationRuns.messageId,
+      interrupts: conversationRuns.interrupts,
+      modelId: conversationRuns.modelId,
+    })
+    .from(conversationRuns)
+    .where(eq(conversationRuns.threadId, threadId));
+
   const [runs, messages, outputs, externalTasks] = await Promise.all([
-    db
-      .select({
-        runId: conversationRuns.aguiRunId,
-        aegraRunId: conversationRuns.aegraRunId,
-        status: conversationRuns.status,
-        messageId: conversationRuns.messageId,
-        interrupts: conversationRuns.interrupts,
-        modelId: conversationRuns.modelId,
-      })
-      .from(conversationRuns)
-      .where(eq(conversationRuns.threadId, threadId))
-      .orderBy(asc(conversationRuns.submitSeq)),
-    db
-      .select({
-        message: conversationMessages.message,
-        createdAt: conversationMessages.createdAt,
-      })
-      .from(conversationMessages)
-      .where(eq(conversationMessages.threadId, threadId))
-      .orderBy(
-        asc(conversationMessages.submitSeq),
-        asc(conversationMessages.messageOrder),
-        asc(conversationMessages.createdAt),
-      ),
-    db
-      .select()
-      .from(workflowOutputs)
-      .where(eq(workflowOutputs.threadId, threadId))
-      .orderBy(asc(workflowOutputs.outputSeq)),
+    runProjection.orderBy(asc(conversationRuns.submitSeq)),
+    messageProjection.orderBy(
+      asc(conversationMessages.submitSeq),
+      asc(conversationMessages.messageOrder),
+      asc(conversationMessages.createdAt),
+    ),
+    outputQuery.orderBy(asc(workflowOutputs.outputSeq)),
     externalTaskSnapshots(threadId),
   ]);
 

@@ -28,7 +28,13 @@ test("a single plan exposes direct approval and rejection beside editable fields
 test("an empty plan cannot be approved but can still be rejected", () => {
   const markup = renderToStaticMarkup(
     createElement(ReviewPanel, {
-      reviews: [{ ...review, title: "", steps: [] }],
+      reviews: [
+        {
+          ...review,
+          title: "",
+          steps: [],
+        },
+      ],
       running: false,
       onReview: () => Promise.resolve(),
     }),

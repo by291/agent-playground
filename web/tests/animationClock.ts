@@ -1,12 +1,21 @@
 import { act } from "@testing-library/react";
 import { vi } from "vitest";
 
+/** Steps the animation clock deterministically for presentation tests. */
 export function animationClock() {
   let now = 0;
   let nextId = 0;
   const frames = new Map<number, FrameRequestCallback>();
 
-  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"], now });
+  vi.useFakeTimers({
+    toFake:
+      /* prettier-ignore */ [
+        "setTimeout",
+        "clearTimeout",
+        "Date",
+      ],
+    now,
+  });
   vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
     const id = ++nextId;
 

@@ -4,6 +4,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import type { A2UISurfaceView } from "./runtime/a2ui-runtime";
 import { reportClientError } from "@/shared/observability/tracing";
 
+/** Isolates SDK rendering errors to the surface that produced them. */
 export function A2UISurface({
   view,
   inChat = true,
@@ -33,6 +34,7 @@ class SurfaceErrorBoundary extends Component<
   { error: string | null }
 > {
   state: { error: string | null } = { error: null };
+
   private subscription?: { unsubscribe: () => void };
 
   componentDidMount() {
@@ -45,6 +47,7 @@ class SurfaceErrorBoundary extends Component<
             : "Rendering failed";
 
         this.setState({ error: detail });
+
         reportClientError(new Error(detail), {
           "app.surface_id": this.props.surfaceId,
         });

@@ -15,6 +15,16 @@ import { UploadedAttachments } from "../attachments/MessageAttachments";
 import { AssistantMessageFooter, MessageTimestamp } from "./MessageMetadata";
 import { copyMarkdownSelection } from "./markdown-selection";
 
+// Streamdown uses buttons for safe links, whose labels belong to the answer.
+const answerChrome = [
+  'button:not([data-streamdown="link"])',
+  "[hidden]",
+  '[aria-hidden="true"]',
+  '[data-streamdown="code-block-header"]',
+  '[data-streamdown="code-block-actions"]',
+].join(", ");
+
+/** Renders an archived user or assistant message with its presentation metadata. */
 export function MessageRow({
   message,
   streaming = false,
@@ -70,6 +80,7 @@ export function MessageRow({
   );
 }
 
+/** Provides the shared layout and accessible label for an assistant reply. */
 export function AssistantFrame({ children }: { children: ReactNode }) {
   return (
     <ConversationMessage className="gap-0" aria-label="Assistant reply">
@@ -86,9 +97,7 @@ function hasRenderedAnswerText(element: HTMLElement): boolean {
 
   while (textNodes.nextNode()) {
     const node = textNodes.currentNode;
-    const chrome = node.parentElement?.closest(
-      'button, [hidden], [aria-hidden="true"], [data-streamdown="code-block-header"], [data-streamdown="code-block-actions"]',
-    );
+    const chrome = node.parentElement?.closest(answerChrome);
 
     if (node.textContent?.trim() && !chrome) {
       return true;
@@ -98,6 +107,7 @@ function hasRenderedAnswerText(element: HTMLElement): boolean {
   return false;
 }
 
+/** Reports when the paced Markdown renders answer text so reasoning can fold. */
 export function AssistantText({
   message,
   streaming = false,
@@ -113,6 +123,7 @@ export function AssistantText({
 }) {
   const content = useRef<HTMLDivElement>(null);
   const [displaying, setDisplaying] = useState(streaming);
+
   const markdown = messageText(message);
 
   useLayoutEffect(() => {
@@ -124,14 +135,13 @@ export function AssistantText({
 
     // Markdown rendering can commit after its paced buffer changes. Observe
     // actual rendered text so an empty presentation does not hide reasoning.
-    const observer = new MutationObserver(reportVisibleText);
-
-    function reportVisibleText() {
-      if (hasRenderedAnswerText(element!)) {
-        onTextVisible!(message.id);
+    const reportVisibleText = () => {
+      if (hasRenderedAnswerText(element)) {
+        onTextVisible(message.id);
         observer.disconnect();
       }
-    }
+    };
+    const observer = new MutationObserver(reportVisibleText);
 
     observer.observe(element, {
       childList: true,
@@ -168,6 +178,7 @@ export function AssistantText({
   );
 }
 
+/** Announces that the assistant is preparing output. */
 export function ThinkingStatus({ label = "Thinking" }: { label?: string }) {
   return (
     <div

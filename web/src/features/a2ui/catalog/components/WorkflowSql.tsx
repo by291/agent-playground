@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/collapsible";
 import { CaretDownIcon } from "@phosphor-icons/react/dist/csr/CaretDown";
 
+/** Renders the checks and disposition of a SQL workflow revision. */
 export function SqlCardContent({ card }: { card: SqlCard }) {
   let status = card.check.passed ? "Check passed" : "Changes required";
 
@@ -33,10 +34,12 @@ export function SqlCardContent({ card }: { card: SqlCard }) {
             Version {card.revision} · {status}
           </Badge>
         </CardHeader>
+
         <CardContent className="min-w-0 space-y-4 sm:px-5">
           <pre className="max-h-80 overflow-auto rounded-md border border-line bg-sidebar p-3 text-sm/6 text-ink">
             <code>{card.sql}</code>
           </pre>
+
           {card.check.issues.length > 0 && (
             <Alert variant="destructive">
               <AlertDescription>
@@ -48,6 +51,7 @@ export function SqlCardContent({ card }: { card: SqlCard }) {
               </AlertDescription>
             </Alert>
           )}
+
           <Collapsible className="text-xs/5 text-muted">
             <CollapsibleTrigger asChild>
               <Button
@@ -69,14 +73,17 @@ export function SqlCardContent({ card }: { card: SqlCard }) {
               </pre>
             </CollapsibleContent>
           </Collapsible>
+
           {card.receiptId && (
             <p className="break-all text-xs/5 text-muted">
               Receipt: {card.receiptId}
             </p>
           )}
+
           {card.status === "abandoned" && (
             <p className="text-sm text-muted">Nothing was submitted.</p>
           )}
+
           <p className="text-xs/5 text-soft">
             Demo checks only. Submission records SQL without executing it.
           </p>

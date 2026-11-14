@@ -33,7 +33,10 @@ import {
   isImageAttachment,
   SelectedAttachment,
 } from "../attachments/MessageAttachments";
+import type { AttachmentImage } from "../attachments/ImageViewer";
 import { useUserPreferences } from "@/shared/preferences/UserPreferencesProvider";
+
+const maximumAttachments = 4;
 
 interface MessageComposerProps {
   prompt: string;
@@ -46,19 +49,94 @@ interface ComposerAttachment {
   preview?: string;
 }
 
+interface ComposerAttachmentsProps {
+  files: ComposerAttachment[];
+  isUploading: boolean;
+  isDisabled: boolean;
+  onRemove: (id: string) => void;
+}
+
+function ComposerAttachments({
+  files,
+  isUploading,
+  isDisabled,
+  onRemove,
+}: ComposerAttachmentsProps) {
+  const images: AttachmentImage[] = [];
+
+  for (const { file, preview } of files) {
+    if (preview) {
+      images.push({
+        name: file.name,
+        alt: file.name,
+        src: preview,
+        thumbnail: preview,
+      });
+    }
+  }
+
+  return (
+    <div className="flex flex-wrap gap-2 px-1 empty:hidden">
+      <AnimatePresence initial={false}>
+        {files.map(({ id, file, preview }) => (
+          <AnimatedDiv
+            key={id}
+            data-slot="composer-attachment"
+            layout="position"
+            exit={{
+              opacity: 0,
+              height: 0,
+              width: 0,
+              margin: 0,
+              padding: 0,
+              borderWidth: 0,
+            }}
+            className="max-w-full min-w-0 overflow-hidden"
+          >
+            <SelectedAttachment
+              file={file}
+              preview={preview}
+              images={images}
+              uploading={isUploading}
+              disabled={isDisabled}
+              onRemove={() => onRemove(id)}
+            />
+          </AnimatedDiv>
+        ))}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+/** Owns file previews and clears draft input only when the session confirms admission. */
 export function MessageComposer({
   prompt,
   onPromptChange,
 }: MessageComposerProps) {
   const [files, setFiles] = useState<ComposerAttachment[]>([]);
-  const previews = useRef(new Map<string, string>());
   const [uploading, setUploading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+
+  const previews = useRef(new Map<string, string>());
   const picker = useRef<HTMLInputElement>(null);
   const upload = useRef<AbortController | null>(null);
   const mounted = useRef(true);
   const currentPrompt = useRef(prompt);
+
+  const { preferences } = useUserPreferences();
+  const {
+    running,
+    recovering,
+    changingModel,
+    waitingForReview,
+    waitingForInteraction,
+    waitingForExternalTask,
+    discussionPlaceholder,
+    onSend,
+  } = useConversation(useShallow(composerState));
+  const ensureThreadId = useConversation((state) => state.ensureThreadId);
+  const presenting = useReplyPresentationBusy();
 
   useEffect(() => {
     currentPrompt.current = prompt;
@@ -80,20 +158,6 @@ export function MessageComposer({
       ownedPreviews.clear();
     };
   }, []);
-
-  const { preferences } = useUserPreferences();
-  const {
-    running,
-    recovering,
-    changingModel,
-    waitingForReview,
-    waitingForInteraction,
-    waitingForExternalTask,
-    discussionPlaceholder,
-    onSend,
-  } = useConversation(useShallow(composerState));
-  const presenting = useReplyPresentationBusy();
-  const ensureThreadId = useConversation((state) => state.ensureThreadId);
 
   const responding = running || presenting;
   const disabled =
@@ -150,7 +214,7 @@ export function MessageComposer({
     event.target.value = "";
 
     const invalidSelection =
-      files.length + selected.length > 4 ||
+      files.length + selected.length > maximumAttachments ||
       selected.some(
         (file) =>
           file.size > maxSkillFileBytes ||
@@ -178,43 +242,47 @@ export function MessageComposer({
 
       previews.current.set(id, preview);
 
-      return { id, file, preview };
+      return {
+        id,
+        file,
+        preview,
+      };
     });
 
     setFiles((previous) => [...previous, ...attachments]);
   }
 
-  function submit(event?: SubmitEvent<HTMLFormElement>) {
+  async function submit(event?: SubmitEvent<HTMLFormElement>) {
     event?.preventDefault();
 
-    if (!prompt.trim() || disabled) {
+    if (!prompt.trim() || disabled || upload.current) {
       return;
     }
 
     const message = prompt;
-
-    if (upload.current) {
-      return;
-    }
-
     const controller = new AbortController();
+    const submittedFileIds = new Set(files.map(({ id }) => id));
 
     upload.current = controller;
     setSubmitting(true);
     setUploading(files.length > 0);
     setUploadError(null);
 
-    const submittedFileIds = new Set(files.map(({ id }) => id));
-
-    async function send() {
+    try {
       let content = message;
 
       if (files.length) {
         const threadId = ensureThreadId();
+
         // Wait for every upload to settle before releasing this submission's lock.
         const results = await Promise.allSettled(
           files.map(({ id, file }) =>
-            uploadFile(threadId, id, file, controller.signal),
+            uploadFile({
+              threadId,
+              id,
+              file,
+              signal: controller.signal,
+            }),
           ),
         );
         const uploaded = results.map((result) => {
@@ -249,28 +317,24 @@ export function MessageComposer({
         setUploadError(null);
         upload.current = null;
       });
-    }
+    } catch (error) {
+      if (!controller.signal.aborted) {
+        setUploadError(
+          error instanceof Error
+            ? error.message
+            : "File upload failed. Please retry.",
+        );
+      }
+    } finally {
+      if (upload.current === controller) {
+        upload.current = null;
 
-    void send()
-      .catch((error: unknown) => {
         if (!controller.signal.aborted) {
-          setUploadError(
-            error instanceof Error
-              ? error.message
-              : "File upload failed. Please retry.",
-          );
+          setUploading(false);
+          setSubmitting(false);
         }
-      })
-      .finally(() => {
-        if (upload.current === controller) {
-          upload.current = null;
-
-          if (!controller.signal.aborted) {
-            setUploading(false);
-            setSubmitting(false);
-          }
-        }
-      });
+      }
+    }
   }
 
   function handleKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
@@ -286,7 +350,7 @@ export function MessageComposer({
       shortcutMatches
     ) {
       event.preventDefault();
-      submit();
+      void submit();
     }
   }
 
@@ -300,6 +364,7 @@ export function MessageComposer({
         }
       >
         <PendingAgentInteraction />
+
         {waitingForInteraction && (
           <div
             role="group"
@@ -329,7 +394,11 @@ export function MessageComposer({
             </InputGroupButton>
           </div>
         )}
-        <form onSubmit={submit} hidden={waitingForInteraction}>
+
+        <form
+          onSubmit={(event) => void submit(event)}
+          hidden={waitingForInteraction}
+        >
           <input
             ref={picker}
             type="file"
@@ -342,48 +411,14 @@ export function MessageComposer({
           <InputGroup className="h-auto flex-col items-stretch gap-1 rounded-xl border-line bg-surface p-3 shadow-[0_3px_12px_rgba(32,36,44,0.04)] transition-colors duration-150 focus-within:border-accent sm:p-4 dark:bg-surface">
             {/* Release gallery portals; the composer retains files and preview URLs. */}
             {!waitingForInteraction && (
-              <div className="flex flex-wrap gap-2 px-1 empty:hidden">
-                <AnimatePresence initial={false}>
-                  {files.map(({ id, file, preview }) => (
-                    <AnimatedDiv
-                      key={id}
-                      data-slot="composer-attachment"
-                      layout="position"
-                      exit={{
-                        opacity: 0,
-                        height: 0,
-                        width: 0,
-                        margin: 0,
-                        padding: 0,
-                        borderWidth: 0,
-                      }}
-                      className="max-w-full min-w-0 overflow-hidden"
-                    >
-                      <SelectedAttachment
-                        file={file}
-                        preview={preview}
-                        images={files.flatMap(
-                          ({ file: imageFile, preview: imagePreview }) =>
-                            imagePreview
-                              ? [
-                                  {
-                                    name: imageFile.name,
-                                    alt: imageFile.name,
-                                    src: imagePreview,
-                                    thumbnail: imagePreview,
-                                  },
-                                ]
-                              : [],
-                        )}
-                        uploading={uploading}
-                        disabled={disabled}
-                        onRemove={() => removeFiles(new Set([id]))}
-                      />
-                    </AnimatedDiv>
-                  ))}
-                </AnimatePresence>
-              </div>
+              <ComposerAttachments
+                files={files}
+                isUploading={uploading}
+                isDisabled={disabled}
+                onRemove={(id) => removeFiles(new Set([id]))}
+              />
             )}
+
             {uploading && (
               <p
                 role="status"
@@ -398,6 +433,7 @@ export function MessageComposer({
                 <AlertDescription>{uploadError}</AlertDescription>
               </Alert>
             )}
+
             <InputGroupTextarea
               rows={1}
               value={prompt}
@@ -457,6 +493,7 @@ export function MessageComposer({
             </InputGroupAddon>
           </InputGroup>
         </form>
+
         <p
           className={
             waitingForInteraction

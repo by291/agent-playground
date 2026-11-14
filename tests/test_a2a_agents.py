@@ -43,7 +43,7 @@ from agent_playground.db.connection import close_app_store, prepare_app_store
 from agent_playground.services.a2a.agent import DemoAgentExecutor
 from agent_playground.services.a2a.contracts import AgentRole, remote_task_id
 from agent_playground.services.a2a.handler import DurableRequestHandler
-from agent_playground.services.a2a.server import create_a2a_app
+from agent_playground.services.a2a.server import A2aAppConfig, create_a2a_app
 from tests.agent_config import update_agent_config
 from tests.model_config import ModelConfigFile
 
@@ -70,7 +70,9 @@ def running_server(
     listener = socket.socket()
     listener.bind(("127.0.0.1", 0))
     url = f"http://127.0.0.1:{listener.getsockname()[1]}"
-    app = create_a2a_app(store.role, url, task_store=store, executor=executor)
+    app = create_a2a_app(
+        A2aAppConfig(role=store.role, base_url=url, task_store=store, executor=executor)
+    )
     server = uvicorn.Server(
         uvicorn.Config(app, log_level="error", timeout_graceful_shutdown=3)
     )
@@ -662,10 +664,12 @@ def test_reconnect_snapshot_does_not_duplicate_queued_artifact_delta(
                 await updater.complete()
 
         app = create_a2a_app(
-            "planner",
-            "http://unused",
-            task_store=durable_store,
-            executor=GatedExecutor("planner", mode="scripted"),
+            A2aAppConfig(
+                role="planner",
+                base_url="http://unused",
+                task_store=durable_store,
+                executor=GatedExecutor("planner", mode="scripted"),
+            )
         )
         handler = cast(DurableRequestHandler, app.state.a2a_handler)
         context = ServerCallContext()

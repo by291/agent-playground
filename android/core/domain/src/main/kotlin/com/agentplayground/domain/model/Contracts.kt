@@ -74,6 +74,7 @@ data class PendingSubmission(
     val input: RunAgentInput,
     val messageId: String,
     val submittedAt: String? = null,
+    val composerDraft: String? = null,
 )
 
 /** Local recovery metadata and draft; the server remains the owner of the conversation history. */

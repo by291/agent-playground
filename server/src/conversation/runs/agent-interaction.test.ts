@@ -128,7 +128,12 @@ test("malformed question batches and mismatched action configs are not interacti
 
 test("answer limits validate original text and allow JSON escaping within three valid answers", () => {
   const interaction = structuredClone(parseAgentInteraction(interrupt)!);
-  const questions = ["first", "second", "third"].map((id) => ({
+  const questions =
+    /* prettier-ignore */ [
+    "first",
+    "second",
+    "third",
+  ].map((id) => ({
     id,
     question: `Answer ${id}`,
   }));

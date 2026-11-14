@@ -1,6 +1,7 @@
 import { ArrowLeftIcon } from "@phosphor-icons/react/dist/csr/ArrowLeft";
 import type { ReactNode, Ref } from "react";
 
+/** Provides the management page shell and a stable back link for focus recovery. */
 export function ManagementLayout({
   children,
   backLinkRef,
@@ -18,6 +19,7 @@ export function ManagementLayout({
         >
           <ArrowLeftIcon size={16} aria-hidden="true" /> Back to chat
         </a>
+
         {children}
       </div>
     </main>

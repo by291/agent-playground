@@ -22,6 +22,8 @@ def execution_trace(config: RunnableConfig) -> Generator[None]:
         if isinstance(raw_carrier, dict)
         else {}
     )
+
+    # Start from an empty context so a missing carrier cannot reuse another run's parent.
     parent = _propagator.extract(carrier, context=context.Context())
     token = context.attach(parent)
 
@@ -46,5 +48,5 @@ def execution_trace(config: RunnableConfig) -> Generator[None]:
             ):
                 yield
     finally:
-        # Aegra also calls the factory for inspection; never leave its parent active.
+        # A cancelled run must also restore the caller's trace.
         context.detach(token)

@@ -64,7 +64,7 @@ internal class DefaultConversationRepository(
         attachments: List<PickedFile>,
     ): List<SkillFile> = attachments.map { file ->
         // Retain the selected admission identity across response failures and retries.
-        api.uploadFile(threadId, file.id, file.name, files.read(file))
+        api.uploadFile(threadId, file, files.read(file))
     }
 
     override suspend fun save(download: Download, target: String) =

@@ -13,9 +13,10 @@ export interface PreparedConversationRun {
   input: RunAgentInput;
   modelId: string | null;
   /** Release after the mapping is durable, producer settlement, or setup failure. */
-  releaseDispatch: () => void;
+  releaseDispatch: () => Promise<void>;
 }
 
+/** Validate and admit a submission before reserving its upstream dispatch. */
 export async function prepareConversationRun(
   input: RunAgentInput,
 ): Promise<PreparedConversationRun> {
@@ -68,9 +69,14 @@ export async function prepareConversationRun(
     throw new SubmissionError("Submission already dispatched", 409);
   }
 
-  return { input: modelInput, modelId: row.modelId, releaseDispatch };
+  return {
+    input: modelInput,
+    modelId: row.modelId,
+    releaseDispatch,
+  };
 }
 
+/** Transfer the claim to the SDK producer until its upstream identity is durable. */
 export function executeConversationRun(
   prepared: PreparedConversationRun,
   onRunCreated: (id: string) => void,
@@ -80,9 +86,9 @@ export function executeConversationRun(
   let mappingError: Error | undefined;
 
   try {
-    const events = runAgent(
+    const events = runAgent({
       input,
-      (id) => {
+      onRunCreated(id) {
         onRunCreated(id);
 
         // The callback cannot await. Retain its failure until execution settles.
@@ -97,15 +103,15 @@ export function executeConversationRun(
                   });
           });
       },
-      async () => {
+      async onProducerSettled() {
         try {
           await mappingWrite;
         } finally {
-          releaseDispatch();
+          await releaseDispatch();
         }
       },
       modelId,
-    );
+    });
 
     return {
       events,
@@ -121,7 +127,7 @@ export function executeConversationRun(
       },
     };
   } catch (error) {
-    releaseDispatch();
+    void releaseDispatch();
     throw error;
   }
 }

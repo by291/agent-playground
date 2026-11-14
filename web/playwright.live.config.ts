@@ -20,6 +20,10 @@ export default defineConfig({
     ["list"],
     ["html", { outputFolder: "playwright-report/live", open: "never" }],
   ],
-  use: { baseURL, trace: "retain-on-failure", screenshot: "only-on-failure" },
+  use: {
+    baseURL,
+    trace: "retain-on-failure",
+    screenshot: "only-on-failure",
+  },
   projects: [{ name: "live-chromium", use: { ...devices["Desktop Chrome"] } }],
 });

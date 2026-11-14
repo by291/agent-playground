@@ -17,6 +17,7 @@ internal data class WorkspaceModels(
     val memory: MemoryViewModel,
 )
 
+/** Creates the server-scoped models using the Activity's Hilt creation context. */
 @Composable
 internal fun rememberWorkspaceModels(serverUrl: String): WorkspaceModels {
     val graph: ServerGraph = hiltViewModel()
@@ -33,6 +34,7 @@ internal fun rememberWorkspaceModels(serverUrl: String): WorkspaceModels {
             extras =
                 extras.withCreationCallback<ConversationViewModel.Factory> { it.create(serverUrl) },
         )
+
     val knowledge =
         viewModel<KnowledgeViewModel>(
             viewModelStoreOwner = owner,
@@ -40,6 +42,7 @@ internal fun rememberWorkspaceModels(serverUrl: String): WorkspaceModels {
             extras =
                 extras.withCreationCallback<KnowledgeViewModel.Factory> { it.create(serverUrl) },
         )
+
     val memory =
         viewModel<MemoryViewModel>(
             viewModelStoreOwner = owner,

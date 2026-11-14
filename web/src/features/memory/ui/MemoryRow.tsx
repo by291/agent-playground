@@ -11,6 +11,7 @@ interface MemoryRowProps {
   onForget: (opener: HTMLButtonElement) => void;
 }
 
+/** Displays a saved memory, its source conversation and its management actions. */
 export function MemoryRow({
   memory,
   busy,
@@ -30,9 +31,11 @@ export function MemoryRow({
             </span>
           )}
         </div>
+
         <p className="mt-3 text-sm/6 whitespace-pre-wrap wrap-anywhere">
           {memory.text}
         </p>
+
         <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted">
           <span>
             Updated{" "}
@@ -50,6 +53,7 @@ export function MemoryRow({
           )}
         </div>
       </div>
+
       <div className="flex shrink-0 gap-2">
         <Button
           variant="outline"

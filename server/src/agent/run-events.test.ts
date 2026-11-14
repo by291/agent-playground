@@ -6,11 +6,19 @@ import { normalizeRunEvent } from "./run-events.js";
 test("normalizes both terminal and start IDs across adapter mutation", () => {
   const expected = "client-run";
   const started = normalizeRunEvent(
-    { type: EventType.RUN_STARTED, runId: expected, threadId: "thread" },
+    {
+      type: EventType.RUN_STARTED,
+      runId: expected,
+      threadId: "thread",
+    },
     expected,
   );
   const finished = normalizeRunEvent(
-    { type: EventType.RUN_FINISHED, runId: "aegra-run", threadId: "thread" },
+    {
+      type: EventType.RUN_FINISHED,
+      runId: "aegra-run",
+      threadId: "thread",
+    },
     expected,
   );
 

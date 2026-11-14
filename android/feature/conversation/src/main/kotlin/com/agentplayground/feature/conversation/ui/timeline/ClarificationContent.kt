@@ -21,7 +21,12 @@ internal fun ClarificationQuestionContent(part: AssistantTranscriptPart.Question
     val status =
         when (part.status) {
             ClarificationStatus.Pending ->
-                if (part.questions.isEmpty()) "Preparing a question…" else "Waiting for your answer"
+                if (part.questions.isEmpty()) {
+                    "Preparing a question…"
+                } else {
+                    "Waiting for your answer"
+                }
+
             ClarificationStatus.Declined -> "Question skipped"
             ClarificationStatus.Failed -> "Question could not be completed"
             ClarificationStatus.Unavailable -> "Question unavailable"
@@ -36,6 +41,7 @@ internal fun ClarificationQuestionContent(part: AssistantTranscriptPart.Question
             part.questions.forEach { question ->
                 Text(question.question, style = MaterialTheme.typography.bodyLarge)
             }
+
             status?.let {
                 Text(
                     it,
@@ -91,6 +97,7 @@ internal fun ClarificationAnswerContent(part: AssistantTranscriptPart.Answer, ti
                 }
             }
         }
+
         MessageTimestamp(timestamp, Modifier.padding(end = 6.dp))
     }
 }

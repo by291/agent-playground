@@ -25,6 +25,7 @@ export default defineConfig([
   },
   {
     files: ["src/**/*.ts"],
+    // Apply dependency boundaries to the code that ships with the server.
     plugins: { architecture: { rules: { boundaries: architectureRule } } },
     rules: { "architecture/boundaries": "error" },
   },

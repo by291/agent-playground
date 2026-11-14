@@ -6,6 +6,7 @@ const skillTools = new Set([
   "run_skill_script",
 ]);
 
+/** Reads the display identity of a Skill call from its tool arguments. */
 export function skillIdentity(
   step: ToolStep,
 ): { name: string; path?: string } | null {

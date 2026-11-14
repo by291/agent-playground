@@ -73,7 +73,13 @@ test("a pending submission requires recovery even when its old empty marker rema
     pending: {
       runId: "pending-run",
       messageId: "input",
-      messages: [{ id: "input", role: "user", content: "Hello" }],
+      messages: [
+        {
+          id: "input",
+          role: "user",
+          content: "Hello",
+        },
+      ],
       state: {},
     },
   });

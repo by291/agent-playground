@@ -16,7 +16,11 @@ test("tool events and empty text starts keep the assistant waiting until visible
   }[] = [];
   let currentEvent = EventType.RUN_STARTED;
   const events = [
-    { type: EventType.RUN_STARTED, threadId: "thread", runId: "run" },
+    {
+      type: EventType.RUN_STARTED,
+      threadId: "thread",
+      runId: "run",
+    },
     {
       type: EventType.TOOL_CALL_START,
       toolCallId: "sum",
@@ -41,10 +45,22 @@ test("tool events and empty text starts keep the assistant waiting until visible
       messageId: "reply",
       role: "assistant",
     },
-    { type: EventType.TEXT_MESSAGE_CONTENT, messageId: "reply", delta: " " },
-    { type: EventType.TEXT_MESSAGE_CONTENT, messageId: "reply", delta: "42" },
+    {
+      type: EventType.TEXT_MESSAGE_CONTENT,
+      messageId: "reply",
+      delta: " ",
+    },
+    {
+      type: EventType.TEXT_MESSAGE_CONTENT,
+      messageId: "reply",
+      delta: "42",
+    },
     { type: EventType.TEXT_MESSAGE_END, messageId: "reply" },
-    { type: EventType.RUN_FINISHED, threadId: "thread", runId: "run" },
+    {
+      type: EventType.RUN_FINISHED,
+      threadId: "thread",
+      runId: "run",
+    },
   ];
   const agent = new HttpAgent({
     threadId: "thread",

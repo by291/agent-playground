@@ -6,44 +6,54 @@ const planSchema = z.object({
   todos: z.array(
     z.object({
       content: z.string().refine((content) => content.trim().length > 0),
-      status: z.enum(["pending", "in_progress", "completed"]),
+      status: z.enum(
+        /* prettier-ignore */ [
+          "pending",
+          "in_progress",
+          "completed",
+        ],
+      ),
     }),
   ),
 });
 
 export type AgentPlanStep = z.infer<typeof planSchema>["todos"][number];
 
+function readCommittedPlan(
+  step: ReturnType<typeof toolProcess>[number]["calls"][number],
+): AgentPlanStep[] | null {
+  const isCommittedPlan =
+    step.call.function.name === "write_todos" &&
+    step.status === "completed" &&
+    step.result &&
+    !step.result.error;
+
+  if (!isCommittedPlan) {
+    return null;
+  }
+
+  try {
+    const parsed = planSchema.safeParse(
+      JSON.parse(step.call.function.arguments),
+    );
+
+    return parsed.success ? parsed.data.todos : null;
+  } catch {
+    // A partial update cannot replace the last committed plan.
+    return null;
+  }
+}
+
 /** Reads committed tool updates, so streams and archived turns share one projection. */
 export function latestAgentPlan(
-  process: ReturnType<typeof toolProcess>,
+  toolGroups: ReturnType<typeof toolProcess>,
 ): AgentPlanStep[] | null {
   let plan: AgentPlanStep[] | null = null;
 
-  for (const entry of process) {
+  for (const entry of toolGroups) {
     for (const step of entry.calls) {
-      const committed =
-        step.call.function.name === "write_todos" &&
-        step.status === "completed" &&
-        step.result &&
-        !step.result.error;
-
-      if (!committed) {
-        continue;
-      }
-
-      try {
-        const parsed = planSchema.safeParse(
-          JSON.parse(step.call.function.arguments),
-        );
-
-        if (parsed.success) {
-          // An empty successful update clears a previous plan in the same turn.
-          plan = parsed.data.todos;
-        }
-      } catch {
-        // Partially streamed or malformed arguments cannot replace a saved plan.
-        continue;
-      }
+      // An empty successful update clears the earlier plan in this turn.
+      plan = readCommittedPlan(step) ?? plan;
     }
   }
 

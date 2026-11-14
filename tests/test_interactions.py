@@ -11,7 +11,7 @@ from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.types import Command
 
 from agent_playground.config.agent import ApprovalSettings, load_agent_config
-from agent_playground.graph import make_graph
+from agent_playground.graph import AgentGraphOptions, make_graph
 from agent_playground.interactions import AskUserInput
 from tests.agent_config import update_agent_config
 from tests.test_context import RecordingModel
@@ -48,10 +48,14 @@ def test_protected_tools_execute_only_after_approval_across_graph_recreation(
     saver = InMemorySaver()
     config = {"configurable": {"thread_id": "approval"}}
     graph = make_graph(
-        model=RecordingModel(responses=[tool_call("record_effect", {"value": "once"})]),
-        checkpointer=saver,
-        mcp_tools=[record_effect],
-        approval_settings=settings,
+        AgentGraphOptions(
+            model=RecordingModel(
+                responses=[tool_call("record_effect", {"value": "once"})]
+            ),
+            checkpointer=saver,
+            mcp_tools=[record_effect],
+            approval_settings=settings,
+        )
     )
 
     paused = invoke(
@@ -67,10 +71,12 @@ def test_protected_tools_execute_only_after_approval_across_graph_recreation(
     assert request["review_configs"][0]["allowed_decisions"] == ["approve", "reject"]
     model = RecordingModel(responses=[AIMessage(content="The decision was handled.")])
     recreated = make_graph(
-        model=model,
-        checkpointer=saver,
-        mcp_tools=[record_effect],
-        approval_settings=settings,
+        AgentGraphOptions(
+            model=model,
+            checkpointer=saver,
+            mcp_tools=[record_effect],
+            approval_settings=settings,
+        )
     )
 
     result = invoke(
@@ -103,10 +109,12 @@ def test_user_answers_reach_the_model_after_checkpoint_resume(asynchronous: bool
     saver = InMemorySaver()
     config = {"configurable": {"thread_id": "clarification"}}
     first = make_graph(
-        model=RecordingModel(
-            responses=[tool_call("ask_user", {"questions": questions})]
-        ),
-        checkpointer=saver,
+        AgentGraphOptions(
+            model=RecordingModel(
+                responses=[tool_call("ask_user", {"questions": questions})]
+            ),
+            checkpointer=saver,
+        )
     )
 
     paused = invoke(
@@ -128,7 +136,7 @@ def test_user_answers_reach_the_model_after_checkpoint_resume(asynchronous: bool
         }
     )
     model = RecordingModel(responses=[AIMessage(content="I will inspect that trace.")])
-    recreated = make_graph(model=model, checkpointer=saver)
+    recreated = make_graph(AgentGraphOptions(model=model, checkpointer=saver))
 
     result = invoke(
         recreated,
@@ -182,9 +190,11 @@ def test_invalid_native_answers_cannot_release_parallel_side_effects(answers: st
         ],
     )
     graph = make_graph(
-        model=RecordingModel(responses=[response]),
-        checkpointer=InMemorySaver(),
-        mcp_tools=[record_effect],
+        AgentGraphOptions(
+            model=RecordingModel(responses=[response]),
+            checkpointer=InMemorySaver(),
+            mcp_tools=[record_effect],
+        )
     )
     config = {"configurable": {"thread_id": "invalid-answer"}}
     paused = graph.invoke({"messages": [HumanMessage(content="Investigate.")]}, config)
@@ -238,7 +248,7 @@ def test_invalid_question_arguments_reach_tool_validation_without_interrupting(
             AIMessage(content="I need to correct the question."),
         ]
     )
-    graph = make_graph(model=model, checkpointer=InMemorySaver())
+    graph = make_graph(AgentGraphOptions(model=model, checkpointer=InMemorySaver()))
 
     result = graph.invoke(
         {"messages": [HumanMessage(content="Investigate.")]},
@@ -356,9 +366,11 @@ def test_each_protected_operation_requires_its_own_approval():
         ]
     )
     graph = make_graph(
-        model=model,
-        checkpointer=InMemorySaver(),
-        mcp_tools=[record_effect],
+        AgentGraphOptions(
+            model=model,
+            checkpointer=InMemorySaver(),
+            mcp_tools=[record_effect],
+        )
     )
     config = {"configurable": {"thread_id": "per-operation"}}
     graph.invoke({"messages": [HumanMessage(content="Record two values.")]}, config)
@@ -408,12 +420,14 @@ def test_pending_decisions_remain_bound_to_the_original_policy_after_recreation(
     saver = InMemorySaver()
     config = {"configurable": {"thread_id": "policy-replay"}}
     first = make_graph(
-        model=RecordingModel(responses=[initial_call]),
-        checkpointer=saver,
-        mcp_tools=[old_operation, new_operation],
-        approval_settings=ApprovalSettings(
-            mode="configured", tools={"old_operation": True}
-        ),
+        AgentGraphOptions(
+            model=RecordingModel(responses=[initial_call]),
+            checkpointer=saver,
+            mcp_tools=[old_operation, new_operation],
+            approval_settings=ApprovalSettings(
+                mode="configured", tools={"old_operation": True}
+            ),
+        )
     )
     paused = invoke(
         first,
@@ -431,10 +445,14 @@ def test_pending_decisions_remain_bound_to_the_original_policy_after_recreation(
         responses=[AIMessage(content="The original decision was respected.")]
     )
     recreated = make_graph(
-        model=model,
-        checkpointer=saver,
-        mcp_tools=[old_operation, new_operation],
-        approval_settings=ApprovalSettings(mode="configured", tools=replacement_policy),
+        AgentGraphOptions(
+            model=model,
+            checkpointer=saver,
+            mcp_tools=[old_operation, new_operation],
+            approval_settings=ApprovalSettings(
+                mode="configured", tools=replacement_policy
+            ),
+        )
     )
 
     invoke(
@@ -468,14 +486,16 @@ def test_recreated_policy_applies_at_the_next_model_boundary(asynchronous: bool)
     saver = InMemorySaver()
     config = {"configurable": {"thread_id": "policy-refresh"}}
     first = make_graph(
-        model=RecordingModel(
-            responses=[tool_call("record_effect", {"value": "first"}, "first")]
-        ),
-        checkpointer=saver,
-        mcp_tools=[record_effect],
-        approval_settings=ApprovalSettings(
-            mode="configured", tools={"record_effect": True}
-        ),
+        AgentGraphOptions(
+            model=RecordingModel(
+                responses=[tool_call("record_effect", {"value": "first"}, "first")]
+            ),
+            checkpointer=saver,
+            mcp_tools=[record_effect],
+            approval_settings=ApprovalSettings(
+                mode="configured", tools={"record_effect": True}
+            ),
+        )
     )
     invoke(
         first,
@@ -484,15 +504,17 @@ def test_recreated_policy_applies_at_the_next_model_boundary(asynchronous: bool)
         asynchronous,
     )
     recreated = make_graph(
-        model=RecordingModel(
-            responses=[
-                tool_call("record_effect", {"value": "second"}, "second"),
-                AIMessage(content="Done."),
-            ]
-        ),
-        checkpointer=saver,
-        mcp_tools=[record_effect],
-        approval_settings=ApprovalSettings(mode="configured"),
+        AgentGraphOptions(
+            model=RecordingModel(
+                responses=[
+                    tool_call("record_effect", {"value": "second"}, "second"),
+                    AIMessage(content="Done."),
+                ]
+            ),
+            checkpointer=saver,
+            mcp_tools=[record_effect],
+            approval_settings=ApprovalSettings(mode="configured"),
+        )
     )
 
     result = invoke(
@@ -522,12 +544,16 @@ def test_newly_protected_calls_require_fresh_approval_at_the_next_model_boundary
     saver = InMemorySaver()
     config = {"configurable": {"thread_id": "new-policy-gate"}}
     first = make_graph(
-        model=RecordingModel(responses=[tool_call("get_current_time", {}, "clock")]),
-        checkpointer=saver,
-        mcp_tools=[record_effect],
-        approval_settings=ApprovalSettings(
-            mode="configured", tools={"get_current_time": True}
-        ),
+        AgentGraphOptions(
+            model=RecordingModel(
+                responses=[tool_call("get_current_time", {}, "clock")]
+            ),
+            checkpointer=saver,
+            mcp_tools=[record_effect],
+            approval_settings=ApprovalSettings(
+                mode="configured", tools={"get_current_time": True}
+            ),
+        )
     )
     invoke(
         first,
@@ -536,17 +562,19 @@ def test_newly_protected_calls_require_fresh_approval_at_the_next_model_boundary
         asynchronous,
     )
     recreated = make_graph(
-        model=RecordingModel(
-            responses=[
-                tool_call("record_effect", {}, "write"),
-                AIMessage(content="Recorded."),
-            ]
-        ),
-        checkpointer=saver,
-        mcp_tools=[record_effect],
-        approval_settings=ApprovalSettings(
-            mode="configured", tools={"record_effect": True}
-        ),
+        AgentGraphOptions(
+            model=RecordingModel(
+                responses=[
+                    tool_call("record_effect", {}, "write"),
+                    AIMessage(content="Recorded."),
+                ]
+            ),
+            checkpointer=saver,
+            mcp_tools=[record_effect],
+            approval_settings=ApprovalSettings(
+                mode="configured", tools={"record_effect": True}
+            ),
+        )
     )
 
     paused_again = invoke(
@@ -581,9 +609,11 @@ def test_clients_cannot_override_or_read_the_private_approval_policy():
         return "Done"
 
     graph = make_graph(
-        model=RecordingModel(responses=[tool_call("record_effect", {})]),
-        checkpointer=InMemorySaver(),
-        mcp_tools=[record_effect],
+        AgentGraphOptions(
+            model=RecordingModel(responses=[tool_call("record_effect", {})]),
+            checkpointer=InMemorySaver(),
+            mcp_tools=[record_effect],
+        )
     )
 
     paused = graph.invoke(
@@ -607,8 +637,10 @@ def test_mcp_tools_cannot_replace_reserved_interaction_tools(name: str):
 
     with pytest.raises(ValueError, match="reserved"):
         make_graph(
-            model=RecordingModel(responses=[AIMessage(content="Done.")]),
-            mcp_tools=[exposed],
+            AgentGraphOptions(
+                model=RecordingModel(responses=[AIMessage(content="Done.")]),
+                mcp_tools=[exposed],
+            )
         )
 
 
@@ -618,10 +650,12 @@ def test_clarification_answers_must_keep_the_requested_id_order():
         {"id": "period", "question": "Which period?"},
     ]
     graph = make_graph(
-        model=RecordingModel(
-            responses=[tool_call("ask_user", {"questions": questions})]
-        ),
-        checkpointer=InMemorySaver(),
+        AgentGraphOptions(
+            model=RecordingModel(
+                responses=[tool_call("ask_user", {"questions": questions})]
+            ),
+            checkpointer=InMemorySaver(),
+        )
     )
     config = {"configurable": {"thread_id": "answer-order"}}
     graph.invoke({"messages": [HumanMessage(content="Investigate.")]}, config)

@@ -27,8 +27,18 @@ import { JsonPayload } from "./JsonPayload";
 import { MergedActivityContent } from "./MergedActivityContent";
 
 const eventCategories = [
-  { prefix: "RUN_", label: "Run", Icon: PulseIcon, color: "text-accent" },
-  { prefix: "STEP_", label: "Step", Icon: GitBranchIcon, color: "text-muted" },
+  {
+    prefix: "RUN_",
+    label: "Run",
+    Icon: PulseIcon,
+    color: "text-accent",
+  },
+  {
+    prefix: "STEP_",
+    label: "Step",
+    Icon: GitBranchIcon,
+    color: "text-muted",
+  },
   {
     prefix: "TEXT_MESSAGE_",
     label: "Message",
@@ -72,14 +82,23 @@ const eventCategories = [
     color: "text-activity-reasoning",
   },
 ];
-const customCategory = { label: "Custom", Icon: CodeIcon, color: "text-muted" };
-const otherCategory = { label: "Other", Icon: CodeIcon, color: "text-muted" };
+const customCategory = {
+  label: "Custom",
+  Icon: CodeIcon,
+  color: "text-muted",
+};
+const otherCategory = {
+  label: "Other",
+  Icon: CodeIcon,
+  color: "text-muted",
+};
 const errorCategory = {
   label: "Error",
   Icon: WarningCircleIcon,
   color: "text-destructive",
 };
 
+/** Renders one event or merged event stream in the activity log. */
 export const ActivityItem = memo(function ActivityItem({
   entry,
   stream,

@@ -10,9 +10,32 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 AgentRole = Literal["planner", "reviewer"]
 TaskStatus = Literal[
-    "queued", "running", "input_required", "succeeded", "failed", "cancelled"
+    "queued",
+    "running",
+    "input_required",
+    "succeeded",
+    "failed",
+    "cancelled",
 ]
-STEPS = ("plan", "review", "revise")
+STEPS = (
+    "plan",
+    "review",
+    "revise",
+)
+MAX_OUTPUT_CHARACTERS = 100_000
+STAGE_PROGRESS_PERCENT = 33
+INCOMPLETE_PROGRESS_PERCENT = 99
+COMPLETE_PROGRESS_PERCENT = 100
+TERMINAL_COLLABORATION_STATUSES = {
+    "succeeded",
+    "failed",
+    "cancelled",
+}
+REQUEST_ID_FIELDS = (
+    "messageId",
+    "taskId",
+    "contextId",
+)
 
 TERMINAL_TASK_STATES = frozenset(
     {
@@ -34,11 +57,12 @@ class CollaborationRequest(BaseModel):
 
     @field_validator("task")
     @classmethod
-    def validate_task_text(cls, value: str) -> str:
-        if not value.strip():
+    def validate_task_text(cls, task_text: str) -> str:
+        """Reject blank collaboration requests while preserving their text."""
+        if not task_text.strip():
             raise ValueError("A2A task must contain text")
 
-        return value
+        return task_text
 
 
 class ChildOutput(BaseModel):
@@ -49,7 +73,7 @@ class ChildOutput(BaseModel):
     task_id: str = Field(alias="taskId")
     context_id: str = Field(alias="contextId")
     status: TaskStatus
-    text: str = Field(default="", max_length=100000)
+    text: str = Field(default="", max_length=MAX_OUTPUT_CHARACTERS)
 
 
 class CollaborationState(BaseModel):
@@ -64,21 +88,25 @@ class CollaborationState(BaseModel):
 
     @property
     def terminal(self) -> bool:
-        return self.status in {"succeeded", "failed", "cancelled"}
+        """Report whether collaboration execution has ended."""
+        return self.status in TERMINAL_COLLABORATION_STATUSES
 
     def event(self) -> dict[str, Any]:
+        """Serialize this revision for the external task callback."""
         event: dict[str, Any] = {
             "revision": self.revision,
             "kind": "a2a",
             "status": self.status,
-            "stage": STEPS[min(self.stage_index, 2)],
+            "stage": STEPS[min(self.stage_index, len(STEPS) - 1)],
             "message": self.message,
-            "progress": min(self.stage_index * 33, 99),
+            "progress": min(
+                self.stage_index * STAGE_PROGRESS_PERCENT, INCOMPLETE_PROGRESS_PERCENT
+            ),
             "outputs": [output.model_dump(by_alias=True) for output in self.outputs],
         }
 
         if self.status == "succeeded":
-            event["progress"] = 100
+            event["progress"] = COMPLETE_PROGRESS_PERCENT
             event["result"] = {"summary": self.outputs[-1].text}
         elif self.error:
             event["error"] = self.error
@@ -87,15 +115,17 @@ class CollaborationState(BaseModel):
 
 
 def remote_task_id(message_id: str) -> str:
+    """Derive the same remote task identity for retries of a message."""
     return hashlib.sha256(message_id.encode("utf-8")).hexdigest()
 
 
 def request_fingerprint(request: SendMessageRequest) -> str:
+    """Identify the request content independently of SDK-filled identities."""
     message = MessageToDict(request.message)
 
     # The SDK fills these identifiers during dispatch; transport retries may
     # therefore contain them even when the original request omitted them.
-    for field in ("messageId", "taskId", "contextId"):
+    for field in REQUEST_ID_FIELDS:
         message.pop(field, None)
 
     payload = {"message": message, "metadata": MessageToDict(request.metadata)}

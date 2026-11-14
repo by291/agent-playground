@@ -3,6 +3,7 @@ import {
   type ConversationSnapshot,
 } from "./contracts";
 
+/** Loads persisted conversation state and treats a missing thread as empty. */
 export async function fetchConversationSnapshot(
   threadId: string,
   signal?: AbortSignal,

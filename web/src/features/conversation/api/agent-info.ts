@@ -1,6 +1,7 @@
 import { queryOptions } from "@tanstack/react-query";
 import { agentInfoSchema } from "@shared/agent-info";
 
+/** Fetches the runtime model catalog for conversation controls. */
 export function agentInfoQueryOptions() {
   return queryOptions({
     queryKey: ["agent-info"],

@@ -94,12 +94,14 @@ class SettingsConnectionTest {
                 PlaygroundTheme("light") {
                     SettingsRoute(
                         model,
-                        preferences,
-                        onClear = null,
-                        conversationBusy = false,
-                        conversationError = null,
-                        networkAccess = access,
-                        onConnected = connected::set,
+                        SettingsRouteOptions(
+                            preferences = preferences,
+                            onClear = null,
+                            conversationBusy = false,
+                            conversationError = null,
+                            networkAccess = access,
+                            onConnected = connected::set,
+                        ),
                     )
                 }
             }
@@ -190,12 +192,14 @@ class SettingsConnectionTest {
                 if (visible.value) {
                     SettingsRoute(
                         model,
-                        preferences,
-                        onClear = null,
-                        conversationBusy = false,
-                        conversationError = null,
-                        networkAccess = access,
-                        onConnected = connected::set,
+                        SettingsRouteOptions(
+                            preferences = preferences,
+                            onClear = null,
+                            conversationBusy = false,
+                            conversationError = null,
+                            networkAccess = access,
+                            onConnected = connected::set,
+                        ),
                     )
                 }
             }

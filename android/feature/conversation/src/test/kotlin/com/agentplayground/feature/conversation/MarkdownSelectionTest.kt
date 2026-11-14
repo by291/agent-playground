@@ -270,18 +270,18 @@ class MarkdownSelectionTest {
     }
 
     private class SelectionToolbar : TextContextMenuProvider, TextContextMenuSession {
-        private var data: TextContextMenuDataProvider? = null
+        private var menuDataProvider: TextContextMenuDataProvider? = null
         private val closed = Channel<Unit>(Channel.CONFLATED)
         val ready: Boolean
-            get() = data != null
+            get() = menuDataProvider != null
 
         override suspend fun showTextContextMenu(dataProvider: TextContextMenuDataProvider) {
-            data = dataProvider
+            menuDataProvider = dataProvider
             closed.receive()
         }
 
         fun click(label: String) {
-            data!!
+            requireNotNull(menuDataProvider)
                 .data()
                 .components
                 .filterIsInstance<TextContextMenuItem>()

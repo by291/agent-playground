@@ -1,7 +1,9 @@
 """The agent graph served through Aegra's Agent Protocol API."""
 
 import sys
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
@@ -13,18 +15,24 @@ from langchain_core.language_models import BaseChatModel
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import BaseTool
 from langchain_mcp_adapters.client import MultiServerMCPClient
+from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import Checkpointer
 from langgraph_sdk.runtime import ServerRuntime
 
 from agent_playground.config.agent import ApprovalSettings, load_agent_config
-from agent_playground.context import ContextMiddleware
+from agent_playground.context import ContextMiddleware, ContextMiddlewareOptions
+from agent_playground.db.async_operations import run_database_operation
 from agent_playground.db.connection import prepare_app_store
 from agent_playground.interactions import InteractionMiddleware, ask_user
 from agent_playground.knowledge.tools import search_knowledge
 from agent_playground.memory.middleware import MemoryMiddleware
 from agent_playground.memory.models import MEMORY_TOKEN_BUDGET
 from agent_playground.memory.tools import MEMORY_INSTRUCTIONS, memory_tools
-from agent_playground.models.catalog import create_chat_model, model_configuration
+from agent_playground.models.catalog import (
+    ChatModelRequest,
+    create_chat_model,
+    model_configuration,
+)
 from agent_playground.observability import execution_trace
 from agent_playground.planning import (
     PLANNING_TOKEN_BUDGET,
@@ -39,6 +47,24 @@ from agent_playground.workflows.a2a.tool import run_a2a_workflow
 from agent_playground.workflows.experiment.tool import run_experiment_workflow
 from agent_playground.workflows.report.tool import run_report_workflow
 from agent_playground.workflows.sql.tool import sql_workflow_tool
+
+GRAPH_CACHE_SIZE = 2
+
+# LangChain merges the middleware schemas into the graph at runtime.
+type ConversationGraph = CompiledStateGraph[Any, Any, Any, Any]
+
+
+@dataclass(frozen=True, kw_only=True)
+class AgentGraphOptions:
+    """Group model selection and optional dependencies for graph construction."""
+
+    model: BaseChatModel | None = None
+    checkpointer: Checkpointer | None = None
+    mcp_tools: list[BaseTool] | None = None
+    summary_model: BaseChatModel | None = None
+    skills: SkillCatalog | None = None
+    model_id: str | None = None
+    approval_settings: ApprovalSettings | None = None
 
 
 @tool
@@ -60,35 +86,32 @@ def mcp_client() -> MultiServerMCPClient:
     )
 
 
-def make_graph(
-    model: BaseChatModel | None = None,
-    checkpointer: Checkpointer | None = None,
-    mcp_tools: list[BaseTool] | None = None,
-    summary_model: BaseChatModel | None = None,
-    skills: SkillCatalog | None = None,
-    model_id: str | None = None,
-    approval_settings: ApprovalSettings | None = None,
-):
+def make_graph(options: AgentGraphOptions | None = None) -> ConversationGraph:
     """Assemble one conversation agent with model-scoped budgets and tools."""
-    configuration = model_configuration(model_id)
+    options = options or AgentGraphOptions()
+    configuration = model_configuration(options.model_id)
+    model = options.model
+    summary_model = options.summary_model
 
     if model is None:
-        model = create_chat_model(configuration.id)
+        model = create_chat_model(ChatModelRequest(model_id=configuration.id))
         summary_model = summary_model or create_chat_model(
-            configuration.id, summary=True
+            ChatModelRequest(model_id=configuration.id, is_summary=True)
         )
 
     settings = configuration.context_settings(model)
     image_tokens = configuration.image_tokens
 
-    catalog = skills if skills is not None else default_catalog()
+    catalog = options.skills if options.skills is not None else default_catalog()
     prompt = SYSTEM_PROMPT + catalog.prompt() + MEMORY_INSTRUCTIONS
+
+    mcp_tools = options.mcp_tools or []
     tools = [
         ask_user,
         get_current_time,
         search_knowledge,
         *memory_tools(),
-        *(mcp_tools or []),
+        *mcp_tools,
         run_experiment_workflow,
         run_report_workflow,
         run_a2a_workflow,
@@ -97,53 +120,58 @@ def make_graph(
     ]
 
     planning = PlanningMiddleware(tool_description=PLANNING_TOOL_DESCRIPTION)
-    # create_agent merges the middleware-owned schemas into one checkpoint state.
+
+    # LangChain runs after_model hooks in reverse order. Save public replies
+    # before the approval hook can interrupt the run.
     middleware: list[AgentMiddleware[Any, Any, Any]] = [
         MemoryMiddleware(),
         InteractionMiddleware(
             tools,
-            mcp_tools or [],
-            approval_settings or load_agent_config().approvals,
+            mcp_tools,
+            options.approval_settings or load_agent_config().approvals,
         ),
         planning,
         ContextMiddleware(
-            model,
-            summary_model or model,
-            prompt + "\n\n" + planning.system_prompt,
-            [*tools, *planning.tools],
-            settings,
-            image_tokens,
-            memory_token_budget=MEMORY_TOKEN_BUDGET,
-            planning_token_budget=PLANNING_TOKEN_BUDGET,
+            ContextMiddlewareOptions(
+                model=model,
+                summary_model=summary_model or model,
+                system_prompt=prompt + "\n\n" + planning.system_prompt,
+                tools=[*tools, *planning.tools],
+                settings=settings,
+                tokens_per_image=image_tokens,
+                memory_token_budget=MEMORY_TOKEN_BUDGET,
+                planning_token_budget=PLANNING_TOKEN_BUDGET,
+            )
         ),
     ]
 
     return create_agent(
         model=model,
         tools=tools,
-        checkpointer=checkpointer,
+        checkpointer=options.checkpointer,
         system_prompt=prompt,
         middleware=middleware,
     )
 
 
 @alru_cache(maxsize=1)
-async def shared_mcp_tools():
+async def shared_mcp_tools() -> list[BaseTool]:
     """Discover process-shared tools once; each invocation opens its own session."""
     return await mcp_client().get_tools()
 
 
-@alru_cache(maxsize=2)
-async def base_graph(model_id: str):
-    """Cache one graph per configured model; Aegra injects the same durable state."""
-    prepare_app_store()
+@alru_cache(maxsize=GRAPH_CACHE_SIZE)
+async def base_graph(model_id: str) -> ConversationGraph:
+    """Cache compiled graphs for execution and inspection without opening application storage."""
     tools = await shared_mcp_tools()
 
-    return make_graph(mcp_tools=tools, model_id=model_id)
+    return make_graph(AgentGraphOptions(mcp_tools=tools, model_id=model_id))
 
 
 @asynccontextmanager
-async def graph(config: RunnableConfig, runtime: ServerRuntime[dict[str, object]]):
+async def graph(
+    config: RunnableConfig, runtime: ServerRuntime[dict[str, object]]
+) -> AsyncIterator[ConversationGraph]:
     """Aegra keeps this context open for the complete worker execution."""
     requested = (config.get("configurable") or {}).get("model_id")
 
@@ -153,11 +181,15 @@ async def graph(config: RunnableConfig, runtime: ServerRuntime[dict[str, object]
     configuration = model_configuration(requested)
     compiled = await base_graph(configuration.id)
 
-    # Keep the sandbox scope open across the yield; inspection omits the run trace.
-    async with skill_execution(default_catalog()):
-        if runtime.execution_runtime is None:
-            yield compiled
-            return
+    if runtime.execution_runtime is None:
+        yield compiled
+        return
 
+    # Aegra may pick up queued runs before the custom lifespan gets to initialize
+    # the schema. Both paths share the same preparation for the process engine.
+    await run_database_operation(prepare_app_store)
+
+    # Tool calls share this sandbox scope until Aegra finishes execution.
+    async with skill_execution(default_catalog()):
         with execution_trace(config):
             yield compiled

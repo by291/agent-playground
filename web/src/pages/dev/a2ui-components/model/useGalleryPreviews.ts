@@ -1,9 +1,11 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
-import { catalogExamples } from "@/pages/dev/a2ui-components/model/examples";
+import { catalogExamples } from "./examples";
 import { createGalleryPreviews } from "./gallery-previews";
 
+/** Connects the gallery to its preview owner and releases models on unmount. */
 export function useGalleryPreviews() {
   const [owner] = useState(() => createGalleryPreviews(catalogExamples));
+
   const previews = useSyncExternalStore(owner.subscribe, owner.getSnapshot);
 
   useEffect(() => {
@@ -12,5 +14,9 @@ export function useGalleryPreviews() {
     return () => owner.dispose();
   }, [owner]);
 
-  return { previews, updateSource: owner.update, resetSource: owner.reset };
+  return {
+    previews,
+    updateSource: owner.update,
+    resetSource: owner.reset,
+  };
 }

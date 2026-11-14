@@ -1,6 +1,7 @@
 import { afterAll, afterEach, expect, test, vi } from "vitest";
 import { readMigrationFiles } from "drizzle-orm/migrator";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
+import type { PoolClient } from "pg";
 import { db, migrateServer } from "./database.js";
 import { logger } from "../observability/logger.js";
 
@@ -17,6 +18,14 @@ afterAll(async () => {
 
 test("server migration loads the committed SQL files from the native filesystem", async () => {
   vi.stubEnv("APP_DATABASE_URL", "postgres://unused/unused");
+  const migrationClient = {
+    query: vi.fn().mockResolvedValue(undefined),
+    release: vi.fn(),
+  };
+  const migrationPool: { connect(): Promise<PoolClient> } = db.$client;
+  const connect = vi
+    .spyOn(migrationPool, "connect")
+    .mockResolvedValue(migrationClient as unknown as PoolClient);
   let migrations: ReturnType<typeof readMigrationFiles> = [];
 
   vi.mocked(migrate).mockImplementation((_database, configuration) => {
@@ -25,7 +34,11 @@ test("server migration loads the committed SQL files from the native filesystem"
     return Promise.resolve();
   });
 
-  await migrateServer();
+  try {
+    await migrateServer();
+  } finally {
+    connect.mockRestore();
+  }
 
   expect(migrations.length).toBeGreaterThan(0);
   expect(migrations.every(({ sql }) => sql.length > 0)).toBe(true);

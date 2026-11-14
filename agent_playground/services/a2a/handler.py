@@ -47,6 +47,7 @@ class DurableRequestContextBuilder(RequestContextBuilder):
         context_id: str | None = None,
         task: Task | None = None,
     ) -> RequestContext:
+        """Resolve the execution context from the reserved task snapshot."""
         if params is None:
             return RequestContext(
                 context, task_id=task_id, context_id=context_id, task=task
@@ -68,7 +69,7 @@ class DurableRequestContextBuilder(RequestContextBuilder):
 
 
 class DurableRequestHandler(DefaultRequestHandler):
-    """Reserve one producer per request and serve persisted snapshots on replay."""
+    """Coordinate local SDK producers and replay durable request snapshots."""
 
     def __init__(
         self, executor: DemoAgentExecutor, store: PostgresTaskStore, card: AgentCard
@@ -86,19 +87,22 @@ class DurableRequestHandler(DefaultRequestHandler):
     async def on_message_send_stream(
         self, params: SendMessageRequest, context: ServerCallContext
     ) -> AsyncGenerator[Event, None]:
-        # Hold dispatch only until the first persisted event, so simultaneous
-        # retries see either the completed snapshot or the one existing producer.
+        """Start a reserved request or stream its existing task."""
+        # Serialize local dispatch until the SDK producer has persisted its
+        # first update. The task store durably reserves the message identity.
         async with self._dispatch_lock:
             first_update: Event | None = None
             task_id = params.message.task_id or remote_task_id(
                 params.message.message_id
             )
+
             previous = await self.store.get(task_id, context)
             is_request_replay = (
                 previous is not None
                 and params.message.message_id
                 in MessageToDict(previous.metadata).get("requestFingerprints", {})
             )
+
             task = await self.store.reserve_request(params, context)
             active = await self._active_task_registry.get(task.id)
 
@@ -136,6 +140,7 @@ class DurableRequestHandler(DefaultRequestHandler):
     async def on_message_send(
         self, params: SendMessageRequest, context: ServerCallContext
     ) -> Message | Task:
+        """Send a message and return the latest persisted task at the requested boundary."""
         task_id = params.message.task_id or remote_task_id(params.message.message_id)
 
         async with aclosing(self.on_message_send_stream(params, context)) as events:
@@ -161,10 +166,18 @@ class DurableRequestHandler(DefaultRequestHandler):
     async def on_subscribe_to_task(
         self, params: SubscribeToTaskRequest, context: ServerCallContext
     ) -> AsyncGenerator[Event, None]:
+        """Subscribe to a task through its latest durable snapshots."""
         source = super().on_subscribe_to_task(params, context)
 
-        async with aclosing(source):
-            async for event in source:
+        async with aclosing(self._snapshots(source, context)) as snapshots:
+            async for snapshot in snapshots:
+                yield snapshot
+
+    async def _snapshots(
+        self, events: AsyncGenerator[Event, None], context: ServerCallContext
+    ) -> AsyncGenerator[Event, None]:
+        async with aclosing(events):
+            async for event in events:
                 snapshot = await self._current_snapshot(event, context)
                 yield snapshot
 
@@ -204,20 +217,11 @@ class DurableRequestHandler(DefaultRequestHandler):
         self, active: ActiveTask, context: ServerCallContext
     ) -> AsyncGenerator[Event, None]:
         try:
-            async with aclosing(active.subscribe(include_initial_task=True)) as events:
-                async for event in events:
-                    snapshot = await self._current_snapshot(event, context)
+            events = active.subscribe(include_initial_task=True)
+
+            async with aclosing(self._snapshots(events, context)) as snapshots:
+                async for snapshot in snapshots:
                     yield snapshot
-
-                    status = getattr(snapshot, "status", None)
-                    reached_stop_state = (
-                        status
-                        and status.state
-                        in TERMINAL_TASK_STATES | INTERRUPTED_TASK_STATES
-                    )
-
-                    if reached_stop_state:
-                        return
         except UnsupportedOperationError:
             # Completion can retire the local producer between the durable
             # snapshot read and opening its subscription. Replay that result.

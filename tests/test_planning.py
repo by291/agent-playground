@@ -9,7 +9,7 @@ from langchain_core.tools import tool
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.types import Command, interrupt
 
-from agent_playground.graph import make_graph
+from agent_playground.graph import AgentGraphOptions, make_graph
 from tests.model_config import ModelConfigFile
 from tests.test_context import RecordingModel
 
@@ -46,7 +46,7 @@ def test_agent_executes_tools_and_revises_its_own_plan(asynchronous: bool):
             AIMessage(content="The timestamp was checked and explained."),
         ]
     )
-    graph = make_graph(model=model, checkpointer=InMemorySaver())
+    graph = make_graph(AgentGraphOptions(model=model, checkpointer=InMemorySaver()))
     config = {"configurable": {"thread_id": "planning"}}
 
     result = invoke(
@@ -81,10 +81,12 @@ def test_active_plan_survives_compaction_and_graph_recreation(
     saver = InMemorySaver()
     config = {"configurable": {"thread_id": "planning-compaction"}}
     first = make_graph(
-        model=RecordingModel(
-            responses=[plan_call("plan", todos), AIMessage(content="Working.")]
-        ),
-        checkpointer=saver,
+        AgentGraphOptions(
+            model=RecordingModel(
+                responses=[plan_call("plan", todos), AIMessage(content="Working.")]
+            ),
+            checkpointer=saver,
+        )
     )
     invoke(
         first,
@@ -96,11 +98,13 @@ def test_active_plan_survives_compaction_and_graph_recreation(
         responses=[AIMessage(content="Continuing the investigation.")]
     )
     recreated = make_graph(
-        model=model,
-        summary_model=RecordingModel(
-            responses=[AIMessage(content="The user requested an investigation.")]
-        ),
-        checkpointer=saver,
+        AgentGraphOptions(
+            model=model,
+            summary_model=RecordingModel(
+                responses=[AIMessage(content="The user requested an investigation.")]
+            ),
+            checkpointer=saver,
+        )
     )
 
     result = invoke(
@@ -142,7 +146,7 @@ def test_oversized_plan_is_rejected_without_overwriting_saved_progress(
             AIMessage(content="I will retain the concise plan."),
         ]
     )
-    graph = make_graph(model=model)
+    graph = make_graph(AgentGraphOptions(model=model))
 
     result = graph.invoke(
         {"messages": [HumanMessage(content="Investigate the source.")]}
@@ -170,17 +174,21 @@ def test_resume_keeps_the_plan_and_archives_its_completed_update():
     saver = InMemorySaver()
     config = {"configurable": {"thread_id": "planning-resume"}}
     first = make_graph(
-        model=RecordingModel(
-            responses=[
-                plan_call("initial", todos),
-                AIMessage(
-                    content="",
-                    tool_calls=[{"id": "input", "name": "request_input", "args": {}}],
-                ),
-            ]
-        ),
-        checkpointer=saver,
-        mcp_tools=[request_input],
+        AgentGraphOptions(
+            model=RecordingModel(
+                responses=[
+                    plan_call("initial", todos),
+                    AIMessage(
+                        content="",
+                        tool_calls=[
+                            {"id": "input", "name": "request_input", "args": {}}
+                        ],
+                    ),
+                ]
+            ),
+            checkpointer=saver,
+            mcp_tools=[request_input],
+        )
     )
     paused = first.invoke(
         {"messages": [HumanMessage(content="Confirm a source.")]}, config
@@ -195,7 +203,9 @@ def test_resume_keeps_the_plan_and_archives_its_completed_update():
             AIMessage(content="Source confirmed."),
         ]
     )
-    recreated = make_graph(model=model, checkpointer=saver, mcp_tools=[request_input])
+    recreated = make_graph(
+        AgentGraphOptions(model=model, checkpointer=saver, mcp_tools=[request_input])
+    )
     result = recreated.invoke(Command(resume="Cedar"), config)
 
     assert result.get("todos") == completed
