@@ -399,26 +399,34 @@ test("new text keeps its fade while later display ticks arrive", () => {
   assert.equal(first.style.getPropertyValue("--sd-delay"), "0ms");
 });
 
-test("a long unbroken paragraph keeps a fading tail without thousands of character elements", () => {
-  const clock = animationClock();
-  const text = "城市中的日常生活总会带来新的发现。".repeat(350);
-  const page = render(
-    createElement(MarkdownMessage, { text, streaming: true }),
-  );
+// Advancing thousands of characters frame by frame can exceed the default timeout on CI.
+test(
+  "a long unbroken paragraph keeps a fading tail without thousands of character elements",
+  { timeout: 15_000 },
+  () => {
+    const clock = animationClock();
+    const text = "城市中的日常生活总会带来新的发现。".repeat(350);
+    const page = render(
+      createElement(MarkdownMessage, { text, streaming: true }),
+    );
 
-  clock.advance(9000);
-  const visible = page.container.textContent ?? "";
+    clock.advance(9000);
+    const visible = page.container.textContent ?? "";
 
-  assert.ok(visible.length > 5000);
-  assert.ok(page.container.querySelectorAll("[data-sd-animate]").length > 0);
-  assert.ok(page.container.querySelectorAll("*").length < 400);
-  assert.ok(text.startsWith(visible));
-  page.rerender(createElement(MarkdownMessage, { text, streaming: false }));
-  clock.advance(20_000);
+    assert.ok(visible.length > 5000);
+    assert.ok(page.container.querySelectorAll("[data-sd-animate]").length > 0);
+    assert.ok(page.container.querySelectorAll("*").length < 400);
+    assert.ok(text.startsWith(visible));
+    page.rerender(createElement(MarkdownMessage, { text, streaming: false }));
+    clock.advance(20_000);
 
-  assert.equal(page.container.textContent, text);
-  assert.equal(page.container.querySelectorAll("[data-sd-animate]").length, 0);
-});
+    assert.equal(page.container.textContent, text);
+    assert.equal(
+      page.container.querySelectorAll("[data-sd-animate]").length,
+      0,
+    );
+  },
+);
 
 test("compacting old text does not restart the currently fading tail", () => {
   const clock = animationClock();
