@@ -1,11 +1,19 @@
 import { useState } from "react";
 
-export function useStoredPanelSize(
-  key: string,
-  initial: number,
-  minimum: number,
-  maximum: number,
-) {
+interface StoredPanelSizeOptions {
+  key: string;
+  initial: number;
+  minimum: number;
+  maximum: number;
+}
+
+/** Restores a preferred width and saves user changes within the panel bounds. */
+export function useStoredPanelSize({
+  key,
+  initial,
+  minimum,
+  maximum,
+}: StoredPanelSizeOptions) {
   const [size, setSize] = useState(() => {
     try {
       const saved = Number(localStorage.getItem(key));
@@ -31,6 +39,7 @@ export function useStoredPanelSize(
   return { size, saveSize };
 }
 
+/** Converts the resizable group's content percentage to CSS pixels. */
 export function panelPixels(group: HTMLDivElement | null, percentage: number) {
   if (!group) {
     return 0;

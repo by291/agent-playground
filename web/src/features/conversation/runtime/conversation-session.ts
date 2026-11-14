@@ -56,6 +56,9 @@ import {
   type WorkflowReview,
 } from "@shared/workflow-review";
 
+const activityLimit = 500;
+const maximumWorkflowFeedbackLength = 10_000;
+
 // Query ownership stays outside the session; a refresh requests a new result.
 type RefreshSnapshot = () => Promise<void>;
 
@@ -64,8 +67,6 @@ interface SubmissionAcceptance {
   notify: (() => void) | undefined;
   notified: boolean;
 }
-
-const activityLimit = 500;
 
 /**
  * Owns one conversation's live stream and snapshot reconciliation.
@@ -118,8 +119,14 @@ export function createConversationSession(
     pendingInterrupts: [],
     lifecycle: initialLifecycle(saved),
     animatedMessageId: null,
-    issues: { run: null, snapshot: null, output: null },
+    issues: {
+      run: null,
+      snapshot: null,
+      output: null,
+    },
     send,
+    canRetryPreparedSubmission: false,
+    retryPreparedSubmission,
     clearActivity: () => store.setState({ activity: [], activityReceived: 0 }),
     reviewPlan,
     reviewWorkflow,
@@ -162,6 +169,7 @@ export function createConversationSession(
         runs,
         messages: [...agent.messages],
         messageTimestamps,
+        canRetryPreparedSubmission: false,
         lifecycle: transitionLifecycle(store.getState().lifecycle, {
           type: "submission-started",
         }),
@@ -211,7 +219,6 @@ export function createConversationSession(
     }
 
     const projection = projectOutputs(
-      outputs,
       result,
       agent.messages,
       invalidOutputIssue,
@@ -310,6 +317,7 @@ export function createConversationSession(
       const localRun = store
         .getState()
         .runs.find((run) => run.runId === submittedRunId);
+
       const runs = (snapshot?.runs ?? []).map((run) => {
         if (run.runId !== localRun?.runId) {
           return run;
@@ -368,9 +376,10 @@ export function createConversationSession(
     }
 
     const waitingForOutputs = receiveOutputs(snapshot?.outputs ?? []);
+    const latestRun = snapshot?.runs.at(-1);
     const waitingForRun =
       result.running ||
-      snapshot?.runs.at(-1)?.status === "submission_unknown" ||
+      latestRun?.status === "submission_unknown" ||
       (result.kind === "stale" && awaitingCheckpoint);
 
     const pendingConfirmed =
@@ -383,6 +392,7 @@ export function createConversationSession(
     }
 
     const state = store.getState();
+
     const empty =
       !pending &&
       !result.running &&
@@ -398,18 +408,27 @@ export function createConversationSession(
         pendingConfirmed ||
         pendingRejected)
     ) {
-      // Persist the local choice and admission hints; history comes from the server.
       saveConversation({
         threadId,
         empty,
         ...(pending ? { pending } : {}),
         ...(state.modelId ? { modelId: state.modelId } : {}),
       });
+
       savedEmpty = empty;
       savedModelId = state.modelId;
     }
 
+    // A prepared run is only replayable by the owner of its exact journal.
+    const canRetryPreparedSubmission =
+      !locallyActive &&
+      !initialPending &&
+      !acceptance?.notified &&
+      latestRun?.status === "prepared" &&
+      latestRun.runId === pending?.runId;
+
     store.setState({
+      canRetryPreparedSubmission,
       lifecycle: transitionLifecycle(state.lifecycle, {
         type: "snapshot-received",
         locallyActive,
@@ -435,6 +454,7 @@ export function createConversationSession(
     }
 
     submission.trace?.event("snapshot_recovery_failed");
+    store.setState({ canRetryPreparedSubmission: false });
     setIssue("snapshot", errorDetail(error, "Recovery failed"));
     updateLifecycle({
       type: "snapshot-failed",
@@ -470,7 +490,11 @@ export function createConversationSession(
     }
 
     submittedRunId = input.runId;
-    acceptance = { runId: input.runId, notify: onAccepted, notified: false };
+    acceptance = {
+      runId: input.runId,
+      notify: onAccepted,
+      notified: false,
+    };
 
     return submission.run(input, () => acceptSubmission(input.runId));
   }
@@ -483,6 +507,14 @@ export function createConversationSession(
     // A lost stream response can be confirmed later by its saved run snapshot.
     acceptance.notified = true;
     acceptance.notify?.();
+  }
+
+  function retryPreparedSubmission(): Promise<void> {
+    if (!pending || !store.getState().canRetryPreparedSubmission) {
+      return Promise.resolve();
+    }
+
+    return runSubmission(pending, acceptance?.notify);
   }
 
   function submit(input: PendingSubmission, onAccepted?: () => void) {
@@ -504,7 +536,8 @@ export function createConversationSession(
       return runSubmission(pending, onAccepted);
     }
 
-    input = {
+    const modelId = store.getState().modelId;
+    const journal = {
       ...input,
       submittedAt: input.submittedAt ?? new Date().toISOString(),
     };
@@ -513,11 +546,9 @@ export function createConversationSession(
     try {
       saveConversation({
         threadId: ensureThreadId(),
-        pending: input,
+        pending: journal,
         empty: false,
-        ...(store.getState().modelId
-          ? { modelId: store.getState().modelId! }
-          : {}),
+        ...(modelId ? { modelId } : {}),
       });
     } catch (error) {
       const failure =
@@ -530,11 +561,11 @@ export function createConversationSession(
       return Promise.reject(failure);
     }
 
-    pending = input;
+    pending = journal;
     pendingSnapshot = undefined;
     savedEmpty = false;
 
-    return runSubmission(input, onAccepted);
+    return runSubmission(journal, onAccepted);
   }
 
   function ensureThreadId() {
@@ -542,15 +573,17 @@ export function createConversationSession(
       return threadId;
     }
 
+    const modelId = store.getState().modelId;
+
     threadId = crypto.randomUUID();
     agent.threadId = threadId;
+
     saveConversation({
       threadId,
       empty: true,
-      ...(store.getState().modelId
-        ? { modelId: store.getState().modelId! }
-        : {}),
+      ...(modelId ? { modelId } : {}),
     });
+
     store.setState({ threadId });
 
     return threadId;
@@ -645,22 +678,27 @@ export function createConversationSession(
       content: text,
     };
 
-    const interrupts = store.getState().pendingInterrupts;
+    const { pendingInterrupts: interrupts, modelId } = store.getState();
 
     if (interrupts.length) {
+      const [interrupt] = interrupts;
       const review =
-        interrupts.length === 1 ? parseWorkflowReview(interrupts[0]!) : null;
-      const entry = review
-        ? reviewResponse(review, "message", { id: message.id, content: text })
-        : null;
+        interrupts.length === 1 && interrupt
+          ? parseWorkflowReview(interrupt)
+          : null;
+
+      if (!review) {
+        return Promise.resolve();
+      }
+
+      const entry = reviewResponse(review, "message", {
+        id: message.id,
+        content: text,
+      });
 
       if (!entry) {
-        if (!review) {
-          return Promise.resolve();
-        }
-
         const detail =
-          review && text.length > 10000
+          text.length > maximumWorkflowFeedbackLength
             ? "Workflow feedback must be at most 10,000 characters, including attachment references."
             : "This workflow review cannot accept a message.";
 
@@ -687,9 +725,7 @@ export function createConversationSession(
         messageId: message.id,
         messages: [...agent.messages, message],
         state: structuredClone(agent.state as Record<string, unknown>),
-        ...(store.getState().modelId
-          ? { modelId: store.getState().modelId! }
-          : {}),
+        ...(modelId ? { modelId } : {}),
       },
       onAccepted,
     );
@@ -704,6 +740,7 @@ export function createConversationSession(
     const hasNonPlanInterrupts = interrupts.some(
       (interrupt) =>
         parseWorkflowReview(interrupt) !== null ||
+        parseAgentInteraction(interrupt) !== null ||
         parseExternalWait(interrupt) !== null,
     );
     const resume = reviewEntries(
@@ -911,19 +948,18 @@ export function createConversationSession(
       },
 
       onRunFinishedEvent({ event }) {
-        submission.trace?.outcome(
-          event.outcome?.type === "interrupt" ? "interrupted" : "finished",
-        );
+        const outcome = event.outcome;
+        const isInterrupted = outcome?.type === "interrupt";
+
+        submission.trace?.outcome(isInterrupted ? "interrupted" : "finished");
 
         if (!connected) {
           return;
         }
 
-        streamInterrupts =
-          event.outcome?.type === "interrupt" ? event.outcome.interrupts : [];
-        updateRunStatus(
-          event.outcome?.type === "interrupt" ? "interrupted" : "completed",
-        );
+        streamInterrupts = isInterrupted ? outcome.interrupts : [];
+
+        updateRunStatus(isInterrupted ? "interrupted" : "completed");
         store.setState({ pendingInterrupts: streamInterrupts });
       },
     });
@@ -954,7 +990,12 @@ export function createConversationSession(
     }));
   }
 
-  return { store, connect, receiveSnapshot, receiveSnapshotError };
+  return {
+    store,
+    connect,
+    receiveSnapshot,
+    receiveSnapshotError,
+  };
 }
 
 function errorDetail(error: unknown, fallback: string) {

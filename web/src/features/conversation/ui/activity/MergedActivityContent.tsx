@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import type { ActivityStream } from "../../model/activity";
 import { JsonPayload } from "./JsonPayload";
 
+/** Presents the retained deltas and their assembled content. */
 export function MergedActivityContent({
   stream,
   toolArguments,

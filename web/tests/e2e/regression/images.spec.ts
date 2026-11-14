@@ -7,7 +7,7 @@ const png = Buffer.from(
 );
 
 async function galleryImages(page: import("@playwright/test").Page) {
-  const data = await page.evaluate(() => {
+  const encodedImages = await page.evaluate(() => {
     const canvas = document.createElement("canvas");
 
     canvas.width = 3600;
@@ -34,7 +34,7 @@ async function galleryImages(page: import("@playwright/test").Page) {
   });
 
   await page.getByLabel("Choose files").setInputFiles(
-    data.map((base64, index) => ({
+    encodedImages.map((base64, index) => ({
       name: index === 0 ? "city-map.png" : "landscape.png",
       mimeType: "image/png",
       buffer: Buffer.from(base64, "base64"),
@@ -119,12 +119,29 @@ test.describe("touch image gallery", () => {
     const fitted = (await image.boundingBox())!;
 
     // Two fingers start a pinch, then one finger pans within double-tap timing.
-    await pointerTimestamps(image, [100, 120, 140, 160, 180]);
+    await pointerTimestamps(
+      image,
+      /* prettier-ignore */ [
+        100,
+        120,
+        140,
+        160,
+        180,
+      ],
+    );
     await touchGesture(
       page,
       Array.from({ length: 5 }, (_, step) => [
-        { x: 175 - step * 24, y: 400, id: 0 },
-        { x: 215 + step * 24, y: 400, id: 1 },
+        {
+          x: 175 - step * 24,
+          y: 400,
+          id: 0,
+        },
+        {
+          x: 215 + step * 24,
+          y: 400,
+          id: 1,
+        },
       ]),
     );
     await expect
@@ -145,7 +162,11 @@ test.describe("touch image gallery", () => {
     await touchGesture(
       page,
       Array.from({ length: 9 }, (_, step) => [
-        { x: 195, y: 400 + step * 8, id: 0 },
+        {
+          x: 195,
+          y: 400 + step * 8,
+          id: 0,
+        },
       ]),
     );
     await expect(
@@ -159,7 +180,11 @@ test.describe("touch image gallery", () => {
     await touchGesture(
       page,
       Array.from({ length: 3 }, (_, step) => [
-        { x: 195, y: 420 + step * 12, id: 0 },
+        {
+          x: 195,
+          y: 420 + step * 12,
+          id: 0,
+        },
       ]),
     );
     await expect(
@@ -173,7 +198,11 @@ test.describe("touch image gallery", () => {
     await touchGesture(
       page,
       Array.from({ length: 13 }, (_, step) => [
-        { x: 300 - step * 18, y: 420, id: 0 },
+        {
+          x: 300 - step * 18,
+          y: 420,
+          id: 0,
+        },
       ]),
     );
     await expect(dialog.getByText("2 of 2")).toBeVisible();
@@ -458,8 +487,8 @@ test.describe("wheel zoom motion", () => {
     await page.mouse.wheel(0, -120);
     await expect
       .poll(async () => {
-        const data = await image.getAttribute("data-wheel-sizes");
-        const sizes = JSON.parse(data ?? "[]") as number[];
+        const encodedSizes = await image.getAttribute("data-wheel-sizes");
+        const sizes = JSON.parse(encodedSizes ?? "[]") as number[];
 
         return sizes.length;
       })
@@ -632,7 +661,12 @@ test.describe("image viewer motion", () => {
 
           animation.pause();
           const duration = Number(animation.effect.getTiming().duration);
-          const samples = [0, duration / 2, duration - 0.1].map((time) => {
+          const samples =
+            /* prettier-ignore */ [
+              0,
+              duration / 2,
+              duration - 0.1,
+            ].map((time) => {
             animation.currentTime = time;
             const bounds = dialog.getBoundingClientRect();
 
@@ -680,7 +714,12 @@ test.describe("image viewer motion", () => {
 
             animation.pause();
             const duration = Number(animation.effect.getTiming().duration);
-            const samples = [0, duration / 2, duration - 0.1].map((time) => {
+            const samples =
+              /* prettier-ignore */ [
+                0,
+                duration / 2,
+                duration - 0.1,
+              ].map((time) => {
               animation.currentTime = time;
               const bounds = dialog.getBoundingClientRect();
 

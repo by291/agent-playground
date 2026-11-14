@@ -34,6 +34,7 @@ const PreferencesContext = createContext<PreferencesValue>({
   saved: true,
 });
 
+/** Owns workspace preferences and synchronizes the document theme before paint. */
 export function UserPreferencesProvider({ children }: { children: ReactNode }) {
   const [preferences, setPreferences] = useState(loadUserPreferences);
   const [saved, setSaved] = useState(true);
@@ -95,6 +96,7 @@ export function UserPreferencesProvider({ children }: { children: ReactNode }) {
   );
 }
 
+/** Reads and updates preferences through the workspace provider. */
 export function useUserPreferences() {
   return useContext(PreferencesContext);
 }

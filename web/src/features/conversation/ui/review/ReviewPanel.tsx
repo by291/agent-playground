@@ -30,6 +30,7 @@ function isIncompleteDecision(draft: ReviewDraft) {
   return !draft.decision || (draft.decision === "approve" && !validPlan(draft));
 }
 
+/** Retains edits and decisions until the session submits the complete review batch. */
 export function ReviewPanel({
   reviews,
   running,
@@ -111,7 +112,11 @@ export function ReviewPanel({
           return (
             <AnimatedDiv
               key={draft.interruptId}
-              exit={{ opacity: 0, height: 0, overflow: "hidden" }}
+              exit={{
+                opacity: 0,
+                height: 0,
+                overflow: "hidden",
+              }}
             >
               <FieldSet className="min-w-0 overflow-hidden rounded-lg border border-line bg-surface p-4 sm:p-5">
                 <FieldLegend className="sr-only">

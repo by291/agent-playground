@@ -47,6 +47,7 @@ function updateConversationUrl(
   }
 }
 
+/** Coordinates URL history and the identity of the mounted conversation session. */
 export function useConversationNavigation() {
   // The key resets session resources on navigation; draft promotion preserves it.
   const [navigation, setNavigation] = useState(() => ({
@@ -108,6 +109,15 @@ export function useConversationNavigation() {
     }));
   }
 
+  function leaveDeletedConversation(threadId: string) {
+    // Deletion can finish after browser history has moved to another session.
+    const currentThreadId = conversationIdFromPath(window.location.pathname);
+
+    if (currentThreadId === threadId) {
+      startNewConversation("replace");
+    }
+  }
+
   const activateConversation = useCallback((threadId: string) => {
     updateConversationUrl(threadId, "replace");
 
@@ -124,5 +134,6 @@ export function useConversationNavigation() {
     activateConversation,
     openConversation,
     startNewConversation,
+    leaveDeletedConversation,
   };
 }

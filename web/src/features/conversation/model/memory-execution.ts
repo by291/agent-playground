@@ -4,6 +4,7 @@ const memoryTools = new Set([
   "forget_memory",
 ]);
 
+/** Recognizes tool names that the transcript groups as memory operations. */
 export function isMemoryTool(name: string): boolean {
   return memoryTools.has(name);
 }

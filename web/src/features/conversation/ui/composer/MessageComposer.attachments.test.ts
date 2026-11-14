@@ -22,7 +22,14 @@ function acceptedResponse(init: RequestInit | undefined) {
   const events = ["RUN_STARTED", "RUN_FINISHED"]
     .map(
       (type) =>
-        `data: ${JSON.stringify({ type, ...input, messages: undefined, state: undefined, tools: undefined, context: undefined })}\n\n`,
+        `data: ${JSON.stringify({
+          type,
+          ...input,
+          messages: undefined,
+          state: undefined,
+          tools: undefined,
+          context: undefined,
+        })}\n\n`,
     )
     .join("");
 
@@ -41,7 +48,11 @@ function Draft() {
 }
 
 function page(
-  conversation: ConversationReference = { threadId, empty: true, fresh: true },
+  conversation: ConversationReference = {
+    threadId,
+    empty: true,
+    fresh: true,
+  },
   onThreadCreated?: (threadId: string) => void,
   draft: ReactNode = createElement(Draft),
 ) {
@@ -248,7 +259,12 @@ test("a draft allocates its thread only on send and retries uploads with the sam
 
       return Promise.resolve(
         Response.json(
-          { id: fileId, threadId: threads[0], name: "orders.csv", size: 9 },
+          {
+            id: fileId,
+            threadId: threads[0],
+            name: "orders.csv",
+            size: 9,
+          },
           { status: 201 },
         ),
       );
@@ -658,7 +674,13 @@ test("attachment references count toward the workflow feedback limit and leave t
   expect(requests).not.toContain("/agent");
 });
 
-test.each(["running", "completed", "submission_unknown"] as const)(
+test.each(
+  /* prettier-ignore */ [
+    "running",
+    "completed",
+    "submission_unknown",
+  ] as const,
+)(
   "lost admission response keeps the draft until recovery confirms admission (%s)",
   async (status) => {
     let input:

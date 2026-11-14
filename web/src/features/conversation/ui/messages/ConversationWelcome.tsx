@@ -5,6 +5,7 @@ import { ChartBarIcon } from "@phosphor-icons/react/dist/csr/ChartBar";
 import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 
+/** Offers example prompts to seed an empty conversation. */
 export function ConversationWelcome({
   onSelect,
 }: {

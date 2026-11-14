@@ -225,7 +225,13 @@ test("server notifications refresh an open conversation and switching away relea
 
     return Promise.resolve(
       Response.json({
-        messages: [{ id: "reply", role: "assistant", content: text }],
+        messages: [
+          {
+            id: "reply",
+            role: "assistant",
+            content: text,
+          },
+        ],
         outputs: [],
         interrupts: [],
         runs: [{ runId: "run", status: "completed" }],

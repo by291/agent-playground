@@ -40,7 +40,11 @@ function renderWorkspace() {
     ),
   );
 
-  return { client, view, focusFallback };
+  return {
+    client,
+    view,
+    focusFallback,
+  };
 }
 
 test("loading resolves into inspectable preference and project memories with an encoded source link", async () => {
@@ -354,8 +358,16 @@ test("forgetting names the selected memory, confirms intent, and keeps a failed 
   await waitFor(() => expect(view.queryByRole("alertdialog")).toBeNull());
   await view.findByText("No memories yet");
   expect(requests).toEqual([
-    { category: "preference", project: null, revision: 1 },
-    { category: "preference", project: null, revision: 1 },
+    {
+      category: "preference",
+      project: null,
+      revision: 1,
+    },
+    {
+      category: "preference",
+      project: null,
+      revision: 1,
+    },
   ]);
   expect(focusFallback).toHaveBeenCalledOnce();
   view.unmount();
@@ -386,7 +398,11 @@ test("a conflict with a failed refresh cannot acknowledge the stale version as l
     const record =
       listRequests === 1
         ? preference
-        : { ...preference, text: "Use examples in replies.", revision: 2 };
+        : {
+            ...preference,
+            text: "Use examples in replies.",
+            revision: 2,
+          };
 
     return Promise.resolve(
       Response.json({ items: [record], nextOffset: null }),
@@ -502,7 +518,11 @@ test("forget conflict recovery refreshes inside the confirmation and requires re
   expect(refresh).toBeDisabled();
   expect(dialog).toHaveTextContent(preference.text);
   expect(requests).toEqual([
-    { category: "preference", project: null, revision: 1 },
+    {
+      category: "preference",
+      project: null,
+      revision: 1,
+    },
   ]);
   completeRefresh?.(Response.json({ items: [updated], nextOffset: null }));
   await within(dialog).findByText(updated.text);
@@ -520,8 +540,16 @@ test("forget conflict recovery refreshes inside the confirmation and requires re
   );
   await waitFor(() => expect(view.queryByRole("alertdialog")).toBeNull());
   expect(requests).toEqual([
-    { category: "preference", project: null, revision: 1 },
-    { category: "preference", project: null, revision: 2 },
+    {
+      category: "preference",
+      project: null,
+      revision: 1,
+    },
+    {
+      category: "preference",
+      project: null,
+      revision: 2,
+    },
   ]);
   view.unmount();
   client.clear();

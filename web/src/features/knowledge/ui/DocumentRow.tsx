@@ -22,6 +22,7 @@ interface DocumentRowProps {
   onDelete: (opener: HTMLButtonElement | null) => void;
 }
 
+/** Shows a document's indexing state alongside its available actions. */
 export function DocumentRow({
   document,
   operation,
@@ -36,7 +37,7 @@ export function DocumentRow({
     status = "Queuing index…";
   }
 
-  const active =
+  const isActive =
     operation !== null ||
     document.status === "queued" ||
     document.status === "indexing";
@@ -52,6 +53,7 @@ export function DocumentRow({
           <ItemTitle className="block w-full truncate">
             {document.name}
           </ItemTitle>
+
           <div className="flex items-center gap-2">
             <ItemDescription className="text-xs">
               {Math.ceil(document.size / 1024)} KB
@@ -64,7 +66,7 @@ export function DocumentRow({
               className="motion-content-enter capitalize"
               role="status"
             >
-              {active && (
+              {isActive && (
                 <Spinner
                   className="size-3"
                   aria-hidden="true"
@@ -74,11 +76,13 @@ export function DocumentRow({
               {status}
             </Badge>
           </div>
+
           {document.error && (
             <Alert variant="destructive" className="mt-1">
               <AlertDescription>{document.error}</AlertDescription>
             </Alert>
           )}
+
           {document.status === "uploading" && (
             <p className="mt-2 text-xs text-muted">
               Upload incomplete. Resume with the same file, or delete this
@@ -86,6 +90,7 @@ export function DocumentRow({
             </p>
           )}
         </ItemContent>
+
         <DocumentActions document={document} busy={busy} {...actions} />
       </Item>
     </AnimatedLi>

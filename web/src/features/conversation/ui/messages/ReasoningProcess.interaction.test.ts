@@ -10,7 +10,11 @@ import { conversationView } from "../../model/conversation-view";
 
 test("reasoning opens while thinking and folds on visible answer text without overriding later user choices", async () => {
   const messages: Message[] = [
-    { id: "question", role: "user", content: "Compare two approaches" },
+    {
+      id: "question",
+      role: "user",
+      content: "Compare two approaches",
+    },
     {
       id: "reason",
       role: "reasoning",
@@ -19,7 +23,11 @@ test("reasoning opens while thinking and folds on visible answer text without ov
   ];
   const turn = () =>
     chatTurns(messages, [
-      { runId: "run", messageId: "question", status: "running" },
+      {
+        runId: "run",
+        messageId: "question",
+        status: "running",
+      },
     ])[0]!;
   const page = render(
     createElement(AssistantReply, { turn: turn(), animatedMessageId: null }),
@@ -31,7 +39,11 @@ test("reasoning opens while thinking and folds on visible answer text without ov
     "true",
   );
   expect(page.getByText("First, compare the constraints.")).toBeVisible();
-  messages.push({ id: "answer", role: "assistant", content: "" });
+  messages.push({
+    id: "answer",
+    role: "assistant",
+    content: "",
+  });
   page.rerender(
     createElement(AssistantReply, { turn: turn(), animatedMessageId: null }),
   );
@@ -106,11 +118,29 @@ test("reasoning stays open until the paced answer actually renders text", async 
   });
   const turn = chatTurns(
     [
-      { id: "question", role: "user", content: "Compare options" },
-      { id: "reason", role: "reasoning", content: "Compare the constraints." },
-      { id: "answer", role: "assistant", content: "Answer A is simpler." },
+      {
+        id: "question",
+        role: "user",
+        content: "Compare options",
+      },
+      {
+        id: "reason",
+        role: "reasoning",
+        content: "Compare the constraints.",
+      },
+      {
+        id: "answer",
+        role: "assistant",
+        content: "Answer A is simpler.",
+      },
     ],
-    [{ runId: "run", messageId: "question", status: "running" }],
+    [
+      {
+        runId: "run",
+        messageId: "question",
+        status: "running",
+      },
+    ],
   )[0]!;
   const page = render(
     createElement(AssistantReply, { turn, animatedMessageId: "answer" }),
@@ -131,13 +161,29 @@ test("reasoning stays open until the paced answer actually renders text", async 
 
 test("an empty code fence does not fold reasoning before its code body appears", async () => {
   const messages: Message[] = [
-    { id: "question", role: "user", content: "Show Python code" },
-    { id: "reason", role: "reasoning", content: "Choose a small example." },
-    { id: "answer", role: "assistant", content: "```python\n" },
+    {
+      id: "question",
+      role: "user",
+      content: "Show Python code",
+    },
+    {
+      id: "reason",
+      role: "reasoning",
+      content: "Choose a small example.",
+    },
+    {
+      id: "answer",
+      role: "assistant",
+      content: "```python\n",
+    },
   ];
   const turn = () =>
     chatTurns(messages, [
-      { runId: "run", messageId: "question", status: "running" },
+      {
+        runId: "run",
+        messageId: "question",
+        status: "running",
+      },
     ])[0]!;
   const page = render(
     createElement(AssistantReply, { turn: turn(), animatedMessageId: null }),
@@ -164,17 +210,71 @@ test("an empty code fence does not fold reasoning before its code body appears",
   );
 });
 
+test("reasoning folds when an answer consisting of a link appears", async () => {
+  const turn = {
+    id: "question",
+    user: null,
+    status: "running" as const,
+    messages: [
+      {
+        id: "reason",
+        role: "reasoning",
+        content: "Find the reference.",
+      },
+    ] satisfies Message[],
+  };
+  const page = render(
+    createElement(AssistantReply, { turn, animatedMessageId: null }),
+  );
+
+  expect(page.getByRole("button", { name: "Thinking" })).toHaveAttribute(
+    "aria-expanded",
+    "true",
+  );
+
+  const reply: Message = {
+    id: "answer",
+    role: "assistant",
+    content: "[Reference](https://example.com)",
+  };
+
+  page.rerender(
+    createElement(AssistantReply, {
+      turn: { ...turn, messages: [...turn.messages, reply] },
+      animatedMessageId: null,
+    }),
+  );
+
+  expect(page.getByRole("button", { name: "Reference" })).toBeVisible();
+  await waitFor(() =>
+    expect(page.getByRole("button", { name: "Reasoning" })).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    ),
+  );
+});
+
 test("a live reasoning-only failure leaves the visible reasoning open", () => {
   const turn = chatTurns(
     [
-      { id: "question", role: "user", content: "Explain the failure" },
+      {
+        id: "question",
+        role: "user",
+        content: "Explain the failure",
+      },
       {
         id: "reason",
         role: "reasoning",
         content: "The input could not be resolved.",
       },
     ],
-    [{ runId: "run", messageId: "question", status: "running" }],
+    [
+      {
+        runId: "run",
+        messageId: "question",
+        status: "running",
+      },
+    ],
   )[0]!;
   const page = render(
     createElement(AssistantReply, { turn, animatedMessageId: null }),
@@ -197,14 +297,24 @@ test("a live reasoning-only failure leaves the visible reasoning open", () => {
 test("restored reasoning-only replies remain accessible and start collapsed", async () => {
   const view = conversationView({
     messages: [
-      { id: "question", role: "user", content: "Explain the failure" },
+      {
+        id: "question",
+        role: "user",
+        content: "Explain the failure",
+      },
       {
         id: "reason",
         role: "reasoning",
         content: "The input could not be resolved.",
       },
     ],
-    runs: [{ runId: "run", messageId: "question", status: "failed" }],
+    runs: [
+      {
+        runId: "run",
+        messageId: "question",
+        status: "failed",
+      },
+    ],
     surfaces: [],
     pendingInterrupts: [],
   });

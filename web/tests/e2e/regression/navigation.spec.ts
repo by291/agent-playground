@@ -23,14 +23,21 @@ test("sidebar dragging and keyboard resizing survive collapse and reload without
 
   expect(ariaSize).toBeGreaterThan(0);
   expect(ariaSize).toBeLessThan(100);
-  const handle = (await separator.boundingBox())!;
+  const separatorBounds = (await separator.boundingBox())!;
 
-  await page.mouse.move(handle.x + handle.width / 2, handle.y + 100);
+  await page.mouse.move(
+    separatorBounds.x + separatorBounds.width / 2,
+    separatorBounds.y + 100,
+  );
   await page.mouse.down();
   await expect(separator).toHaveAttribute("data-separator", "active");
-  await page.mouse.move(handle.x + handle.width / 2 + 24, handle.y + 100, {
-    steps: 6,
-  });
+  await page.mouse.move(
+    separatorBounds.x + separatorBounds.width / 2 + 24,
+    separatorBounds.y + 100,
+    {
+      steps: 6,
+    },
+  );
   await page.mouse.up();
   await expect(separator).not.toHaveAttribute("data-separator", "active");
   await expect

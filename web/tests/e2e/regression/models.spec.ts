@@ -73,6 +73,42 @@ test("model selection preserves the draft, survives reload and pins each run", a
   );
 });
 
+test("the model picker stays reachable in a short viewport", async ({
+  page,
+}) => {
+  const viewport = { width: 640, height: 240 };
+
+  await page.setViewportSize(viewport);
+  await page.goto("/");
+
+  await page.getByRole("button", { name: /test-model.*Choose model/ }).click();
+
+  const picker = page.getByRole("dialog", { name: "Context usage details" });
+
+  await expect(picker).toBeVisible();
+  await expect
+    .poll(async () => {
+      const bounds = await picker.boundingBox();
+
+      return (
+        bounds !== null &&
+        bounds.y >= 0 &&
+        bounds.y + bounds.height <= viewport.height
+      );
+    })
+    .toBe(true);
+  await picker
+    .getByRole("heading", { name: "Context window" })
+    .scrollIntoViewIfNeeded();
+  await expect(
+    picker.getByRole("heading", { name: "Context window" }),
+  ).toBeInViewport();
+  await picker.getByRole("radio", { name: "Qwen" }).click();
+  await expect(
+    page.getByRole("button", { name: /test-qwen.*Choose model/ }),
+  ).toBeFocused();
+});
+
 test("a running reply keeps context readable and disables model switching", async ({
   page,
   request,

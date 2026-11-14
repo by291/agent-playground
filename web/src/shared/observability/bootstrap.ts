@@ -7,6 +7,7 @@ import { resourceFromAttributes } from "@opentelemetry/resources";
 import { W3CTraceContextPropagator } from "@opentelemetry/core";
 import { reportClientError } from "./tracing";
 
+/** Registers tracing and page-lifetime error and flush listeners at startup. */
 export function initializeTracing() {
   const provider = new WebTracerProvider({
     resource: resourceFromAttributes({

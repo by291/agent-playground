@@ -3,7 +3,13 @@ import { test, vi } from "vitest";
 import { HttpAgent, type Interrupt } from "@ag-ui/client";
 import { createSubmissionRunner } from "./submission";
 
-test.each(["request-rejected", "unconfirmed-stream", "accepted-disconnect"])(
+test.each(
+  /* prettier-ignore */ [
+    "request-rejected",
+    "unconfirmed-stream",
+    "accepted-disconnect",
+  ],
+)(
   "a failed partial resume restores every pending interrupt for retry: %s",
   async (failure) => {
     const interrupts: Interrupt[] = [
@@ -23,7 +29,11 @@ test.each(["request-rejected", "unconfirmed-stream", "accepted-disconnect"])(
         const events =
           failure === "accepted-disconnect"
             ? [
-                { type: "RUN_STARTED", threadId: "thread", runId: "resume" },
+                {
+                  type: "RUN_STARTED",
+                  threadId: "thread",
+                  runId: "resume",
+                },
                 {
                   type: "RUN_ERROR",
                   message: "Connection lost after admission",

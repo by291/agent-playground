@@ -12,7 +12,11 @@ test("the configured model sits beside send and opens context details on desktop
 
   await page.getByRole("textbox", { name: "Message" }).fill("Keep this draft");
 
-  for (const width of [1440, 390, 320]) {
+  for (const width of /* prettier-ignore */ [
+    1440,
+    390,
+    320,
+  ]) {
     await page.setViewportSize({ width, height: 900 });
     await expect
       .poll(() =>

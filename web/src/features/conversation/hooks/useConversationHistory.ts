@@ -28,6 +28,7 @@ export interface ConversationHistory {
   clear: () => Promise<void>;
 }
 
+/** Coordinates saved history requests with navigation and local journal cleanup. */
 export function useConversationHistory(
   select: (threadId: string) => void,
   onDeleted: (threadId: string) => void,
@@ -35,17 +36,26 @@ export function useConversationHistory(
 ): ConversationHistory {
   const client = useQueryClient();
   const query = useInfiniteQuery(conversationHistoryOptions());
+
   const { hasNextPage, isFetching, fetchNextPage } = query;
 
-  const loadMore = useCallback(() => {
-    if (!hasNextPage || isFetching) {
-      return;
-    }
+  const loadMore = useCallback(
+    () => {
+      if (!hasNextPage || isFetching) {
+        return;
+      }
 
-    void fetchNextPage({ cancelRefetch: false });
-  }, [hasNextPage, isFetching, fetchNextPage]);
+      void fetchNextPage({ cancelRefetch: false });
+    },
+    /* prettier-ignore */ [
+      hasNextPage,
+      isFetching,
+      fetchNextPage,
+    ],
+  );
 
   const entries = query.data?.pages.flatMap((page) => page.conversations) ?? [];
+
   // History can move between pages after a title or run update; retain its first row.
   const conversations = entries.filter(
     (entry, index) =>
@@ -60,6 +70,7 @@ export function useConversationHistory(
     error: query.error?.message ?? null,
     hasMore: query.hasNextPage,
     loadingMore: query.isFetchingNextPage,
+
     select,
     loadMore,
     retry: () => {
@@ -72,13 +83,16 @@ export function useConversationHistory(
     refresh: () => {
       void client.invalidateQueries({ queryKey: conversationHistoryKey });
     },
+
     async rename(threadId, title) {
       await renameSavedConversation(threadId, title);
+
       await Promise.all([
         client.invalidateQueries({ queryKey: conversationHistoryKey }),
         client.invalidateQueries({ queryKey: ["conversation", threadId] }),
       ]);
     },
+
     async remove(threadId) {
       await deleteSavedConversation(threadId);
 
@@ -91,6 +105,7 @@ export function useConversationHistory(
 
       await client.invalidateQueries({ queryKey: conversationHistoryKey });
     },
+
     async clear() {
       await clearSavedConversations();
 

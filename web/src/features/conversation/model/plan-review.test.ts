@@ -33,7 +33,11 @@ test("review ownership identifies its plan without adding UI metadata to resume 
       {
         interruptId: "review",
         status: "resolved",
-        payload: { decision: "approve", title: "Plan", steps: ["Try"] },
+        payload: {
+          decision: "approve",
+          title: "Plan",
+          steps: ["Try"],
+        },
       },
     ],
   );

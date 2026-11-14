@@ -10,6 +10,7 @@ interface AgentPlanProps {
   status: RunStatus | null;
 }
 
+/** Shows the saved step status for the current turn and its completed count. */
 export function AgentPlan({ todos, status }: AgentPlanProps) {
   const completed = todos.filter((todo) => todo.status === "completed").length;
   const active = status !== null && isRunActive(status);

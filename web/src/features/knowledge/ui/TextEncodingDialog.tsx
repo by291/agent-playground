@@ -36,6 +36,7 @@ interface TextEncodingDialogProps {
   ) => Promise<boolean | undefined>;
 }
 
+/** Lets users choose an encoding and keeps it available when reindexing fails. */
 export function TextEncodingDialog({
   document,
   busy,
@@ -89,6 +90,7 @@ export function TextEncodingDialog({
             searchable text.
           </DialogDescription>
         </DialogHeader>
+
         <div className="space-y-2">
           <Label htmlFor="knowledge-text-encoding">Text encoding</Label>
           <Select
@@ -115,11 +117,13 @@ export function TextEncodingDialog({
             </SelectContent>
           </Select>
         </div>
+
         {error && (
           <Alert variant="destructive">
             <AlertDescription>{error}</AlertDescription>
           </Alert>
         )}
+
         <DialogFooter className="flex-col-reverse sm:flex-row">
           <Button variant="outline" disabled={busy} onClick={onClose}>
             Cancel

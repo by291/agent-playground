@@ -15,6 +15,7 @@ const questionStatusText: Record<ClarificationQuestion["status"], string> = {
   unavailable: "The answer is unavailable",
 };
 
+/** Shows a clarification question and the state of its tool call. */
 export function ClarificationQuestionContent({
   clarification,
 }: {
@@ -40,6 +41,7 @@ export function ClarificationQuestionContent({
 }
 
 /** The human's confirmed answers are a transcript view, not additional run input. */
+/** Displays answers recovered from the committed clarification result. */
 export function ClarificationAnswerMessage({
   answers,
   timestamp,

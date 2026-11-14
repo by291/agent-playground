@@ -81,7 +81,11 @@ test("page composition and internal module imports remain allowed", () => {
 });
 
 test("feature internals cannot cycle through their own public entry", () => {
-  for (const source of ["@/features/conversation", "../index", "../index.ts"]) {
+  for (const source of /* prettier-ignore */ [
+    "@/features/conversation",
+    "../index",
+    "../index.ts",
+  ]) {
     assert.equal(
       lintImport(
         "features/conversation/runtime/conversation-session.js",
@@ -136,7 +140,11 @@ test("UI primitives cannot depend on application widgets", () => {
 });
 
 test("feature APIs and models stay independent of React hooks and UI", () => {
-  for (const feature of ["conversation", "knowledge", "memory"]) {
+  for (const feature of /* prettier-ignore */ [
+    "conversation",
+    "knowledge",
+    "memory",
+  ]) {
     for (const layer of ["api", "model"]) {
       for (const target of ["hooks/useExample", "ui/Example"]) {
         assert.equal(

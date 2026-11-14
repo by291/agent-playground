@@ -2,6 +2,7 @@ import { StackIcon } from "@phosphor-icons/react/dist/csr/Stack";
 import { Badge } from "./ui/badge";
 import { cn } from "cn";
 
+/** Renders the workspace brand in navigation. */
 export function AppBrand({
   subtitle,
   development = false,

@@ -213,7 +213,11 @@ test("a missing output waits for recovery and an older snapshot cannot replay cr
   const second = output(2, [
     {
       version: "v0.9",
-      updateDataModel: { surfaceId: "main", path: "/status", value: "done" },
+      updateDataModel: {
+        surfaceId: "main",
+        path: "/status",
+        value: "done",
+      },
     },
   ]);
   const gap = runtime.ingest([second]);

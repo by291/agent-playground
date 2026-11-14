@@ -56,7 +56,15 @@ function setup() {
     });
   };
 
-  return { page, history, observer, observe, disconnect, element, intersect };
+  return {
+    page,
+    history,
+    observer,
+    observe,
+    disconnect,
+    element,
+    intersect,
+  };
 }
 
 test("pagination observes the end of the history scroller without a load more button", () => {
