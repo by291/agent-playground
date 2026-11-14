@@ -98,16 +98,13 @@ internal fun MessageContent(
                 MessageTimestamp(timestamp, Modifier.padding(end = 6.dp))
             }
 
-        is AssistantMessage -> {
-            if (isReasoning(message)) {
-                Details("Reasoning") { Markdown(message.content.orEmpty(), onLink) }
-            } else {
-                Column {
-                    Markdown(message.content.orEmpty(), onLink)
-                    AssistantMessageFooter(message.id, message.content.orEmpty(), timestamp, true)
-                }
+        is ReasoningMessage -> Details("Reasoning") { Markdown(message.content.orEmpty(), onLink) }
+
+        is AssistantMessage ->
+            Column {
+                Markdown(message.content.orEmpty(), onLink)
+                AssistantMessageFooter(message.id, message.content.orEmpty(), timestamp, true)
             }
-        }
 
         is ToolMessage -> Details("Tool result") { ToolResultContent(message) }
         else ->

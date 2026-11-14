@@ -30,7 +30,7 @@ class SubmissionContractsTest {
                 "pause",
                 "human_approval",
                 metadata =
-                    protocolJson.parseToJsonElement(
+                    protocolJson.decodeFromString(
                         """{"langgraph":{"raw":{"kind":"workflow_review","workflowCallId":"sql","revision":3,"round":2,"outputStepId":"review:2","canAccept":false}}}"""
                     ),
             )

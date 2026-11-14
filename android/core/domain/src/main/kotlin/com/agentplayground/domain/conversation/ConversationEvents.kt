@@ -2,7 +2,6 @@ package com.agentplayground.domain.conversation
 
 import com.agentplayground.domain.model.ContextUsage
 import com.agentplayground.domain.model.WorkflowOutput
-import com.agentplayground.domain.model.isReasoning
 import com.agentplayground.domain.model.protocolJson
 import com.agentplayground.domain.model.reasoningMessage
 import com.agui.core.types.*
@@ -24,13 +23,11 @@ internal fun reduceConversationEvent(
         is ReasoningMessageContentEvent ->
             current.copy(
                 messages =
-                    current.messages.map {
-                        if (isReasoning(it) && it.id == event.messageId) {
-                            (it as AssistantMessage).copy(
-                                content = it.content.orEmpty() + event.delta
-                            )
+                    current.messages.map { message ->
+                        if (message is ReasoningMessage && message.id == event.messageId) {
+                            message.copy(content = message.content.orEmpty() + event.delta)
                         } else {
-                            it
+                            message
                         }
                     }
             )

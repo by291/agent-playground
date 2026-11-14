@@ -135,6 +135,18 @@ internal fun Markdown(
                 ),
         )
 
+    val markdownColors =
+        markdownColor(
+            text = body.color,
+            inlineCodeBackground = Color.Transparent,
+            dividerColor = colors.outlineVariant,
+        )
+    val highlightStyle =
+        SpanStyle(
+            color = markdownColors.highlightText,
+            background = markdownColors.highlightBackground,
+        )
+
     val uriHandler = remember {
         object : UriHandler {
             override fun openUri(uri: String) {
@@ -144,15 +156,23 @@ internal fun Markdown(
     }
 
     val annotator =
-        remember(citations, colors.primary, typography.inlineCode, state.referenceLinkHandler) {
+        remember(
+            citations,
+            colors.primary,
+            typography.inlineCode,
+            highlightStyle,
+            state.referenceLinkHandler,
+        ) {
             replyMarkdownAnnotator(
-                citations,
-                colors.primary,
-                typography.inlineCode.toSpanStyle(),
-                state.referenceLinkHandler,
-            ) {
-                callback(it)
-            }
+                ReplyMarkdownAnnotationOptions(
+                    sources = citations,
+                    foreground = colors.primary,
+                    codeStyle = typography.inlineCode.toSpanStyle(),
+                    highlightStyle = highlightStyle,
+                    onLink = { callback(it) },
+                    referenceLinks = state.referenceLinkHandler,
+                )
+            )
         }
 
     val codeComponent: MarkdownComponent = { model ->
@@ -246,12 +266,7 @@ internal fun Markdown(
             ComposeMarkdown(
                 state = state,
                 modifier = Modifier.fillMaxWidth(),
-                colors =
-                    markdownColor(
-                        text = body.color,
-                        inlineCodeBackground = Color.Transparent,
-                        dividerColor = colors.outlineVariant,
-                    ),
+                colors = markdownColors,
                 typography = typography,
                 padding = markdownPadding(block = 0.dp, blockQuote = PaddingValues(start = 16.dp)),
                 annotator = annotator,

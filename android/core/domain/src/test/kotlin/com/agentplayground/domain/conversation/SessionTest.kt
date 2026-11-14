@@ -18,6 +18,7 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.test.*
 import kotlinx.serialization.json.*
+import kotlinx.serialization.json.JsonObject
 import org.junit.Assert.*
 import org.junit.Test
 
@@ -833,7 +834,7 @@ class SessionTest {
                     id,
                     "human_approval",
                     metadata =
-                        protocolJson.parseToJsonElement(
+                        protocolJson.decodeFromString(
                             """{"langgraph":{"raw":{"kind":"experiment_plan_review","title":"Original","steps":["Original step"]}}}"""
                         ),
                 )
@@ -883,7 +884,7 @@ class SessionTest {
                 "plan",
                 "human_approval",
                 metadata =
-                    protocolJson.parseToJsonElement(
+                    protocolJson.decodeFromString(
                         """{"langgraph":{"raw":{"kind":"experiment_plan_review","title":"Original","steps":["Step"]}}}"""
                     ),
             )
@@ -893,7 +894,7 @@ class SessionTest {
                 "wait",
                 "human_approval",
                 metadata =
-                    protocolJson.parseToJsonElement(
+                    protocolJson.decodeFromString(
                         """{"langgraph":{"raw":{"kind":"workflow_external_wait","workflowCallId":"task"}}}"""
                     ),
             )
@@ -924,7 +925,7 @@ class SessionTest {
                 id,
                 "human_approval",
                 metadata =
-                    protocolJson.parseToJsonElement(
+                    protocolJson.decodeFromString(
                         """{"langgraph":{"raw":{"kind":"experiment_plan_review","title":"Original","steps":["Step"]}}}"""
                     ),
             )
@@ -933,7 +934,7 @@ class SessionTest {
                 "wait",
                 "human_approval",
                 metadata =
-                    protocolJson.parseToJsonElement(
+                    protocolJson.decodeFromString(
                         """{"langgraph":{"raw":{"kind":"workflow_external_wait","workflowCallId":"task"}}}"""
                     ),
             )
@@ -971,7 +972,7 @@ class SessionTest {
                 id,
                 "human_approval",
                 metadata =
-                    protocolJson.parseToJsonElement(
+                    protocolJson.decodeFromString(
                         """{"langgraph":{"raw":{"kind":"experiment_plan_review","title":"Plan","steps":["Step"]}}}"""
                     ),
             )
@@ -1282,7 +1283,7 @@ class SessionTest {
                 id,
                 "human_approval",
                 metadata =
-                    protocolJson.parseToJsonElement(
+                    protocolJson.decodeFromString(
                         """{"langgraph":{"raw":{"kind":"experiment_plan_review","title":"Original","steps":["Original step"]}}}"""
                     ),
             )
@@ -1329,7 +1330,7 @@ class SessionTest {
     @Test
     fun `final plan batch revalidates decisions that expired while choosing siblings`() = runTest {
         val raw =
-            protocolJson.parseToJsonElement(
+            protocolJson.decodeFromString<JsonObject>(
                 """{"langgraph":{"raw":{"kind":"experiment_plan_review","title":"Plan","steps":["Step"]}}}"""
             )
         val first =
@@ -1522,7 +1523,7 @@ class SessionTest {
             id,
             "human_approval",
             metadata =
-                protocolJson.parseToJsonElement(
+                protocolJson.decodeFromString(
                     """{"langgraph":{"raw":{"kind":"experiment_plan_review","title":"Plan","steps":["Step"]}}}"""
                 ),
         )
@@ -1532,7 +1533,7 @@ class SessionTest {
             "pause",
             "human_approval",
             metadata =
-                protocolJson.parseToJsonElement(
+                protocolJson.decodeFromString(
                     """{"langgraph":{"raw":{"kind":"workflow_review","workflowCallId":"workflow","revision":1,"round":1,"outputStepId":"review","canAccept":true}}}"""
                 ),
         )

@@ -104,7 +104,9 @@ fun conversationTurns(
             val turn = Draft(message.id, message)
             current = turn
             turns.add(turn)
-        } else if (message is AssistantMessage || message is ToolMessage) {
+        } else if (
+            message is AssistantMessage || message is ReasoningMessage || message is ToolMessage
+        ) {
             val latest =
                 current
                     ?: Draft(message.id, null).also {
@@ -305,10 +307,7 @@ fun reasoningPhase(messages: List<Message>, renderedAnswer: Boolean? = null): St
     val reasoningIndex = messages.indexOfLast { isReasoning(it) && !it.content.isNullOrBlank() }
     val answered =
         messages.drop(reasoningIndex + 1).any {
-            it is AssistantMessage &&
-                !isReasoning(it) &&
-                it.toolCalls.isNullOrEmpty() &&
-                !it.content.isNullOrBlank()
+            it is AssistantMessage && it.toolCalls.isNullOrEmpty() && !it.content.isNullOrBlank()
         }
     val count = messages.count { isReasoning(it) && !it.content.isNullOrBlank() }
 
