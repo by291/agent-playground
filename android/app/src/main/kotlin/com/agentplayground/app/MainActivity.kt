@@ -16,6 +16,7 @@ import com.agentplayground.domain.repository.PreferencesRepository
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 
+/** Hosts the workspace and applies user theme changes to the system bars. */
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
     @Inject lateinit var preferences: PreferencesRepository

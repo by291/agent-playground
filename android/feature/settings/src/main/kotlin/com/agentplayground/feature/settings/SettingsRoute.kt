@@ -11,49 +11,39 @@ import com.agentplayground.domain.settings.AppPreferences
 import com.agentplayground.ui.network.ServerNetworkAccess
 import kotlinx.coroutines.CancellationException
 
+/** Supplies workspace controls and the local-network gate for the settings destination. */
+data class SettingsRouteOptions(
+    val preferences: AppPreferences,
+    val onClear: ((completed: () -> Unit) -> Unit)?,
+    val conversationBusy: Boolean,
+    val conversationError: String?,
+    val onOpenNavigation: (() -> Unit)? = null,
+    val networkAccess: ServerNetworkAccess,
+    val localNetworkBlocked: Boolean = false,
+    val onConnected: (String) -> Unit = {},
+)
+
+/** Binds the retained connection model and the system permission flow for settings. */
 @Composable
-fun SettingsRoute(
-    preferences: AppPreferences,
-    onClear: ((completed: () -> Unit) -> Unit)?,
-    conversationBusy: Boolean,
-    conversationError: String?,
-    onOpenNavigation: (() -> Unit)? = null,
-    networkAccess: ServerNetworkAccess,
-    localNetworkBlocked: Boolean = false,
-    onConnected: (String) -> Unit = {},
-) {
+fun SettingsRoute(options: SettingsRouteOptions) {
     val model =
         hiltViewModel<SettingsViewModel, SettingsViewModel.Factory>(
-            creationCallback = { it.create(preferences.serverUrl) }
+            creationCallback = { it.create(options.preferences.serverUrl) }
         )
-    SettingsRoute(
-        model,
-        preferences,
-        onClear,
-        conversationBusy,
-        conversationError,
-        onOpenNavigation,
-        networkAccess,
-        localNetworkBlocked,
-        onConnected,
-    )
+
+    SettingsRoute(model, options)
 }
 
 @Composable
 internal fun SettingsRoute(
     model: SettingsViewModel,
-    preferences: AppPreferences,
-    onClear: ((completed: () -> Unit) -> Unit)?,
-    conversationBusy: Boolean,
-    conversationError: String?,
-    onOpenNavigation: (() -> Unit)? = null,
-    networkAccess: ServerNetworkAccess,
-    localNetworkBlocked: Boolean = false,
-    onConnected: (String) -> Unit = {},
+    options: SettingsRouteOptions,
 ) {
+    val preferences = options.preferences
+    val networkAccess = options.networkAccess
     val context = LocalContext.current
     val connection by model.state.collectAsStateWithLifecycle()
-    val connected by rememberUpdatedState(onConnected)
+    val connected by rememberUpdatedState(options.onConnected)
 
     LaunchedEffect(model, preferences.serverUrl) { model.savedServerChanged(preferences.serverUrl) }
 
@@ -62,8 +52,8 @@ internal fun SettingsRoute(
         onDispose { model.cancelConnection() }
     }
 
-    LaunchedEffect(model, localNetworkBlocked) {
-        if (localNetworkBlocked) {
+    LaunchedEffect(model, options.localNetworkBlocked) {
+        if (options.localNetworkBlocked) {
             model.showNetworkBlocked()
         }
     }
@@ -108,9 +98,9 @@ internal fun SettingsRoute(
                 )
             )
         },
-        onClear = onClear,
-        conversationBusy = conversationBusy,
-        conversationError = conversationError,
-        onOpenNavigation = onOpenNavigation,
+        onClear = options.onClear,
+        conversationBusy = options.conversationBusy,
+        conversationError = options.conversationError,
+        onOpenNavigation = options.onOpenNavigation,
     )
 }

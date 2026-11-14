@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/tooltip";
 import { Separator } from "@/components/ui/separator";
 
+/** Presents and exports the retained events and current client issues for a conversation. */
 export function ActivityPanel({
   threadId,
   onClose,
@@ -35,13 +36,15 @@ export function ActivityPanel({
   const clearActivity = useConversation((state) => state.clearActivity);
   const clientIssues = useConversation((state) => state.issues);
   const latestRun = useConversation((state) => state.runs.at(-1) ?? null);
+
   const [mergeContent, setMergeContent] = useState(true);
-  const rows = useMemo(
-    () => activityRows(activity, mergeContent),
-    [activity, mergeContent],
-  );
   const [copyStatus, setCopyStatus] = useState<"idle" | "copied" | "failed">(
     "idle",
+  );
+
+  const rows = useMemo(
+    () => activityRows(activity, { merge: mergeContent }),
+    [activity, mergeContent],
   );
   const issues = Object.entries(clientIssues).filter(
     ([, detail]) => detail !== null,

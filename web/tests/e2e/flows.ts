@@ -4,6 +4,7 @@ export const timePrompt = "Use the time tool to tell me the current UTC time.";
 export const reviewPrompt =
   "Use run_experiment_workflow to make a simple experiment plan for testing an agent workflow. Ask me to review it.";
 
+/** Checks the welcome view for a new conversation. */
 export async function verifyFreshWelcome(page: Page) {
   await page
     .getByRole("button", { name: "New conversation", exact: true })
@@ -20,6 +21,7 @@ export async function verifyFreshWelcome(page: Page) {
   await expect(page.getByRole("textbox", { name: "Message" })).toBeEnabled();
 }
 
+/** Exercises a tool reply through the running browser session. */
 export async function verifyToolReply(page: Page) {
   await page.getByRole("textbox", { name: "Message" }).fill(timePrompt);
   await page.getByRole("textbox", { name: "Message" }).press("Enter");
@@ -45,6 +47,7 @@ export async function verifyToolReply(page: Page) {
   await expect(reply).toContainText("UTC");
 }
 
+/** Starts a workflow and waits until its review controls are ready. */
 export async function startWorkflowReview(page: Page) {
   await page.getByRole("textbox", { name: "Message" }).fill(reviewPrompt);
   await page.getByRole("textbox", { name: "Message" }).press("Enter");
@@ -54,6 +57,7 @@ export async function startWorkflowReview(page: Page) {
   await expect(page.getByRole("textbox", { name: "Message" })).toBeDisabled();
 }
 
+/** Submits the displayed workflow review and waits for its reply. */
 export async function approveWorkflowReview(page: Page) {
   const title = "Frontend architecture smoke plan";
 
@@ -92,6 +96,7 @@ export async function approveWorkflowReview(page: Page) {
   );
 }
 
+/** Checks that selecting an example updates the development preview. */
 export async function verifyGallerySelection(page: Page) {
   const selector = page.getByRole("combobox", {
     name: "Component",

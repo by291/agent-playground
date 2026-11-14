@@ -31,7 +31,11 @@ test("a copy review supports discussion and blocks acceptance without any SQL fi
   expect(
     reviewResponse(review!, "message", { id: "feedback", content: "Explain" })
       ?.payload,
-  ).toMatchObject({ action: "message", round: 2, revision: 4 });
+  ).toMatchObject({
+    action: "message",
+    round: 2,
+    revision: 4,
+  });
 });
 
 test("assistant replies come from output metadata without inspecting business cards", () => {

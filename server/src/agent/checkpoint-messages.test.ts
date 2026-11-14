@@ -40,14 +40,26 @@ test("checkpoint recovery preserves provider reasoning separately from answer te
   };
 
   assert.deepEqual(completedMessages(values), [
-    { id: "answer-reasoning", role: "reasoning", content: "Compare A and B." },
-    { id: "answer", role: "assistant", content: "Use approach A." },
+    {
+      id: "answer-reasoning",
+      role: "reasoning",
+      content: "Compare A and B.",
+    },
+    {
+      id: "answer",
+      role: "assistant",
+      content: "Use approach A.",
+    },
     {
       id: "blocks-reasoning",
       role: "reasoning",
       content: "Check the constraints.",
     },
-    { id: "blocks", role: "assistant", content: "Both fit." },
+    {
+      id: "blocks",
+      role: "assistant",
+      content: "Both fit.",
+    },
     {
       id: "thinking-reasoning",
       role: "reasoning",
@@ -64,7 +76,13 @@ test("checkpoint replies preserve tool calls, empty assistant messages and faile
         id: "note",
         type: "ai",
         content: "I'll check.",
-        tool_calls: [{ id: "clock", name: "get_current_time", args: {} }],
+        tool_calls: [
+          {
+            id: "clock",
+            name: "get_current_time",
+            args: {},
+          },
+        ],
       },
       {
         id: "result",
@@ -125,9 +143,19 @@ test("checkpoint recovery includes results from older AI-only response archives"
     id: "request",
     type: "ai",
     content: "Checking",
-    tool_calls: [{ id: "lookup", name: "lookup", args: {} }],
+    tool_calls: [
+      {
+        id: "lookup",
+        name: "lookup",
+        args: {},
+      },
+    ],
   };
-  const answer = { id: "answer", type: "ai", content: "Found" };
+  const answer = {
+    id: "answer",
+    type: "ai",
+    content: "Found",
+  };
   const result = {
     id: "result",
     type: "tool",
@@ -135,12 +163,20 @@ test("checkpoint recovery includes results from older AI-only response archives"
     content: "Raw result",
   };
   const messages = completedMessages({
-    messages: [call, result, answer],
+    messages: /* prettier-ignore */ [
+      call,
+      result,
+      answer,
+    ],
     response_messages: [call, answer],
   });
 
   assert.deepEqual(
     messages.map((message) => message.id),
-    ["request", "result", "answer"],
+    /* prettier-ignore */ [
+      "request",
+      "result",
+      "answer",
+    ],
   );
 });

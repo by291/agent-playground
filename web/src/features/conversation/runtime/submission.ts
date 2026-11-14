@@ -41,6 +41,21 @@ export function createSubmissionRunner(
       agent.setState(submission.state);
       callbacks.started();
 
+      const pendingInterrupts = agent.pendingInterrupts;
+      const resumeIds = new Set(
+        submission.resume?.map((entry) => entry.interruptId),
+      );
+      const scopedInterrupts = pendingInterrupts.filter((interrupt) =>
+        resumeIds.has(interrupt.id),
+      );
+
+      if (resumeIds.size) {
+        // Independent pauses can be answered separately. Scope the SDK's
+        // all-covered guard to this response; server admission validates it
+        // against the complete checkpoint without resolving the other pauses.
+        agent.pendingInterrupts = scopedInterrupts;
+      }
+
       let accepted = false;
       const subscription = agent.subscribe({
         onRunStartedEvent({ event }) {
@@ -78,6 +93,12 @@ export function createSubmissionRunner(
         subscription.unsubscribe();
         observation.finish();
         observation = undefined;
+
+        if (agent.pendingInterrupts === scopedInterrupts) {
+          // A terminal event replaces this list. Restore it only when the
+          // request failed or disconnected before the SDK received that event.
+          agent.pendingInterrupts = pendingInterrupts;
+        }
 
         agent.headers = originalHeaders;
         active = false;

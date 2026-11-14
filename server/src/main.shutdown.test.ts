@@ -40,6 +40,18 @@ vi.mock("@hono/node-server", () => ({
   }),
 }));
 
+function removeTestSignalHandlers(
+  originalSignals: ReadonlySet<ReturnType<typeof process.listeners>[number]>,
+) {
+  for (const signal of ["SIGTERM", "SIGINT"] as const) {
+    for (const listener of process.listeners(signal)) {
+      if (!originalSignals.has(listener)) {
+        process.removeListener(signal, listener);
+      }
+    }
+  }
+}
+
 afterEach(() => {
   vi.unstubAllEnvs();
   vi.restoreAllMocks();
@@ -162,13 +174,7 @@ test("the telemetry-enabled server drains application resources before exporting
   } finally {
     releaseWorker();
 
-    for (const signal of ["SIGTERM", "SIGINT"] as const) {
-      for (const handler of process.listeners(signal)) {
-        if (!originalSignals.has(handler)) {
-          process.removeListener(signal, handler);
-        }
-      }
-    }
+    removeTestSignalHandlers(originalSignals);
 
     await new Promise<void>((resolve) => collector.close(() => resolve()));
   }
@@ -212,12 +218,6 @@ test("a storage shutdown failure still releases the database", async () => {
   } finally {
     process.exitCode = originalExitCode;
 
-    for (const signal of ["SIGTERM", "SIGINT"] as const) {
-      for (const handler of process.listeners(signal)) {
-        if (!originalSignals.has(handler)) {
-          process.removeListener(signal, handler);
-        }
-      }
-    }
+    removeTestSignalHandlers(originalSignals);
   }
 });

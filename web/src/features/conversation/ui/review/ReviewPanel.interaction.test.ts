@@ -65,8 +65,16 @@ test("batch decisions are exclusive keyboard choices and submit only after every
   const page = render(
     createElement(ReviewPanel, {
       reviews: [
-        { interruptId: "first", title: "First plan", steps: ["First step"] },
-        { interruptId: "second", title: "Second plan", steps: ["Second step"] },
+        {
+          interruptId: "first",
+          title: "First plan",
+          steps: ["First step"],
+        },
+        {
+          interruptId: "second",
+          title: "Second plan",
+          steps: ["Second step"],
+        },
       ],
       running: false,
       onReview: (responses: PlanReviewResponse[]) => {

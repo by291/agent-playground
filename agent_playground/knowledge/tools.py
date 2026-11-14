@@ -13,20 +13,27 @@ from agent_playground.knowledge.config import EmbeddingConfig
 from agent_playground.knowledge.embeddings import validate_vectors
 from agent_playground.knowledge.store import open_store
 
+MAX_QUERY_CHARS = 2000
+RETRIEVAL_TIMEOUT_SECONDS = 45
+MAX_RETRIEVAL_MATCHES = 5
+
 
 async def retrieve(
     query: str, config: EmbeddingConfig, repository: KnowledgeRepository
 ) -> list[dict[str, object]]:
     """Retrieve bounded excerpts and recheck generation visibility before returning."""
-    if not query.strip() or len(query) > 2000:
+    if not query.strip() or len(query) > MAX_QUERY_CHARS:
         raise ValueError("Use a nonempty search query up to 2000 characters")
 
-    async with asyncio.timeout(45):
+    async with asyncio.timeout(RETRIEVAL_TIMEOUT_SECONDS):
         async with open_store(config) as (store, embeddings, _pool):
             vector = await embeddings.aembed_query(query)
             profile = config.profile(validate_vectors([vector], 1))
+
             matches = await store.asimilarity_search_with_score_by_vector(
-                vector, k=5, filter={"embedding_profile": profile, "visible": True}
+                vector,
+                k=MAX_RETRIEVAL_MATCHES,
+                filter={"embedding_profile": profile, "visible": True},
             )
 
             # A document can be replaced or deleted after similarity search. The

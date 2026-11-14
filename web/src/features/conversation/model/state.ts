@@ -6,6 +6,10 @@ import type { ConversationSnapshot } from "../api/contracts";
 import type { ConversationLifecycle } from "./lifecycle";
 import type { PlanReviewResponse } from "./plan-review";
 import type { WorkflowReview } from "@shared/workflow-review";
+import type {
+  AgentInteraction,
+  InteractionResponse,
+} from "@shared/agent-interaction";
 
 export interface Activity {
   id: string;
@@ -16,11 +20,13 @@ export interface Activity {
 
 export interface ConversationState {
   threadId: string | null;
+  /** Allocates the thread identity on demand for uploads or submission. */
   ensureThreadId: () => string;
   title?: string | undefined;
   contextUsage: ContextUsage | null;
   modelId: string | null;
   modelSwitching: boolean;
+  /** Persists the next-turn model, waiting for server acknowledgement on saved threads. */
   selectModel: (modelId: string) => Promise<void>;
   externalTasks: ExternalTaskSnapshot[];
   runs: ConversationSnapshot["runs"];
@@ -37,9 +43,20 @@ export interface ConversationState {
     snapshot: string | null;
     output: string | null;
   };
+  /** Notifies the composer once admission is observed by stream or snapshot. */
   send: (content: string, onAccepted?: () => void) => Promise<void>;
+  canRetryPreparedSubmission: boolean;
+  /** Replays the saved request after the server confirms it is still prepared. */
+  retryPreparedSubmission: () => Promise<void>;
   clearActivity: () => void;
+  /** Submits the full set of decisions for the current experiment plans. */
   reviewPlan: (responses: PlanReviewResponse[]) => Promise<void>;
+  /** Resumes the displayed native request after checking the current interrupt. */
+  respondToInteraction: (
+    interaction: AgentInteraction,
+    response: InteractionResponse,
+  ) => Promise<void>;
+  /** Resumes the workflow only if the displayed review revision is current. */
   reviewWorkflow: (
     review: WorkflowReview,
     action: "accept" | "abandon",

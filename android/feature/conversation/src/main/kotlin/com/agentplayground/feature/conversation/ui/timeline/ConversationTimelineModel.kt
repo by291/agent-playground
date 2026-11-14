@@ -1,5 +1,6 @@
 package com.agentplayground.feature.conversation.ui.timeline
 
+import com.agentplayground.domain.conversation.InteractionRequest
 import com.agentplayground.domain.conversation.Review
 import com.agentplayground.domain.conversation.SessionState
 import com.agentplayground.domain.conversation.externalWaitCallId
@@ -90,7 +91,8 @@ internal fun conversationTimelineModel(
         )
     val visibleInterrupts =
         state.interrupts.filter {
-            Review.from(it)?.raw?.string("workflowCallId") !in legacy.completedCallIds
+            Review.from(it)?.raw?.string("workflowCallId") !in legacy.completedCallIds &&
+                InteractionRequest.from(it) == null
         }
     val pendingPlans = visibleInterrupts.filter {
         Review.from(it)?.kind == "experiment_plan_review"

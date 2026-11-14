@@ -23,6 +23,7 @@ function getHighlighter() {
   return highlighter;
 }
 
+/** Displays an event payload with expandable JSON details. */
 export function JsonPayload({
   source,
   label = "Event payload",

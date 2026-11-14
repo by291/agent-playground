@@ -2,6 +2,9 @@ import type { Context } from "hono";
 import { streamSSE } from "hono/streaming";
 import { subscribeConversationChanges } from "../conversation/events/subscription.js";
 
+const heartbeatIntervalMs = 15_000;
+
+/** Forwards conversation invalidations until the request or shared listener ends. */
 export function streamConversationChanges(context: Context, threadId: string) {
   context.header("Cache-Control", "no-cache, no-transform");
   context.header("X-Accel-Buffering", "no");
@@ -15,6 +18,7 @@ export function streamConversationChanges(context: Context, threadId: string) {
 
     let heartbeat: ReturnType<typeof setInterval> | undefined;
     let pending = Promise.resolve();
+
     let close!: () => void;
     const closed = new Promise<void>((resolve) => {
       close = resolve;
@@ -24,6 +28,7 @@ export function streamConversationChanges(context: Context, threadId: string) {
     signal.addEventListener("abort", close, { once: true });
 
     function enqueue(event: string) {
+      // Serialize writes so ready stays ahead of changes and heartbeats.
       pending = pending
         .then(() => stream.writeSSE({ event, data: "{}" }))
         .catch(close);
@@ -34,7 +39,10 @@ export function streamConversationChanges(context: Context, threadId: string) {
     const unsubscribe = subscribeConversationChanges(threadId, {
       ready() {
         enqueue("ready");
-        heartbeat = setInterval(() => enqueue("heartbeat"), 15000);
+        heartbeat = setInterval(
+          () => enqueue("heartbeat"),
+          heartbeatIntervalMs,
+        );
       },
       changed: () => enqueue("changed"),
       close,

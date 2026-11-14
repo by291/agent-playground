@@ -1,6 +1,7 @@
 """Compact checkpoint model history without losing recoverable public responses."""
 
 from collections.abc import Iterable
+from dataclasses import dataclass
 from typing import Any, cast, override
 
 from langchain.agents.middleware import AgentState, SummarizationMiddleware
@@ -22,7 +23,29 @@ from agent_playground.context_state import (
     ContextState,
     ContextUsage,
 )
-from agent_playground.models.tokens import ContextSettings, estimate_tokens
+from agent_playground.models.tokens import (
+    DEFAULT_IMAGE_TOKENS,
+    TOKEN_ESTIMATE_CHARS_PER_TOKEN,
+    ContextSettings,
+    estimate_tokens,
+)
+from agent_playground.planning import planning_context
+
+RETAINED_CONTEXT_RATIO = 0.2
+
+
+@dataclass(frozen=True, kw_only=True)
+class ContextMiddlewareOptions:
+    """Group compaction models, prompt inputs and reserved token budgets."""
+
+    model: BaseChatModel
+    summary_model: BaseChatModel
+    system_prompt: str
+    tools: list[BaseTool]
+    settings: ContextSettings | None = None
+    tokens_per_image: int = DEFAULT_IMAGE_TOKENS
+    memory_token_budget: int = 0
+    planning_token_budget: int = 0
 
 
 def recoverable_responses(state: ContextState) -> list[AIMessage | ToolMessage]:
@@ -61,26 +84,28 @@ class ContextMiddleware(SummarizationMiddleware):
 
     state_schema = ContextState
 
-    def __init__(
-        self,
-        model: BaseChatModel,
-        summary_model: BaseChatModel,
-        system_prompt: str,
-        tools: list[BaseTool],
-        settings: ContextSettings | None = None,
-        tokens_per_image: int = 1024,
-        memory_token_budget: int = 0,
-    ):
-        self.settings = settings or ContextSettings.from_model(model)
-        self.tokens_per_image = tokens_per_image
+    def __init__(self, options: ContextMiddlewareOptions) -> None:
+        model = options.model
+        self.settings = options.settings or ContextSettings.from_model(model)
+        self.tokens_per_image = options.tokens_per_image
         self.model_name = str(getattr(model, "model_name", model.__class__.__name__))
 
-        self.system_tokens = estimate_tokens([SystemMessage(content=system_prompt)])
-        self.tool_tokens = count_tokens_approximately(
-            [], tools=[*tools], chars_per_token=2.0
+        self.system_tokens = estimate_tokens(
+            [SystemMessage(content=options.system_prompt)]
         )
+        self.tool_tokens = count_tokens_approximately(
+            [],
+            tools=list(options.tools),
+            chars_per_token=TOKEN_ESTIMATE_CHARS_PER_TOKEN,
+        )
+
         self.trigger_tokens = int(self.settings.window * self.settings.compact_ratio)
-        fixed_tokens = self.system_tokens + self.tool_tokens + memory_token_budget
+        fixed_tokens = (
+            self.system_tokens
+            + self.tool_tokens
+            + options.memory_token_budget
+            + options.planning_token_budget
+        )
 
         if fixed_tokens >= self.trigger_tokens:
             raise ValueError(
@@ -88,7 +113,8 @@ class ContextMiddleware(SummarizationMiddleware):
             )
 
         # Suppress internal summary text in Aegra's legacy event stream as well.
-        summary_model = summary_model.model_copy(
+        summary_model = options.summary_model
+        quiet_summary_model = summary_model.model_copy(
             update={
                 "metadata": {
                     **(summary_model.metadata or {}),
@@ -98,10 +124,11 @@ class ContextMiddleware(SummarizationMiddleware):
             }
         )
 
+        retained_tokens = int(self.settings.window * RETAINED_CONTEXT_RATIO)
         super().__init__(
-            model=summary_model,
+            model=quiet_summary_model,
             trigger=("tokens", self.trigger_tokens - fixed_tokens),
-            keep=("tokens", max(1, int(self.settings.window * 0.2) - fixed_tokens)),
+            keep=("tokens", max(1, retained_tokens - fixed_tokens)),
             token_counter=self._estimate_tokens,
             trim_tokens_to_summarize=None,
         )
@@ -110,17 +137,21 @@ class ContextMiddleware(SummarizationMiddleware):
     def before_agent(
         self, state: AgentState[Any], runtime: Runtime[Any]
     ) -> dict[str, Any]:
+        """Start a fresh buffer for the run's public replies and tool results."""
         return {"response_messages": []}
 
     @override
     def before_model(
         self, state: AgentState[Any], runtime: Runtime[Any]
     ) -> dict[str, Any]:
-        responses = recoverable_responses(cast("ContextState", state))
+        """Retain public replies before compaction can replace the model history."""
+        context_state = cast("ContextState", state)
+        responses = recoverable_responses(context_state)
+
         update = super().before_model(state, runtime)
 
         return {
-            **self._context_update(cast("ContextState", state), update),
+            **self._context_update(context_state, update),
             "response_messages": responses,
         }
 
@@ -128,11 +159,14 @@ class ContextMiddleware(SummarizationMiddleware):
     async def abefore_model(
         self, state: AgentState[Any], runtime: Runtime[Any]
     ) -> dict[str, Any]:
-        responses = recoverable_responses(cast("ContextState", state))
+        """Retain public replies before asynchronous compaction replaces history."""
+        context_state = cast("ContextState", state)
+        responses = recoverable_responses(context_state)
+
         update = await super().abefore_model(state, runtime)
 
         return {
-            **self._context_update(cast("ContextState", state), update),
+            **self._context_update(context_state, update),
             "response_messages": responses,
         }
 
@@ -140,8 +174,11 @@ class ContextMiddleware(SummarizationMiddleware):
     def after_model(
         self, state: AgentState[Any], runtime: Runtime[Any]
     ) -> dict[str, Any]:
+        """Checkpoint provider token usage and replies before a review can pause."""
         context_state = cast("ContextState", state)
-        usage = self._usage(context_state, state["messages"], include_input_usage=True)
+        usage = self._usage(
+            context_state, state["messages"], should_include_input_usage=True
+        )
 
         return {
             "context_usage": usage,
@@ -182,7 +219,7 @@ class ContextMiddleware(SummarizationMiddleware):
         state: ContextState,
         messages: list[AnyMessage],
         *,
-        include_input_usage: bool = False,
+        should_include_input_usage: bool = False,
     ) -> ContextUsage:
         conversation: list[AnyMessage] = []
         results: list[AnyMessage] = []
@@ -202,6 +239,11 @@ class ContextMiddleware(SummarizationMiddleware):
         if memory_context:
             system_tokens += estimate_tokens([SystemMessage(content=memory_context)])
 
+        plan = planning_context(state.get("todos", []))
+
+        if plan:
+            system_tokens += estimate_tokens([SystemMessage(content=plan)])
+
         breakdown: ContextBreakdown = {
             "system": system_tokens,
             "tools": self.tool_tokens,
@@ -217,7 +259,7 @@ class ContextMiddleware(SummarizationMiddleware):
             else None
         )
 
-        if include_input_usage:
+        if should_include_input_usage:
             for message in reversed(messages):
                 if isinstance(message, AIMessage) and message.usage_metadata:
                     last_input = message.usage_metadata["input_tokens"]

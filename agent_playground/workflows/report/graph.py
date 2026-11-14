@@ -5,17 +5,20 @@ from typing import Any, Literal
 from langgraph.graph import END, START, StateGraph
 from pydantic import BaseModel
 
-from agent_playground.workflows.cards import content_card
+from agent_playground.workflows.cards import WorkflowContent, content_card
 from agent_playground.workflows.external import (
     register_external_task,
     wait_for_external_task,
 )
 from agent_playground.workflows.output import (
+    PublishWorkflowOutput,
     WorkflowOutputMetadata,
     WorkflowPresentation,
     publish_workflow_output,
 )
-from agent_playground.workflows.report.api import HttpReportApi
+from agent_playground.workflows.report.api import HttpReportApi, ReportSubmission
+
+_REPORT_RESULT_SEQUENCE = 1
 
 
 class ReportState(BaseModel):
@@ -30,6 +33,8 @@ class ReportState(BaseModel):
 
 
 def make_report_workflow():
+    """Build the workflow that registers, submits and displays a report."""
+
     async def register(state: ReportState) -> dict[str, str]:
         registration = await register_external_task(
             workflow_call_id=state.workflow_call_id,
@@ -53,11 +58,14 @@ def make_report_workflow():
         if not state.task_id or not state.callback_token:
             registration = await register(state)
 
-        await HttpReportApi().submit(
-            task_id=registration["task_id"],
-            task=state.task,
-            callback_token=registration["callback_token"],
-            outcome=state.outcome,
+        api = HttpReportApi()
+        await api.submit(
+            ReportSubmission(
+                task_id=registration["task_id"],
+                task=state.task,
+                callback_token=registration["callback_token"],
+                outcome=state.outcome,
+            )
         )
 
         return registration
@@ -74,30 +82,33 @@ def make_report_workflow():
         }
 
     async def publish(state: ReportState) -> None:
-        succeeded = state.status == "succeeded"
+        is_succeeded = state.status == "succeeded"
         lines = (
             [str((state.result or {}).get("summary", "The report is ready."))]
-            if succeeded
+            if is_succeeded
             else [state.error or "Report generation failed."]
         )
         surface_id = f"report-{state.workflow_call_id}-result"
+        card = content_card(
+            WorkflowContent(
+                surface_id=surface_id,
+                title="Generated report" if is_succeeded else "Report failed",
+                heading="REPORT READY" if is_succeeded else "REPORT FAILED",
+                lines=lines,
+            )
+        )
+        presentation = WorkflowPresentation(
+            surface_id=surface_id, group_id=state.workflow_call_id
+        )
 
         await publish_workflow_output(
-            workflow_call_id=state.workflow_call_id,
-            step_id="result",
-            step_seq=1,
-            card=content_card(
-                surface_id=surface_id,
-                title="Generated report" if succeeded else "Report failed",
-                heading="REPORT READY" if succeeded else "REPORT FAILED",
-                lines=lines,
-            ),
-            workflow=WorkflowOutputMetadata(
-                presentation=WorkflowPresentation(
-                    surface_id=surface_id,
-                    group_id=state.workflow_call_id,
-                )
-            ),
+            PublishWorkflowOutput(
+                workflow_call_id=state.workflow_call_id,
+                step_id="result",
+                step_seq=_REPORT_RESULT_SEQUENCE,
+                card=card,
+                workflow=WorkflowOutputMetadata(presentation=presentation),
+            )
         )
 
     builder = StateGraph(ReportState)

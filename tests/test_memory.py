@@ -6,7 +6,7 @@ from uuid import uuid4
 import pytest
 
 from agent_playground.memory.models import memory_namespace
-from agent_playground.memory.service import MemoryService
+from agent_playground.memory.service import MemoryService, MemoryWrite
 from tests.memory_fixtures import remember, scope
 
 
@@ -57,12 +57,19 @@ def test_stale_edit_cannot_overwrite_a_newer_memory(memory_service: MemoryServic
     async def check():
         saved = await remember(memory_service, "Prefer concise answers.")
         edited = await memory_service.save(
-            scope(), "Explain details.", saved.id, revision=1
+            MemoryWrite(
+                scope=scope(), text="Explain details.", memory_id=saved.id, revision=1
+            )
         )
 
         with pytest.raises(ValueError, match="changed"):
             await memory_service.save(
-                scope(), "Use bullet points.", saved.id, revision=1
+                MemoryWrite(
+                    scope=scope(),
+                    text="Use bullet points.",
+                    memory_id=saved.id,
+                    revision=1,
+                )
             )
 
         assert edited.revision == 2

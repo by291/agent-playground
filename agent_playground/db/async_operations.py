@@ -27,7 +27,7 @@ async def run_database_operation[**P, T](
         if not task.cancelled() and (error := task.exception()) is not None:
             logger.warning(
                 "Database operation failed while draining cancellation",
-                exc_info=(type(error), error, error.__traceback__),
+                exc_info=error,
             )
 
         raise

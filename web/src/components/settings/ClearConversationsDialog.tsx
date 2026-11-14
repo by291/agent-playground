@@ -14,6 +14,7 @@ import { Button } from "../ui/button";
 import { Field, FieldContent, FieldDescription, FieldTitle } from "../ui/field";
 import { Spinner } from "../ui/spinner";
 
+/** Confirms workspace-wide deletion while its owner tracks the request. */
 export function ClearConversationsDialog({
   id,
   confirmationOpen,

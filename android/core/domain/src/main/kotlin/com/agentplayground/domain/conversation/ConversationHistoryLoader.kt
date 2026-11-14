@@ -22,9 +22,11 @@ class ConversationHistoryLoader(
     private var refreshRequested = false
     private var closed = false
 
+    /** Refreshes the loaded window, coalescing repeated requests during an in-flight read. */
     fun refresh() {
         if (request?.isActive == true) {
             refreshRequested = true
+
             return
         }
 
@@ -51,6 +53,7 @@ class ConversationHistoryLoader(
         }
     }
 
+    /** Reads the next page when a cursor exists and no page request owns the loader. */
     fun loadMore() {
         val cursor = mutable.value.nextCursor ?: return
 

@@ -17,11 +17,7 @@
           {
             "id": "root",
             "component": "WorkflowPanel",
-            "children": [
-              "eyebrow",
-              "title",
-              "body"
-            ]
+            "children": ["eyebrow", "title", "body"]
           },
           {
             "id": "eyebrow",

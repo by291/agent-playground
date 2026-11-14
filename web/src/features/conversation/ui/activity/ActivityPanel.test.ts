@@ -46,7 +46,11 @@ test("a transport failure before any events appears in activity and its exported
       QueryClientProvider,
       { client },
       createElement(ConversationProvider, {
-        conversation: { threadId: "failed", fresh: true, empty: true },
+        conversation: {
+          threadId: "failed",
+          fresh: true,
+          empty: true,
+        },
         children: createElement(
           "div",
           null,

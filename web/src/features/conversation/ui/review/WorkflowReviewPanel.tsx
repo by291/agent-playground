@@ -11,6 +11,7 @@ import type { WorkflowReview } from "@shared/workflow-review";
 import { AnimatePresence } from "motion/react";
 import { AnimatedDiv } from "@/components/ui/motion";
 
+/** Shows the available decisions for each pending workflow revision. */
 export function WorkflowReviewPanel({
   reviews,
   running,
@@ -29,7 +30,11 @@ export function WorkflowReviewPanel({
         {reviews.map((review) => (
           <AnimatedDiv
             key={review.interruptId}
-            exit={{ opacity: 0, height: 0, overflow: "hidden" }}
+            exit={{
+              opacity: 0,
+              height: 0,
+              overflow: "hidden",
+            }}
           >
             <section aria-label={review.title}>
               <Card className="gap-0 py-4">

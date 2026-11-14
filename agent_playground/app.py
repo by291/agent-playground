@@ -1,6 +1,7 @@
 """Application metadata and demonstration routes alongside Aegra's protocol routes."""
 
 import asyncio
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -18,13 +19,28 @@ from agent_playground.services.report.worker import run_report_worker
 from agent_playground.services.sql.routes import router as sql_router
 
 
+async def _drain_workers(workers: list[asyncio.Task[None]]) -> None:
+    for worker in workers:
+        worker.cancel()
+
+    results = await asyncio.gather(*workers, return_exceptions=True)
+
+    # All workers must finish before shutdown propagates a worker failure.
+    for result in results:
+        if isinstance(result, BaseException) and not isinstance(
+            result, asyncio.CancelledError
+        ):
+            raise result
+
+
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Own schema startup, worker draining and final database disposal."""
     workers: list[asyncio.Task[None]] = []
 
     try:
         await run_database_operation(prepare_app_store)
+
         workers = [
             asyncio.create_task(run_report_worker()),
             asyncio.create_task(run_knowledge_worker()),
@@ -33,18 +49,8 @@ async def lifespan(app: FastAPI):
 
         yield
     finally:
-        for worker in workers:
-            worker.cancel()
-
         try:
-            results = await asyncio.gather(*workers, return_exceptions=True)
-
-            # All workers have drained before one failure is propagated to shutdown.
-            for result in results:
-                if isinstance(result, BaseException) and not isinstance(
-                    result, asyncio.CancelledError
-                ):
-                    raise result
+            await _drain_workers(workers)
         finally:
             # Workers can still be inside database operations while draining.
             await run_database_operation(close_app_store)
@@ -56,6 +62,7 @@ app = FastAPI(
     lifespan=lifespan,
     telemetry={"auto_configure": False},
 )
+
 app.include_router(sql_router)
 app.include_router(report_router)
 app.include_router(a2a_router)
@@ -64,4 +71,5 @@ app.include_router(memory_router)
 
 @app.get("/agent-info")
 def agent_info() -> AgentInfo:
+    """Expose model choices without constructing clients or returning credentials."""
     return model_agent_info()

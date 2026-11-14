@@ -6,6 +6,7 @@ import {
 
 export const conversationHistoryKey = ["conversation-history"] as const;
 
+/** Fetches history pages using the cursor returned by the previous page. */
 export function conversationHistoryOptions() {
   return infiniteQueryOptions({
     queryKey: conversationHistoryKey,
@@ -35,6 +36,7 @@ export function conversationHistoryOptions() {
   });
 }
 
+/** Persists the validated title of one conversation. */
 export async function renameSavedConversation(threadId: string, title: string) {
   const body = renameConversationSchema.parse({ title });
 
@@ -45,12 +47,14 @@ export async function renameSavedConversation(threadId: string, title: string) {
   });
 }
 
+/** Deletes one conversation from the server's visible history. */
 export async function deleteSavedConversation(threadId: string) {
   await manageConversation(`/conversations/${encodeURIComponent(threadId)}`, {
     method: "DELETE",
   });
 }
 
+/** Requests atomic deletion of all saved conversations in the workspace. */
 export async function clearSavedConversations() {
   await manageConversation("/conversations", { method: "DELETE" });
 }

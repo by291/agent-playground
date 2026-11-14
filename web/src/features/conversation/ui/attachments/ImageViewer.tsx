@@ -56,6 +56,7 @@ function ImageViewerControls({
   );
 }
 
+/** Opens the attachment gallery at the selected image inside its owning dialog. */
 export function ImageViewer({
   images,
   initialIndex,
@@ -122,9 +123,21 @@ function ImageViewerContent({
       }}
       index={index}
       slides={images}
-      plugins={images.length > 1 ? [Inline, Zoom, Thumbnails] : [Inline, Zoom]}
+      plugins={
+        images.length > 1
+          ? /* prettier-ignore */ [
+            Inline,
+            Zoom,
+            Thumbnails,
+          ]
+          : [Inline, Zoom]
+      }
       controller={{ ref: controller, aria: false }}
-      carousel={{ finite: true, preload: 1, padding: "32px" }}
+      carousel={{
+        finite: true,
+        preload: 1,
+        padding: "32px",
+      }}
       zoom={{
         ref: zoom,
         scrollToZoom: true,

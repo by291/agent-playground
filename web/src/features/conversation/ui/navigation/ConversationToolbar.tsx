@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import type { Ref } from "react";
 import { useConversation } from "../../providers/ConversationProvider";
 
+/** Shows the active conversation title and access to its workspace controls. */
 export function ConversationToolbar({
   title,
   development,

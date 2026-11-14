@@ -13,7 +13,11 @@ import { conversationView } from "./conversation-view";
 test("generic review cards follow their feedback replies and keep history with the original tool", () => {
   const runtime = createA2UIRuntime();
   const messages: Message[] = [
-    { id: "start", role: "user", content: "Review copy" },
+    {
+      id: "start",
+      role: "user",
+      content: "Review copy",
+    },
     {
       id: "call",
       role: "assistant",
@@ -26,11 +30,31 @@ test("generic review cards follow their feedback replies and keep history with t
         },
       ],
     },
-    { id: "reply-one", role: "assistant", content: "First draft" },
-    { id: "feedback", role: "user", content: "Make it shorter" },
-    { id: "reply-two", role: "assistant", content: "Shorter draft" },
-    { id: "later", role: "user", content: "Another task" },
-    { id: "later-reply", role: "assistant", content: "Another answer" },
+    {
+      id: "reply-one",
+      role: "assistant",
+      content: "First draft",
+    },
+    {
+      id: "feedback",
+      role: "user",
+      content: "Make it shorter",
+    },
+    {
+      id: "reply-two",
+      role: "assistant",
+      content: "Shorter draft",
+    },
+    {
+      id: "later",
+      role: "user",
+      content: "Another task",
+    },
+    {
+      id: "later-reply",
+      role: "assistant",
+      content: "Another answer",
+    },
   ];
   const outputs = ["one", "two"].map((round, index) => ({
     id: `copy-${round}`,
@@ -95,7 +119,11 @@ test("generic review cards follow their feedback replies and keep history with t
 const revisedProposal =
   "# Revised proposal\n\n**Recommendation:** compare paid orders.";
 const a2aMessages: Message[] = [
-  { id: "a2a-question", role: "user", content: "Analyze orders" },
+  {
+    id: "a2a-question",
+    role: "user",
+    content: "Analyze orders",
+  },
   {
     id: "a2a-call",
     role: "assistant",
@@ -158,7 +186,12 @@ function a2aResultOutput(
             {
               id: "root",
               component: "WorkflowPanel",
-              children: ["eyebrow", "title", "steps"],
+              children:
+                /* prettier-ignore */ [
+                  "eyebrow",
+                  "title",
+                  "steps",
+                ],
             },
             {
               id: "eyebrow",
@@ -172,7 +205,11 @@ function a2aResultOutput(
               role: "title",
               text: "Reviewed and revised proposal",
             },
-            { id: "steps", component: "WorkflowSteps", children: stepIds },
+            {
+              id: "steps",
+              component: "WorkflowSteps",
+              children: stepIds,
+            },
             ...lines.map((line, index) => ({
               id: stepIds[index]!,
               component: "WorkflowText",
@@ -295,7 +332,11 @@ test.each([
 test("tool surfaces attach once to their owning turn and orphan surfaces remain visible", () => {
   const runtime = createA2UIRuntime();
   const messages: Message[] = [
-    { id: "first", role: "user", content: "Plan" },
+    {
+      id: "first",
+      role: "user",
+      content: "Plan",
+    },
     {
       id: "call",
       role: "assistant",
@@ -308,8 +349,16 @@ test("tool surfaces attach once to their owning turn and orphan surfaces remain 
         },
       ],
     },
-    { id: "second", role: "user", content: "Hello" },
-    { id: "reply", role: "assistant", content: "Hello" },
+    {
+      id: "second",
+      role: "user",
+      content: "Hello",
+    },
+    {
+      id: "reply",
+      role: "assistant",
+      content: "Hello",
+    },
   ];
 
   try {
@@ -371,7 +420,11 @@ test("an active turn retains its reply before text arrives and reviews survive m
     reason: "Review plan",
     metadata: {
       langgraph: {
-        raw: { kind: "experiment_plan_review", title: "Plan", steps: ["Try"] },
+        raw: {
+          kind: "experiment_plan_review",
+          title: "Plan",
+          steps: ["Try"],
+        },
       },
     },
   });
@@ -387,8 +440,20 @@ test("an active turn retains its reply before text arrives and reviews survive m
   assert.equal(restored.unattachedReviews[0]?.interruptId, "review");
   const active = conversationView({
     ...input,
-    messages: [{ id: "question", role: "user", content: "Plan" }],
-    runs: [{ runId: "run", messageId: "question", status: "running" }],
+    messages: [
+      {
+        id: "question",
+        role: "user",
+        content: "Plan",
+      },
+    ],
+    runs: [
+      {
+        runId: "run",
+        messageId: "question",
+        status: "running",
+      },
+    ],
   });
 
   assert.equal(active.turns[0]?.hasReply, true);
@@ -457,8 +522,17 @@ test("partial workflow completion preserves the review batch identity for remain
     ]);
     const view = conversationView({
       messages: [
-        { id: "question", role: "user", content: "Plans" },
-        { id: "calls", role: "assistant", content: "", toolCalls: calls },
+        {
+          id: "question",
+          role: "user",
+          content: "Plans",
+        },
+        {
+          id: "calls",
+          role: "assistant",
+          content: "",
+          toolCalls: calls,
+        },
       ],
       runs: [],
       surfaces: result.surfaces,

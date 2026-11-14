@@ -2,6 +2,7 @@
 
 import argparse
 from contextlib import asynccontextmanager
+from dataclasses import dataclass
 from urllib.parse import urlsplit
 
 import uvicorn
@@ -26,24 +27,43 @@ from agent_playground.services.a2a.agent import DemoAgentExecutor
 from agent_playground.services.a2a.contracts import AgentRole
 from agent_playground.services.a2a.handler import DurableRequestHandler
 
+HTTPS_PORT = 443
+HTTP_PORT = 80
+GRACEFUL_SHUTDOWN_SECONDS = 5
 
-def create_a2a_app(
-    role: AgentRole,
-    base_url: str,
-    *,
-    task_store: PostgresTaskStore | None = None,
-    executor: DemoAgentExecutor | None = None,
-) -> FastAPI:
+
+@dataclass(frozen=True, kw_only=True)
+class A2aAppConfig:
+    role: AgentRole
+    base_url: str
+    task_store: PostgresTaskStore | None = None
+    executor: DemoAgentExecutor | None = None
+
+
+async def _close_handler(
+    handler: DurableRequestHandler, *, has_owned_store: bool
+) -> None:
+    try:
+        # Producers can still write task snapshots while they drain.
+        await handler.aclose()
+    finally:
+        if has_owned_store:
+            await run_database_operation(close_app_store)
+
+
+def create_a2a_app(config: A2aAppConfig) -> FastAPI:
     """Own executor shutdown and close the database only when this app created it."""
-    store = task_store or PostgresTaskStore(role)
-    agent_executor = executor or DemoAgentExecutor(role)
+    role = config.role
+    store = config.task_store or PostgresTaskStore(role)
+    agent_executor = config.executor or DemoAgentExecutor(role)
+
     card = AgentCard(
         name=f"Demo {role.title()}",
         description=f"Independent {role} agent for the planner/reviewer A2A demonstration.",
         version="1.0.0",
         supported_interfaces=[
             AgentInterface(
-                url=f"{base_url.rstrip('/')}/",
+                url=f"{config.base_url.rstrip('/')}/",
                 protocol_binding="JSONRPC",
                 protocol_version="1.0",
             )
@@ -62,26 +82,21 @@ def create_a2a_app(
             )
         ],
     )
+
     handler = DurableRequestHandler(agent_executor, store, card)
-    owns_store = task_store is None
+    has_owned_store = config.task_store is None
 
     @asynccontextmanager
-    async def lifespan(app: FastAPI):
-        if owns_store:
+    async def _lifespan(_app: FastAPI):
+        if has_owned_store:
             await run_database_operation(prepare_app_store)
 
         try:
             yield
         finally:
-            try:
-                # Producers and subscriptions can still write task snapshots.
-                # Close them before releasing the app-owned database pool.
-                await handler.aclose()
-            finally:
-                if owns_store:
-                    await run_database_operation(close_app_store)
+            await _close_handler(handler, has_owned_store=has_owned_store)
 
-    app = FastAPI(title=f"A2A Demo {role.title()}", lifespan=lifespan)
+    app = FastAPI(title=f"A2A Demo {role.title()}", lifespan=_lifespan)
     app.state.a2a_handler = handler
     add_a2a_routes_to_fastapi(
         app,
@@ -93,21 +108,31 @@ def create_a2a_app(
 
 
 def main() -> None:
+    """Run the configured planner or reviewer HTTP server."""
     parser = argparse.ArgumentParser(description="Run one independent A2A demo agent")
     parser.add_argument("--role", choices=["planner", "reviewer"], required=True)
     parser.add_argument("--host")
     parser.add_argument("--port", type=int)
-    args = parser.parse_args()
+
+    arguments = parser.parse_args()
 
     settings = load_agent_config().a2a
-    endpoint = settings.planner_url if args.role == "planner" else settings.reviewer_url
+    endpoint = (
+        settings.planner_url if arguments.role == "planner" else settings.reviewer_url
+    )
     address = urlsplit(endpoint)
-    host = args.host or address.hostname
-    port = args.port or address.port or (443 if address.scheme == "https" else 80)
-    base_url = f"http://{host}:{port}" if args.host or args.port else endpoint
+    host = arguments.host or address.hostname
+    default_port = HTTPS_PORT if address.scheme == "https" else HTTP_PORT
+    port = arguments.port or address.port or default_port
+    base_url = f"http://{host}:{port}" if arguments.host or arguments.port else endpoint
 
-    app = create_a2a_app(args.role, base_url)
-    uvicorn.run(app, host=host or "127.0.0.1", port=port, timeout_graceful_shutdown=5)
+    app = create_a2a_app(A2aAppConfig(role=arguments.role, base_url=base_url))
+    uvicorn.run(
+        app,
+        host=host or "127.0.0.1",
+        port=port,
+        timeout_graceful_shutdown=GRACEFUL_SHUTDOWN_SECONDS,
+    )
 
 
 if __name__ == "__main__":

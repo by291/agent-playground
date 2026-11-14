@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
+import { createMiddleware } from "hono/factory";
 import { z } from "zod";
 import {
   memoryEditSchema,
@@ -12,42 +13,50 @@ import {
   MemoryServiceError,
 } from "../memory/memory-client.js";
 
+const maximumMemoryOffset = 1_000_000;
+const defaultMemoryPageSize = 50;
+const maximumMemoryPageSize = 100;
+const maximumMemoryMutationBytes = 16_384;
+
 const idSchema = z.string().uuid();
+const offsetParameter = z
+  .string()
+  .regex(/^(0|[1-9]\d*)$/)
+  .default("0");
+const limitParameter = z
+  .string()
+  .regex(/^[1-9]\d*$/)
+  .default(String(defaultMemoryPageSize));
+
+const integer = z.number().int();
 const pageSchema = z
   .object({
-    offset: z
-      .string()
-      .regex(/^(0|[1-9]\d*)$/)
-      .default("0")
+    offset: offsetParameter
       .transform(Number)
-      .pipe(z.number().int().min(0).max(1_000_000)),
-    limit: z
-      .string()
-      .regex(/^[1-9]\d*$/)
-      .default("50")
+      .pipe(integer.min(0).max(maximumMemoryOffset)),
+    limit: limitParameter
       .transform(Number)
-      .pipe(z.number().int().min(1).max(100)),
+      .pipe(integer.min(1).max(maximumMemoryPageSize)),
   })
   .strict();
+
 const mutationBodyLimit = bodyLimit({
-  maxSize: 16_384,
+  maxSize: maximumMemoryMutationBytes,
   onError: (context) =>
     context.json({ error: "Request body is too large" }, 413),
 });
 
+const preventCaching = createMiddleware(async (context, next) => {
+  context.header("Cache-Control", "no-store");
+
+  await next();
+});
+
+/** Proxies public memory management requests to the private memory service. */
 export const memoryRoutes = new Hono();
 
-memoryRoutes.use("/api/memories", async (context, next) => {
-  context.header("Cache-Control", "no-store");
-
-  await next();
-});
-
-memoryRoutes.use("/api/memories/*", async (context, next) => {
-  context.header("Cache-Control", "no-store");
-
-  await next();
-});
+memoryRoutes.use("/api/memories", preventCaching);
+memoryRoutes.use("/api/memories/*", preventCaching);
 
 memoryRoutes.onError((error, context) => {
   if (error instanceof MemoryServiceError) {
@@ -60,23 +69,24 @@ memoryRoutes.onError((error, context) => {
 
 memoryRoutes.get("/api/memories", async (context) => {
   const query = context.req.queries();
-  const repeatedField = Object.values(query).some(
+  const hasRepeatedField = Object.values(query).some(
     (values) => values.length !== 1,
   );
   const parsed = pageSchema.safeParse(context.req.query());
 
-  if (repeatedField || !parsed.success) {
+  if (hasRepeatedField || !parsed.success) {
     return context.json({ error: "Invalid memory pagination" }, 400);
   }
 
-  return context.json(
-    await listMemories(
-      parsed.data.offset,
-      parsed.data.limit,
-      context.req.raw.signal,
-    ),
+  const page = await listMemories(
+    parsed.data.offset,
+    parsed.data.limit,
+    context.req.raw.signal,
   );
+
+  return context.json(page);
 });
+
 memoryRoutes.patch("/api/memories/:id", mutationBodyLimit, async (context) => {
   const id = idSchema.safeParse(context.req.param("id"));
   const body: unknown = await context.req.json().catch(() => null);
@@ -86,10 +96,11 @@ memoryRoutes.patch("/api/memories/:id", mutationBodyLimit, async (context) => {
     return context.json({ error: "Invalid memory edit" }, 400);
   }
 
-  return context.json(
-    await editMemory(id.data, edit.data, context.req.raw.signal),
-  );
+  const memory = await editMemory(id.data, edit.data, context.req.raw.signal);
+
+  return context.json(memory);
 });
+
 memoryRoutes.delete("/api/memories/:id", mutationBodyLimit, async (context) => {
   const id = idSchema.safeParse(context.req.param("id"));
   const body: unknown = await context.req.json().catch(() => null);

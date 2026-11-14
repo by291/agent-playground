@@ -9,7 +9,7 @@ import {
 } from "@opentelemetry/sdk-trace-web";
 import { setTimeout as delay } from "node:timers/promises";
 import { InterruptSchema, RunAgentInputSchema } from "@shared/ag-ui-schemas";
-import { HttpAgent, type RunAgentInput } from "@ag-ui/client";
+import { HttpAgent, type Interrupt, type RunAgentInput } from "@ag-ui/client";
 import { createConversationSession } from "./conversation-session";
 import {
   canSelectModel,
@@ -19,6 +19,7 @@ import {
   isRestoring,
 } from "../model/selectors";
 import { snapshotPolicy } from "../model/lifecycle";
+import { parseAgentInteraction } from "@shared/agent-interaction";
 import {
   conversationSnapshotSchema,
   type ConversationSnapshot,
@@ -49,7 +50,11 @@ test("a resumed tool argument stream replaces saved arguments instead of appendi
   });
   const interrupted: ConversationSnapshot = {
     messages: [
-      { id: "question", role: "user", content: "Make a plan" },
+      {
+        id: "question",
+        role: "user",
+        content: "Make a plan",
+      },
       {
         id: "plan-request",
         role: "assistant",
@@ -68,7 +73,13 @@ test("a resumed tool argument stream replaces saved arguments instead of appendi
     ],
     interrupts: [interrupt],
     outputs: [],
-    runs: [{ runId: "initial", messageId: "question", status: "interrupted" }],
+    runs: [
+      {
+        runId: "initial",
+        messageId: "question",
+        status: "interrupted",
+      },
+    ],
   };
   const disconnect = connectSession(session, () =>
     Promise.resolve(interrupted),
@@ -108,7 +119,11 @@ test("a resumed tool argument stream replaces saved arguments instead of appendi
 
   assert.ok(caller?.role === "assistant");
   assert.equal(caller.toolCalls?.[0]?.function.arguments, '{"idea":');
-  stream.emit({ type: "TOOL_CALL_ARGS", toolCallId: "plan", delta: '"Test"}' });
+  stream.emit({
+    type: "TOOL_CALL_ARGS",
+    toolCallId: "plan",
+    delta: '"Test"}',
+  });
   await delay(0);
   caller = session.store
     .getState()
@@ -152,7 +167,11 @@ test("new tool calls accumulate each argument fragment while execution remains r
     toolCallName: "calculate_sum",
     parentMessageId: "caller",
   });
-  stream.emit({ type: "TOOL_CALL_ARGS", toolCallId: "sum", delta: '{"a":1,' });
+  stream.emit({
+    type: "TOOL_CALL_ARGS",
+    toolCallId: "sum",
+    delta: '{"a":1,',
+  });
   await delay(0);
   let caller = session.store
     .getState()
@@ -160,7 +179,11 @@ test("new tool calls accumulate each argument fragment while execution remains r
 
   assert.ok(caller?.role === "assistant");
   assert.equal(caller.toolCalls?.[0]?.function.arguments, '{"a":1,');
-  stream.emit({ type: "TOOL_CALL_ARGS", toolCallId: "sum", delta: '"b":2}' });
+  stream.emit({
+    type: "TOOL_CALL_ARGS",
+    toolCallId: "sum",
+    delta: '"b":2}',
+  });
   stream.emit({ type: "TOOL_CALL_END", toolCallId: "sum" });
   await delay(0);
   caller = session.store
@@ -205,7 +228,11 @@ test("a handled tool error is visible before the model finishes its fallback rep
     toolCallName: "run_experiment_workflow",
     parentMessageId: "caller",
   });
-  stream.emit({ type: "TOOL_CALL_ARGS", toolCallId: "plan", delta: "{}" });
+  stream.emit({
+    type: "TOOL_CALL_ARGS",
+    toolCallId: "plan",
+    delta: "{}",
+  });
   stream.emit({ type: "TOOL_CALL_END", toolCallId: "plan" });
   // The LangGraph adapter does not emit TOOL_CALL_RESULT for handled errors.
   stream.emit({
@@ -274,7 +301,11 @@ function snapshot(
 ): ConversationSnapshot {
   return {
     messages: [
-      { id: "saved-message", role: "assistant", content: "Saved reply" },
+      {
+        id: "saved-message",
+        role: "assistant",
+        content: "Saved reply",
+      },
     ],
     outputs: [],
     interrupts: [],
@@ -326,16 +357,175 @@ function streamingAgent(threadId: string) {
       );
     },
 
-    finish(input: RunAgentInput) {
+    finish(input: RunAgentInput, interrupts?: Interrupt[]) {
       this.emit({
         type: "RUN_FINISHED",
         threadId: input.threadId,
         runId: input.runId,
+        ...(interrupts ? { outcome: { type: "interrupt", interrupts } } : {}),
       });
       controller.close();
     },
   };
 }
+
+test("native interaction submissions validate the displayed request, journal once and recover the pending response", async () => {
+  const stream = streamingAgent("human-thread");
+  const session = createConversationSession(
+    { threadId: "human-thread" },
+    stream.agent,
+  );
+  const interrupt = InterruptSchema.parse({
+    id: "native-approval",
+    reason: "Approval required",
+    metadata: {
+      langgraph: {
+        raw: {
+          action_requests: [
+            {
+              name: "run_skill_script",
+              args: { script_path: "scripts/export.py" },
+            },
+          ],
+          review_configs: [
+            {
+              action_name: "run_skill_script",
+              allowed_decisions: ["approve", "reject"],
+            },
+          ],
+        },
+      },
+    },
+  });
+  const paused = {
+    ...snapshot("paused-run", "interrupted"),
+    interrupts: [interrupt],
+  };
+  let current = paused;
+  const disconnect = connectSession(session, () => Promise.resolve(current));
+
+  try {
+    session.receiveSnapshot(paused);
+    const interaction = parseAgentInteraction(interrupt)!;
+    const changed = structuredClone(interaction);
+
+    changed.action_requests[0]!.args.script_path = "scripts/delete.py";
+
+    await assert.rejects(
+      session.store
+        .getState()
+        .respondToInteraction(changed, { decisions: [{ type: "approve" }] }),
+      /request changed/,
+    );
+    assert.equal(stream.requests, 0);
+
+    const completion = session.store
+      .getState()
+      .respondToInteraction(interaction, { decisions: [{ type: "approve" }] });
+
+    await session.store
+      .getState()
+      .respondToInteraction(interaction, { decisions: [{ type: "approve" }] });
+    const input = await stream.requested;
+    const saved = loadConversation("human-thread");
+
+    assert.equal(stream.requests, 1);
+    assert.deepEqual(input.resume, [
+      {
+        interruptId: interrupt.id,
+        status: "resolved",
+        payload: { decisions: [{ type: "approve" }] },
+      },
+    ]);
+    assert.deepEqual(saved.pending?.resume, input.resume);
+    assert.equal(
+      input.messages.some((message) => message.role === "user"),
+      false,
+    );
+
+    current = { ...snapshot(input.runId), interrupts: [] };
+    stream.emit({
+      type: "RUN_STARTED",
+      threadId: input.threadId,
+      runId: input.runId,
+    });
+    stream.finish(input);
+    await completion;
+    session.receiveSnapshot(current);
+    assert.deepEqual(session.store.getState().pendingInterrupts, []);
+  } finally {
+    disconnect();
+  }
+});
+
+test("checkpoint recovery replaces the SDK's stale approval before submitting the next request", async () => {
+  const stream = streamingAgent("recovered-approval");
+  const session = createConversationSession(
+    { threadId: "recovered-approval" },
+    stream.agent,
+  );
+  const currentInterrupt = InterruptSchema.parse({
+    id: "memory-approval",
+    reason: "Approval required",
+    metadata: {
+      langgraph: {
+        raw: {
+          action_requests: [
+            {
+              name: "remember_memory",
+              args: { text: "A confirmed preference" },
+            },
+          ],
+          review_configs: [
+            {
+              action_name: "remember_memory",
+              allowed_decisions: ["approve", "reject"],
+            },
+          ],
+        },
+      },
+    },
+  });
+  const paused = {
+    ...snapshot("script-run", "interrupted"),
+    interrupts: [currentInterrupt],
+  };
+  let current: ConversationSnapshot = paused;
+  const disconnect = connectSession(session, () => Promise.resolve(current));
+
+  try {
+    // A disconnected stream left the SDK on the previous script approval.
+    stream.agent.pendingInterrupts = [
+      InterruptSchema.parse({
+        id: "script-approval",
+        reason: "Approval required",
+      }),
+    ];
+    session.receiveSnapshot(paused);
+    assert.deepEqual(stream.agent.pendingInterrupts, [currentInterrupt]);
+
+    const interaction = parseAgentInteraction(currentInterrupt);
+
+    assert.ok(interaction);
+    const completion = session.store
+      .getState()
+      .respondToInteraction(interaction, { decisions: [{ type: "approve" }] });
+    const input = await stream.requested;
+
+    assert.equal(input.resume?.[0]?.interruptId, "memory-approval");
+    current = snapshot(input.runId);
+    stream.emit({
+      type: "RUN_STARTED",
+      threadId: input.threadId,
+      runId: input.runId,
+    });
+    stream.finish(input);
+    await completion;
+    assert.deepEqual(stream.agent.pendingInterrupts, []);
+  } finally {
+    disconnect();
+  }
+});
 
 test("snapshot timestamps survive schema parsing and include workflow replies", () => {
   const saved = conversationSnapshotSchema.parse({
@@ -427,7 +617,11 @@ test("live timestamps remain stable until a current snapshot supplies saved time
       ...snapshot(input.runId),
       messages: [
         ...input.messages,
-        { id: "live-reply", role: "assistant", content: "First reply" },
+        {
+          id: "live-reply",
+          role: "assistant",
+          content: "First reply",
+        },
       ],
       messageTimestamps: {
         [questionId]: "2026-10-10T18:00:00.000Z",
@@ -475,7 +669,11 @@ test("a draft model survives reload and is pinned in the first submission journa
 
     assert.deepEqual(input.forwardedProps, { modelId: "qwen" });
     assert.equal(loadConversation(threadId).pending?.modelId, "qwen");
-    stream.emit({ type: "RUN_STARTED", threadId, runId: input.runId });
+    stream.emit({
+      type: "RUN_STARTED",
+      threadId,
+      runId: input.runId,
+    });
     stream.finish(input);
     await run;
   } finally {
@@ -486,7 +684,11 @@ test("a draft model survives reload and is pinned in the first submission journa
 test("an upload-created empty conversation retains its draft model after reload", async () => {
   const threadId = "uploaded-model-draft";
 
-  saveConversation({ threadId, empty: true, modelId: "qwen" });
+  saveConversation({
+    threadId,
+    empty: true,
+    modelId: "qwen",
+  });
   const stream = streamingAgent(threadId);
   const restored = createConversationSession(
     loadConversation(threadId),
@@ -509,7 +711,11 @@ test("an upload-created empty conversation retains its draft model after reload"
     const input = await stream.requested;
 
     assert.deepEqual(input.forwardedProps, { modelId: "qwen" });
-    stream.emit({ type: "RUN_STARTED", threadId, runId: input.runId });
+    stream.emit({
+      type: "RUN_STARTED",
+      threadId,
+      runId: input.runId,
+    });
     stream.finish(input);
     await run;
   } finally {
@@ -560,29 +766,32 @@ test("model changes wait for server acknowledgement and block concurrent sends",
   }
 });
 
-test.each(["running", "submission_unknown", "interrupted"] as const)(
-  "%s conversations cannot change models",
-  async (status) => {
-    const session = createConversationSession({ threadId: "busy-model" });
-    const disconnect = connectSession(session, () =>
-      Promise.resolve(snapshot("run", status)),
+test.each(
+  /* prettier-ignore */ [
+    "running",
+    "submission_unknown",
+    "interrupted",
+  ] as const,
+)("%s conversations cannot change models", async (status) => {
+  const session = createConversationSession({ threadId: "busy-model" });
+  const disconnect = connectSession(session, () =>
+    Promise.resolve(snapshot("run", status)),
+  );
+  const request = vi.fn();
+
+  vi.stubGlobal("fetch", request);
+
+  try {
+    session.receiveSnapshot(snapshot("run", status));
+    await assert.rejects(
+      session.store.getState().selectModel("qwen"),
+      /finish/i,
     );
-    const request = vi.fn();
-
-    vi.stubGlobal("fetch", request);
-
-    try {
-      session.receiveSnapshot(snapshot("run", status));
-      await assert.rejects(
-        session.store.getState().selectModel("qwen"),
-        /finish/i,
-      );
-      assert.equal(request.mock.calls.length, 0);
-    } finally {
-      disconnect();
-    }
-  },
-);
+    assert.equal(request.mock.calls.length, 0);
+  } finally {
+    disconnect();
+  }
+});
 
 test("a reviewed external continuation allows model changes after its resume finishes", () => {
   const session = createConversationSession({
@@ -686,7 +895,11 @@ test("disconnect aborts the live HTTP transport after detaching SDK processing",
 
       response.writeHead(200, { "Content-Type": "text/event-stream" });
       response.write(
-        `data: ${JSON.stringify({ type: "RUN_STARTED", threadId: input.threadId, runId: input.runId })}\n\n`,
+        `data: ${JSON.stringify({
+          type: "RUN_STARTED",
+          threadId: input.threadId,
+          runId: input.runId,
+        })}\n\n`,
       );
     });
     response.on("close", () => {
@@ -708,7 +921,11 @@ test("disconnect aborts the live HTTP transport after detaching SDK processing",
     },
   });
   const session = createConversationSession(
-    { threadId: agent.threadId, fresh: true, empty: true },
+    {
+      threadId: agent.threadId,
+      fresh: true,
+      empty: true,
+    },
     agent,
   );
   const disconnect = connectSession(session, () => Promise.resolve(null));
@@ -738,7 +955,11 @@ test("disconnect aborts the live HTTP transport after detaching SDK processing",
 test("confirmed admission is reported while the model stream remains open", async () => {
   const stream = streamingAgent("accepted-draft");
   const session = createConversationSession(
-    { threadId: "accepted-draft", fresh: true, empty: true },
+    {
+      threadId: "accepted-draft",
+      fresh: true,
+      empty: true,
+    },
     stream.agent,
   );
   const disconnect = connectSession(session, () => Promise.resolve(null));
@@ -771,7 +992,11 @@ test("production streams retain no diagnostic event payloads", async () => {
   vi.stubEnv("DEV", false);
   const stream = streamingAgent("production-events");
   const session = createConversationSession(
-    { threadId: "production-events", fresh: true, empty: true },
+    {
+      threadId: "production-events",
+      fresh: true,
+      empty: true,
+    },
     stream.agent,
   );
   const disconnect = connectSession(session, () => Promise.resolve(null));
@@ -845,7 +1070,11 @@ async function waitFor(predicate: () => boolean) {
 test("activity captures received payloads, timestamps and run ownership including state snapshots", async () => {
   const stream = streamingAgent("diagnostics");
   const session = createConversationSession(
-    { threadId: "diagnostics", fresh: true, empty: true },
+    {
+      threadId: "diagnostics",
+      fresh: true,
+      empty: true,
+    },
     stream.agent,
   );
   const disconnect = connectSession(session, () => Promise.resolve(null));
@@ -896,7 +1125,11 @@ test("activity captures received payloads, timestamps and run ownership includin
 test("activity bounds retained events without capping the received count and can clear without resetting the run", async () => {
   const stream = streamingAgent("diagnostic-limit");
   const session = createConversationSession(
-    { threadId: "diagnostic-limit", fresh: true, empty: true },
+    {
+      threadId: "diagnostic-limit",
+      fresh: true,
+      empty: true,
+    },
     stream.agent,
   );
   const disconnect = connectSession(session, () => Promise.resolve(null));
@@ -910,7 +1143,11 @@ test("activity bounds retained events without capping the received count and can
   });
 
   for (let index = 0; index < 505; index += 1) {
-    stream.emit({ type: "CUSTOM", name: "diagnostic", value: { index } });
+    stream.emit({
+      type: "CUSTOM",
+      name: "diagnostic",
+      value: { index },
+    });
   }
 
   await waitFor(() => session.store.getState().activityReceived === 506);
@@ -1047,7 +1284,11 @@ test("snapshot polling stops for idle and terminal runs and follows unfinished r
       );
     }
 
-    for (const status of ["completed", "failed", "interrupted"] as const) {
+    for (const status of /* prettier-ignore */ [
+      "completed",
+      "failed",
+      "interrupted",
+    ] as const) {
       session.receiveSnapshot(snapshot("recovered-run", status));
       assert.equal(
         snapshotPolicy(session.store.getState().lifecycle).polling,
@@ -1417,6 +1658,103 @@ test.each(["dispatching", "submission_unknown"] as const)(
   },
 );
 
+test.each(["message", "resume"] as const)(
+  "a confirmed prepared %s can retry its journaled submission in the current session",
+  async (kind) => {
+    const threadId = "retry-prepared";
+    const submittedInputs: RunAgentInput[] = [];
+    const pending = {
+      runId: "original-resume",
+      messageId: "original-resume",
+      messages: [],
+      state: {},
+      resume: [
+        {
+          interruptId: "approval",
+          status: "resolved" as const,
+          payload: { decisions: [{ type: "approve" }] },
+        },
+      ],
+    };
+    const agent = new HttpAgent({
+      threadId,
+      url: "/agent",
+      fetch: (_url, options) => {
+        const input = RunAgentInputSchema.parse(
+          JSON.parse(options.body as string),
+        );
+
+        submittedInputs.push(input);
+
+        if (submittedInputs.length === 1) {
+          return Promise.reject(new TypeError("Response was lost"));
+        }
+
+        const start = {
+          type: "RUN_STARTED",
+          threadId,
+          runId: input.runId,
+        };
+        const finish = { ...start, type: "RUN_FINISHED" };
+        const events = [start, finish]
+          .map((event) => `data: ${JSON.stringify(event)}\n\n`)
+          .join("");
+
+        return Promise.resolve(
+          new Response(events, {
+            headers: { "Content-Type": "text/event-stream" },
+          }),
+        );
+      },
+    });
+    const session = createConversationSession(
+      kind === "message" ? { threadId, fresh: true } : { threadId, pending },
+      agent,
+    );
+    const disconnect = connectSession(session, () => {
+      const original = submittedInputs[0];
+
+      assert.ok(original);
+
+      const status = submittedInputs.length === 1 ? "prepared" : "completed";
+
+      return Promise.resolve(snapshot(original.runId, status));
+    });
+    const accepted = vi.fn();
+
+    try {
+      if (kind === "message") {
+        await assert.rejects(
+          session.store.getState().send("Preserve this input", accepted),
+          /Response was lost/,
+        );
+      } else {
+        session.receiveSnapshot(snapshot(pending.runId, "prepared"));
+      }
+
+      await waitFor(
+        () => session.store.getState().lifecycle.execution === "recovering-run",
+      );
+      const retry = session.store.getState();
+
+      assert.equal(retry.canRetryPreparedSubmission, true);
+      const completion = retry.retryPreparedSubmission();
+
+      await retry.retryPreparedSubmission();
+      await completion;
+      assert.equal(submittedInputs.length, 2);
+      assert.deepEqual(submittedInputs[1], submittedInputs[0]);
+      assert.equal(session.store.getState().canRetryPreparedSubmission, false);
+
+      if (kind === "message") {
+        assert.equal(accepted.mock.calls.length, 1);
+      }
+    } finally {
+      disconnect();
+    }
+  },
+);
+
 test("a definite oversized rejection permits edited input after absent admission is reconciled", async () => {
   const inputs: RunAgentInput[] = [];
   const agent = new HttpAgent({
@@ -1441,7 +1779,11 @@ test("a definite oversized rejection permits edited input after absent admission
           ["RUN_STARTED", "RUN_FINISHED"]
             .map(
               (type) =>
-                `data: ${JSON.stringify({ type, threadId: input.threadId, runId: input.runId })}\n\n`,
+                `data: ${JSON.stringify({
+                  type,
+                  threadId: input.threadId,
+                  runId: input.runId,
+                })}\n\n`,
             )
             .join(""),
           { headers: { "Content-Type": "text/event-stream" } },
@@ -1491,7 +1833,11 @@ test("a definite stale-review rejection permits the current review after recover
           ["RUN_STARTED", "RUN_FINISHED"]
             .map(
               (type) =>
-                `data: ${JSON.stringify({ type, threadId: input.threadId, runId: input.runId })}\n\n`,
+                `data: ${JSON.stringify({
+                  type,
+                  threadId: input.threadId,
+                  runId: input.runId,
+                })}\n\n`,
             )
             .join(""),
           { headers: { "Content-Type": "text/event-stream" } },
@@ -1599,7 +1945,11 @@ test("a stale completed snapshot cannot erase a new stream or leak into another 
 
     finalSnapshot = snapshot(input.runId);
     finalSnapshot.messages = [
-      { id: "checkpoint-message", role: "assistant", content: "Final reply" },
+      {
+        id: "checkpoint-message",
+        role: "assistant",
+        content: "Final reply",
+      },
     ];
     first.receiveSnapshot(finalSnapshot);
     assert.equal(first.store.getState().messages.at(-1)?.id, "stream-message");
@@ -1628,7 +1978,11 @@ test("reload retries a prepared submission once with the original input", async 
       runId: "original-run",
       messageId: "original-message",
       messages: [
-        { id: "original-message", role: "user", content: "Original input" },
+        {
+          id: "original-message",
+          role: "user",
+          content: "Original input",
+        },
       ],
       state: { selected: "original" },
     },
@@ -1910,6 +2264,9 @@ test("out-of-order live A2UI updates recover through a snapshot and do not repla
   const second: A2UIOutput = {
     id: "updated",
     outputSeq: 2,
+    workflow: {
+      reply: { id: "recovered-reply", content: "Recovered reply" },
+    },
     messages: [
       {
         version: "v0.9",
@@ -1924,7 +2281,7 @@ test("out-of-order live A2UI updates recover through a snapshot and do not repla
   let reads = 0;
   let recovered = snapshot();
 
-  recovered.outputs = [first, second];
+  recovered.outputs = [first];
   const disconnect = connectSession(session, () => {
     reads += 1;
 
@@ -1941,17 +2298,31 @@ test("out-of-order live A2UI updates recover through a snapshot and do not repla
       threadId: input.threadId,
       runId: input.runId,
     });
-    stream.emit({ type: "CUSTOM", name: "a2ui", value: second });
-    stream.emit({ type: "CUSTOM", name: "a2ui", value: second });
+    stream.emit({
+      type: "CUSTOM",
+      name: "a2ui",
+      value: second,
+    });
     await waitFor(() => session.store.getState().surfaces.length === 1);
     assert.equal(reads, 1);
     const surface = session.store.getState().surfaces[0]!.surface;
 
     assert.equal(surface.dataModel.get("/title"), "Recovered update");
     assert.equal(session.store.getState().issues.output, null);
+    assert.equal(
+      session.store.getState().messages.at(-1)?.content,
+      "Recovered reply",
+    );
+
+    stream.emit({
+      type: "CUSTOM",
+      name: "a2ui",
+      value: second,
+    });
     recovered = {
       ...recovered,
       runs: [{ runId: input.runId, status: "completed" }],
+      outputs: [first, second],
     };
     stream.finish(input);
     await completion;
@@ -2080,12 +2451,20 @@ test("review submission covers each interrupt once and blocks duplicate sends", 
       {
         interruptId: "review-a",
         status: "resolved",
-        payload: { decision: "approve", title: "Edited A", steps: ["Step A"] },
+        payload: {
+          decision: "approve",
+          title: "Edited A",
+          steps: ["Step A"],
+        },
       },
       {
         interruptId: "review-b",
         status: "resolved",
-        payload: { decision: "reject", title: "Edited B", steps: ["Step B"] },
+        payload: {
+          decision: "reject",
+          title: "Edited B",
+          steps: ["Step B"],
+        },
       },
     ]);
     finalSnapshot = snapshot(input.runId);
@@ -2266,7 +2645,13 @@ test("older task snapshots cannot replace newer progress or completed continuati
           revision: 2,
           status: "running",
           message: "Building",
-          outputs: [{ ...task.outputs[0]!, status: "running", text: "Draft" }],
+          outputs: [
+            {
+              ...task.outputs[0]!,
+              status: "running",
+              text: "Draft",
+            },
+          ],
         },
       ],
     });
@@ -2306,7 +2691,12 @@ test("completed A2A stages keep server continuation executing without a restorat
     message: "Completed",
     history: [],
     continuationStatus: null,
-    outputs: ["plan", "review", "revise"].map((step) => ({
+    outputs:
+      /* prettier-ignore */ [
+        "plan",
+        "review",
+        "revise",
+      ].map((step) => ({
       agent: step === "review" ? "Reviewer" : "Planner",
       step,
       taskId: step,
@@ -2320,7 +2710,11 @@ test("completed A2A stages keep server continuation executing without a restorat
   try {
     session.receiveSnapshot({ ...saved, externalTasks: [task] });
 
-    for (const status of ["prepared", "dispatching", "running"] as const) {
+    for (const status of /* prettier-ignore */ [
+      "prepared",
+      "dispatching",
+      "running",
+    ] as const) {
       session.receiveSnapshot({
         ...saved,
         runs: [...saved.runs, { runId: "continuation", status }],
@@ -2342,7 +2736,11 @@ test("completed A2A stages keep server continuation executing without a restorat
       externalTasks: [{ ...task, continuationStatus: "completed" }],
       messages: [
         ...saved.messages,
-        { id: "final", role: "assistant", content: "Collaboration completed." },
+        {
+          id: "final",
+          role: "assistant",
+          content: "Collaboration completed.",
+        },
       ],
     });
 
@@ -2387,71 +2785,104 @@ test("external waits are identified separately from user review", async () => {
   );
 });
 
-test("an experiment review submits while an external task is still waiting", async () => {
-  const stream = streamingAgent("mixed-external");
-  const session = createConversationSession(
-    { threadId: "mixed-external" },
-    stream.agent,
-  );
-  const paused = snapshot("paused", "interrupted");
-
-  paused.interrupts = [
-    InterruptSchema.parse({
-      id: "plan-review",
-      reason: "Review plan",
-      metadata: {
-        langgraph: {
-          raw: {
-            kind: "experiment_plan_review",
-            workflowCallId: "plan",
-            title: "Plan",
-            steps: ["Step"],
-          },
-        },
-      },
-    }),
-    InterruptSchema.parse({
-      id: "external-wait",
-      reason: "External task",
-      metadata: {
-        langgraph: {
-          raw: {
-            kind: "workflow_external_wait",
-            workflowCallId: "report",
-            taskId: "task",
-          },
-        },
-      },
-    }),
-  ];
-  const disconnect = connectSession(session, () => Promise.resolve(paused));
-
-  try {
-    session.receiveSnapshot(paused);
-    const submission = session.store.getState().reviewPlan([
-      {
-        interruptId: "plan-review",
-        decision: "approve",
-        title: "Plan",
-        steps: ["Step"],
-      },
-    ]);
-
-    await waitFor(() => stream.requests === 1);
-    const input = await stream.requested;
-
-    assert.deepEqual(
-      input.resume?.map((entry) => entry.interruptId),
-      ["plan-review"],
+test.each(["external task", "native approval"] as const)(
+  "an experiment review submits while an independent %s is still waiting",
+  async (kind) => {
+    const stream = streamingAgent("mixed-external");
+    const session = createConversationSession(
+      { threadId: "mixed-external" },
+      stream.agent,
     );
-    stream.emit({
-      type: "RUN_STARTED",
-      threadId: input.threadId,
-      runId: input.runId,
-    });
-    stream.finish(input);
-    await submission;
-  } finally {
-    disconnect();
-  }
-});
+    const paused = snapshot("paused", "interrupted");
+
+    paused.interrupts = [
+      InterruptSchema.parse({
+        id: "plan-review",
+        reason: "Review plan",
+        metadata: {
+          langgraph: {
+            raw: {
+              kind: "experiment_plan_review",
+              workflowCallId: "plan",
+              title: "Plan",
+              steps: ["Step"],
+            },
+          },
+        },
+      }),
+      InterruptSchema.parse({
+        id: "independent-pause",
+        reason: "Independent pause",
+        metadata: {
+          langgraph: {
+            raw:
+              kind === "external task"
+                ? {
+                    kind: "workflow_external_wait",
+                    workflowCallId: "report",
+                    taskId: "task",
+                  }
+                : {
+                    action_requests: [
+                      { name: "save_memory", args: { content: "Preference" } },
+                    ],
+                    review_configs: [
+                      {
+                        action_name: "save_memory",
+                        allowed_decisions: ["approve", "reject"],
+                      },
+                    ],
+                  },
+          },
+        },
+      }),
+    ];
+    const disconnect = connectSession(session, () => Promise.resolve(paused));
+
+    try {
+      session.receiveSnapshot(paused);
+      const submission = session.store.getState().reviewPlan([
+        {
+          interruptId: "plan-review",
+          decision: "approve",
+          title: "Plan",
+          steps: ["Step"],
+        },
+      ]);
+
+      await waitFor(() => stream.requests === 1);
+      const input = await stream.requested;
+
+      assert.deepEqual(
+        input.resume?.map((entry) => entry.interruptId),
+        ["plan-review"],
+      );
+      assert.deepEqual(
+        stream.agent.pendingInterrupts.map((interrupt) => interrupt.id),
+        ["plan-review"],
+      );
+      assert.deepEqual(
+        session.store.getState().pendingInterrupts,
+        paused.interrupts,
+      );
+      stream.emit({
+        type: "RUN_STARTED",
+        threadId: input.threadId,
+        runId: input.runId,
+      });
+      stream.finish(
+        input,
+        paused.interrupts.filter(
+          (interrupt) => interrupt.id === "independent-pause",
+        ),
+      );
+      await submission;
+      assert.deepEqual(
+        stream.agent.pendingInterrupts.map((interrupt) => interrupt.id),
+        ["independent-pause"],
+      );
+    } finally {
+      disconnect();
+    }
+  },
+);

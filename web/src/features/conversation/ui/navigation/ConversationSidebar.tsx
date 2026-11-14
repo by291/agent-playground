@@ -30,6 +30,7 @@ export interface SidebarConversation {
   busy: boolean;
 }
 
+/** Presents history and workspace navigation in the current sidebar mode. */
 export function ConversationSidebar({
   empty,
   onNewConversation,

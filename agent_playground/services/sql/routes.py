@@ -22,6 +22,7 @@ router = APIRouter(prefix="/sql-demo", tags=["SQL demonstration"])
 
 @router.post("/generate")
 async def generate_sql(request: GenerateRequest) -> SqlSource:
+    """Return the fixed demo SQL and its schema for adaptation."""
     return SqlSource(
         sql="SELECT * FROM orders;",
         dialect="postgres",
@@ -36,11 +37,13 @@ async def generate_sql(request: GenerateRequest) -> SqlSource:
 
 @router.post("/check")
 async def validate_sql(request: CheckRequest) -> SqlCheck:
+    """Check SQL against the supported syntax and demonstration schema."""
     return check_sql(request.sql)
 
 
 @router.post("/submit")
 async def submit_sql(request: SubmitRequest) -> SqlSubmission:
+    """Validate and record demo SQL without executing it."""
     report = check_sql(request.sql)
 
     if not report.passed:
@@ -56,6 +59,7 @@ async def submit_sql(request: SubmitRequest) -> SqlSubmission:
 
 @router.get("/submissions/{submission_id}")
 async def get_submission(submission_id: str) -> SqlSubmission:
+    """Read a persisted demo SQL receipt by identity."""
     record = await read_sql_submission(submission_id)
 
     if record is None:

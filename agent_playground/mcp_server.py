@@ -1,11 +1,12 @@
 """A small local MCP server used by the playground agent."""
 
 from mcp.server.fastmcp import FastMCP
+from mcp.types import ToolAnnotations
 
 mcp = FastMCP("agent-playground")
 
 
-@mcp.tool()
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False))
 def calculate_sum(left: float, right: float) -> float:
     """Add two numbers using the local MCP server."""
     return left + right

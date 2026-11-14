@@ -74,6 +74,7 @@ export function pendingRecovery(
   return !saved || saved.status === "prepared" ? "retry" : "confirmed";
 }
 
+/** Reuses the durable request only after reconciliation permits an exact replay. */
 export function pendingRetry(
   snapshot: ConversationSnapshot | null | undefined,
   pending: PendingSubmission,
@@ -106,23 +107,29 @@ export function pendingRetry(
   return sameInput ? "retry" : "changed";
 }
 
+/** Requires a definitive rejection and an absent run before unlocking edits. */
 export function rejectedAdmission(
   snapshot: ConversationSnapshot | null,
   pending: PendingSubmission,
   error: unknown,
 ) {
-  // These responses reject input before admission. A snapshot must also confirm
-  // that this operation has no saved run before edited input can replace it.
+  // These statuses can reject input before the server writes its run.
   const status =
     error instanceof Error && "status" in error ? error.status : undefined;
 
   return (
     typeof status === "number" &&
-    [400, 404, 409, 413].includes(status) &&
+    /* prettier-ignore */ [
+      400,
+      404,
+      409,
+      413,
+    ].includes(status) &&
     !snapshot?.runs.some((run) => run.runId === pending.runId)
   );
 }
 
+/** Lets a saved run acknowledge admission when the stream response was lost. */
 export function confirmedAdmission(
   snapshot: ConversationSnapshot | null,
   runId: string,

@@ -13,8 +13,23 @@ from agent_playground.models.profiles import (
     ThinkingLevel,
     model_information,
 )
-from agent_playground.models.providers import create_provider_model
+from agent_playground.models.providers import (
+    ProviderModelOptions,
+    create_provider_model,
+)
 from agent_playground.models.tokens import ContextSettings
+
+SUMMARY_OUTPUT_TOKENS = 4096
+
+
+@dataclass(frozen=True, kw_only=True)
+class ChatModelRequest:
+    """Select a configured model and optional limits for one kind of call."""
+
+    model_id: str | None = None
+    is_summary: bool = False
+    max_tokens: int | None = None
+    should_disable_thinking: bool = False
 
 
 class ModelOption(TypedDict):
@@ -46,9 +61,11 @@ class ChatModelConfiguration:
 
     @property
     def available(self) -> bool:
+        """Indicate whether the model has a configured provider credential."""
         return bool(self.api_key.get_secret_value().strip())
 
     def public_option(self) -> ModelOption:
+        """Describe the model for clients without exposing its credential."""
         return {
             "id": self.id,
             "label": self.label,
@@ -67,10 +84,12 @@ class ChatModelConfiguration:
 
     @property
     def max_output_tokens(self) -> int:
+        """Return the output budget for the configured thinking level."""
         return self.output_budget(self.thinking)
 
     @property
     def max_input_tokens(self) -> int:
+        """Reserve output space before exposing the provider's input limit."""
         budget = self.information.input_limit(self.thinking)
 
         if self.input_override is not None:
@@ -80,6 +99,7 @@ class ChatModelConfiguration:
         return min(budget, self.information.context_window - self.max_output_tokens)
 
     def context_settings(self, model: BaseChatModel) -> ContextSettings:
+        """Use the selected model's input budget to configure compaction."""
         return ContextSettings.from_model(
             model,
             window=self.max_input_tokens,
@@ -88,10 +108,12 @@ class ChatModelConfiguration:
 
     @property
     def image_tokens(self) -> int:
+        """Return the per-image estimate used for the selected provider."""
         return self.information.image_tokens
 
 
 def model_configurations() -> tuple[ChatModelConfiguration, ...]:
+    """Resolve configured models and capacities without creating provider clients."""
     config = load_model_config()
     configurations: list[ChatModelConfiguration] = []
 
@@ -140,31 +162,31 @@ def agent_info() -> AgentInfo:
     }
 
 
-def create_chat_model(
-    model_id: str | None = None,
-    *,
-    summary: bool = False,
-    max_tokens: int | None = None,
-    disable_thinking: bool = False,
-) -> BaseChatModel:
+def create_chat_model(request: ChatModelRequest | None = None) -> BaseChatModel:
     """Create an isolated provider client for a main, summary or revision call."""
-    configuration = model_configuration(model_id)
+    request = request or ChatModelRequest()
+    configuration = model_configuration(request.model_id)
 
     if not configuration.available:
         raise ValueError(f"Chat model {configuration.id} is not configured")
 
-    requested_output = 4096 if summary else max_tokens
+    requested_output = (
+        SUMMARY_OUTPUT_TOKENS if request.is_summary else request.max_tokens
+    )
 
     if requested_output is not None and requested_output <= 0:
         raise ValueError("The output token budget must be positive")
 
-    thinking = "disabled" if summary or disable_thinking else configuration.thinking
+    should_disable_thinking = request.is_summary or request.should_disable_thinking
+    thinking = "disabled" if should_disable_thinking else configuration.thinking
 
     return create_provider_model(
-        configuration.provider,
-        model=configuration.model,
-        api_key=configuration.api_key,
-        base_url=configuration.base_url,
-        thinking=thinking,
-        output_tokens=configuration.output_budget(thinking, requested_output),
+        ProviderModelOptions(
+            provider=configuration.provider,
+            model=configuration.model,
+            api_key=configuration.api_key,
+            base_url=configuration.base_url,
+            thinking=thinking,
+            output_tokens=configuration.output_budget(thinking, requested_output),
+        )
     )

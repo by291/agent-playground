@@ -12,8 +12,8 @@ from langchain_deepseek import ChatDeepSeek
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.types import Command
 
-from agent_playground.db.workflow_outputs import WorkflowOutput
-from agent_playground.graph import make_graph
+from agent_playground.db.workflow_outputs import StoreWorkflowOutput, WorkflowOutput
+from agent_playground.graph import AgentGraphOptions, make_graph
 from agent_playground.services.sql.models import SqlCheck, SqlSource, SqlSubmission
 from agent_playground.workflows.sql.agent import sql_revision_model
 from agent_playground.workflows.sql.graph import make_sql_workflow
@@ -153,12 +153,12 @@ def test_sql_tool_resumes_after_graph_recreation_without_repeating_fetch(
             "agent_playground.workflows.sql.tool.HttpSqlApi", lambda: client
         )
 
-        async def save(**kwargs: Any):
+        async def save(request: StoreWorkflowOutput) -> WorkflowOutput:
             return WorkflowOutput(
-                id=kwargs["step_id"],
-                agui_run_id=kwargs["agui_run_id"],
-                output_seq=kwargs["step_seq"],
-                payload=kwargs["payload"],
+                id=request.step_id,
+                agui_run_id=request.agui_run_id,
+                output_seq=request.step_seq,
+                payload=request.payload,
             )
 
         monkeypatch.setattr(
@@ -166,21 +166,23 @@ def test_sql_tool_resumes_after_graph_recreation_without_repeating_fetch(
         )
         saver = InMemorySaver()
         graph = make_graph(
-            model=SqlToolModel(
-                responses=[
-                    AIMessage(
-                        content="",
-                        tool_calls=[
-                            {
-                                "id": "call-sql",
-                                "name": "run_sql_workflow",
-                                "args": {"task": "Show orders"},
-                            }
-                        ],
-                    )
-                ]
-            ),
-            checkpointer=saver,
+            AgentGraphOptions(
+                model=SqlToolModel(
+                    responses=[
+                        AIMessage(
+                            content="",
+                            tool_calls=[
+                                {
+                                    "id": "call-sql",
+                                    "name": "run_sql_workflow",
+                                    "args": {"task": "Show orders"},
+                                }
+                            ],
+                        )
+                    ]
+                ),
+                checkpointer=saver,
+            )
         )
         config = {
             "configurable": {"thread_id": "sql-tool"},
@@ -193,8 +195,10 @@ def test_sql_tool_resumes_after_graph_recreation_without_repeating_fetch(
 
         assert review.value["revision"] == 2
         graph = make_graph(
-            model=SqlToolModel(responses=[AIMessage(content="Recorded the SQL.")]),
-            checkpointer=saver,
+            AgentGraphOptions(
+                model=SqlToolModel(responses=[AIMessage(content="Recorded the SQL.")]),
+                checkpointer=saver,
+            )
         )
         completed = await graph.ainvoke(
             Command(

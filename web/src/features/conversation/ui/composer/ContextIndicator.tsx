@@ -27,17 +27,39 @@ const compactNumber = new Intl.NumberFormat("en-US", {
 });
 const tokenNumber = new Intl.NumberFormat("en-US");
 const categories = [
-  { key: "system", label: "System instructions", color: "bg-slate-500" },
-  { key: "tools", label: "Tool definitions", color: "bg-sky-500" },
-  { key: "conversation", label: "Conversation", color: "bg-accent" },
-  { key: "toolResults", label: "Tool results", color: "bg-amber-500" },
-  { key: "summary", label: "Compacted summary", color: "bg-violet-500" },
+  {
+    key: "system",
+    label: "System instructions",
+    color: "bg-slate-500",
+  },
+  {
+    key: "tools",
+    label: "Tool definitions",
+    color: "bg-sky-500",
+  },
+  {
+    key: "conversation",
+    label: "Conversation",
+    color: "bg-accent",
+  },
+  {
+    key: "toolResults",
+    label: "Tool results",
+    color: "bg-amber-500",
+  },
+  {
+    key: "summary",
+    label: "Compacted summary",
+    color: "bg-violet-500",
+  },
 ] as const;
 
+/** Shows the selected model and context estimate and offers allowed model changes. */
 export function ContextIndicator({ disabled = false }: { disabled?: boolean }) {
+  const groupId = useId();
   const [open, setOpen] = useState(false);
   const [selectionError, setSelectionError] = useState<string | null>(null);
-  const groupId = useId();
+
   const reportedUsage = useConversation((state) => state.contextUsage);
   const modelId = useConversation((state) => state.modelId);
   const selectModel = useConversation((state) => state.selectModel);
@@ -53,6 +75,7 @@ export function ContextIndicator({ disabled = false }: { disabled?: boolean }) {
   );
   const model =
     selectedModel?.model ?? agentInfo?.model ?? reportedUsage?.model ?? "Model";
+
   // Usage from the previous model must not appear against the newly selected one.
   const usage = reportedUsage?.model === model ? reportedUsage : null;
   const ratio = usage ? usage.usedTokens / usage.contextWindow : 0;
@@ -160,12 +183,13 @@ export function ContextIndicator({ disabled = false }: { disabled?: boolean }) {
         </TooltipContent>
       </Tooltip>
 
+      {/* Bound the details to Radix's collision area so all choices can be scrolled to. */}
       <PopoverContent
         align="end"
         side="top"
         sideOffset={8}
         collisionPadding={16}
-        className="motion-popover z-50 w-80 max-w-[calc(100vw-2rem)] rounded-lg border border-line bg-surface p-5 text-ink shadow-lg outline-none"
+        className="motion-popover z-50 max-h-(--radix-popover-content-available-height) w-80 max-w-[calc(100vw-2rem)] overflow-y-auto overscroll-contain rounded-lg border border-line bg-surface p-5 text-ink shadow-lg outline-none"
         aria-label="Context usage details"
       >
         <div className="mb-4 flex items-center justify-between gap-3">
@@ -184,6 +208,7 @@ export function ContextIndicator({ disabled = false }: { disabled?: boolean }) {
             </Button>
           </PopoverClose>
         </div>
+
         {hasCatalog && (
           <div className="mb-3 space-y-3 border-b border-line pb-4">
             <RadioGroup
@@ -230,6 +255,7 @@ export function ContextIndicator({ disabled = false }: { disabled?: boolean }) {
             )}
           </div>
         )}
+
         {hasCatalog && (
           <h3 className="mb-3 text-sm font-semibold">Context window</h3>
         )}

@@ -14,6 +14,9 @@ from agent_playground.services.a2a.contracts import (
     CollaborationState,
 )
 
+DEFAULT_CLAIM_LIMIT = 4
+LEASE_DURATION = timedelta(seconds=30)
+
 
 @dataclass(frozen=True)
 class CollaborationJob:
@@ -22,7 +25,7 @@ class CollaborationJob:
     delivered_revision: int
 
 
-def decode_job(row: RowMapping) -> CollaborationJob:
+def _decode_job(row: RowMapping) -> CollaborationJob:
     return CollaborationJob(
         CollaborationRequest.model_validate(row["request"]),
         CollaborationState.model_validate(row["state"]),
@@ -44,27 +47,22 @@ def create_job(request: CollaborationRequest) -> CollaborationJob:
             )
             .on_conflict_do_nothing()
         )
-        row = (
-            connection.execute(select(a2a_jobs).where(a2a_jobs.c.id == request.id))
-            .mappings()
-            .one()
-        )
+        statement = select(a2a_jobs).where(a2a_jobs.c.id == request.id)
+        row = connection.execute(statement).mappings().one()
 
         if row["request"] != payload:
             raise ValueError("A2A job identity conflict")
 
-        return decode_job(row)
+        return _decode_job(row)
 
 
 def read_job(job_id: str) -> CollaborationJob | None:
+    """Read the latest committed state for a collaboration job."""
     with app_engine().connect() as connection:
-        row = (
-            connection.execute(select(a2a_jobs).where(a2a_jobs.c.id == job_id))
-            .mappings()
-            .first()
-        )
+        statement = select(a2a_jobs).where(a2a_jobs.c.id == job_id)
+        row = connection.execute(statement).mappings().first()
 
-    return decode_job(row) if row else None
+    return _decode_job(row) if row else None
 
 
 def change_job(
@@ -76,13 +74,8 @@ def change_job(
     with app_engine().begin() as connection:
         # Serialize coordinator updates with user controls before testing the
         # lease and terminal state against the latest committed snapshot.
-        row = (
-            connection.execute(
-                select(a2a_jobs).where(a2a_jobs.c.id == job_id).with_for_update()
-            )
-            .mappings()
-            .one()
-        )
+        statement = select(a2a_jobs).where(a2a_jobs.c.id == job_id).with_for_update()
+        row = connection.execute(statement).mappings().one()
 
         lease_is_current = (
             row["lease_owner"] == owner
@@ -105,6 +98,7 @@ def change_job(
             # Only persisted changes produce callback revisions; a replay keeps
             # its current revision and delivery offset.
             state.revision = previous.revision + 1
+
             connection.execute(
                 update(a2a_jobs)
                 .where(a2a_jobs.c.id == job_id)
@@ -119,7 +113,9 @@ def change_job(
 
 
 def request_cancel(job_id: str) -> CollaborationJob:
-    def cancel(state: CollaborationState) -> CollaborationState:
+    """Persist a request for the coordinator to cancel remote work."""
+
+    def _cancel(state: CollaborationState) -> CollaborationState:
         if state.terminal:
             raise ValueError("A2A collaboration is already terminal")
 
@@ -128,11 +124,13 @@ def request_cancel(job_id: str) -> CollaborationJob:
 
         return state
 
-    return change_job(job_id, cancel)
+    return change_job(job_id, _cancel)
 
 
 def request_input(job_id: str, text: str) -> CollaborationJob:
-    def supply(state: CollaborationState) -> CollaborationState:
+    """Store additional input and make an interrupted job runnable."""
+
+    def _supply(state: CollaborationState) -> CollaborationState:
         if state.status != "input_required" or state.cancel_requested:
             raise ValueError("A2A collaboration is not waiting for input")
 
@@ -142,47 +140,43 @@ def request_input(job_id: str, text: str) -> CollaborationJob:
 
         return state
 
-    return change_job(job_id, supply)
+    return change_job(job_id, _supply)
 
 
-def claim_jobs(owner: str, limit: int = 4) -> list[CollaborationJob]:
+def claim_jobs(owner: str, limit: int = DEFAULT_CLAIM_LIMIT) -> list[CollaborationJob]:
     """Lease available jobs that need execution, cancellation or delivery."""
     now = datetime.now(UTC)
     state = a2a_jobs.c.state
-    has_pending_work = or_(
-        state["revision"].astext.cast(Integer) > a2a_jobs.c.delivered_revision,
-        and_(state["status"].astext.in_(["queued", "running"])),
-        and_(
-            state["status"].astext == "input_required",
-            state["cancel_requested"].astext == "true",
-        ),
+    has_pending_delivery = (
+        state["revision"].astext.cast(Integer) > a2a_jobs.c.delivered_revision
     )
+    has_runnable_status = state["status"].astext.in_(["queued", "running"])
+    has_interrupt_to_cancel = and_(
+        state["status"].astext == "input_required",
+        state["cancel_requested"].astext == "true",
+    )
+    has_pending_work = or_(
+        has_pending_delivery, has_runnable_status, has_interrupt_to_cancel
+    )
+    lease_is_available = or_(
+        a2a_jobs.c.lease_until.is_(None), a2a_jobs.c.lease_until < now
+    )
+    available_jobs = select(a2a_jobs).where(has_pending_work, lease_is_available)
 
     with app_engine().begin() as connection:
         # Claim and assign ownership in one transaction. Other workers skip
         # locked rows rather than receiving the same job before this commit.
-        rows = (
-            connection.execute(
-                select(a2a_jobs)
-                .where(
-                    has_pending_work,
-                    or_(a2a_jobs.c.lease_until.is_(None), a2a_jobs.c.lease_until < now),
-                )
-                .limit(limit)
-                .with_for_update(skip_locked=True)
-            )
-            .mappings()
-            .all()
-        )
+        claimed_jobs = available_jobs.limit(limit).with_for_update(skip_locked=True)
+        rows = connection.execute(claimed_jobs).mappings().all()
 
         for row in rows:
             connection.execute(
                 update(a2a_jobs)
                 .where(a2a_jobs.c.id == row["id"])
-                .values(lease_owner=owner, lease_until=now + timedelta(seconds=30))
+                .values(lease_owner=owner, lease_until=now + LEASE_DURATION)
             )
 
-        return [decode_job(row) for row in rows]
+        return [_decode_job(row) for row in rows]
 
 
 def renew_lease(job_id: str, owner: str) -> bool:
@@ -195,7 +189,7 @@ def renew_lease(job_id: str, owner: str) -> bool:
                 a2a_jobs.c.lease_owner == owner,
                 a2a_jobs.c.lease_until > datetime.now(UTC),
             )
-            .values(lease_until=datetime.now(UTC) + timedelta(seconds=30))
+            .values(lease_until=datetime.now(UTC) + LEASE_DURATION)
         )
 
         return result.rowcount == 1

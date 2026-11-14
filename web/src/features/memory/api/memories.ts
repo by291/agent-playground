@@ -6,6 +6,7 @@ import {
   type Memory,
 } from "@shared/memory";
 
+/** Preserves the HTTP status used by the workspace's revision conflict flow. */
 export class MemoryRequestError extends Error {
   constructor(
     message: string,
@@ -23,6 +24,7 @@ async function memoryRequest(path: string, init: RequestInit) {
     const body = (await response.json().catch(() => null)) as {
       error?: unknown;
     } | null;
+
     const message =
       typeof body?.error === "string"
         ? body.error.slice(0, 300)
@@ -34,6 +36,7 @@ async function memoryRequest(path: string, init: RequestInit) {
   return response;
 }
 
+/** Reads and validates one page of saved memories. */
 export async function listMemories(offset: number, signal: AbortSignal) {
   const response = await memoryRequest(`?offset=${offset}&limit=50`, {
     signal,
@@ -42,6 +45,7 @@ export async function listMemories(offset: number, signal: AbortSignal) {
   return memoryPageSchema.parse(await response.json());
 }
 
+/** Submits a correction against the revision the user reviewed. */
 export async function correctMemory(
   memory: Memory,
   text: string,
@@ -53,6 +57,7 @@ export async function correctMemory(
     revision: memory.revision,
     text,
   });
+
   const response = await memoryRequest(`/${memory.id}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
@@ -63,6 +68,7 @@ export async function correctMemory(
   return memorySchema.parse(await response.json());
 }
 
+/** Requests deletion of the reviewed memory revision. */
 export async function forgetMemory(memory: Memory, signal: AbortSignal) {
   const body = memoryMutationSchema.parse({
     category: memory.category,

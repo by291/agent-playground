@@ -1,8 +1,13 @@
 """Check output identity and reject unsupported persisted output versions."""
 
+import asyncio
+import threading
+from dataclasses import replace
+
 import pytest
 from sqlalchemy import select
 
+from agent_playground.db import workflow_outputs as output_store
 from agent_playground.db.connection import app_engine
 from agent_playground.db.schema import (
     conversation_runs,
@@ -10,7 +15,11 @@ from agent_playground.db.schema import (
     metadata,
     workflow_outputs,
 )
-from agent_playground.db.workflow_outputs import _store
+from agent_playground.db.workflow_outputs import (
+    StoreWorkflowOutput,
+    WorkflowOutput,
+    store_workflow_output,
+)
 from tests.agent_config import update_agent_config
 
 
@@ -55,17 +64,15 @@ def test_old_outputs_are_rejected_and_current_outputs_are_idempotent(
                 )
             )
 
-        with pytest.raises(ValueError, match="Unsupported workflow output version"):
-            _store(
-                thread_id="thread",
-                agui_run_id="new-run",
-                workflow_call_id="call",
-                step_id="review",
-                step_seq=3,
-                payload=new_payload,
-            )
-
-        fresh = _store(
+        old_request = StoreWorkflowOutput(
+            thread_id="thread",
+            agui_run_id="new-run",
+            workflow_call_id="call",
+            step_id="review",
+            step_seq=3,
+            payload=new_payload,
+        )
+        new_request = StoreWorkflowOutput(
             thread_id="thread",
             agui_run_id="new-run",
             workflow_call_id="new-call",
@@ -74,27 +81,20 @@ def test_old_outputs_are_rejected_and_current_outputs_are_idempotent(
             payload=new_payload,
         )
 
+        with pytest.raises(ValueError, match="Unsupported workflow output version"):
+            asyncio.run(store_workflow_output(old_request))
+
+        fresh = asyncio.run(store_workflow_output(new_request))
         assert fresh.payload == new_payload
-        assert (
-            _store(
-                thread_id="thread",
-                agui_run_id="old-run",
-                workflow_call_id="new-call",
-                step_id="idea",
-                step_seq=1,
-                payload=new_payload,
-            )
-            == fresh
+
+        replayed = asyncio.run(
+            store_workflow_output(replace(new_request, agui_run_id="old-run"))
         )
+        assert replayed == fresh
 
         with pytest.raises(ValueError, match="payload conflict"):
-            _store(
-                thread_id="thread",
-                agui_run_id="new-run",
-                workflow_call_id="new-call",
-                step_id="idea",
-                step_seq=1,
-                payload=old_payload,
+            asyncio.run(
+                store_workflow_output(replace(new_request, payload=old_payload))
             )
 
         with engine.connect() as connection:
@@ -112,3 +112,50 @@ def test_old_outputs_are_rejected_and_current_outputs_are_idempotent(
     finally:
         app_engine.cache_clear()
         engine.dispose()
+
+
+def test_cancelling_output_storage_waits_for_the_transaction(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    release_transaction = threading.Event()
+    transaction_finished = threading.Event()
+
+    async def verify() -> None:
+        transaction_started = asyncio.Event()
+        loop = asyncio.get_running_loop()
+
+        def store(_request: StoreWorkflowOutput) -> WorkflowOutput:
+            loop.call_soon_threadsafe(transaction_started.set)
+            assert release_transaction.wait(timeout=5)
+            transaction_finished.set()
+
+            return WorkflowOutput(
+                id="output", agui_run_id="run", output_seq=1, payload={}
+            )
+
+        monkeypatch.setattr(output_store, "_store", store)
+        request = StoreWorkflowOutput(
+            thread_id="thread",
+            agui_run_id="run",
+            workflow_call_id="call",
+            step_id="review",
+            step_seq=1,
+            payload={},
+        )
+        storing = asyncio.create_task(store_workflow_output(request))
+
+        try:
+            await asyncio.wait_for(transaction_started.wait(), timeout=5)
+            storing.cancel()
+            await asyncio.sleep(0)
+
+            assert not storing.done()
+        finally:
+            release_transaction.set()
+
+            with pytest.raises(asyncio.CancelledError):
+                await asyncio.wait_for(storing, timeout=5)
+
+        assert transaction_finished.is_set()
+
+    asyncio.run(verify())

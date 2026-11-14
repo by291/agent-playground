@@ -54,9 +54,21 @@ test("continuation sends only the newest user turn and never restores compacted 
       body: JSON.stringify({
         input: {
           messages: [
-            { id: "old", type: "human", content: "Old history" },
-            { id: "reply", type: "ai", content: "Old reply" },
-            { id: "new", type: "human", content: "Continue" },
+            {
+              id: "old",
+              type: "human",
+              content: "Old history",
+            },
+            {
+              id: "reply",
+              type: "ai",
+              content: "Old reply",
+            },
+            {
+              id: "new",
+              type: "human",
+              content: "Continue",
+            },
           ],
           context_usage: { compactions: 0 },
           response_messages: [],
@@ -68,7 +80,13 @@ test("continuation sends only the newest user turn and never restores compacted 
   const body = JSON.parse(init.body as string) as { input: unknown };
 
   assert.deepEqual(body.input, {
-    messages: [{ id: "new", type: "human", content: "Continue" }],
+    messages: [
+      {
+        id: "new",
+        type: "human",
+        content: "Continue",
+      },
+    ],
     selected: "kept",
   });
 });

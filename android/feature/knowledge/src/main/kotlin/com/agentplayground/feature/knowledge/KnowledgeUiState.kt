@@ -9,6 +9,7 @@ data class KnowledgeUiState(
     val busy: Boolean = false,
     val operation: String? = null,
     val error: String? = null,
+    val listError: String? = null,
     val pendingUploads: List<PickedFile> = emptyList(),
     val resumeDocument: KnowledgeDocument? = null,
 )

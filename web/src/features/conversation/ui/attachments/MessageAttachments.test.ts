@@ -6,7 +6,11 @@ import { SelectedAttachment, UploadedAttachments } from "./MessageAttachments";
 
 test("selected images expose a preview and a separate removal action", () => {
   const onRemove = vi.fn();
-  const props = { disabled: false, uploading: false, onRemove };
+  const props = {
+    disabled: false,
+    uploading: false,
+    onRemove,
+  };
   const view = render(
     createElement(SelectedAttachment, {
       ...props,

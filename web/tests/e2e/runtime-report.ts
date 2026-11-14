@@ -1,3 +1,7 @@
+const slowTestBudgetMs = 10_000;
+const totalSuiteBudgetMs = 120_000;
+const slowestResultLimit = 10;
+
 export interface CaseRuntime {
   project: string;
   file: string;
@@ -7,6 +11,7 @@ export interface CaseRuntime {
   retry: number;
 }
 
+/** Aggregates measured case durations, including the setup cost of runtime skips. */
 export function summarizeRuntime(cases: CaseRuntime[], shardTotal = 1) {
   const executed = cases.filter((entry) => entry.status !== "skipped");
   const groups = new Map<
@@ -31,14 +36,14 @@ export function summarizeRuntime(cases: CaseRuntime[], shardTotal = 1) {
     groups.set(key, group);
     totalTestMs += entry.durationMs;
 
-    if (entry.durationMs > 10_000) {
+    if (entry.durationMs > slowTestBudgetMs) {
       warnings.push(
-        `Review slow test: ${entry.project} / ${entry.title} (${Math.round(entry.durationMs)} ms; budget 10000 ms).`,
+        `Review slow test: ${entry.project} / ${entry.title} (${Math.round(entry.durationMs)} ms; budget ${slowTestBudgetMs} ms).`,
       );
     }
   }
 
-  const totalBudgetMs = 120_000 / shardTotal;
+  const totalBudgetMs = totalSuiteBudgetMs / shardTotal;
 
   if (totalTestMs > totalBudgetMs) {
     warnings.push(
@@ -50,10 +55,12 @@ export function summarizeRuntime(cases: CaseRuntime[], shardTotal = 1) {
     executed: executed.length,
     skipped: cases.length - executed.length,
     totalTestMs,
-    groups: [...groups.values()].sort((a, b) => b.durationMs - a.durationMs),
+    groups: [...groups.values()].sort(
+      (first, second) => second.durationMs - first.durationMs,
+    ),
     warnings,
     slowest: [...cases]
-      .sort((a, b) => b.durationMs - a.durationMs)
-      .slice(0, 10),
+      .sort((first, second) => second.durationMs - first.durationMs)
+      .slice(0, slowestResultLimit),
   };
 }

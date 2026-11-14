@@ -12,6 +12,7 @@ from agent_playground.workflows.sql.models import SqlState
 
 
 def sql_workflow_tool(model: BaseChatModel) -> BaseTool:
+    """Bind the conversational SQL workflow to its revision model."""
     revise = make_revision_agent(model)
     workflow = make_sql_workflow(revise, HttpSqlApi())
 
@@ -29,6 +30,9 @@ def sql_workflow_tool(model: BaseChatModel) -> BaseTool:
         if completed.status == "abandoned":
             return "The user abandoned the SQL workflow. Nothing was submitted."
 
-        return f"SQL was recorded by the demo API without execution. Receipt: {completed.submission}"
+        return (
+            "SQL was recorded by the demo API without execution. "
+            f"Receipt: {completed.submission}"
+        )
 
     return run_sql_workflow

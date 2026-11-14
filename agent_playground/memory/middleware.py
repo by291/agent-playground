@@ -23,10 +23,24 @@ from agent_playground.memory.models import (
     memory_namespace,
     memory_view,
 )
-from agent_playground.memory.service import MemoryService
+from agent_playground.memory.service import MEMORY_RECALL_LIMIT, MemoryService
 from agent_playground.models.tokens import estimate_tokens
 
 logger = logging.getLogger(__name__)
+RECALL_ERRORS = (
+    PostgresError,
+    ValueError,
+    RuntimeError,
+    TimeoutError,
+)
+
+
+def _recall_update(memories: list[MemoryView]) -> dict[str, str]:
+    recent_memories = sorted(
+        memories, key=lambda memory: memory.updated_at, reverse=True
+    )
+
+    return {"memory_context": memory_context(recent_memories)}
 
 
 def memory_context(memories: list[MemoryView]) -> str:
@@ -63,8 +77,9 @@ def memory_context(memories: list[MemoryView]) -> str:
 
 
 def memory_scopes(state: ContextState) -> list[MemoryScope]:
-    scopes = [MemoryScope(category="preference")]
+    """Include shared preferences and the explicitly selected project in recall."""
     project = state.get("memory_project")
+    scopes = [MemoryScope(category="preference")]
 
     if project:
         scopes.append(MemoryScope(category="project", project=project))
@@ -79,6 +94,7 @@ class MemoryMiddleware(AgentMiddleware):
     def before_model(
         self, state: AgentState[Any], runtime: Runtime[Any]
     ) -> dict[str, Any]:
+        """Load scoped memory for a synchronous model call."""
         if runtime.store is None:
             return {"memory_context": ""}
 
@@ -89,14 +105,14 @@ class MemoryMiddleware(AgentMiddleware):
                 rows = runtime.store.search(
                     memory_namespace(scope),
                     filter={"content": {"$ne": None}},
-                    limit=100,
+                    limit=MEMORY_RECALL_LIMIT,
                 )
+
                 memories.extend(memory for row in rows if (memory := memory_view(row)))
 
-            memories.sort(key=lambda memory: memory.updated_at, reverse=True)
-
-            return {"memory_context": memory_context(memories)}
-        except (PostgresError, ValueError, RuntimeError, TimeoutError):
+            return _recall_update(memories)
+        except RECALL_ERRORS:
+            # Recall is optional; an unavailable Store must not block the turn.
             logger.warning("Memory recall unavailable for this model call")
 
             return {"memory_context": ""}
@@ -105,6 +121,7 @@ class MemoryMiddleware(AgentMiddleware):
     async def abefore_model(
         self, state: AgentState[Any], runtime: Runtime[Any]
     ) -> dict[str, Any]:
+        """Load scoped memory for an asynchronous model call."""
         if runtime.store is None:
             return {"memory_context": ""}
 
@@ -115,10 +132,9 @@ class MemoryMiddleware(AgentMiddleware):
             for scope in memory_scopes(cast("ContextState", state)):
                 memories.extend(await service.recall(scope))
 
-            memories.sort(key=lambda memory: memory.updated_at, reverse=True)
-
-            return {"memory_context": memory_context(memories)}
-        except (PostgresError, ValueError, RuntimeError, TimeoutError):
+            return _recall_update(memories)
+        except RECALL_ERRORS:
+            # Match the synchronous path when the optional Store is unavailable.
             logger.warning("Memory recall unavailable for this model call")
 
             return {"memory_context": ""}
@@ -146,6 +162,7 @@ class MemoryMiddleware(AgentMiddleware):
         request: ModelRequest,
         handler: Callable[[ModelRequest], ModelResponse],
     ) -> ModelResponse:
+        """Inject transient recall context into a synchronous request."""
         return handler(self._request(request))
 
     @override
@@ -154,4 +171,5 @@ class MemoryMiddleware(AgentMiddleware):
         request: ModelRequest,
         handler: Callable[[ModelRequest], Awaitable[ModelResponse]],
     ) -> ModelResponse:
+        """Inject transient recall context into an asynchronous request."""
         return await handler(self._request(request))

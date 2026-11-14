@@ -27,6 +27,7 @@ export const test = base.extend<{ replyAnimation: boolean }>({
   },
 });
 
+/** Captures an optional artifact after a browser scenario reaches its target state. */
 export async function capture(page: Page, info: TestInfo, name: string) {
   if (process.env.E2E_CAPTURE === "1") {
     await page.screenshot({

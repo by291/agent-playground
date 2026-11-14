@@ -124,7 +124,12 @@ test("streaming Skill arguments keep a Skill category and expose running and fai
 });
 
 test("memory operations form their own group beside tools and a Skill named Memory", async () => {
-  const names = ["search_memory", "remember_memory", "forget_memory"];
+  const names =
+    /* prettier-ignore */ [
+      "search_memory",
+      "remember_memory",
+      "forget_memory",
+    ];
   const turn = chatTurns(
     [
       {
@@ -152,7 +157,11 @@ test("memory operations form their own group beside tools and a Skill named Memo
           },
         ],
       },
-      ...[...names, "clock", "skill"].map((toolCallId) => ({
+      .../* prettier-ignore */ [
+        ...names,
+        "clock",
+        "skill",
+      ].map((toolCallId) => ({
         id: `${toolCallId}-result`,
         role: "tool" as const,
         toolCallId,

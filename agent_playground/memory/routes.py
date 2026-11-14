@@ -14,10 +14,11 @@ from agent_playground.memory.models import (
     MemoryPage,
     MemoryView,
 )
-from agent_playground.memory.service import MemoryService
+from agent_playground.memory.service import MemoryService, MemoryWrite
 
 
 def require_memory_credential(authorization: str | None) -> None:
+    """Require the private application bearer credential before accessing memory."""
     expected = workflow_api_token()
     supplied = (authorization or "").removeprefix("Bearer ")
 
@@ -32,6 +33,7 @@ def require_memory_credential(authorization: str | None) -> None:
 def memory_service(
     authorization: Annotated[str | None, Header()] = None,
 ) -> MemoryService:
+    """Borrow the runtime Store for an authenticated management request."""
     require_memory_credential(authorization)
 
     try:
@@ -49,15 +51,24 @@ async def list_memories(
     service: Service,
     offset: Annotated[int, Query(ge=0, le=1_000_000)] = 0,
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
-):
+) -> MemoryPage:
+    """List active memories with bounded pagination."""
     return await service.list_memories(offset=offset, limit=limit)
 
 
 @router.patch("/{memory_id}", response_model=MemoryView)
-async def edit_memory(memory_id: UUID, request: MemoryEdit, service: Service):
+async def edit_memory(
+    memory_id: UUID, request: MemoryEdit, service: Service
+) -> MemoryView:
+    """Replace a memory only at the revision the caller reviewed."""
     try:
         return await service.save(
-            request, request.text, str(memory_id), revision=request.revision
+            MemoryWrite(
+                scope=request,
+                text=request.text,
+                memory_id=str(memory_id),
+                revision=request.revision,
+            )
         )
     except LookupError as error:
         raise HTTPException(404, str(error)) from error
@@ -66,7 +77,10 @@ async def edit_memory(memory_id: UUID, request: MemoryEdit, service: Service):
 
 
 @router.delete("/{memory_id}", status_code=204)
-async def forget_memory(memory_id: UUID, request: MemoryMutation, service: Service):
+async def forget_memory(
+    memory_id: UUID, request: MemoryMutation, service: Service
+) -> Response:
+    """Forget a memory at the given revision while retaining its retry tombstone."""
     try:
         await service.forget(request, str(memory_id), revision=request.revision)
     except LookupError as error:

@@ -14,6 +14,10 @@ import {
   parseWorkflowReview,
   workflowReviewResponseSchema,
 } from "../../../../shared/workflow-review.js";
+import {
+  interactionResponse,
+  parseAgentInteraction,
+} from "../../../../shared/agent-interaction.js";
 
 function workflowCallId(interrupt: Interrupt): string | null {
   const metadata: unknown = interrupt.metadata?.langgraph;
@@ -65,6 +69,7 @@ async function reviewOutputsPersisted(
   });
 }
 
+/** Validate responses against the current pause while admission holds its lock. */
 export async function validateReview(
   input: RunAgentInput,
   run: RunRow | null,
@@ -77,10 +82,12 @@ export async function validateReview(
   const allowsPartial = interrupts.some(
     (interrupt) =>
       parseWorkflowReview(interrupt) !== null ||
+      parseAgentInteraction(interrupt) !== null ||
       parseExternalWait(interrupt) !== null,
   );
   const userInterrupts = interrupts.filter(
-    (interrupt) => !parseExternalWait(interrupt),
+    (interrupt) =>
+      !parseExternalWait(interrupt) && !parseAgentInteraction(interrupt),
   );
   const invalidReviewShape =
     run?.status !== "interrupted" ||
@@ -108,12 +115,30 @@ export async function validateReview(
 
   // Admission holds the conversation lock while checking the published review outputs.
   if (
+    userInterrupts.length > 0 &&
     !(await reviewOutputsPersisted(input.threadId, userInterrupts, database))
   ) {
     throw new SubmissionError("Review is no longer current", 409);
   }
 
   for (const interrupt of interrupts) {
+    const interaction = parseAgentInteraction(interrupt);
+    const submittedEntry = submitted.find(
+      (item) => item.interruptId === interrupt.id,
+    );
+
+    if (interaction && submittedEntry) {
+      // Validate against the checkpoint request while admission still holds its lock.
+      if (
+        submittedEntry.status !== "resolved" ||
+        !interactionResponse(interaction, submittedEntry.payload)
+      ) {
+        throw new SubmissionError("Invalid agent interaction response", 400);
+      }
+
+      continue;
+    }
+
     const review = parseWorkflowReview(interrupt);
 
     if (!review) {
@@ -151,6 +176,7 @@ export async function validateReview(
   }
 }
 
+/** Derive the public user message for a conversational workflow reply. */
 export function workflowFeedbackMessage(input: RunAgentInput) {
   const messages = (input.resume ?? []).flatMap((entry) => {
     const parsed = workflowReviewResponseSchema.safeParse(entry.payload);
@@ -173,12 +199,20 @@ export function workflowFeedbackMessage(input: RunAgentInput) {
   return messages[0] ?? null;
 }
 
-export async function validateExternalContinuation(
-  input: RunAgentInput,
-  run: RunRow | null,
-  database: Pick<typeof db, "select">,
-  taskId: string,
-) {
+interface ExternalContinuationValidation {
+  input: RunAgentInput;
+  run: RunRow | null;
+  database: Pick<typeof db, "select">;
+  taskId: string;
+}
+
+/** Bind a continuation to the persisted terminal result and its checkpoint interrupt. */
+export async function validateExternalContinuation({
+  input,
+  run,
+  database,
+  taskId,
+}: ExternalContinuationValidation): Promise<void> {
   const entry = input.resume?.[0];
   const wait = run?.interrupts
     .map(parseExternalWait)
@@ -188,7 +222,11 @@ export async function validateExternalContinuation(
     .from(externalTasks)
     .where(eq(externalTasks.taskId, taskId));
   const expected = task
-    ? { ...task.update, kind: "external_task_result", taskId }
+    ? {
+        ...task.update,
+        kind: "external_task_result",
+        taskId,
+      }
     : null;
 
   if (

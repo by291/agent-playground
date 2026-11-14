@@ -64,7 +64,11 @@ test("scrolling through restored long replies and code keeps the conversation he
   await viewport.hover();
 
   // Exercise wheel scrolling at the bottom, middle and top, rather than every pixel.
-  for (const fraction of [1, 0.5, 0]) {
+  for (const fraction of /* prettier-ignore */ [
+    1,
+    0.5,
+    0,
+  ]) {
     await viewport.evaluate((element, fraction) => {
       element.scrollTop =
         (element.scrollHeight - element.clientHeight) * fraction;

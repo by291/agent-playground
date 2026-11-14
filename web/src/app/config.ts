@@ -5,6 +5,7 @@ const environmentSchema = z.object({
   VITE_OBSERVABILITY_ENABLED: z.enum(["true", "false"]).default("false"),
 });
 
+/** Validates build environment values before application startup. */
 export function readAppConfig(environment: unknown) {
   const value = environmentSchema.parse(environment ?? {});
 

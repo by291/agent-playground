@@ -1,11 +1,41 @@
 import type { ContentPart, Message, RunAgentInput } from "@ag-ui/client";
-import { imageMimeType, validateImage } from "./image-processing.js";
 import { uploadedFileReferences } from "../../../../shared/uploaded-files.js";
 import { SubmissionError } from "../errors.js";
+import { imageMimeType, validateImage } from "./image-processing.js";
 import { readSkillFile } from "./skill-files.js";
 
 const maxImageBatchBytes = 32 * 1024 * 1024;
+const maxFileReferences = 4;
+const imageExtension = /\.(jpe?g|png|gif|webp|svg|bmp|avif|heic|heif|tiff?)$/i;
 
+async function readAttachment(
+  threadId: string,
+  reference: { id: string; name: string },
+) {
+  // This read verifies publication, conversation ownership and the stored digest.
+  const file = await readSkillFile(threadId, reference.id);
+
+  if (file.name !== reference.name) {
+    throw new SubmissionError(
+      "Attachment name does not match the stored file",
+      400,
+    );
+  }
+
+  const mimeType = imageMimeType(file.bytes);
+  const isInvalidImage = !mimeType && imageExtension.test(file.name);
+
+  if (isInvalidImage) {
+    throw new SubmissionError(
+      "Attach a valid JPEG, PNG, GIF or WebP image",
+      400,
+    );
+  }
+
+  return { bytes: file.bytes, mimeType };
+}
+
+/** Inlines verified image attachments in the latest user message sent to the model. */
 export async function prepareImageInput(
   input: RunAgentInput,
   userMessage: Message,
@@ -20,39 +50,17 @@ export async function prepareImageInput(
     return input;
   }
 
-  if (references.length > 4) {
+  if (references.length > maxFileReferences) {
     throw new SubmissionError("Use at most four uploaded files", 400);
   }
 
   const files = await Promise.all(
-    references.map(async (reference) => {
-      // This read verifies publication, conversation ownership and the stored digest.
-      const file = await readSkillFile(input.threadId, reference.id);
-
-      if (file.name !== reference.name) {
-        throw new SubmissionError(
-          "Attachment name does not match the stored file",
-          400,
-        );
-      }
-
-      const mimeType = imageMimeType(file.data);
-      const invalidImageFile =
-        !mimeType &&
-        /\.(jpe?g|png|gif|webp|svg|bmp|avif|heic|heif|tiff?)$/i.test(file.name);
-
-      if (invalidImageFile) {
-        throw new SubmissionError(
-          "Attach a valid JPEG, PNG, GIF or WebP image",
-          400,
-        );
-      }
-
-      return { ...file, mimeType };
-    }),
+    references.map((reference) => readAttachment(input.threadId, reference)),
   );
-
-  const images = files.filter((file) => file.mimeType !== null);
+  const images = files.filter(
+    (file): file is { bytes: Buffer; mimeType: string } =>
+      file.mimeType !== null,
+  );
 
   if (!images.length) {
     return input;
@@ -65,7 +73,7 @@ export async function prepareImageInput(
     );
   }
 
-  const totalBytes = images.reduce((size, file) => size + file.data.length, 0);
+  const totalBytes = images.reduce((size, file) => size + file.bytes.length, 0);
 
   if (totalBytes > maxImageBatchBytes) {
     throw new SubmissionError(
@@ -76,7 +84,7 @@ export async function prepareImageInput(
 
   // Decode one image at a time to bound concurrent pixel-processing memory.
   for (const file of images) {
-    await validateImage(file.data);
+    await validateImage(file.bytes);
   }
 
   // Keep references in the admission/archive and inline bytes only in model input.
@@ -87,8 +95,8 @@ export async function prepareImageInput(
       type: "image",
       source: {
         type: "data",
-        mimeType: file.mimeType!,
-        value: file.data.toString("base64"),
+        mimeType: file.mimeType,
+        value: file.bytes.toString("base64"),
       },
     })),
   ];

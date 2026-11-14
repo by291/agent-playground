@@ -12,8 +12,12 @@ from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph_sdk.runtime import ServerRuntime
 
-from agent_playground.graph import make_graph
-from agent_playground.models.catalog import create_chat_model, model_configuration
+from agent_playground.graph import AgentGraphOptions, make_graph
+from agent_playground.models.catalog import (
+    ChatModelRequest,
+    create_chat_model,
+    model_configuration,
+)
 from agent_playground.workflows.sql.agent import make_revision_agent
 from agent_playground.workflows.sql.models import SqlState
 from tests.model_config import ModelConfigFile
@@ -25,7 +29,9 @@ def test_graph_factory_uses_the_run_model_instead_of_the_current_default(
 ):
     graph_module = importlib.import_module("agent_playground.graph")
     selections: list[str | None] = []
-    compiled = make_graph(model=RecordingModel(responses=[AIMessage(content="Ready.")]))
+    compiled = make_graph(
+        AgentGraphOptions(model=RecordingModel(responses=[AIMessage(content="Ready.")]))
+    )
 
     async def selected_graph(model_id: str | None = None):
         selections.append(model_id)
@@ -56,8 +62,8 @@ def test_a_new_model_uses_its_own_context_budget_with_the_same_checkpoint(
     next_model = RecordingModel(responses=[AIMessage(content="Still Cedar.")])
     models = {"deepseek": first_model, "qwen": next_model}
 
-    def selected_model(model_id: str | None = None, *, summary: bool = False):
-        return models[model_id or "deepseek"]
+    def selected_model(request: ChatModelRequest):
+        return models[request.model_id or "deepseek"]
 
     monkeypatch.setattr(
         "agent_playground.models.catalog.create_chat_model", selected_model
@@ -68,11 +74,11 @@ def test_a_new_model_uses_its_own_context_budget_with_the_same_checkpoint(
     )
     saver = InMemorySaver()
     config: Any = {"configurable": {"thread_id": "model-switch"}}
-    first = make_graph(model_id="deepseek", checkpointer=saver)
+    first = make_graph(AgentGraphOptions(model_id="deepseek", checkpointer=saver))
     first.invoke(
         {"messages": [HumanMessage(content="Remember project Cedar.")]}, config
     )
-    second = make_graph(model_id="qwen", checkpointer=saver)
+    second = make_graph(AgentGraphOptions(model_id="qwen", checkpointer=saver))
     result = second.invoke(
         {"messages": [HumanMessage(content="What project?")]}, config
     )
@@ -134,7 +140,7 @@ def test_qwen_uses_chat_completions_with_tools_and_stream_usage(
         )
 
     monkeypatch.setattr(httpx.Client, "send", send)
-    model = create_chat_model("qwen")
+    model = create_chat_model(ChatModelRequest(model_id="qwen"))
     response = model.bind_tools(
         [
             {
@@ -166,7 +172,7 @@ def test_unknown_or_unconfigured_models_never_fall_back(
         model_configuration("https://arbitrary-provider.example")
 
     with pytest.raises(ValueError, match="not configured"):
-        create_chat_model("qwen")
+        create_chat_model(ChatModelRequest(model_id="qwen"))
 
 
 def test_qwen_streams_content_and_reports_usage(
@@ -223,7 +229,7 @@ def test_qwen_streams_content_and_reports_usage(
         )
 
     monkeypatch.setattr(httpx.Client, "send", send)
-    chunks = list(create_chat_model("qwen").stream("Hello"))
+    chunks = list(create_chat_model(ChatModelRequest(model_id="qwen")).stream("Hello"))
     payload = json.loads(requests[0].content)
 
     assert payload["stream_options"] == {"include_usage": True}
@@ -279,7 +285,7 @@ def test_sql_revision_disables_thinking_without_mutating_the_main_model(
         )
 
     monkeypatch.setattr(httpx.AsyncClient, "send", send)
-    main_model = create_chat_model(model_id)
+    main_model = create_chat_model(ChatModelRequest(model_id=model_id))
     revise = make_revision_agent(main_model)
 
     async def revision():

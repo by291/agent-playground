@@ -27,6 +27,7 @@ class DatabaseSettings(SettingsModel):
     @field_validator("aegra_url", "application_url")
     @classmethod
     def postgres_url(cls, value: SecretStr) -> SecretStr:
+        """Validate a PostgreSQL URL without exposing its credential."""
         validate_url(value.get_secret_value(), ("postgres", "postgresql"))
 
         return value
@@ -39,6 +40,7 @@ class RedisSettings(SettingsModel):
     @field_validator("url")
     @classmethod
     def redis_url(cls, value: SecretStr) -> SecretStr:
+        """Validate the shared Redis address without exposing its credential."""
         validate_url(value.get_secret_value(), ("redis", "rediss"))
 
         return value
@@ -51,6 +53,7 @@ class WorkflowSettings(SettingsModel):
     @field_validator("app_api_url")
     @classmethod
     def callback_url(cls, value: str) -> str:
+        """Normalize the server base URL used for workflow callbacks."""
         return validate_url(value, ("http", "https"))
 
 
@@ -61,6 +64,7 @@ class ServiceSettings(SettingsModel):
     @field_validator("sql_demo_url", "report_demo_url")
     @classmethod
     def service_url(cls, value: str) -> str:
+        """Normalize an HTTP address for a demonstration service."""
         return validate_url(value, ("http", "https"))
 
 
@@ -73,6 +77,7 @@ class A2aSettings(SettingsModel):
     @field_validator("planner_url", "reviewer_url", "demo_api_url")
     @classmethod
     def agent_url(cls, value: str) -> str:
+        """Normalize an HTTP address for an A2A service."""
         return validate_url(value, ("http", "https"))
 
 
@@ -90,17 +95,26 @@ class SkillSettings(SettingsModel):
     @field_validator("sandbox_url")
     @classmethod
     def sandbox_address(cls, value: str) -> str:
+        """Normalize the OpenSandbox service address."""
         return validate_url(value, ("http", "https"))
 
     @field_validator("allowed_hosts")
     @classmethod
     def host_names(cls, values: list[str]) -> list[str]:
+        """Require egress allowlist entries to be host names or patterns."""
         if any(not value.strip() or "://" in value or "/" in value for value in values):
             raise ValueError(
                 "Use nonempty host names or host patterns without a URL scheme"
             )
 
         return values
+
+
+class ApprovalSettings(SettingsModel):
+    """Select per-operation approval gates without granting persistent permissions."""
+
+    mode: Literal["side_effects", "all", "configured"] = "side_effects"
+    tools: dict[str, bool] = Field(default_factory=dict)
 
 
 class ObservabilitySettings(SettingsModel):
@@ -121,6 +135,7 @@ class ObservabilitySettings(SettingsModel):
     @field_validator("otlp_endpoint", "langfuse_base_url", "phoenix_endpoint")
     @classmethod
     def collector_url(cls, value: str | None) -> str | None:
+        """Normalize an optional HTTP telemetry collector address."""
         if value is None:
             return None
 
@@ -135,6 +150,7 @@ class AgentConfig(SettingsModel):
     services: ServiceSettings = Field(default_factory=ServiceSettings)
     a2a: A2aSettings = Field(default_factory=A2aSettings)
     skills: SkillSettings = Field(default_factory=SkillSettings)
+    approvals: ApprovalSettings = Field(default_factory=ApprovalSettings)
     observability: ObservabilitySettings = Field(default_factory=ObservabilitySettings)
 
 
@@ -147,8 +163,10 @@ def load_agent_config() -> AgentConfig:
 
 
 def app_api_url() -> str:
+    """Return the application server URL used by agent callbacks."""
     return load_agent_config().workflow.app_api_url
 
 
 def workflow_api_token() -> str:
+    """Read the private agent-to-server credential."""
     return load_agent_config().workflow.api_token.get_secret_value()

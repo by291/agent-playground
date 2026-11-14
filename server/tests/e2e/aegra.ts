@@ -15,6 +15,22 @@ import {
   type WorkflowReview,
 } from "../../../shared/workflow-review.js";
 import type { WorkflowOutputMetadata } from "../../../shared/workflow-output.js";
+import {
+  parseAgentInteraction,
+  interactionResponse,
+  type AgentInteraction,
+} from "../../../shared/agent-interaction.js";
+
+const FIRST_TOOL_CALL_INDEX = 0;
+const EXPERIMENT_REVIEW_STEP = 3;
+const EXPERIMENT_REVIEWED_STEP = 4;
+const LONG_REPLY_PARAGRAPH_COUNT = 8;
+// prettier-ignore
+const EXTERNAL_TASK_STATUSES = [
+  "succeeded",
+  "failed",
+  "cancelled",
+] as const;
 
 const resumeSchema = z.object({
   decision: z.literal("approve"),
@@ -63,6 +79,10 @@ interface Thread {
           workflowCallId: string;
         }
       | Omit<WorkflowReview, "interruptId">
+      | (Omit<AgentInteraction, "interruptId"> & {
+          kind?: never;
+          workflowCallId?: never;
+        })
       | {
           kind: string;
           workflowCallId: string;
@@ -79,10 +99,22 @@ interface Thread {
   release?: () => void;
   sql?: ControlledSqlWorkflow;
   externalWorkflow?: "report" | "a2a";
+  interactionCall?: { callId: string; name: string };
+  shouldHoldInteractionReply?: boolean;
+  shouldRequestFollowupApproval?: boolean;
 }
 
-// Only the Aegra HTTP boundary is controlled. The browser, adapter, server and
-// PostgreSQL use the real application code and do not intercept frontend traffic.
+interface PublishCardOptions {
+  threadId: string;
+  runId: string;
+  callId: string;
+  stage: "review" | "reviewed";
+  title: string;
+  steps: string[];
+  presentation?: WorkflowOutputMetadata["presentation"];
+}
+
+/** Simulates the Aegra HTTP boundary for the real browser, server and database. */
 export function controlledAegra(database: typeof db) {
   const api = new Hono();
   const threads = new Map<string, Thread>();
@@ -98,7 +130,12 @@ export function controlledAegra(database: typeof db) {
           model: "test-model",
           available: true,
         },
-        { id: "qwen", label: "Qwen", model: "test-qwen", available: true },
+        {
+          id: "qwen",
+          label: "Qwen",
+          model: "test-qwen",
+          available: true,
+        },
       ],
     }),
   );
@@ -107,7 +144,11 @@ export function controlledAegra(database: typeof db) {
     let thread = threads.get(id);
 
     if (!thread) {
-      thread = { messages: [], review: null, runs: [] };
+      thread = {
+        messages: [],
+        review: null,
+        runs: [],
+      };
       threads.set(id, thread);
     }
 
@@ -120,7 +161,13 @@ export function controlledAegra(database: typeof db) {
     return {
       values: { messages: thread.messages },
       tasks: thread.review
-        ? [{ id: "review-task", name: "tools", interrupts: [thread.review] }]
+        ? [
+            {
+              id: "review-task",
+              name: "tools",
+              interrupts: [thread.review],
+            },
+          ]
         : [],
       next: thread.review ? ["tools"] : [],
       checkpoint: {
@@ -134,17 +181,14 @@ export function controlledAegra(database: typeof db) {
     };
   }
 
-  async function publishCard(
-    threadId: string,
-    runId: string,
-    callId: string,
-    stage: "review" | "reviewed",
-    title: string,
-    steps: string[],
-    presentation?: WorkflowOutputMetadata["presentation"],
-  ) {
+  async function publishCard(options: PublishCardOptions) {
+    const { threadId, runId, callId, stage, title, steps, presentation } =
+      options;
     const surfaceId =
       presentation?.surfaceId ?? `experiment-${callId}-${stage}`;
+    const stepSequence =
+      stage === "review" ? EXPERIMENT_REVIEW_STEP : EXPERIMENT_REVIEWED_STEP;
+
     const payload = {
       ...(presentation ? { workflow: { presentation } } : {}),
       messages: [
@@ -182,18 +226,23 @@ export function controlledAegra(database: typeof db) {
         },
       ],
     };
-    const id = randomUUID();
-    const outputSeq = await database.transaction(async (tx) => {
-      const result = await tx.execute<{ output_seq: string }>(sql`
-        UPDATE conversations SET next_output_seq = next_output_seq + 1
-        WHERE thread_id = ${threadId} RETURNING next_output_seq - 1 AS output_seq
-      `);
-      const sequence = Number(result.rows[0]!.output_seq);
 
-      await tx.execute(sql`
+    const id = randomUUID();
+    const outputSeq = await database.transaction(async (transaction) => {
+      // Allocate the sequence with its insert so the fixture commits a complete output.
+      const output = await transaction.execute<{ output_seq: string }>(sql`
+        UPDATE conversations SET next_output_seq = next_output_seq + 1
+        WHERE thread_id = ${threadId}
+        RETURNING next_output_seq - 1 AS output_seq
+      `);
+      const sequence = Number(output.rows[0]!.output_seq);
+
+      await transaction.execute(sql`
         INSERT INTO workflow_outputs
-          (id, thread_id, agui_run_id, workflow_call_id, step_id, step_seq, output_seq, kind, version, payload)
-        VALUES (${id}, ${threadId}, ${runId}, ${callId}, ${stage}, ${stage === "review" ? 3 : 4}, ${sequence}, 'a2ui', 1, ${JSON.stringify(payload)}::jsonb)
+          (id, thread_id, agui_run_id, workflow_call_id, step_id, step_seq,
+           output_seq, kind, version, payload)
+        VALUES (${id}, ${threadId}, ${runId}, ${callId}, ${stage}, ${stepSequence},
+                ${sequence}, 'a2ui', 1, ${JSON.stringify(payload)}::jsonb)
       `);
 
       return sequence;
@@ -210,7 +259,13 @@ export function controlledAegra(database: typeof db) {
   }
 
   api.post("/assistants/search", (context) =>
-    context.json([{ assistant_id: "agent", graph_id: "agent", config: {} }]),
+    context.json([
+      {
+        assistant_id: "agent",
+        graph_id: "agent",
+        config: {},
+      },
+    ]),
   );
   api.get("/assistants/agent/schemas", (context) => context.json({}));
   api.get("/assistants/agent/graph", (context) =>
@@ -249,7 +304,7 @@ export function controlledAegra(database: typeof db) {
       .object({
         kind: z.literal("external_task_result"),
         taskId: z.string(),
-        status: z.enum(["succeeded", "failed", "cancelled"]),
+        status: z.enum(EXTERNAL_TASK_STATUSES),
         result: z.record(z.unknown()).optional(),
         error: z.string().optional(),
       })
@@ -308,20 +363,22 @@ export function controlledAegra(database: typeof db) {
       role: "assistant",
       content: replies[workflow][result.status],
     });
-    await publishCard(
+    await publishCard({
       threadId,
-      input.metadata.agui_run_id,
-      wait.value.workflowCallId,
-      "reviewed",
-      workflow === "a2a" ? titles[result.status] : "Generated report",
-      lines,
-      workflow === "a2a"
+      runId: input.metadata.agui_run_id,
+      callId: wait.value.workflowCallId,
+      stage: "reviewed",
+      title: workflow === "a2a" ? titles[result.status] : "Generated report",
+      steps: lines,
+      ...(workflow === "a2a"
         ? {
-            surfaceId: `a2a-${wait.value.workflowCallId}-result`,
-            groupId: wait.value.workflowCallId,
+            presentation: {
+              surfaceId: `a2a-${wait.value.workflowCallId}-result`,
+              groupId: wait.value.workflowCallId,
+            },
           }
-        : undefined,
-    );
+        : {}),
+    });
     thread.review = null;
     delete thread.externalWorkflow;
 
@@ -341,15 +398,20 @@ export function controlledAegra(database: typeof db) {
     thread.runs.push(run);
 
     return streamSSE(context, async (stream) => {
-      async function event(event: string, data: unknown) {
-        await stream.writeSSE({ event, data: JSON.stringify(data) });
+      async function event(eventName: string, payload: unknown) {
+        await stream.writeSSE({
+          event: eventName,
+          data: JSON.stringify(payload),
+        });
       }
 
       async function modelChunk(
         messageId: string,
         content: string,
-        toolCallChunks?: object[],
-        additionalKwargs?: Record<string, unknown>,
+        options: {
+          toolCallChunks?: object[];
+          additionalKwargs?: Record<string, unknown>;
+        } = {},
       ) {
         await event("events", {
           event: LangGraphEventTypes.OnChatModelStream,
@@ -359,8 +421,8 @@ export function controlledAegra(database: typeof db) {
               id: messageId,
               content,
               response_metadata: {},
-              additional_kwargs: additionalKwargs ?? {},
-              tool_call_chunks: toolCallChunks ?? [],
+              additional_kwargs: options.additionalKwargs ?? {},
+              tool_call_chunks: options.toolCallChunks ?? [],
             },
           },
         });
@@ -374,29 +436,41 @@ export function controlledAegra(database: typeof db) {
         });
       }
 
-      async function toolResult(message: LangGraphPlatformMessage) {
+      async function toolResult(
+        message: LangGraphPlatformMessage,
+        toolName?: string,
+      ) {
+        // The CSV tool returns its own ToolMessage without a name or ID; the
+        // graph reducer supplies the canonical archived identity afterward.
+        const output =
+          toolName === "run_skill_script"
+            ? {
+                ...message,
+                name: null,
+                id: null,
+              }
+            : message;
+
         await event("events", {
           event: LangGraphEventTypes.OnToolEnd,
+          name: toolName ?? message.name,
           metadata: { langgraph_node: "tools" },
-          data: { input: {}, output: message },
+          data: { input: {}, output },
         });
       }
 
-      async function reply(text: string, held = false) {
+      async function reply(text: string, heldPrefix?: string) {
         const messageId = randomUUID();
 
-        if (held) {
+        if (heldPrefix !== undefined) {
           const released = new Promise<void>((resolve) => {
             thread.release = resolve;
           });
 
-          await modelChunk(messageId, "Here is a C example.\n\n");
+          await modelChunk(messageId, heldPrefix);
           await released;
           delete thread.release;
-          await modelChunk(
-            messageId,
-            text.slice("Here is a C example.\n\n".length),
-          );
+          await modelChunk(messageId, text.slice(heldPrefix.length));
         } else {
           await modelChunk(messageId, text);
         }
@@ -410,9 +484,174 @@ export function controlledAegra(database: typeof db) {
         });
       }
 
+      async function submitToolCall(
+        name: string,
+        args: Record<string, unknown>,
+      ): Promise<string> {
+        const callId = randomUUID();
+        const messageId = randomUUID();
+
+        await modelChunk(messageId, "", {
+          toolCallChunks: [
+            {
+              id: callId,
+              name,
+              args: "",
+              index: FIRST_TOOL_CALL_INDEX,
+            },
+          ],
+        });
+        await modelChunk(messageId, "", {
+          toolCallChunks: [
+            { args: JSON.stringify(args), index: FIRST_TOOL_CALL_INDEX },
+          ],
+        });
+        await endModel();
+
+        thread.messages.push({
+          id: messageId,
+          type: "ai",
+          role: "assistant",
+          content: "",
+          tool_calls: [
+            {
+              id: callId,
+              name,
+              args,
+            },
+          ],
+        });
+
+        return callId;
+      }
+
+      async function requestInteraction(
+        name: string,
+        args: Record<string, unknown>,
+      ) {
+        const callId = await submitToolCall(name, args);
+
+        thread.interactionCall = { callId, name };
+        thread.review = {
+          id: randomUUID(),
+          value: {
+            action_requests: [
+              {
+                name,
+                args,
+                description: "Export the report using the published script.",
+              },
+            ],
+            review_configs: [
+              {
+                action_name: name,
+                allowed_decisions:
+                  name === "ask_user"
+                    ? ["respond", "reject"]
+                    : ["approve", "reject"],
+              },
+            ],
+          },
+        };
+      }
+
       await event("metadata", { run_id: run.run_id, thread_id: threadId });
 
-      if (input.command && thread.sql) {
+      if (input.command && thread.interactionCall && thread.review) {
+        const interaction = parseAgentInteraction({
+          id: thread.review.id,
+          metadata: { langgraph: { raw: thread.review.value } },
+        })!;
+        const wrapped = z.record(z.unknown()).parse(input.command.resume);
+        const response = interactionResponse(
+          interaction,
+          wrapped[interaction.interruptId] ?? wrapped,
+        );
+
+        if (!response) {
+          throw new Error("Invalid native HITL fixture response");
+        }
+
+        const decisions = z
+          .object({
+            decisions: z.array(
+              z.object({ type: z.string(), message: z.string().optional() }),
+            ),
+          })
+          .parse(response.payload).decisions;
+        const decision = decisions[0]!;
+        const { callId, name } = thread.interactionCall;
+        let content = decision.message ?? "Report exported";
+
+        if (decision.type === "reject") {
+          // Match LangChain's error ToolMessage so clients can distinguish a
+          // skipped question from execution failure without displaying diagnostics.
+          content = decision.message
+            ? `User rejected the tool call for \`${name}\` with reason: ${decision.message}`
+            : `User rejected the tool call for \`${name}\` with id ${callId}. The tool was not executed. Do not retry this tool call unless the user explicitly requests it.`;
+        }
+
+        const result = {
+          id: randomUUID(),
+          type: "tool" as const,
+          role: "tool",
+          name,
+          tool_call_id: callId,
+          content,
+          status: decision.type === "reject" ? "error" : "success",
+        };
+
+        thread.review = null;
+        delete thread.interactionCall;
+        thread.messages.push(result);
+
+        if (decision.type === "respond" || decision.type === "reject") {
+          // Native HITL decisions bypass tool execution and return from this
+          // middleware node before the next model starts.
+          await event("events", {
+            event: LangGraphEventTypes.OnChainEnd,
+            name: "InteractionMiddleware.after_model",
+            metadata: { langgraph_node: "InteractionMiddleware.after_model" },
+            data: { output: { messages: [result] } },
+          });
+        } else {
+          await toolResult(result, name);
+        }
+
+        if (
+          name === "ask_user" &&
+          decision.type === "respond" &&
+          thread.shouldHoldInteractionReply
+        ) {
+          delete thread.shouldHoldInteractionReply;
+          await reply(
+            "I received your report preferences. The report is ready.",
+            "I received your report preferences.",
+          );
+        } else if (name === "ask_user" && decision.type === "respond") {
+          await requestInteraction("run_skill_script", {
+            skill_name: "reports",
+            script_path: "scripts/export.py",
+            arguments: ["--audience", "engineering"],
+          });
+        } else if (
+          name === "run_skill_script" &&
+          decision.type === "approve" &&
+          thread.shouldRequestFollowupApproval
+        ) {
+          delete thread.shouldRequestFollowupApproval;
+          await requestInteraction("remember_memory", {
+            text: "Reports are intended for engineering.",
+            category: "preference",
+          });
+        } else {
+          await reply(
+            decision.type === "reject"
+              ? "Report export was not run."
+              : "Report export completed.",
+          );
+        }
+      } else if (input.command && thread.sql) {
         const currentReview = thread.sql.review;
         const wrapped = z.record(z.unknown()).parse(input.command.resume);
         const response = workflowReviewResponseSchema.parse(
@@ -468,14 +707,14 @@ export function controlledAegra(database: typeof db) {
 
         thread.messages.push(result);
         await toolResult(result);
-        const card = await publishCard(
+        const card = await publishCard({
           threadId,
-          input.metadata.agui_run_id,
+          runId: input.metadata.agui_run_id,
           callId,
-          "reviewed",
+          stage: "reviewed",
           title,
           steps,
-        );
+        });
 
         await event("events", {
           event: LangGraphEventTypes.OnCustomEvent,
@@ -524,7 +763,7 @@ export function controlledAegra(database: typeof db) {
 
           await reply("The uploaded PNG pixel data reached the model.");
         } else if (prompt === "Is the previous image still available?") {
-          const previousImage = thread.messages.some(
+          const hasPreviousImage = thread.messages.some(
             (message) =>
               message.type === "human" &&
               Array.isArray(message.content) &&
@@ -537,11 +776,100 @@ export function controlledAegra(database: typeof db) {
               ),
           );
 
-          if (!previousImage) {
+          if (!hasPreviousImage) {
             throw new Error("Fixture lost the image from checkpoint history");
           }
 
           await reply("The previous image is still in model history.");
+        } else if (
+          prompt === "Prepare a report with user input and approval." ||
+          prompt ===
+            "Prepare a report with user input and consecutive approvals." ||
+          prompt === "Ask for report preferences and keep the response open."
+        ) {
+          thread.shouldHoldInteractionReply =
+            prompt === "Ask for report preferences and keep the response open.";
+          thread.shouldRequestFollowupApproval =
+            prompt ===
+            "Prepare a report with user input and consecutive approvals.";
+          await requestInteraction("ask_user", {
+            questions: [
+              {
+                id: "audience",
+                question: "Who will read this report?",
+                options: [
+                  {
+                    label: "Engineering",
+                    description: "Include technical details and evidence.",
+                  },
+                  {
+                    label: "Leadership",
+                    description: "Focus on outcomes and decisions.",
+                  },
+                ],
+              },
+              { id: "deadline", question: "When do you need the report?" },
+            ],
+          });
+        } else if (prompt === "Investigate a reliability regression.") {
+          async function updatePlan(
+            todos: {
+              content: string;
+              status: "pending" | "in_progress" | "completed";
+            }[],
+          ) {
+            const args = { todos };
+            const callId = await submitToolCall("write_todos", args);
+
+            const result = {
+              id: randomUUID(),
+              type: "tool" as const,
+              role: "tool",
+              name: "write_todos",
+              tool_call_id: callId,
+              content: `Updated todo list to ${JSON.stringify(todos)}`,
+            };
+
+            // Official planning tools return Command updates rather than a bare result.
+            await event("events", {
+              event: LangGraphEventTypes.OnToolEnd,
+              name: "write_todos",
+              metadata: { langgraph_node: "tools" },
+              data: {
+                input: args,
+                output: { update: { todos, messages: [result] } },
+              },
+            });
+            thread.messages.push(result);
+          }
+
+          const released = new Promise<void>((resolve) => {
+            thread.release = resolve;
+          });
+
+          await updatePlan([
+            { content: "Compare failure rates", status: "in_progress" },
+            { content: "Summarize the evidence", status: "pending" },
+          ]);
+          await released;
+          delete thread.release;
+          await updatePlan([
+            {
+              content: "Compare failure rates",
+              status: "completed",
+            },
+            {
+              content: "Check deployment changes",
+              status: "completed",
+            },
+            {
+              content: "Summarize the evidence",
+              status: "completed",
+            },
+          ]);
+          await reply(
+            "The deployment change explains the increased failure rate.",
+          );
         } else if (prompt === "Compare approaches with reasoning.") {
           const messageId = randomUUID();
           const reasoning =
@@ -550,11 +878,15 @@ export function controlledAegra(database: typeof db) {
             thread.release = resolve;
           });
 
-          await modelChunk(messageId, "", undefined, {
-            reasoning_content: "First, compare the constraints. ",
+          await modelChunk(messageId, "", {
+            additionalKwargs: {
+              reasoning_content: "First, compare the constraints. ",
+            },
           });
-          await modelChunk(messageId, "", undefined, {
-            reasoning_content: "Then check the tradeoffs.",
+          await modelChunk(messageId, "", {
+            additionalKwargs: {
+              reasoning_content: "Then check the tradeoffs.",
+            },
           });
           await thoughtReleased;
           delete thread.release;
@@ -577,60 +909,47 @@ export function controlledAegra(database: typeof db) {
         } else if (prompt.startsWith("Stream a code sample.")) {
           await reply(
             "Here is a C example.\n\n```c\nint main(void) {\n  return 0;\n}\n```",
-            true,
+            "Here is a C example.\n\n",
           );
         } else if (prompt === "Write a long reply.") {
           const paragraphs = Array.from(
-            { length: 8 },
+            { length: LONG_REPLY_PARAGRAPH_COUNT },
             (_, index) =>
               `Paragraph ${index + 1}: This reply contains enough text to exercise the message viewport as more content appears.`,
           );
 
           await reply([...paragraphs, "End of the long reply."].join("\n\n"));
         } else {
-          const workflow = prompt.includes("run_experiment_workflow");
-          const sqlWorkflow =
+          const isExperimentWorkflow = prompt.includes(
+            "run_experiment_workflow",
+          );
+          const isSqlWorkflow =
             prompt.includes("run_sql_workflow") ||
             prompt.includes("SQL review workflow");
-          const reportWorkflow = prompt.includes("report workflow");
-          const a2aWorkflow = prompt.includes("run_a2a_workflow");
-          const memoryTool = prompt === "Remember a durable preference.";
+          const isReportWorkflow = prompt.includes("report workflow");
+          const isA2aWorkflow = prompt.includes("run_a2a_workflow");
+          const isMemoryTool = prompt === "Remember a durable preference.";
+
           let name = "get_current_time";
 
-          if (memoryTool) {
+          if (isMemoryTool) {
             name = "remember_memory";
-          } else if (a2aWorkflow) {
+          } else if (isA2aWorkflow) {
             name = "run_a2a_workflow";
-          } else if (reportWorkflow) {
+          } else if (isReportWorkflow) {
             name = "run_report_workflow";
-          } else if (workflow) {
+          } else if (isExperimentWorkflow) {
             name = "run_experiment_workflow";
-          } else if (sqlWorkflow) {
+          } else if (isSqlWorkflow) {
             name = "run_sql_workflow";
           }
 
-          const callId = randomUUID();
-          const messageId = randomUUID();
-          const args = memoryTool
+          const args = isMemoryTool
             ? { text: "Prefer concise answers.", category: "preference" }
             : {};
+          const callId = await submitToolCall(name, args);
 
-          await modelChunk(messageId, "", [
-            { id: callId, name, args: "", index: 0 },
-          ]);
-          await modelChunk(messageId, "", [
-            { args: JSON.stringify(args), index: 0 },
-          ]);
-          await endModel();
-          thread.messages.push({
-            id: messageId,
-            type: "ai",
-            role: "assistant",
-            content: "",
-            tool_calls: [{ id: callId, name, args }],
-          });
-
-          if (reportWorkflow || a2aWorkflow) {
+          if (isReportWorkflow || isA2aWorkflow) {
             const { registerExternalTask } =
               await import("../../src/conversation/tasks/task-store.js");
             const taskId = randomUUID();
@@ -640,10 +959,10 @@ export function controlledAegra(database: typeof db) {
               threadId,
               runId: input.metadata.agui_run_id,
               workflowCallId: callId,
-              stepId: a2aWorkflow ? "a2a" : "report",
-              label: a2aWorkflow ? "A2A collaboration" : "Generate report",
+              stepId: isA2aWorkflow ? "a2a" : "report",
+              label: isA2aWorkflow ? "A2A collaboration" : "Generate report",
             });
-            thread.externalWorkflow = a2aWorkflow ? "a2a" : "report";
+            thread.externalWorkflow = isA2aWorkflow ? "a2a" : "report";
             thread.review = {
               id: randomUUID(),
               value: {
@@ -652,7 +971,7 @@ export function controlledAegra(database: typeof db) {
                 workflowCallId: callId,
               },
             };
-          } else if (sqlWorkflow) {
+          } else if (isSqlWorkflow) {
             thread.sql = new ControlledSqlWorkflow(database, threadId, callId);
             const card = await thread.sql.publish(input.metadata.agui_run_id);
 
@@ -663,7 +982,7 @@ export function controlledAegra(database: typeof db) {
               metadata: { langgraph_node: "tools" },
               data: card,
             });
-          } else if (workflow) {
+          } else if (isExperimentWorkflow) {
             const value = {
               kind: "experiment_plan_review",
               workflowCallId: callId,
@@ -672,14 +991,14 @@ export function controlledAegra(database: typeof db) {
             };
 
             thread.review = { id: randomUUID(), value };
-            const card = await publishCard(
+            const card = await publishCard({
               threadId,
-              input.metadata.agui_run_id,
+              runId: input.metadata.agui_run_id,
               callId,
-              "review",
-              value.title,
-              value.steps,
-            );
+              stage: "review",
+              title: value.title,
+              steps: value.steps,
+            });
 
             await event("events", {
               event: LangGraphEventTypes.OnCustomEvent,
@@ -687,7 +1006,7 @@ export function controlledAegra(database: typeof db) {
               metadata: { langgraph_node: "tools" },
               data: card,
             });
-          } else if (memoryTool) {
+          } else if (isMemoryTool) {
             const result = {
               type: "tool" as const,
               role: "tool",
@@ -712,7 +1031,11 @@ export function controlledAegra(database: typeof db) {
               metadata: { langgraph_node: "tools" },
               data: { input: args, output: { update: { messages: [result] } } },
             });
-            thread.messages.push({ ...result, id: randomUUID(), name });
+            thread.messages.push({
+              ...result,
+              id: randomUUID(),
+              name,
+            });
 
             // Keep the run open so the test observes success before checkpoint
             // recovery can overwrite a transient stream failure.
@@ -751,6 +1074,7 @@ export function controlledAegra(database: typeof db) {
     ),
   );
 
+  /** Resolves a held stream when the browser is ready for the remaining events. */
   function release(threadId: string) {
     const thread = threads.get(threadId);
 
@@ -763,15 +1087,22 @@ export function controlledAegra(database: typeof db) {
     return true;
   }
 
+  /** Resolves every currently held stream during shutdown. */
   function releaseAll() {
     for (const thread of threads.values()) {
       thread.release?.();
     }
   }
 
+  /** Seeds checkpoint messages for fixtures that begin with persisted history. */
   function seedConversation(id: string, messages: LangGraphPlatformMessage[]) {
     threadFor(id).messages = messages;
   }
 
-  return { api, release, releaseAll, seedConversation };
+  return {
+    api,
+    release,
+    releaseAll,
+    seedConversation,
+  };
 }

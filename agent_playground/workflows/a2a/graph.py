@@ -3,7 +3,7 @@
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import Checkpointer
 
-from agent_playground.workflows.a2a.api import HttpA2aApi
+from agent_playground.workflows.a2a.api import A2aSubmission, HttpA2aApi
 from agent_playground.workflows.a2a.cards import completion_receipt
 from agent_playground.workflows.a2a.models import A2aState
 from agent_playground.workflows.external import (
@@ -11,13 +11,23 @@ from agent_playground.workflows.external import (
     wait_for_external_task,
 )
 from agent_playground.workflows.output import (
+    PublishWorkflowOutput,
     WorkflowOutputMetadata,
     WorkflowPresentation,
     publish_workflow_output,
 )
 
+_A2A_RESULT_SEQUENCE = 1
+_COMPLETION_TITLES = {
+    "succeeded": "A2A collaboration completed",
+    "failed": "A2A collaboration failed",
+    "cancelled": "A2A collaboration cancelled",
+}
+
 
 def make_a2a_workflow(checkpointer: Checkpointer | None = None):
+    """Build the workflow that resumes on a terminal collaboration result."""
+
     async def register(state: A2aState):
         registration = await register_external_task(
             workflow_call_id=state.workflow_call_id,
@@ -31,11 +41,14 @@ def make_a2a_workflow(checkpointer: Checkpointer | None = None):
         }
 
     async def submit(state: A2aState):
-        await HttpA2aApi().submit(
-            task_id=state.task_id,
-            task=state.task,
-            callback_token=state.callback_token,
-            require_input=state.require_input,
+        api = HttpA2aApi()
+        await api.submit(
+            A2aSubmission(
+                task_id=state.task_id,
+                task=state.task,
+                callback_token=state.callback_token,
+                require_input=state.require_input,
+            )
         )
 
     def wait(state: A2aState):
@@ -43,15 +56,13 @@ def make_a2a_workflow(checkpointer: Checkpointer | None = None):
             task_id=state.task_id, workflow_call_id=state.workflow_call_id
         )
 
-        return {"status": result.status, "result": result.result, "error": result.error}
-
-    async def publish(state: A2aState):
-        titles = {
-            "succeeded": "A2A collaboration completed",
-            "failed": "A2A collaboration failed",
-            "cancelled": "A2A collaboration cancelled",
+        return {
+            "status": result.status,
+            "result": result.result,
+            "error": result.error,
         }
 
+    async def publish(state: A2aState):
         if state.status == "succeeded":
             receipt = "The full revision is available in the agent output."
         elif state.status == "cancelled":
@@ -60,20 +71,23 @@ def make_a2a_workflow(checkpointer: Checkpointer | None = None):
             receipt = state.error or "The agent collaboration failed."
 
         surface_id = f"a2a-{state.workflow_call_id}-result"
+        card = completion_receipt(
+            surface_id=surface_id,
+            title=_COMPLETION_TITLES[state.status or "failed"],
+            text=receipt,
+        )
+        presentation = WorkflowPresentation(
+            surface_id=surface_id, group_id=state.workflow_call_id
+        )
+
         await publish_workflow_output(
-            workflow_call_id=state.workflow_call_id,
-            step_id="result",
-            step_seq=1,
-            card=completion_receipt(
-                surface_id=surface_id,
-                title=titles[state.status or "failed"],
-                text=receipt,
-            ),
-            workflow=WorkflowOutputMetadata(
-                presentation=WorkflowPresentation(
-                    surface_id=surface_id, group_id=state.workflow_call_id
-                )
-            ),
+            PublishWorkflowOutput(
+                workflow_call_id=state.workflow_call_id,
+                step_id="result",
+                step_seq=_A2A_RESULT_SEQUENCE,
+                card=card,
+                workflow=WorkflowOutputMetadata(presentation=presentation),
+            )
         )
 
     builder = StateGraph(A2aState)

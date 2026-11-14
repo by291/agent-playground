@@ -3,6 +3,7 @@ import { CopyIcon } from "@phosphor-icons/react/dist/csr/Copy";
 import { CheckIcon } from "@phosphor-icons/react/dist/csr/Check";
 import { Button } from "@/components/ui/button";
 
+/** Shows the saved timestamp in the reader's local time. */
 export function MessageTimestamp({
   timestamp,
   className = "",
@@ -35,6 +36,7 @@ export function MessageTimestamp({
   );
 }
 
+/** Copies the original Markdown and reports the clipboard result. */
 export function AssistantMessageFooter({
   markdown,
   timestamp,

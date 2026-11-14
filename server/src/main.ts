@@ -5,30 +5,42 @@ import { app } from "./app.js";
 import { db, migrateServer } from "./db/database.js";
 import { startExternalTaskWorker } from "./conversation/tasks/task-worker.js";
 import { logger } from "./observability/logger.js";
-
 import { startSkillFileCleanup } from "./conversation/files/skill-file-cleanup.js";
 import { closeObjectStore } from "./storage/object-store.js";
 import { shutdownTelemetry } from "./observability/bootstrap.js";
+import { drainRunDispatches } from "./conversation/runs/run-store.js";
 import { closeConversationChanges } from "./conversation/events/subscription.js";
+import { closeAegraTransport } from "./agent/aegra-client.js";
 
-const port = Number(process.env.SERVER_PORT ?? 3000);
+const DEFAULT_SERVER_PORT = 3000;
+
+const port = Number(process.env.SERVER_PORT ?? DEFAULT_SERVER_PORT);
 
 await migrateServer();
 
 const stopWorker = startExternalTaskWorker();
 const stopFileCleanup = startSkillFileCleanup();
 const stopKnowledgeCleanup = startKnowledgeCleanup();
-const server = serve({ fetch: app.fetch, hostname: "0.0.0.0", port }, () => {
-  logger.info({ port }, "AG-UI server listening");
-}) as Server;
-let stopping = false;
+
+const server = serve(
+  {
+    fetch: app.fetch,
+    hostname: "0.0.0.0",
+    port,
+  },
+  () => {
+    logger.info({ port }, "AG-UI server listening");
+  },
+) as Server;
+
+let isStopping = false;
 
 async function shutdown() {
-  if (stopping) {
+  if (isStopping) {
     return;
   }
 
-  stopping = true;
+  isStopping = true;
 
   // Stop accepting work and drain its owners before closing their shared clients.
   const workerStopped = stopWorker();
@@ -51,6 +63,8 @@ async function shutdown() {
     stopFileCleanup(),
     stopKnowledgeCleanup(),
     closeConversationChanges(),
+    // Aegra continues accepted runs when this process disconnects.
+    drainRunDispatches().finally(closeAegraTransport),
   ]);
 
   for (const result of drainResults) {
