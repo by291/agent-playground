@@ -83,7 +83,11 @@ test("disabling reply animation during a stream reveals received text and releas
     createElement(UserPreferencesProvider, {
       children: [
         createElement(PreferencesToggle, { key: "preferences" }),
-        createElement(MarkdownMessage, { key: "reply", text, streaming: true }),
+        createElement(MarkdownMessage, {
+          key: "reply",
+          text,
+          streaming: true,
+        }),
       ],
     }),
   );
@@ -266,7 +270,13 @@ test("a replaced source never displays stale text and stops the old reveal", () 
 
 test("revealed prefixes keep emoji and combining characters intact", () => {
   const clock = animationClock();
-  const graphemes = ["👩🏽‍💻", "e\u0301", "中", "🇨🇳"];
+  const graphemes =
+    /* prettier-ignore */ [
+      "👩🏽‍💻",
+      "e\u0301",
+      "中",
+      "🇨🇳",
+    ];
   const text = graphemes.join("").repeat(20);
   const boundaries = new Set<number>([0]);
   let boundary = 0;

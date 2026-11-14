@@ -15,6 +15,7 @@ import {
 import { Dialog, DialogTrigger } from "@/components/ui/dialog";
 import { ImageViewer, type AttachmentImage } from "./ImageViewer";
 
+/** Checks whether the filename has an extension supported by attachment previews. */
 export function isImageAttachment(name: string) {
   return /\.(jpe?g|png|gif|webp)$/i.test(name);
 }
@@ -64,7 +65,15 @@ function ImageAttachment({
   const [failed, setFailed] = useState(false);
   const gallery = images?.length
     ? images
-    : [{ name, alt: name, thumbnail, src: preview, download }];
+    : [
+        {
+          name,
+          alt: name,
+          thumbnail,
+          src: preview,
+          download,
+        },
+      ];
 
   if (failed) {
     return <FileAttachment name={name} download={download} actions={actions} />;
@@ -121,6 +130,7 @@ function ImageAttachment({
   );
 }
 
+/** Displays saved attachments with conversation-scoped preview and download URLs. */
 export function UploadedAttachments({
   threadId,
   files,
@@ -167,6 +177,7 @@ export function UploadedAttachments({
   );
 }
 
+/** Displays a local composer attachment using the preview owned by the composer. */
 export function SelectedAttachment({
   file,
   preview,

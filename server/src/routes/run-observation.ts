@@ -7,6 +7,8 @@ import { metrics } from "@opentelemetry/api";
 import type { SSEStreamingApi } from "hono/streaming";
 import { tracer, recordError } from "../observability/tracing.js";
 
+const millisecondsPerSecond = 1000;
+
 const meter = metrics.getMeter("agent-playground-server");
 const duration = meter.createHistogram("app.stream.duration", { unit: "s" });
 const connections = meter.createCounter("app.stream.connections");
@@ -17,6 +19,7 @@ interface StreamObservation {
   failed: (error: unknown) => void;
 }
 
+/** Measures the lifetime and outcome of an AG-UI SSE response. */
 export function observeAgentStream(
   input: Pick<RunAgentInput, "threadId" | "runId">,
   execute: (
@@ -37,7 +40,7 @@ export function observeAgentStream(
       async (span) => {
         const started = performance.now();
         let outcome = "unknown";
-        let firstText = false;
+        let hasForwardedText = false;
 
         stream.onAbort(() => {
           outcome = "disconnected";
@@ -54,10 +57,10 @@ export function observeAgentStream(
                 event.type === EventType.TEXT_MESSAGE_CONTENT &&
                 typeof event.delta === "string" &&
                 event.delta.length &&
-                !firstText;
+                !hasForwardedText;
 
               if (isFirstTextChunk) {
-                firstText = true;
+                hasForwardedText = true;
                 span.addEvent("first_text_forwarded", {
                   duration_ms: performance.now() - started,
                 });
@@ -85,7 +88,10 @@ export function observeAgentStream(
           });
         } finally {
           span.setAttribute("app.stream.outcome", outcome);
-          duration.record((performance.now() - started) / 1000, { outcome });
+          duration.record(
+            (performance.now() - started) / millisecondsPerSecond,
+            { outcome },
+          );
           connections.add(1, { outcome });
           span.end();
         }

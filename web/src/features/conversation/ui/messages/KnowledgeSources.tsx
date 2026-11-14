@@ -4,7 +4,7 @@ import {
   knowledgeSearchSchema,
   type KnowledgeSource,
 } from "@shared/knowledge";
-import type { toolProcess } from "../../model/turns";
+import type { toolProcess, ToolStep } from "../../model/turns";
 import { useId, useRef, useState, type ReactNode } from "react";
 import { BooksIcon } from "@phosphor-icons/react/dist/csr/Books";
 import { ArrowLeftIcon } from "@phosphor-icons/react/dist/csr/ArrowLeft";
@@ -42,62 +42,76 @@ import { KnowledgeCitationProvider } from "./knowledge-citations";
 
 type RetrievedSource = KnowledgeSource & { number: number };
 
-function collectRetrievedSources(process: ReturnType<typeof toolProcess>) {
+function readKnowledgeResult(step: ToolStep) {
+  if (step.call.function.name !== "search_knowledge" || !step.result) {
+    return null;
+  }
+
+  try {
+    const result = knowledgeSearchSchema.safeParse(
+      JSON.parse(messageText(step.result)),
+    );
+
+    return result.success ? result.data : null;
+  } catch {
+    // Interrupted or legacy results may not carry a complete source contract.
+    return null;
+  }
+}
+
+function collectRetrievedSources(toolHistory: ReturnType<typeof toolProcess>) {
   const sources = new Map<string, RetrievedSource>();
   const errors = new Set<string>();
   let searched = false;
 
-  for (const step of process.flatMap((entry) => entry.calls)) {
-    if (step.call.function.name !== "search_knowledge" || !step.result) {
+  for (const step of toolHistory.flatMap((entry) => entry.calls)) {
+    const result = readKnowledgeResult(step);
+
+    if (!result) {
       continue;
     }
 
-    try {
-      const result = knowledgeSearchSchema.safeParse(
-        JSON.parse(messageText(step.result)),
-      );
+    searched = true;
 
-      if (result.success) {
-        searched = true;
+    if (result.error) {
+      errors.add(result.error);
+    }
 
-        if (result.data.error) {
-          errors.add(result.data.error);
-        }
+    for (const source of result.sources) {
+      // Repeated searches update the passage but keep its first citation number.
+      const number = sources.get(source.chunkId)?.number ?? sources.size + 1;
 
-        for (const source of result.data.sources) {
-          // Repeated searches update the passage but keep its first citation number.
-          const number =
-            sources.get(source.chunkId)?.number ?? sources.size + 1;
-
-          sources.set(source.chunkId, { ...source, number });
-        }
-      }
-    } catch {
-      // Interrupted or legacy results may not carry a complete source contract.
+      sources.set(source.chunkId, { ...source, number });
     }
   }
 
-  return { sources, errors, searched };
+  return {
+    sources,
+    errors,
+    searched,
+  };
 }
 
+/** Shares citation numbering and passage navigation with the owning reply. */
 export function KnowledgeSources({
-  process,
+  toolHistory,
   children,
   showSummary = true,
 }: {
-  process: ReturnType<typeof toolProcess>;
+  toolHistory: ReturnType<typeof toolProcess>;
   children?: ReactNode;
   showSummary?: boolean;
 }) {
   const documentControlId = useId();
   const [open, setOpen] = useState(false);
-  const citationOpener = useRef<HTMLButtonElement | null>(null);
   const [selection, setSelection] = useState<{
     documentId: string;
     chunkId: string;
   } | null>(null);
 
-  const { sources, errors, searched } = collectRetrievedSources(process);
+  const citationOpener = useRef<HTMLButtonElement | null>(null);
+
+  const { sources, errors, searched } = collectRetrievedSources(toolHistory);
 
   if (!searched) {
     return children;

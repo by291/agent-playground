@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { createElement } from "react";
-import { fireEvent, render } from "@testing-library/react";
+import { fireEvent, render, waitFor } from "@testing-library/react";
 import { expect, test } from "vitest";
 import type { Message, ToolCall } from "@ag-ui/client";
 import type { ChatTurn } from "../../model/turns";
@@ -64,17 +64,27 @@ const answer: Message = {
 
 function reply(messages: Message[], status: ChatTurn["status"] = "running") {
   return createElement(AssistantReply, {
-    turn: { id: "turn", user: null, messages, status },
+    turn: {
+      id: "turn",
+      user: null,
+      messages,
+      status,
+    },
     animatedMessageId: null,
   });
 }
 
 test.each([false, true])(
   "an open Sources reader and focus survive a later question (already asked: %s)",
-  (alreadyAsked) => {
+  async (alreadyAsked) => {
     const messages: Message[] = [
       ...(alreadyAsked ? [ask("first"), answer] : []),
-      { id: "lookup", role: "assistant", content: "", toolCalls: [searchCall] },
+      {
+        id: "lookup",
+        role: "assistant",
+        content: "",
+        toolCalls: [searchCall],
+      },
       searchResult,
       {
         id: "commentary",
@@ -84,7 +94,9 @@ test.each([false, true])(
     ];
     const view = render(reply(messages));
 
-    fireEvent.click(view.getByRole("button", { name: "Sources · 1 document" }));
+    const opener = view.getByRole("button", { name: "Sources · 1 document" });
+
+    fireEvent.click(opener);
     const reader = view.getByRole("dialog", { name: "Sources" });
     const close = view.getByRole("button", { name: "Close sources" });
 
@@ -93,6 +105,10 @@ test.each([false, true])(
 
     expect(view.getByRole("dialog", { name: "Sources" })).toBe(reader);
     expect(close).toHaveFocus();
+
+    // Wait for Radix to restore focus while this test still owns the DOM.
+    fireEvent.click(close);
+    await waitFor(() => expect(opener).toHaveFocus());
   },
 );
 
@@ -161,16 +177,23 @@ test("a failed continuation retains completed ordinary tools, Sources and downlo
   expect(view.queryByText("Results unavailable")).not.toBeInTheDocument();
 });
 
-test("an open Sources reader survives the first resumed token after a confirmed answer", () => {
+test("an open Sources reader survives the first resumed token after a confirmed answer", async () => {
   const messages: Message[] = [
-    { id: "lookup", role: "assistant", content: "", toolCalls: [searchCall] },
+    {
+      id: "lookup",
+      role: "assistant",
+      content: "",
+      toolCalls: [searchCall],
+    },
     searchResult,
     ask("first"),
     answer,
   ];
   const view = render(reply(messages));
 
-  fireEvent.click(view.getByRole("button", { name: "Sources · 1 document" }));
+  const opener = view.getByRole("button", { name: "Sources · 1 document" });
+
+  fireEvent.click(opener);
   const reader = view.getByRole("dialog", { name: "Sources" });
   const close = view.getByRole("button", { name: "Close sources" });
 
@@ -178,10 +201,17 @@ test("an open Sources reader survives the first resumed token after a confirmed 
   view.rerender(
     reply([
       ...messages,
-      { id: "resumed", role: "assistant", content: "I will keep it concise." },
+      {
+        id: "resumed",
+        role: "assistant",
+        content: "I will keep it concise.",
+      },
     ]),
   );
 
   expect(view.getByRole("dialog", { name: "Sources" })).toBe(reader);
   expect(close).toHaveFocus();
+
+  fireEvent.click(close);
+  await waitFor(() => expect(opener).toHaveFocus());
 });

@@ -13,8 +13,10 @@ self.MonacoEnvironment = {
     return label === "json" ? new jsonWorker() : new editorWorker();
   },
 };
+
 loader.config({ monaco });
 
+/** Opens a separate Monaco editing session for each gallery component. */
 export function JsonEditor({
   component,
   value,

@@ -11,6 +11,7 @@ import { isRunActive } from "../../../../shared/run-status.js";
 import { SubmissionError } from "../errors.js";
 import { notifyConversation } from "../events/publish.js";
 
+/** Pin the next model choice while holding the conversation admission lock. */
 export async function selectConversationModel(
   threadId: string,
   selection: string,
@@ -19,7 +20,7 @@ export async function selectConversationModel(
 
   return db.transaction(async (tx) => {
     // Serialize model changes with admission so the next run sees one choice.
-    const [conversation] = await tx
+    const conversationLockQuery = tx
       .select()
       .from(conversations)
       .where(
@@ -27,20 +28,24 @@ export async function selectConversationModel(
           eq(conversations.threadId, threadId),
           isNull(conversations.deletedAt),
         ),
-      )
-      .for("update");
+      );
+
+    const [conversation] = await conversationLockQuery.for("update");
 
     if (!conversation) {
       throw new SubmissionError("Conversation not found", 404);
     }
 
-    const [run] = await tx
+    const latestRunQuery = tx
       .select()
       .from(conversationRuns)
-      .where(eq(conversationRuns.threadId, threadId))
+      .where(eq(conversationRuns.threadId, threadId));
+
+    const [run] = await latestRunQuery
       .orderBy(desc(conversationRuns.submitSeq))
       .limit(1);
-    const [externalWork] = await tx
+
+    const externalWorkQuery = tx
       .select({ taskId: externalTasks.taskId })
       .from(externalTasks)
       .where(
@@ -53,8 +58,9 @@ export async function selectConversationModel(
             eq(externalTasks.status, "input_required"),
           ),
         ),
-      )
-      .limit(1);
+      );
+
+    const [externalWork] = await externalWorkQuery.limit(1);
 
     const unfinishedRun =
       run &&

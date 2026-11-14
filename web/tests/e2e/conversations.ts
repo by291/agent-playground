@@ -3,6 +3,7 @@ import { expect, type APIRequestContext } from "@playwright/test";
 import type { RunAgentInput } from "@ag-ui/client";
 import type { ConversationSnapshot } from "../../src/features/conversation/api/contracts";
 
+/** Persists a completed conversation before a browser restores its history. */
 export async function createCompletedConversation(
   request: APIRequestContext,
   title: string,
@@ -11,7 +12,13 @@ export async function createCompletedConversation(
   const input: RunAgentInput = {
     threadId,
     runId: randomUUID(),
-    messages: [{ id: randomUUID(), role: "user", content: title }],
+    messages: [
+      {
+        id: randomUUID(),
+        role: "user",
+        content: title,
+      },
+    ],
     tools: [],
     context: [],
     state: {},

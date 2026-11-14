@@ -20,6 +20,7 @@ const ComponentsPage = import.meta.env?.DEV
     )
   : null;
 
+/** Mounts the matched page inside the shared render error boundary. */
 export function App() {
   return (
     <PageBoundary>

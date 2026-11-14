@@ -8,7 +8,7 @@ from aegra_api.utils.event_loop import selector_loop_factory
 from langgraph.store.postgres.aio import AsyncPostgresStore
 
 from agent_playground.memory.models import MemoryScope, MemoryView, memory_namespace
-from agent_playground.memory.service import MemoryService
+from agent_playground.memory.service import MemoryService, MemoryWrite
 from tests.agent_config import update_agent_config
 
 
@@ -26,7 +26,11 @@ def test_shared_postgres_memory_serializes_edits_and_preserves_forgetting(
         ) as first_store:
             await first_store.setup()
             first = MemoryService(first_store)
-            original = await first.save(scope, "Prefer detailed answers.", identity)
+            original = await first.save(
+                MemoryWrite(
+                    scope=scope, text="Prefer detailed answers.", memory_id=identity
+                )
+            )
 
             async with AsyncPostgresStore.from_conn_string(
                 postgres_database_url
@@ -36,8 +40,22 @@ def test_shared_postgres_memory_serializes_edits_and_preserves_forgetting(
                 assert (await second.recall(scope))[0].text == original.text
 
                 results = await asyncio.gather(
-                    first.save(scope, "Prefer concise answers.", identity, revision=1),
-                    second.save(scope, "Prefer examples.", identity, revision=1),
+                    first.save(
+                        MemoryWrite(
+                            scope=scope,
+                            text="Prefer concise answers.",
+                            memory_id=identity,
+                            revision=1,
+                        )
+                    ),
+                    second.save(
+                        MemoryWrite(
+                            scope=scope,
+                            text="Prefer examples.",
+                            memory_id=identity,
+                            revision=1,
+                        )
+                    ),
                     return_exceptions=True,
                 )
                 saved = [result for result in results if isinstance(result, MemoryView)]
@@ -67,6 +85,8 @@ def test_shared_postgres_memory_serializes_edits_and_preserves_forgetting(
             assert tombstone.value == {"deleted": True, "revision": 3}
 
             with pytest.raises(ValueError, match="forgotten"):
-                await reloaded.save(scope, original.text, identity)
+                await reloaded.save(
+                    MemoryWrite(scope=scope, text=original.text, memory_id=identity)
+                )
 
     asyncio.run(check(), loop_factory=selector_loop_factory)

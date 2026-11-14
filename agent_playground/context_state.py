@@ -33,6 +33,7 @@ class ContextUsage(TypedDict):
 
 
 def latest_memory_project(_previous: str, project: str) -> str:
+    """Select the last project explicitly named by a memory tool call."""
     # Parallel memory commands merge in tool-call order. The last explicitly
     # named project becomes the conversation's automatic-recall scope.
     return project

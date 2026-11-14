@@ -28,6 +28,7 @@ rules.
 
 
 def sql_revision_model(model: BaseChatModel) -> BaseChatModel:
+    """Configure an isolated model for structured SQL replies."""
     # Structured SQL revisions are presented using durable cards and reply IDs;
     # raw model JSON and tool-call fragments must not enter the public chat.
     revision_model = model.model_copy(
@@ -53,6 +54,7 @@ def sql_revision_model(model: BaseChatModel) -> BaseChatModel:
             }
         )
     elif isinstance(revision_model, ChatQwen):
+        # Remove inherited Qwen reasoning options so this request stays non-thinking.
         extra_body = dict(revision_model.extra_body or {})
         extra_body.pop("reasoning_effort", None)
         extra_body.pop("thinking_budget", None)
@@ -70,6 +72,7 @@ def sql_revision_model(model: BaseChatModel) -> BaseChatModel:
 
 
 def make_revision_agent(model: BaseChatModel) -> RevisionAgent:
+    """Build the structured revision agent used inside the SQL workflow."""
     revision_model = sql_revision_model(model)
 
     async def revise(state: SqlState) -> SqlRevision:

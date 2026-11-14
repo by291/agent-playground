@@ -9,6 +9,10 @@ import com.agentplayground.domain.model.validateFile
 import com.agentplayground.domain.repository.KnowledgeRepository
 import com.agentplayground.domain.repository.PreparedDocumentUpload
 
+private val SUPPORTED_FILE_EXTENSIONS = setOf("txt", "md", "pdf")
+private const val INVALID_DOCUMENT_MESSAGE =
+    "Use a nonempty TXT, Markdown or PDF file up to 10 MiB."
+
 /** Owns remote document transactions and local document-provider access for one server. */
 internal class DefaultKnowledgeRepository(
     private val api: PlaygroundApi,
@@ -25,10 +29,11 @@ internal class DefaultKnowledgeRepository(
 
         val size =
             if (file.size == null) {
-                val data = files.read(file)
-                validateKnowledgeFile(file.name, data.size.toLong())
+                val contents = files.read(file)
+                val actualSize = contents.size.toLong()
+                validateKnowledgeFile(file.name, actualSize)
 
-                data.size.toLong()
+                actualSize
             } else {
                 file.size
             }
@@ -46,16 +51,16 @@ internal class DefaultKnowledgeRepository(
     }
 
     override suspend fun prepareUpload(file: PickedFile): PreparedDocumentUpload {
-        val data = files.read(file)
-        validateKnowledgeFile(file.name, data.size.toLong())
+        val contents = files.read(file)
+        validateKnowledgeFile(file.name, contents.size.toLong())
 
-        return PreparedUpload(file, data)
+        return PreparedUpload(file, contents)
     }
 
     override suspend fun upload(upload: PreparedDocumentUpload) {
         require(upload is PreparedUpload) { "Upload was not prepared by this repository." }
 
-        api.uploadDocument(upload.file.id, upload.file.name, upload.data)
+        api.uploadDocument(upload.file.id, upload.file.name, upload.contents)
     }
 
     override suspend fun reindex(id: String, textEncoding: String?) {
@@ -75,16 +80,16 @@ internal class DefaultKnowledgeRepository(
     }
 }
 
-private class PreparedUpload(val file: PickedFile, val data: ByteArray) : PreparedDocumentUpload
+private class PreparedUpload(val file: PickedFile, val contents: ByteArray) : PreparedDocumentUpload
 
 private fun validateKnowledgeFile(name: String, size: Long?) {
     validateFile(name, size ?: 0)
 
-    require(name.substringAfterLast('.', "").lowercase() in setOf("txt", "md", "pdf")) {
-        "Use a nonempty TXT, Markdown or PDF file up to 10 MiB."
-    }
+    val extension = name.substringAfterLast('.', "").lowercase()
+    val isSupported = extension in SUPPORTED_FILE_EXTENSIONS
+    val isNonempty = size == null || size > 0
 
-    require(size == null || size > 0) {
-        "Use a nonempty TXT, Markdown or PDF file up to 10 MiB."
+    require(isSupported && isNonempty) {
+        INVALID_DOCUMENT_MESSAGE
     }
 }

@@ -9,10 +9,11 @@ import pytest
 from agent_playground.app import app
 from agent_playground.db.connection import app_engine, prepare_app_store
 from agent_playground.db.report_jobs import (
-    create_report_job as store_report_job,
+    CreateReportJob,
+    mark_report_event_delivered,
 )
 from agent_playground.db.report_jobs import (
-    mark_report_event_delivered,
+    create_report_job as store_report_job,
 )
 from agent_playground.services.report.jobs import pending_report_events
 from agent_playground.services.report.models import ReportRequest
@@ -22,10 +23,12 @@ from tests.agent_config import update_agent_config
 
 def create_report_job(request: ReportRequest):
     return store_report_job(
-        job_id=request.id,
-        task=request.task,
-        callback_token=request.callback_token,
-        outcome=request.outcome,
+        CreateReportJob(
+            job_id=request.id,
+            task=request.task,
+            callback_token=request.callback_token,
+            outcome=request.outcome,
+        )
     )
 
 

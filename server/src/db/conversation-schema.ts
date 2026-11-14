@@ -15,6 +15,8 @@ import type { Interrupt, Message, RunAgentInput } from "@ag-ui/client";
 import { runStatuses } from "../../../shared/run-status.js";
 import type { ContextUsage } from "../../../shared/context-usage.js";
 
+const interruptList = jsonb("interrupts").$type<Interrupt[]>();
+
 export const conversations = pgTable(
   "conversations",
   {
@@ -55,9 +57,13 @@ export const conversationRuns = pgTable(
     request: jsonb("request").$type<RunAgentInput>().notNull(),
     modelId: text("model_id"),
     aegraRunId: text("aegra_run_id"),
+    dispatchToken: text("dispatch_token"),
+    dispatchLeaseUntil: timestamp("dispatch_lease_until", {
+      withTimezone: true,
+    }),
     status: text("status", { enum: runStatuses }).notNull(),
     checkpointSynced: boolean("checkpoint_synced").notNull().default(false),
-    interrupts: jsonb("interrupts").$type<Interrupt[]>().notNull().default([]),
+    interrupts: interruptList.notNull().default([]),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),

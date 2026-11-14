@@ -20,6 +20,7 @@ export interface ConversationReference extends Omit<
   fresh?: true;
 }
 
+/** Creates a draft reference without allocating a thread ID. */
 export function newConversation(): ConversationReference {
   return { empty: true, fresh: true };
 }
@@ -77,10 +78,16 @@ export function loadConversation(threadId?: string): ConversationReference {
   return threadId ? { threadId } : newConversation();
 }
 
+/** Persists the per-thread admission journal before updating the optional current pointer. */
 export function saveConversation(conversation: SavedConversation): void {
   // The fresh marker applies only to this page; reloads must check server history.
   const { threadId, pending, empty, modelId } = conversation;
-  const value = JSON.stringify({ threadId, pending, empty, modelId });
+  const value = JSON.stringify({
+    threadId,
+    pending,
+    empty,
+    modelId,
+  });
   const previous = loadConversation();
 
   try {
@@ -115,6 +122,7 @@ export function saveConversation(conversation: SavedConversation): void {
   }
 }
 
+/** Removes the deleted thread's local journal and its current pointer if selected. */
 export function forgetConversation(threadId: string): void {
   try {
     localStorage.removeItem(`${storageKey}:${threadId}`);
@@ -127,6 +135,7 @@ export function forgetConversation(threadId: string): void {
   }
 }
 
+/** Removes conversation journals while preserving unrelated browser preferences. */
 export function forgetAllConversations(): void {
   try {
     const keys: string[] = [];

@@ -3,6 +3,7 @@ import { Button } from "../ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
 import type { SettingsState } from "./settings-context";
 
+/** Opens settings and supplies the trigger for focus restoration. */
 export function SettingsButton({ settings }: { settings: SettingsState }) {
   return (
     <Tooltip>

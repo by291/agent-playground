@@ -6,6 +6,7 @@ import {
 } from "@/components/ui/tooltip";
 import { Badge } from "@/components/ui/badge";
 
+/** Shows the status of the workspace gateway. */
 export function GatewayStatus({
   compact = false,
   className = "",

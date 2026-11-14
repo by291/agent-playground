@@ -34,11 +34,14 @@ const JsonEditor = lazy(() =>
   })),
 );
 
+/** Pairs editable gallery examples with their most recent complete preview. */
 export function ComponentsPage() {
   const [component, setComponent] = useState(
     catalogExamples[0]?.component ?? "",
   );
+
   const { previews, updateSource, resetSource } = useGalleryPreviews();
+
   const example = catalogExamples.find((item) => item.component === component);
   const preview = previews[component];
 
@@ -69,6 +72,7 @@ export function ComponentsPage() {
               Edit a component’s JSON example to see its rendered result.
             </p>
           </div>
+
           <div className="flex shrink-0 items-center gap-3">
             <Badge
               variant="secondary"
@@ -125,6 +129,7 @@ export function ComponentsPage() {
                 Reset
               </Button>
             </div>
+
             <div className="h-[52vh] min-h-88 lg:h-auto lg:min-h-0 lg:flex-1">
               <Suspense
                 fallback={
@@ -146,6 +151,7 @@ export function ComponentsPage() {
                 />
               </Suspense>
             </div>
+
             {preview.error ? (
               <Alert
                 variant="destructive"
@@ -181,8 +187,10 @@ export function ComponentsPage() {
                 {preview.error ? "Last valid JSON" : "Live"}
               </Badge>
             </div>
+
             <div className="flex min-h-80 flex-1 flex-col gap-4 overflow-auto bg-sidebar p-4 sm:p-6 lg:min-h-0">
               <p className="text-xs/5 text-muted">{example.description}</p>
+
               {/* A JSON edit updates the surface without replaying the entrance. */}
               <div key={component} className="gallery-preview-enter w-full">
                 {preview.surfaces.map((view) => (

@@ -10,10 +10,13 @@ import { routePath } from "hono/route";
 import { tracer, recordError } from "../observability/tracing.js";
 import { logger } from "../observability/logger.js";
 
+const millisecondsPerSecond = 1000;
+
 const duration = metrics
   .getMeter("agent-playground-server")
   .createHistogram("http.server.response.duration", { unit: "s" });
 
+/** Traces request handling and records HTTP response status and duration. */
 export const observeRequest = createMiddleware(async (context, next) => {
   const started = performance.now();
   const parent = propagation.extract(
@@ -50,7 +53,10 @@ export const observeRequest = createMiddleware(async (context, next) => {
       span.setAttributes(attributes);
 
       // This measures response setup; the SSE span measures the connection lifetime.
-      duration.record((performance.now() - started) / 1000, attributes);
+      duration.record(
+        (performance.now() - started) / millisecondsPerSecond,
+        attributes,
+      );
       span.end();
     }
   });

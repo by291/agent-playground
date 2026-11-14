@@ -50,7 +50,7 @@ interface ActiveStream {
 /** Projects newest-first events into rows while retaining original events for inspection. */
 export function activityRows(
   activity: readonly Activity[],
-  merge: boolean,
+  { merge }: { merge: boolean },
 ): ActivityRow[] {
   if (!merge) {
     return activity.map((entry) => ({ id: entry.id, entry }));
@@ -69,9 +69,68 @@ export function activityRows(
     }
   }
 
-  // The store is newest first. Reassemble in receive order, then place each group at its latest delta.
-  for (let index = activity.length - 1; index >= 0; index -= 1) {
-    const entry = activity[index]!;
+  function stopRunStreams(runId: string) {
+    for (const [key, stream] of activeStreams) {
+      if (stream.runId === runId) {
+        stopStream(stream.positioned);
+        activeStreams.delete(key);
+      }
+    }
+  }
+
+  function appendStreamDelta({
+    key,
+    streamId,
+    entry,
+    position,
+    delta,
+  }: {
+    key: string;
+    streamId: string;
+    entry: Activity;
+    position: number;
+    delta: string;
+  }) {
+    let stream = activeStreams.get(key);
+
+    if (!stream) {
+      // The activity buffer can expire the start before its remaining deltas.
+      stream = { runId: entry.runId, started: false };
+      activeStreams.set(key, stream);
+    }
+
+    if (!stream.positioned) {
+      const segment = segmentCounts.get(key) ?? 0;
+
+      // Replayed starts may reuse a stream ID while each row keeps a stable key.
+      segmentCounts.set(key, segment + 1);
+      stream.positioned = {
+        position,
+        row: {
+          id: `stream-${key}-${segment}`,
+          entry,
+          stream: {
+            content: "",
+            streamId,
+            events: [],
+            partial: !stream.started,
+            status: "open",
+          },
+        },
+      };
+      rows.push(stream.positioned);
+    }
+
+    const positioned = stream.positioned;
+    const merged = positioned.row.stream!;
+
+    positioned.position = position;
+    positioned.row.entry = entry;
+    merged.content += delta;
+    merged.events.push(entry);
+  }
+
+  function mergeStreamEvent(entry: Activity, position: number): boolean {
     const { event } = entry;
     const definition = streamTypes.find(
       (type) =>
@@ -82,78 +141,66 @@ export function activityRows(
     const streamId: unknown = definition
       ? event[definition.idField]
       : undefined;
-    const identified =
-      definition && typeof streamId === "string" && streamId.length > 0;
 
-    if (
-      event.type === EventType.RUN_FINISHED ||
-      event.type === EventType.RUN_ERROR
-    ) {
-      for (const [key, stream] of activeStreams) {
-        if (stream.runId === entry.runId) {
-          stopStream(stream.positioned);
-          activeStreams.delete(key);
-        }
-      }
+    if (!definition || typeof streamId !== "string" || !streamId.length) {
+      return false;
     }
 
-    if (identified) {
-      const key = JSON.stringify([entry.runId, definition.content, streamId]);
-      let stream = activeStreams.get(key);
+    const key = JSON.stringify(
+      /* prettier-ignore */ [
+        entry.runId,
+        definition.content,
+        streamId,
+      ],
+    );
+    const stream = activeStreams.get(key);
 
-      if (event.type === definition.start) {
-        stopStream(stream?.positioned);
-        activeStreams.set(key, { runId: entry.runId, started: true });
-      } else if (event.type === definition.end) {
-        const merged = stream?.positioned?.row.stream;
+    if (event.type === definition.start) {
+      stopStream(stream?.positioned);
+      activeStreams.set(key, { runId: entry.runId, started: true });
 
-        if (merged) {
-          merged.status = "complete";
-        }
-
-        activeStreams.delete(key);
-      } else if (typeof event.delta === "string") {
-        if (!stream) {
-          // The bounded activity buffer may have already dropped this stream's start.
-          stream = { runId: entry.runId, started: false };
-          activeStreams.set(key, stream);
-        }
-
-        if (!stream.positioned) {
-          const segment = segmentCounts.get(key) ?? 0;
-
-          // Replayed starts can reuse an ID; each segment still needs a stable distinct row.
-          segmentCounts.set(key, segment + 1);
-          stream.positioned = {
-            position: index,
-            row: {
-              id: `stream-${key}-${segment}`,
-              entry,
-              stream: {
-                content: "",
-                streamId,
-                events: [],
-                partial: !stream.started,
-                status: "open",
-              },
-            },
-          };
-          rows.push(stream.positioned);
-        }
-
-        const positioned = stream.positioned;
-        const merged = positioned.row.stream!;
-
-        positioned.position = index;
-        positioned.row.entry = entry;
-        merged.content += event.delta;
-        merged.events.push(entry);
-
-        continue;
-      }
+      return false;
     }
 
-    rows.push({ position: index, row: { id: entry.id, entry } });
+    if (event.type === definition.end) {
+      const merged = stream?.positioned?.row.stream;
+
+      if (merged) {
+        merged.status = "complete";
+      }
+
+      activeStreams.delete(key);
+
+      return false;
+    }
+
+    if (typeof event.delta !== "string") {
+      return false;
+    }
+
+    appendStreamDelta({
+      key,
+      streamId,
+      entry,
+      position,
+      delta: event.delta,
+    });
+
+    return true;
+  }
+
+  // Reassemble newest-first activity in receive order, placing groups at their latest delta.
+  for (let index = activity.length - 1; index >= 0; index -= 1) {
+    const entry = activity[index]!;
+    const { type } = entry.event;
+
+    if (type === EventType.RUN_FINISHED || type === EventType.RUN_ERROR) {
+      stopRunStreams(entry.runId);
+    }
+
+    if (!mergeStreamEvent(entry, index)) {
+      rows.push({ position: index, row: { id: entry.id, entry } });
+    }
   }
 
   return rows
@@ -161,8 +208,14 @@ export function activityRows(
     .map(({ row }) => row);
 }
 
+/** Summarizes an event using its protocol label or terminal outcome. */
 export function activityDescription(event: BaseEvent): string | undefined {
-  for (const field of ["stepName", "toolCallName", "name", "message"]) {
+  for (const field of /* prettier-ignore */ [
+    "stepName",
+    "toolCallName",
+    "name",
+    "message",
+  ]) {
     if (typeof event[field] === "string") {
       return event[field];
     }

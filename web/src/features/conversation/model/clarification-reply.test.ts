@@ -14,7 +14,11 @@ function ask(id: string, args = JSON.stringify({ questions })): Message {
     role: "assistant",
     content: "Please choose your preferences.",
     toolCalls: [
-      { id, type: "function", function: { name: "ask_user", arguments: args } },
+      {
+        id,
+        type: "function",
+        function: { name: "ask_user", arguments: args },
+      },
     ],
   };
 }
@@ -33,7 +37,12 @@ function turn(
   messages: Message[],
   status: ChatTurn["status"] = "completed",
 ): ChatTurn {
-  return { id: "turn", user: null, messages, status };
+  return {
+    id: "turn",
+    user: null,
+    messages,
+    status,
+  };
 }
 
 const answers = JSON.stringify({
@@ -56,7 +65,11 @@ describe("clarification reply projection", () => {
         },
         ask("second"),
         result("second", answers),
-        { id: "final", role: "assistant", content: "Ready." },
+        {
+          id: "final",
+          role: "assistant",
+          content: "Ready.",
+        },
       ]),
     );
 
@@ -68,7 +81,11 @@ describe("clarification reply projection", () => {
       "assistant",
     ]);
     expect(parts?.[0]).toMatchObject({
-      clarification: { id: "first", questions, status: "answered" },
+      clarification: {
+        id: "first",
+        questions,
+        status: "answered",
+      },
     });
     expect(parts?.[1]).toMatchObject({
       messageId: "result-first",
@@ -192,14 +209,26 @@ describe("clarification reply projection", () => {
 
   test("replayed result identity produces one answer bubble and ordinary turns use the existing renderer", () => {
     const confirmed = result("replayed", answers);
-    const restored = turn([ask("replayed"), confirmed, confirmed]);
+    const restored = turn(
+      /* prettier-ignore */ [
+        ask("replayed"),
+        confirmed,
+        confirmed,
+      ],
+    );
 
     expect(
       clarificationReply(restored)?.filter((part) => part.type === "answer"),
     ).toHaveLength(1);
     expect(
       clarificationReply(
-        turn([{ id: "plain", role: "assistant", content: "Hello" }]),
+        turn([
+          {
+            id: "plain",
+            role: "assistant",
+            content: "Hello",
+          },
+        ]),
       ),
     ).toBeNull();
   });
@@ -228,9 +257,9 @@ describe("clarification reply projection", () => {
       expect(part?.type).toBe("assistant");
 
       if (part?.type === "assistant") {
-        const process = toolProcess(part.turn, [], original.messages);
+        const toolGroups = toolProcess(part.turn, [], original.messages);
 
-        expect(process[0]?.calls[0]).toMatchObject({
+        expect(toolGroups[0]?.calls[0]).toMatchObject({
           status: error ? "failed" : "completed",
           result: { content: "12:00", ...(error ? { error } : {}) },
         });
@@ -240,7 +269,13 @@ describe("clarification reply projection", () => {
 
   test("ambiguous repeated call IDs cannot create a user answer", () => {
     const parts = clarificationReply(
-      turn([ask("duplicate"), ask("duplicate"), result("duplicate", answers)]),
+      turn(
+        /* prettier-ignore */ [
+          ask("duplicate"),
+          ask("duplicate"),
+          result("duplicate", answers),
+        ],
+      ),
     );
 
     expect(parts?.some((part) => part.type === "answer")).toBe(false);

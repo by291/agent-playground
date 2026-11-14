@@ -1,5 +1,6 @@
 import type { Message } from "@ag-ui/client";
 
+/** Extracts visible text from either scalar or multipart message content. */
 export function messageText(message: Message): string {
   if (typeof message.content === "string") {
     return message.content;
@@ -25,10 +26,12 @@ export function messageText(message: Message): string {
     .join("\n");
 }
 
+/** Indicates whether a message contributes nonblank text to the transcript. */
 export function hasMessageText(message: Message): boolean {
   return messageText(message).trim().length > 0;
 }
 
+/** Identifies a run whose assistant text has yet to reach the transcript. */
 export function waitingForAssistantText(
   messages: readonly Message[],
   running: boolean,

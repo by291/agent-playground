@@ -9,7 +9,7 @@ from langgraph.store.memory import InMemoryStore
 
 from agent_playground.memory import service as service_module
 from agent_playground.memory.models import MemoryScope
-from agent_playground.memory.service import MemoryService
+from agent_playground.memory.service import MemoryService, MemoryWrite
 
 
 @pytest.fixture
@@ -38,9 +38,11 @@ async def remember(
     memory_id: str | None = None,
 ):
     return await service.save(
-        scope("project" if project else "preference", project),
-        text,
-        memory_id or str(uuid4()),
-        source_thread_id="thread-one",
-        source_message_id="message-one",
+        MemoryWrite(
+            scope=scope("project" if project else "preference", project),
+            text=text,
+            memory_id=memory_id or str(uuid4()),
+            source_thread_id="thread-one",
+            source_message_id="message-one",
+        )
     )

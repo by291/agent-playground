@@ -1,16 +1,13 @@
 """Build compact completion receipts for external A2A collaboration."""
 
-from a2ui.core.schema.v0_9 import (
-    A2uiMessageListWrapper,
-    CreateSurface,
-    CreateSurfaceMessage,
-    UpdateComponents,
-    UpdateComponentsMessage,
-)
+from a2ui.core.schema.v0_9 import A2uiMessageListWrapper
 from a2ui.core.schema.v0_9.common_types import ComponentId
 
-from agent_playground.workflows.cards import WorkflowPanel, WorkflowText
-from agent_playground.workflows.output import WORKFLOW_CATALOG_ID
+from agent_playground.workflows.cards import (
+    WorkflowPanel,
+    WorkflowText,
+    workflow_surface,
+)
 
 
 def completion_receipt(
@@ -33,22 +30,4 @@ def completion_receipt(
         WorkflowText(id=ComponentId("body"), text=text, role="body"),
     ]
 
-    component_payloads = [
-        component.model_dump(mode="json", by_alias=True, exclude_none=True)
-        for component in components
-    ]
-
-    return A2uiMessageListWrapper(
-        messages=[
-            CreateSurfaceMessage(
-                create_surface=CreateSurface(
-                    surface_id=surface_id, catalog_id=WORKFLOW_CATALOG_ID
-                )
-            ),
-            UpdateComponentsMessage(
-                update_components=UpdateComponents(
-                    surface_id=surface_id, components=component_payloads
-                )
-            ),
-        ]
-    )
+    return workflow_surface(surface_id, components)

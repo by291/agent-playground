@@ -2,6 +2,7 @@ package com.agentplayground.data.network
 
 import com.agentplayground.domain.conversation.ConversationApi
 import com.agentplayground.domain.conversation.ServerEvent
+import com.agentplayground.domain.files.PickedFile
 import com.agentplayground.domain.model.AgentInfo
 import com.agentplayground.domain.model.ConversationModel
 import com.agentplayground.domain.model.ConversationPage
@@ -19,7 +20,8 @@ import com.agui.core.types.RunAgentInput
 import java.io.IOException
 import java.io.OutputStream
 import java.net.URLEncoder
-import java.util.concurrent.TimeUnit
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
@@ -33,8 +35,10 @@ import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
 import retrofit2.Retrofit
-import retrofit2.awaitResponse
 import retrofit2.converter.kotlinx.serialization.asConverterFactory
+
+private val CONNECT_TIMEOUT = 15.seconds
+private val REST_CALL_TIMEOUT = 45.seconds
 
 /**
  * Owns REST and SSE clients for one server; [close] cancels requests and releases their resources.
@@ -42,34 +46,45 @@ import retrofit2.converter.kotlinx.serialization.asConverterFactory
 internal class PlaygroundApi(baseUrl: String) : ConversationApi, AutoCloseable {
     val baseUrl = normalizeServerUrl(baseUrl)
     private val root = this.baseUrl.toHttpUrl()
-    private val client =
-        OkHttpClient.Builder()
-            .connectTimeout(15, TimeUnit.SECONDS)
-            .callTimeout(45, TimeUnit.SECONDS)
-            .build()
-    private val streaming =
-        client
-            .newBuilder()
-            .callTimeout(0, TimeUnit.SECONDS)
-            .readTimeout(0, TimeUnit.SECONDS)
-            .build()
+    private val client = createRestClient()
+
+    // Both clients share a dispatcher and connection pool. Closing the REST client releases both.
+    private val streaming = createStreamingClient()
 
     private val events = ServerEvents(streaming)
-    private val service =
-        Retrofit.Builder()
-            .baseUrl(root)
-            .client(client)
-            .addConverterFactory(protocolJson.asConverterFactory(JSON))
-            .build()
-            .create(PlaygroundService::class.java)
+    private val service = createRestService()
 
-    private fun url(vararg segments: String, cursor: String? = null): HttpUrl {
+    private fun createRestClient(): OkHttpClient {
+        val builder = OkHttpClient.Builder()
+        builder.connectTimeout(CONNECT_TIMEOUT)
+        builder.callTimeout(REST_CALL_TIMEOUT)
+        builder.addNetworkInterceptor(::guardDownloadRedirect)
+
+        return builder.build()
+    }
+
+    private fun createStreamingClient(): OkHttpClient {
+        val builder = client.newBuilder()
+        builder.callTimeout(Duration.ZERO)
+        builder.readTimeout(Duration.ZERO)
+
+        return builder.build()
+    }
+
+    private fun createRestService(): PlaygroundService {
+        val builder = Retrofit.Builder()
+        builder.baseUrl(root)
+        builder.client(client)
+        builder.addConverterFactory(protocolJson.asConverterFactory(JSON))
+
+        val retrofit = builder.build()
+
+        return retrofit.create(PlaygroundService::class.java)
+    }
+
+    private fun url(vararg segments: String): HttpUrl {
         val builder = root.newBuilder()
         segments.forEach { builder.addPathSegment(it) }
-
-        if (cursor != null) {
-            builder.addQueryParameter("cursor", cursor)
-        }
 
         return builder.build()
     }
@@ -192,27 +207,32 @@ internal class PlaygroundApi(baseUrl: String) : ConversationApi, AutoCloseable {
     suspend fun reindex(id: String, textEncoding: String? = null): KnowledgeDocument =
         service.reindex(id, textEncoding).requireBody()
 
-    suspend fun uploadFile(threadId: String, id: String, name: String, data: ByteArray): SkillFile {
-        validateFile(name, data.size.toLong())
+    /** Uploads the attachment under its original picked-file identity. */
+    suspend fun uploadFile(threadId: String, file: PickedFile, contents: ByteArray): SkillFile {
+        validateFile(file.name, contents.size.toLong())
 
-        val file =
-            service
-                .uploadFile(threadId, id, encodedFilename(name), data.toRequestBody(BINARY))
-                .requireBody()
+        val headers = mapOf("X-File-Id" to file.id, "X-Filename" to encodedFilename(file.name))
+        val requestBody = contents.toRequestBody(BINARY)
+        val response = service.uploadFile(threadId, headers, requestBody)
+        val uploaded = response.requireBody()
 
-        require(file.id == id && file.threadId == threadId && file.name == name) {
+        val hasExpectedIdentity =
+            uploaded.id == file.id && uploaded.threadId == threadId && uploaded.name == file.name
+
+        require(hasExpectedIdentity) {
             "File upload returned an unexpected identity."
         }
 
-        return file
+        return uploaded
     }
 
-    suspend fun uploadDocument(id: String, name: String, data: ByteArray): KnowledgeDocument {
-        validateFile(name, data.size.toLong())
+    /** Uploads a shared document under its admitted identity. */
+    suspend fun uploadDocument(id: String, name: String, contents: ByteArray): KnowledgeDocument {
+        validateFile(name, contents.size.toLong())
 
         val document =
             service
-                .uploadDocument(id, encodedFilename(name), data.toRequestBody(BINARY))
+                .uploadDocument(id, encodedFilename(name), contents.toRequestBody(BINARY))
                 .requireBody()
 
         require(document.id == id && document.name == name) {
@@ -245,22 +265,19 @@ internal class PlaygroundApi(baseUrl: String) : ConversationApi, AutoCloseable {
      */
     suspend fun download(address: String, target: OutputStream) {
         val requested = address.toHttpUrl()
+        val origin = DownloadOrigin(root)
 
-        require(
-            requested.scheme == root.scheme &&
-                requested.host == root.host &&
-                requested.port == root.port
-        ) {
+        require(origin.matches(requested)) {
             "Download must belong to the configured server."
         }
 
-        val call = service.download(requested.toString())
+        val call = service.download(requested.toString(), origin)
         var responseBody: ResponseBody? = null
 
         try {
             coroutineScope {
                 try {
-                    val body = call.awaitResponse().requireBody()
+                    val body = call.awaitStreamingBody()
                     responseBody = body
 
                     // The cancellable await can abort a socket while its child is blocked in IO.

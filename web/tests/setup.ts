@@ -32,6 +32,9 @@ if (typeof document !== "undefined") {
   window.scrollTo = () => undefined;
   cleanupDom = () => {
     cleanup();
+
+    // Shared jsdom workers keep the last route and history state between tests.
+    window.history.replaceState(null, "", "/");
     window.localStorage.clear();
     window.sessionStorage.clear();
     document.documentElement.removeAttribute("class");

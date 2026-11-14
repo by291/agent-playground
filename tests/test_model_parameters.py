@@ -12,6 +12,7 @@ from langchain_deepseek import ChatDeepSeek
 from langchain_qwq import ChatQwen
 
 from agent_playground.models.catalog import (
+    ChatModelRequest,
     agent_info,
     create_chat_model,
     model_configuration,
@@ -124,7 +125,7 @@ def test_thinking_tool_calls_preserve_reasoning_and_use_configured_output_limit(
     model_config.chat(
         model_id, api_key="test", max_output_tokens=12000, thinking=thinking
     )
-    chat_model = create_chat_model(model_id)
+    chat_model = create_chat_model(ChatModelRequest(model_id=model_id))
 
     if mode == "async_stream":
         chat_model = chat_model.model_copy(update={"streaming": True})
@@ -200,7 +201,7 @@ def test_thinking_requests_accept_mixed_nonthinking_and_tool_history(
             {"name": "clock", "args": {}, "id": "clock-call", "type": "tool_call"}
         ],
     )
-    model = create_chat_model(model_id).bind_tools(
+    model = create_chat_model(ChatModelRequest(model_id=model_id)).bind_tools(
         [{"name": "clock", "description": "UTC time", "parameters": {"type": "object"}}]
     )
     model.invoke(
@@ -231,7 +232,10 @@ def test_thinking_requests_accept_mixed_nonthinking_and_tool_history(
 @pytest.mark.parametrize("override", [None, 5000])
 @pytest.mark.parametrize(
     ("options", "expected_limit"),
-    [({"summary": True}, 4096), ({"max_tokens": 2200, "disable_thinking": True}, 2200)],
+    [
+        ({"is_summary": True}, 4096),
+        ({"max_tokens": 2200, "should_disable_thinking": True}, 2200),
+    ],
 )
 def test_internal_calls_disable_thinking_and_keep_their_output_budget(
     model_config: ModelConfigFile,
@@ -249,7 +253,9 @@ def test_internal_calls_disable_thinking_and_keep_their_output_budget(
     else:
         model_config.chat(model_id, max_output_tokens=override)
 
-    create_chat_model(model_id, **options).invoke("Return a concise answer.")
+    create_chat_model(ChatModelRequest(model_id=model_id, **options)).invoke(
+        "Return a concise answer."
+    )
     payload = provider_requests[0]
 
     assert "reasoning_effort" not in payload
@@ -280,7 +286,9 @@ def test_qwen_input_budget_accounts_for_thinking_mode_and_output_reservation(
         thinking="medium" if enabled else "disabled",
     )
     configuration = model_configuration("qwen")
-    settings = configuration.context_settings(create_chat_model("qwen"))
+    settings = configuration.context_settings(
+        create_chat_model(ChatModelRequest(model_id="qwen"))
+    )
 
     assert settings.window == expected_input_budget
 
@@ -301,7 +309,9 @@ def test_internal_output_budget_cannot_exceed_the_catalog_limit(
     model_id: str,
 ):
     model_config.chat(model_id, api_key="test", max_output_tokens=1000)
-    create_chat_model(model_id, summary=True).invoke("Summarize.")
+    create_chat_model(ChatModelRequest(model_id=model_id, is_summary=True)).invoke(
+        "Summarize."
+    )
     field = "max_tokens" if model_id == "deepseek" else "max_completion_tokens"
 
     assert provider_requests[0][field] == 1000
@@ -362,7 +372,7 @@ def test_minimal_model_entries_resolve_defaults_and_native_thinking_levels(
     }
     model_config.save()
     configuration = model_configuration(model_id)
-    model = create_chat_model(model_id)
+    model = create_chat_model(ChatModelRequest(model_id=model_id))
     model.invoke("Check the time.")
     request = provider_requests[0]
     limit_field = "max_tokens" if model_id == "deepseek" else "max_completion_tokens"

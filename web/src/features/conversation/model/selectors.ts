@@ -4,14 +4,17 @@ import { parseWorkflowReview } from "@shared/workflow-review";
 import { isRunFinished } from "@shared/run-status";
 import { parseAgentInteraction } from "@shared/agent-interaction";
 
+/** Keeps interaction controls in the running state during live execution and recovery. */
 export function isRunning(state: ConversationState) {
   return state.lifecycle.execution !== "idle";
 }
 
+/** Identifies a conversation waiting for its first persisted snapshot. */
 export function isRestoring(state: ConversationState) {
   return state.lifecycle.hydration === "restoring";
 }
 
+/** Determines whether the workspace can display the new-conversation view. */
 export function isEmpty(state: ConversationState) {
   return (
     state.lifecycle.emptyHint &&
@@ -21,6 +24,7 @@ export function isEmpty(state: ConversationState) {
   );
 }
 
+/** Allows model changes only while the conversation has no blocking work. */
 export function canSelectModel(state: ConversationState) {
   const latest = state.runs.at(-1);
   const unfinishedRun =
@@ -44,10 +48,12 @@ export function canSelectModel(state: ConversationState) {
   );
 }
 
+/** Selects the issue currently presented by the conversation timeline. */
 export function conversationIssue(state: ConversationState) {
   return state.issues.snapshot ?? state.issues.output ?? state.issues.run;
 }
 
+/** Projects session state into the controls needed by the message composer. */
 export function composerState(state: ConversationState) {
   const workflowReview =
     state.pendingInterrupts.length === 1

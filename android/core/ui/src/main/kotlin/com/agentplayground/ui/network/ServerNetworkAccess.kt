@@ -24,6 +24,7 @@ class ServerNetworkAccess(
         withContext(Dispatchers.IO) { InetAddress.getAllByName(host).toList() }
     },
 ) {
+    /** Checks whether the caller may attempt this connection without requesting permission. */
     suspend fun isAllowed(serverUrl: String): Boolean {
         if (sdkInt < 37 || isGranted()) {
             return true
@@ -64,6 +65,7 @@ class ServerNetworkAccess(
         }
     }
 
+    /** Requests local network permission when needed and reports whether the caller may connect. */
     suspend fun request(serverUrl: String): Boolean {
         if (isAllowed(serverUrl)) {
             return true
@@ -77,6 +79,7 @@ private class PendingPermission {
     var result: CompletableDeferred<Boolean>? = null
 }
 
+/** Owns the system launcher and shares its in-flight result until the composition is disposed. */
 @Composable
 fun rememberServerNetworkAccess(): ServerNetworkAccess {
     val context = LocalContext.current

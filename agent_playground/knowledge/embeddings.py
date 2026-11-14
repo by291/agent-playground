@@ -8,14 +8,19 @@ import math
 import random
 import time
 from collections.abc import Iterator
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
-from typing import TYPE_CHECKING, override
+from typing import TYPE_CHECKING, Literal, override
 
 from langchain_core.embeddings import Embeddings
 from openai import APIConnectionError, APIStatusError, AsyncOpenAI, RateLimitError, omit
 
-from agent_playground.knowledge.rate_limits import BeforeRequest, EmbeddingQuota
+from agent_playground.knowledge.rate_limits import (
+    OWNERSHIP_CHECK_SECONDS,
+    BeforeRequest,
+    EmbeddingQuota,
+)
 from agent_playground.knowledge.token_estimation import EmbeddingTokenEstimator
 
 if TYPE_CHECKING:
@@ -23,8 +28,47 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+RETRY_HEADERS = (("retry-after-ms", 1000), ("retry-after", 1))
+MAX_BACKOFF_SECONDS = 60
+MAX_JITTER_SECONDS = 1
+RETRYABLE_STATUS_CODES = {
+    408,
+    409,
+    429,
+}
+
+
+@dataclass(frozen=True, kw_only=True)
+class EmbeddingBatch:
+    """Carry batch inputs, quota calibration and the remaining retry allowance."""
+
+    texts: list[str]
+    index: int
+    operation: Literal["index", "query"]
+    before_request: BeforeRequest | None = None
+    estimator: EmbeddingTokenEstimator = field(default_factory=EmbeddingTokenEstimator)
+    max_retries: int | None = None
+
+
+@dataclass(frozen=True, kw_only=True)
+class _BatchAttempt:
+    batch: EmbeddingBatch
+    tokens: int
+    retry: int
+    retry_limit: int
+
+
+@dataclass(frozen=True, kw_only=True)
+class _AdmittedBatch:
+    attempt: _BatchAttempt
+    ratio: float
+    samples: int
+    wait: float
+    started: float
+
 
 def validate_vectors(vectors: list[list[float]], count: int) -> int:
+    """Return the common dimension after validating the batch shape and values."""
     if len(vectors) != count or not vectors:
         raise ValueError("Embedding API returned an unexpected number of vectors")
 
@@ -41,28 +85,44 @@ def validate_vectors(vectors: list[list[float]], count: int) -> int:
     return dimension
 
 
+def _parse_retry_header(value: str, divisor: int) -> float | None:
+    try:
+        return float(value) / divisor
+    except ValueError:
+        # Providers can supply an HTTP date instead of a numeric wait.
+        try:
+            date = parsedate_to_datetime(value)
+
+            return (date - datetime.now(UTC)).total_seconds()
+        except (
+            ValueError,
+            TypeError,
+            OverflowError,
+        ):
+            return None
+
+
 def retry_delay(error: APIStatusError | APIConnectionError, retry: int) -> float:
+    """Use the provider's retry window or fall back to capped, jittered backoff."""
     if isinstance(error, APIStatusError):
-        for name, divisor in (("retry-after-ms", 1000), ("retry-after", 1)):
+        for name, divisor in RETRY_HEADERS:
             value = error.response.headers.get(name)
 
-            if value:
-                try:
-                    seconds = float(value) / divisor
-                except ValueError:
-                    try:
-                        date = parsedate_to_datetime(value)
-                        seconds = (date - datetime.now(UTC)).total_seconds()
-                    except (ValueError, TypeError, OverflowError):
-                        continue
+            if not value:
+                continue
 
-                if math.isfinite(seconds) and seconds > 0:
-                    return seconds
+            seconds = _parse_retry_header(value, divisor)
 
-    return min(60, 2 ** (retry + 1)) + random.uniform(0, 1)
+            if seconds is not None and math.isfinite(seconds) and seconds > 0:
+                return seconds
+
+    return min(MAX_BACKOFF_SECONDS, 2 ** (retry + 1)) + random.uniform(
+        0, MAX_JITTER_SECONDS
+    )
 
 
 def rate_limit_message(error: RateLimitError) -> str:
+    """Explain the relevant provider quota without returning the raw error."""
     message = str(error).lower()
 
     if "allocated quota exceeded" in message or "current quota" in message:
@@ -84,7 +144,7 @@ async def _wait_before_retry(
         if before_request:
             await before_request()
 
-        await asyncio.sleep(min(remaining, 1.0))
+        await asyncio.sleep(min(remaining, OWNERSHIP_CHECK_SECONDS))
 
 
 class EmbeddingService(Embeddings):
@@ -92,17 +152,19 @@ class EmbeddingService(Embeddings):
 
     def __init__(
         self, config: EmbeddingConfig, client: AsyncOpenAI, quota: EmbeddingQuota
-    ):
+    ) -> None:
         self.config = config
         self.client = client
         self.quota = quota
 
     @override
     def embed_documents(self, texts: list[str]) -> list[list[float]]:
+        """Reject synchronous calls because embedding uses async quota admission."""
         raise NotImplementedError("Use asynchronous embedding methods")
 
     @override
     def embed_query(self, text: str) -> list[float]:
+        """Reject synchronous calls because embedding uses async quota admission."""
         raise NotImplementedError("Use asynchronous embedding methods")
 
     def batches(
@@ -141,13 +203,20 @@ class EmbeddingService(Embeddings):
         *,
         before_request: BeforeRequest | None = None,
     ) -> list[list[float]]:
+        """Embed documents in order with calibration shared across their batches."""
         vectors: list[list[float]] = []
         dimension: int | None = None
         estimator = EmbeddingTokenEstimator()
 
         for index, batch in enumerate(self.batches(texts, estimator)):
             result = await self.embed_batch(
-                batch, index, "index", before_request, estimator=estimator
+                EmbeddingBatch(
+                    texts=batch,
+                    index=index,
+                    operation="index",
+                    before_request=before_request,
+                    estimator=estimator,
+                )
             )
             batch_dimension = validate_vectors(result, len(batch))
 
@@ -163,142 +232,171 @@ class EmbeddingService(Embeddings):
 
     @override
     async def aembed_query(self, text: str) -> list[float]:
-        return (await self.embed_batch([text], 0, "query", None))[0]
+        """Embed one query using the shared provider quota."""
+        vectors = await self.embed_batch(
+            EmbeddingBatch(texts=[text], index=0, operation="query")
+        )
 
-    async def embed_batch(
-        self,
-        batch: list[str],
-        index: int,
-        operation: str,
-        before_request: BeforeRequest | None,
-        *,
-        estimator: EmbeddingTokenEstimator | None = None,
-        max_retries: int | None = None,
-    ) -> list[list[float]]:
-        estimator = estimator or EmbeddingTokenEstimator()
-        retry_limit = self.config.max_retries if max_retries is None else max_retries
+        return vectors[0]
+
+    async def embed_batch(self, batch: EmbeddingBatch) -> list[list[float]]:
+        """Embed a batch and split it if recalibration raises its quota cost."""
+        retry_limit = (
+            self.config.max_retries if batch.max_retries is None else batch.max_retries
+        )
 
         for retry in range(retry_limit + 1):
-            tokens = sum(estimator.estimate(text) for text in batch)
+            tokens = sum(batch.estimator.estimate(text) for text in batch.texts)
+            attempt = _BatchAttempt(
+                batch=batch, tokens=tokens, retry=retry, retry_limit=retry_limit
+            )
 
             if tokens > self.config.batch_token_budget:
-                logger.info(
-                    "Embedding batch split to fit quota budget: batch=%s texts=%s estimated_tokens=%s",
-                    index,
-                    len(batch),
-                    tokens,
-                )
-                result: list[list[float]] = []
+                return await self._split_batch(attempt)
 
-                for part in self.batches(batch, estimator):
-                    result.extend(
-                        await self.embed_batch(
-                            part,
-                            index,
-                            operation,
-                            before_request,
-                            estimator=estimator,
-                            max_retries=retry_limit - retry,
-                        )
-                    )
-
-                return result
-
-            ratio = estimator.ratio
-            samples = estimator.samples
-            wait = await self.quota.acquire(tokens, before_request)
-
-            if before_request:
-                await before_request()
-
-            started = time.monotonic()
+            admission = await self._admit_batch(attempt)
 
             try:
-                raw = await self.client.embeddings.with_raw_response.create(
-                    input=batch,
-                    model=self.config.model,
-                    encoding_format="float",
-                    dimensions=self.config.dimensions
-                    if self.config.dimensions is not None
-                    else omit,
-                )
-                response = raw.parse()
-                entries = sorted(response.data, key=lambda item: item.index)
-
-                if [entry.index for entry in entries] != list(range(len(batch))):
-                    raise ValueError("Embedding API returned invalid vector indexes")
-
-                result = [entry.embedding for entry in entries]
-                validate_vectors(result, len(batch))
-                actual = getattr(
-                    getattr(response, "usage", None), "prompt_tokens", None
-                )
-
-                if operation == "index":
-                    estimator.observe(batch, actual)
-
-                logger.info(
-                    "Embedding batch completed: operation=%s batch=%s texts=%s estimated_tokens=%s actual_tokens=%s token_ratio=%.3f calibration_samples=%s quota_wait_seconds=%.3f duration_seconds=%.3f retries=%s request_id=%s remaining_tokens=%s",
-                    operation,
-                    index,
-                    len(batch),
-                    tokens,
-                    actual,
-                    ratio,
-                    samples,
-                    wait,
-                    time.monotonic() - started,
-                    retry,
-                    raw.headers.get("x-request-id"),
-                    raw.headers.get("x-ratelimit-remaining-tokens"),
-                )
-
-                return result
+                return await self._request_batch(admission)
             except (APIStatusError, APIConnectionError) as error:
-                retryable = (
-                    isinstance(error, APIConnectionError)
-                    or error.status_code in {408, 409, 429}
-                    or error.status_code >= 500
-                )
-
-                if not retryable:
+                if not await self._wait_for_retry(error, attempt):
                     raise
-
-                delay = retry_delay(error, retry)
-
-                if isinstance(error, RateLimitError):
-                    # All clients observe the longest provider cooldown, even after this attempt fails.
-                    await self.quota.cooldown(delay)
-                    estimator.backoff()
-
-                if retry == retry_limit:
-                    logger.error(
-                        "Embedding batch failed: operation=%s batch=%s estimated_tokens=%s attempts=%s error=%s request_id=%s",
-                        operation,
-                        index,
-                        tokens,
-                        retry + 1,
-                        type(error).__name__,
-                        error.request_id if isinstance(error, APIStatusError) else None,
-                    )
-
-                    if isinstance(error, RateLimitError):
-                        raise ValueError(rate_limit_message(error)) from error
-
-                    raise
-
-                logger.warning(
-                    "Embedding batch retry: operation=%s batch=%s estimated_tokens=%s retry=%s wait_seconds=%.3f error=%s request_id=%s",
-                    operation,
-                    index,
-                    tokens,
-                    retry + 1,
-                    delay,
-                    type(error).__name__,
-                    error.request_id if isinstance(error, APIStatusError) else None,
-                )
-
-                if not isinstance(error, RateLimitError):
-                    await _wait_before_retry(delay, before_request)
 
         raise RuntimeError("Embedding retry loop ended without a result")
+
+    async def _split_batch(self, attempt: _BatchAttempt) -> list[list[float]]:
+        batch = attempt.batch
+        logger.info(
+            "Embedding batch split to fit quota budget: batch=%s texts=%s estimated_tokens=%s",
+            batch.index,
+            len(batch.texts),
+            attempt.tokens,
+        )
+        vectors: list[list[float]] = []
+
+        # Splitting after recalibration must not replenish exhausted retries.
+        for part in self.batches(batch.texts, batch.estimator):
+            segment = replace(
+                batch, texts=part, max_retries=attempt.retry_limit - attempt.retry
+            )
+            vectors.extend(await self.embed_batch(segment))
+
+        return vectors
+
+    async def _admit_batch(self, attempt: _BatchAttempt) -> _AdmittedBatch:
+        batch = attempt.batch
+        ratio = batch.estimator.ratio
+        samples = batch.estimator.samples
+
+        wait = await self.quota.acquire(attempt.tokens, batch.before_request)
+
+        # Quota admission may have waited long enough for the generation to change.
+        if batch.before_request:
+            await batch.before_request()
+
+        return _AdmittedBatch(
+            attempt=attempt,
+            ratio=ratio,
+            samples=samples,
+            wait=wait,
+            started=time.monotonic(),
+        )
+
+    async def _request_batch(self, admission: _AdmittedBatch) -> list[list[float]]:
+        batch = admission.attempt.batch
+        request = self.client.embeddings.with_raw_response
+        raw = await request.create(
+            input=batch.texts,
+            model=self.config.model,
+            encoding_format="float",
+            dimensions=self.config.dimensions
+            if self.config.dimensions is not None
+            else omit,
+        )
+
+        response = raw.parse()
+        entries = sorted(response.data, key=lambda item: item.index)
+
+        # Match vectors to the submitted fragments even if the provider reorders entries.
+        if [entry.index for entry in entries] != list(range(len(batch.texts))):
+            raise ValueError("Embedding API returned invalid vector indexes")
+
+        result = [entry.embedding for entry in entries]
+        validate_vectors(result, len(batch.texts))
+        usage = getattr(response, "usage", None)
+        actual = getattr(usage, "prompt_tokens", None)
+
+        if batch.operation == "index":
+            batch.estimator.observe(batch.texts, actual)
+
+        logger.info(
+            "Embedding batch completed: operation=%s batch=%s texts=%s estimated_tokens=%s actual_tokens=%s token_ratio=%.3f calibration_samples=%s quota_wait_seconds=%.3f duration_seconds=%.3f retries=%s request_id=%s remaining_tokens=%s",
+            batch.operation,
+            batch.index,
+            len(batch.texts),
+            admission.attempt.tokens,
+            actual,
+            admission.ratio,
+            admission.samples,
+            admission.wait,
+            time.monotonic() - admission.started,
+            admission.attempt.retry,
+            raw.headers.get("x-request-id"),
+            raw.headers.get("x-ratelimit-remaining-tokens"),
+        )
+
+        return result
+
+    async def _wait_for_retry(
+        self, error: APIStatusError | APIConnectionError, attempt: _BatchAttempt
+    ) -> bool:
+        can_retry = (
+            isinstance(error, APIConnectionError)
+            or error.status_code in RETRYABLE_STATUS_CODES
+            or error.status_code >= 500
+        )
+
+        if not can_retry:
+            return False
+
+        batch = attempt.batch
+        delay = retry_delay(error, attempt.retry)
+        request_id = error.request_id if isinstance(error, APIStatusError) else None
+
+        if isinstance(error, RateLimitError):
+            # Other callers must honor the provider cooldown even on the final attempt.
+            await self.quota.cooldown(delay)
+            batch.estimator.backoff()
+
+        if attempt.retry == attempt.retry_limit:
+            logger.error(
+                "Embedding batch failed: operation=%s batch=%s estimated_tokens=%s attempts=%s error=%s request_id=%s",
+                batch.operation,
+                batch.index,
+                attempt.tokens,
+                attempt.retry + 1,
+                type(error).__name__,
+                request_id,
+            )
+
+            if isinstance(error, RateLimitError):
+                raise ValueError(rate_limit_message(error)) from error
+
+            return False
+
+        logger.warning(
+            "Embedding batch retry: operation=%s batch=%s estimated_tokens=%s retry=%s wait_seconds=%.3f error=%s request_id=%s",
+            batch.operation,
+            batch.index,
+            attempt.tokens,
+            attempt.retry + 1,
+            delay,
+            type(error).__name__,
+            request_id,
+        )
+
+        # Rate-limited requests wait at shared quota admission during the next attempt.
+        if not isinstance(error, RateLimitError):
+            await _wait_before_retry(delay, batch.before_request)
+
+        return True

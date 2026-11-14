@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/collapsible";
 import MarkdownMessage from "./MarkdownMessage";
 
+/** Preserves disclosure choices within a reasoning phase and folds on a visible answer. */
 export function ReasoningProcess({
   messages,
   active,
@@ -26,6 +27,7 @@ export function ReasoningProcess({
   const phase =
     replyId === null ? `reasoning-${messages.length}` : `reply-${replyId}`;
   const automaticOpen = active && replyId === null;
+
   const [fold, setFold] = useState({ phase, open: automaticOpen });
 
   if (fold.phase !== phase) {

@@ -33,4 +33,7 @@ async def run_a2a_workflow(
             "The A2A collaboration was cancelled. Partial child output remains visible."
         )
 
-    return "The planner produced a proposal, the reviewer evaluated it, and the planner revised it. Child outputs and the final proposal are displayed in the conversation."
+    return (
+        "The planner produced a proposal, the reviewer evaluated it, and the planner revised it. "
+        "Child outputs and the final proposal are displayed in the conversation."
+    )

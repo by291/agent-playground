@@ -15,15 +15,17 @@ const cursorSchema = z.object({
   updatedAt: z.string().datetime(),
   threadId: z.string().min(1).max(256),
 });
-const pageSize = 30;
+const CONVERSATION_PAGE_SIZE = 30;
+const MAX_CURSOR_CHARS = 1024;
 
+/** Validate a saved cursor before using it as a keyset boundary. */
 export function parseConversationCursor(value: string | undefined) {
   if (value === undefined) {
     return null;
   }
 
   try {
-    if (value.length > 1024) {
+    if (value.length > MAX_CURSOR_CHARS) {
       throw new Error("Cursor too long");
     }
 
@@ -33,6 +35,7 @@ export function parseConversationCursor(value: string | undefined) {
   }
 }
 
+/** Read one page of visible conversation summaries in stable keyset order. */
 export async function listConversations(
   cursor: ReturnType<typeof parseConversationCursor>,
 ) {
@@ -45,10 +48,13 @@ export async function listConversations(
         ),
       )
     : undefined;
-  const latestStatus = db
+
+  const latestRunQuery = db
     .select({ status: conversationRuns.status })
     .from(conversationRuns)
-    .where(eq(conversationRuns.threadId, conversations.threadId))
+    .where(eq(conversationRuns.threadId, conversations.threadId));
+
+  const latestStatus = latestRunQuery
     .orderBy(desc(conversationRuns.submitSeq))
     .limit(1);
 
@@ -57,7 +63,8 @@ export async function listConversations(
     .select({ id: conversationMessages.messageId })
     .from(conversationMessages)
     .where(eq(conversationMessages.threadId, conversations.threadId));
-  const firstMessage = db
+
+  const firstUserMessageQuery = db
     .select({ message: conversationMessages.message })
     .from(conversationMessages)
     .where(
@@ -65,7 +72,9 @@ export async function listConversations(
         eq(conversationMessages.threadId, conversations.threadId),
         sql`${conversationMessages.message}->>'role' = 'user'`,
       ),
-    )
+    );
+
+  const firstMessage = firstUserMessageQuery
     .orderBy(
       asc(conversationMessages.submitSeq),
       asc(conversationMessages.messageOrder),
@@ -73,7 +82,7 @@ export async function listConversations(
     )
     .limit(1);
 
-  const rows = await db
+  const visiblePageQuery = db
     .select({
       threadId: conversations.threadId,
       title: conversations.title,
@@ -85,12 +94,14 @@ export async function listConversations(
     .from(conversations)
     .where(
       and(isNull(conversations.deletedAt), exists(savedMessages), boundary),
-    )
+    );
+
+  const rows = await visiblePageQuery
     .orderBy(desc(conversations.updatedAt), desc(conversations.threadId))
-    .limit(pageSize + 1);
+    .limit(CONVERSATION_PAGE_SIZE + 1);
 
   const page = rows
-    .slice(0, pageSize)
+    .slice(0, CONVERSATION_PAGE_SIZE)
     .map(({ firstMessage: message, ...row }) => ({
       ...row,
       title: presentConversationTitle(row.title, message),
@@ -100,7 +111,7 @@ export async function listConversations(
   return {
     conversations: page,
     nextCursor:
-      rows.length > pageSize && last
+      rows.length > CONVERSATION_PAGE_SIZE && last
         ? JSON.stringify({
             updatedAt: last.updatedAt.toISOString(),
             threadId: last.threadId,
@@ -109,6 +120,7 @@ export async function listConversations(
   };
 }
 
+/** Check whether the conversation is visible to application operations. */
 export async function conversationExists(threadId: string) {
   const [row] = await db
     .select({ threadId: conversations.threadId })
@@ -123,8 +135,9 @@ export async function conversationExists(threadId: string) {
   return !!row;
 }
 
+/** Change the title of one visible conversation. */
 export async function renameConversation(threadId: string, title: string) {
-  const [row] = await db
+  const visibleTitleUpdate = db
     .update(conversations)
     .set({ title })
     .where(
@@ -132,11 +145,12 @@ export async function renameConversation(threadId: string, title: string) {
         eq(conversations.threadId, threadId),
         isNull(conversations.deletedAt),
       ),
-    )
-    .returning({
-      threadId: conversations.threadId,
-      title: conversations.title,
-    });
+    );
+
+  const [row] = await visibleTitleUpdate.returning({
+    threadId: conversations.threadId,
+    title: conversations.title,
+  });
 
   if (!row) {
     throw new SubmissionError("Conversation not found", 404);
@@ -145,23 +159,27 @@ export async function renameConversation(threadId: string, title: string) {
   return row;
 }
 
+/** Hide a conversation after checking its latest run under the admission lock. */
 export async function deleteConversation(threadId: string) {
   await db.transaction(async (tx) => {
     // Use admission's lock so deletion and a new run cannot both succeed.
-    const [conversation] = await tx
+    const conversationLockQuery = tx
       .select()
       .from(conversations)
-      .where(eq(conversations.threadId, threadId))
-      .for("update");
+      .where(eq(conversations.threadId, threadId));
+
+    const [conversation] = await conversationLockQuery.for("update");
 
     if (!conversation || conversation.deletedAt) {
       throw new SubmissionError("Conversation not found", 404);
     }
 
-    const [run] = await tx
+    const latestRunQuery = tx
       .select({ status: conversationRuns.status })
       .from(conversationRuns)
-      .where(eq(conversationRuns.threadId, threadId))
+      .where(eq(conversationRuns.threadId, threadId));
+
+    const [run] = await latestRunQuery
       .orderBy(desc(conversationRuns.submitSeq))
       .limit(1);
 
@@ -182,13 +200,16 @@ export async function deleteConversation(threadId: string) {
   });
 }
 
+/** Hide the locked set of conversations only when none have an active run. */
 export async function deleteAllConversations() {
   await db.transaction(async (tx) => {
     // Match admission's lock and acquire the entire batch in a stable order.
-    const targets = await tx
+    const conversationBatchQuery = tx
       .select({ threadId: conversations.threadId })
       .from(conversations)
-      .where(isNull(conversations.deletedAt))
+      .where(isNull(conversations.deletedAt));
+
+    const targets = await conversationBatchQuery
       .orderBy(asc(conversations.threadId))
       .for("update");
 
@@ -199,13 +220,17 @@ export async function deleteAllConversations() {
     const threadIds = sql.param(targets.map((target) => target.threadId));
 
     // A separate statement sees admissions committed while row locks were waiting.
-    const latestRuns = await tx
+    const latestBatchRunQuery = tx
       .selectDistinctOn([conversationRuns.threadId], {
         status: conversationRuns.status,
       })
       .from(conversationRuns)
-      .where(sql`${conversationRuns.threadId} = ANY(${threadIds}::text[])`)
-      .orderBy(conversationRuns.threadId, desc(conversationRuns.submitSeq));
+      .where(sql`${conversationRuns.threadId} = ANY(${threadIds}::text[])`);
+
+    const latestRuns = await latestBatchRunQuery.orderBy(
+      conversationRuns.threadId,
+      desc(conversationRuns.submitSeq),
+    );
 
     const hasUnfinishedRun = latestRuns.some(
       (run) => isRunActive(run.status) || run.status === "submission_unknown",

@@ -9,7 +9,7 @@ test("even a large final burst drains within three seconds after the model finis
   const clock = animationClock();
   const text = "城市中的日常生活。".repeat(1000);
   const hook = renderHook(
-    ({ text, streaming }) => usePacedText(text, streaming),
+    ({ text, streaming }) => usePacedText({ text, isStreaming: streaming }),
     { initialProps: { text, streaming: true } },
   );
 
@@ -23,9 +23,12 @@ test("even a large final burst drains within three seconds after the model finis
 
 test("many source chunks in one frame do not bypass the display cadence", () => {
   const clock = animationClock();
-  const hook = renderHook(({ text }) => usePacedText(text, true), {
-    initialProps: { text: "" },
-  });
+  const hook = renderHook(
+    ({ text }) => usePacedText({ text, isStreaming: true }),
+    {
+      initialProps: { text: "" },
+    },
+  );
 
   for (let chunk = 1; chunk <= 100; chunk++) {
     hook.rerender({ text: "中".repeat(chunk * 10) });

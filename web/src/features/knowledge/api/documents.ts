@@ -1,5 +1,6 @@
 import { knowledgeDocumentSchema } from "@shared/knowledge";
 
+/** Sends a document request and exposes server errors to the owning mutation. */
 export async function knowledgeRequest(path = "", init?: RequestInit) {
   const response = await fetch(`/api/knowledge/documents${path}`, init);
 
@@ -16,6 +17,7 @@ export async function knowledgeRequest(path = "", init?: RequestInit) {
   return response;
 }
 
+/** Reads and validates the document list for the query cache. */
 export async function listKnowledge(signal: AbortSignal) {
   const response = await knowledgeRequest("", { signal });
 

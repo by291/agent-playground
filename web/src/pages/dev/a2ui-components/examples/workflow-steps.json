@@ -17,10 +17,7 @@
           {
             "id": "root",
             "component": "WorkflowSteps",
-            "children": [
-              "first",
-              "second"
-            ]
+            "children": ["first", "second"]
           },
           {
             "id": "first",

@@ -13,6 +13,7 @@ import { SettingsButton } from "./SettingsButton";
 import { PreferencesForm } from "./PreferencesForm";
 import { ClearConversationsDialog } from "./ClearConversationsDialog";
 
+/** Owns the workspace settings dialog and its nested clear-history confirmation. */
 export function SettingsProvider({
   children,
   onClearConversations,
@@ -20,13 +21,15 @@ export function SettingsProvider({
   children?: ReactNode;
   onClearConversations?: (() => Promise<void>) | undefined;
 }) {
+  const { resetPreferences } = useUserPreferences();
+
   const id = useId();
+  const openingTrigger = useRef<HTMLButtonElement | null>(null);
+
   const [open, setOpen] = useState(false);
   const [confirmationOpen, setConfirmationOpen] = useState(false);
-  const openingTrigger = useRef<HTMLButtonElement | null>(null);
   const [clearing, setClearing] = useState(false);
   const [clearError, setClearError] = useState<string | null>(null);
-  const { resetPreferences } = useUserPreferences();
 
   // Keep the parent dialog mounted while its confirmation or request owns focus.
   const settingsCloseBlocked = clearing || confirmationOpen;
@@ -37,12 +40,16 @@ export function SettingsProvider({
     setOpen(true);
   }
 
-  function changeSettingsOpen(next: boolean) {
-    if (settingsCloseBlocked) {
-      return;
+  function changeSettingsOpen(isOpen: boolean) {
+    if (!settingsCloseBlocked) {
+      setOpen(isOpen);
     }
+  }
 
-    setOpen(next);
+  function closeSettings() {
+    if (!settingsCloseBlocked) {
+      setOpen(false);
+    }
   }
 
   function changeConfirmationOpen(next: boolean) {
@@ -113,7 +120,11 @@ export function SettingsProvider({
     navigationTrigger?.focus();
   }
 
-  const settings = { dialogId: `${id}-dialog`, open, openSettings };
+  const settings = {
+    dialogId: `${id}-dialog`,
+    open,
+    openSettings,
+  };
 
   return (
     <SettingsContext.Provider value={settings}>
@@ -151,12 +162,14 @@ export function SettingsProvider({
               aria-label="Close settings"
               className="workspace-toolbar-button size-8"
               disabled={clearing}
-              onClick={() => changeSettingsOpen(false)}
+              onClick={closeSettings}
             >
               <XIcon size={18} aria-hidden="true" />
             </Button>
           </div>
+
           <PreferencesForm id={id} />
+
           {onClearConversations && (
             <ClearConversationsDialog
               id={id}
@@ -167,6 +180,7 @@ export function SettingsProvider({
               clearConversations={clearConversations}
             />
           )}
+
           <div className="mt-5 flex items-center justify-end gap-3 border-t border-line pt-4">
             <Button
               type="button"
@@ -176,11 +190,7 @@ export function SettingsProvider({
             >
               Reset preferences
             </Button>
-            <Button
-              type="button"
-              disabled={clearing}
-              onClick={() => changeSettingsOpen(false)}
-            >
+            <Button type="button" disabled={clearing} onClick={closeSettings}>
               Done
             </Button>
           </div>

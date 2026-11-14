@@ -6,6 +6,7 @@ import {
 import { ChatLayout } from "@/layouts/ChatLayout";
 import { useConversationNavigation } from "./useConversationNavigation";
 
+/** Connects URL navigation and saved history to the active chat session. */
 export function ChatPage({ development }: { development: boolean }) {
   const {
     conversation,
@@ -13,14 +14,12 @@ export function ChatPage({ development }: { development: boolean }) {
     activateConversation,
     openConversation,
     startNewConversation,
+    leaveDeletedConversation,
   } = useConversationNavigation();
+
   const history = useConversationHistory(
     openConversation,
-    (threadId) => {
-      if (conversation.threadId === threadId) {
-        startNewConversation("replace");
-      }
-    },
+    leaveDeletedConversation,
     () => startNewConversation("replace"),
   );
 

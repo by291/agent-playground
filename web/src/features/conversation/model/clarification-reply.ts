@@ -80,13 +80,21 @@ function readAnswers(
   }
 }
 
-function questionStatus(
-  callId: string,
-  questions: UserQuestion[],
-  result: ToolMessage | undefined,
-  answers: ClarificationAnswer[] | null,
-  status: ChatTurn["status"],
-): ClarificationQuestion["status"] {
+interface QuestionStatusOptions {
+  callId: string;
+  questions: UserQuestion[];
+  result: ToolMessage | undefined;
+  answers: ClarificationAnswer[] | null;
+  status: ChatTurn["status"];
+}
+
+function questionStatus({
+  callId,
+  questions,
+  result,
+  answers,
+  status,
+}: QuestionStatusOptions): ClarificationQuestion["status"] {
   if (answers) {
     return "answered";
   }
@@ -192,7 +200,12 @@ export function clarificationReply(
     parts.push({
       type: "assistant",
       id,
-      turn: { ...turn, id, user: null, messages },
+      turn: {
+        ...turn,
+        id,
+        user: null,
+        messages,
+      },
       ...(clarification ? { clarification } : {}),
     });
     messages = [];
@@ -200,6 +213,31 @@ export function clarificationReply(
     if (clarification) {
       sectionId = `after-question:${clarification.id}`;
     }
+  }
+
+  function appendQuestion(call: { id: string }) {
+    const requested = questions.get(call.id);
+
+    if (!requested || shownCalls.has(call.id)) {
+      return;
+    }
+
+    shownCalls.add(call.id);
+
+    const result = results.get(call.id);
+    const answers = readAnswers(requested, result);
+
+    flush({
+      id: call.id,
+      questions: requested,
+      status: questionStatus({
+        callId: call.id,
+        questions: requested,
+        result,
+        answers,
+        status: turn.status,
+      }),
+    });
   }
 
   for (const message of turn.messages) {
@@ -224,28 +262,7 @@ export function clarificationReply(
         });
       }
 
-      for (const call of message.toolCalls) {
-        if (!calls.has(call.id) || shownCalls.has(call.id)) {
-          continue;
-        }
-
-        shownCalls.add(call.id);
-        const requested = questions.get(call.id)!;
-        const result = results.get(call.id);
-        const answers = readAnswers(requested, result);
-
-        flush({
-          id: call.id,
-          questions: requested,
-          status: questionStatus(
-            call.id,
-            requested,
-            result,
-            answers,
-            turn.status,
-          ),
-        });
-      }
+      message.toolCalls.forEach(appendQuestion);
 
       continue;
     }

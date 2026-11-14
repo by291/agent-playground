@@ -36,7 +36,7 @@ test.each([false, true])(
       [],
     )[0]!;
     const page = render(
-      createElement(ToolProcess, { process: toolProcess(turn) }),
+      createElement(ToolProcess, { toolHistory: toolProcess(turn) }),
     );
     const user = userEvent.setup();
     const summary = page.getByRole("button", {

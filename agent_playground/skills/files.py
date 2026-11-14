@@ -11,6 +11,9 @@ from pydantic import BaseModel, ConfigDict, Field
 from agent_playground.config.agent import app_api_url, workflow_api_token
 from agent_playground.skills.catalog import MAX_FILE_BYTES, relative_path
 
+TRANSFER_TIMEOUT_SECONDS = 30
+MAX_TRANSFER_ERROR_CHARS = 1000
+
 
 class SkillFile(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
@@ -22,7 +25,7 @@ class SkillFile(BaseModel):
 
 
 class SkillFileClient:
-    def __init__(self, thread_id: str, run_id: str, call_id: str):
+    def __init__(self, thread_id: str, run_id: str, call_id: str) -> None:
         self.thread_id = thread_id
         self.run_id = run_id
         self.call_id = call_id
@@ -37,9 +40,10 @@ class SkillFileClient:
         self.headers = {"Authorization": f"Bearer {token}"}
 
     async def inputs(self, ids: list[str]) -> dict[str, bytes]:
+        """Download conversation-owned inputs at their deterministic staging paths."""
         result: dict[str, bytes] = {}
 
-        async with httpx.AsyncClient(timeout=30) as client:
+        async with httpx.AsyncClient(timeout=TRANSFER_TIMEOUT_SECONDS) as client:
             for file_id in ids:
                 identifier = str(UUID(file_id))
                 response = await client.get(
@@ -48,7 +52,8 @@ class SkillFileClient:
                     params={"threadId": self.thread_id},
                 )
                 response.raise_for_status()
-                name = relative_path(unquote(response.headers["X-Filename"]))
+                encoded_name = response.headers["X-Filename"]
+                name = relative_path(unquote(encoded_name))
 
                 if "/" in name or len(response.content) > MAX_FILE_BYTES:
                     raise ValueError("Invalid input file name or size")
@@ -63,8 +68,8 @@ class SkillFileClient:
         """Keep published links on partial failure, using retry-stable file identities."""
         result: list[SkillFile] = []
 
-        async with httpx.AsyncClient(timeout=30) as client:
-            for path, data in outputs.items():
+        async with httpx.AsyncClient(timeout=TRANSFER_TIMEOUT_SECONDS) as client:
+            for path, content in outputs.items():
                 # A matching transfer retry reuses the reserved output identity.
                 identifier = str(
                     uuid5(
@@ -74,6 +79,7 @@ class SkillFileClient:
                 )
 
                 try:
+                    encoded_content = base64.b64encode(content).decode("ascii")
                     response = await client.post(
                         f"{app_api_url()}/internal/skill-files",
                         headers=self.headers,
@@ -82,12 +88,12 @@ class SkillFileClient:
                             "threadId": self.thread_id,
                             "runId": self.run_id,
                             "name": PurePosixPath(path).name,
-                            "dataBase64": base64.b64encode(data).decode("ascii"),
+                            "dataBase64": encoded_content,
                         },
                     )
                     response.raise_for_status()
                     result.append(SkillFile.model_validate(response.json()))
                 except (httpx.HTTPError, ValueError) as error:
-                    return result, str(error)[:1000]
+                    return result, str(error)[:MAX_TRANSFER_ERROR_CHARS]
 
         return result, None

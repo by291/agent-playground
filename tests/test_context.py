@@ -13,16 +13,20 @@ from langchain_core.tools import tool
 from langgraph.checkpoint.memory import InMemorySaver
 from pydantic import PrivateAttr
 
-from agent_playground.graph import make_graph
+from agent_playground.graph import AgentGraphOptions, make_graph
 from tests.model_config import ModelConfigFile
 
 
 def test_switching_models_does_not_report_the_previous_provider_input_usage():
-    from agent_playground.context import ContextMiddleware
+    from agent_playground.context import ContextMiddleware, ContextMiddlewareOptions
     from agent_playground.context_state import ContextState
 
     model = RecordingModel(responses=[AIMessage(content="Next.")])
-    middleware = ContextMiddleware(model, model, "Prompt", [])
+    middleware = ContextMiddleware(
+        ContextMiddlewareOptions(
+            model=model, summary_model=model, system_prompt="Prompt", tools=[]
+        )
+    )
     state: ContextState = {
         "messages": [
             AIMessage(
@@ -129,7 +133,7 @@ def test_image_pixels_survive_checkpoint_and_followup(asynchronous: bool):
     model = RecordingModel(responses=[AIMessage(content="A red square.")])
     saver = InMemorySaver()
     config = {"configurable": {"thread_id": "image-history"}}
-    graph = make_graph(model=model, checkpointer=saver)
+    graph = make_graph(AgentGraphOptions(model=model, checkpointer=saver))
     inputs = {"messages": [HumanMessage(content=image_content)]}
 
     if asynchronous:
@@ -137,7 +141,7 @@ def test_image_pixels_survive_checkpoint_and_followup(asynchronous: bool):
     else:
         graph.invoke(inputs, config)
 
-    recreated = make_graph(model=model, checkpointer=saver)
+    recreated = make_graph(AgentGraphOptions(model=model, checkpointer=saver))
     followup = {"messages": [HumanMessage(content="What color was the square?")]}
 
     if asynchronous:
@@ -170,7 +174,9 @@ def test_compaction_keeps_early_facts_and_survives_graph_recreation(
     )
     saver = InMemorySaver()
     config = {"configurable": {"thread_id": "compaction"}}
-    graph = make_graph(model=model, summary_model=summary_model, checkpointer=saver)
+    graph = make_graph(
+        AgentGraphOptions(model=model, summary_model=summary_model, checkpointer=saver)
+    )
     inputs = {
         "messages": [
             HumanMessage(content="EARLIEST FACT: project Cedar. " + "history " * 3500),
@@ -191,7 +197,9 @@ def test_compaction_keeps_early_facts_and_survives_graph_recreation(
     assert result["context_usage"]["breakdown"]["summary"] > 0
     assert result["context_usage"]["usedTokens"] < 15000
 
-    recreated = make_graph(model=model, summary_model=summary_model, checkpointer=saver)
+    recreated = make_graph(
+        AgentGraphOptions(model=model, summary_model=summary_model, checkpointer=saver)
+    )
     followup = recreated.invoke(
         {"messages": [HumanMessage(content="What is our project called?")]}, config
     )
@@ -214,7 +222,7 @@ def test_usage_includes_fixed_context_tools_and_provider_input_tokens():
             )
         ]
     )
-    graph = make_graph(model=model, checkpointer=InMemorySaver())
+    graph = make_graph(AgentGraphOptions(model=model, checkpointer=InMemorySaver()))
     config = {"configurable": {"thread_id": "usage"}}
     result = graph.invoke(
         {
@@ -249,7 +257,7 @@ def test_a_single_oversized_request_fails_without_silently_dropping_it(
 ):
     model_config.chat(max_input_tokens=20000)
     model = RecordingModel(responses=[AIMessage(content="Should not be called.")])
-    graph = make_graph(model=model)
+    graph = make_graph(AgentGraphOptions(model=model))
 
     with pytest.raises(ValueError, match="context window"):
         graph.invoke({"messages": [HumanMessage(content="oversized " * 10000)]})
@@ -289,10 +297,12 @@ def test_public_tool_messages_survive_compaction_within_a_turn(
     )
     summary = RecordingModel(responses=[AIMessage(content="Cedar launched in 2024.")])
     graph = make_graph(
-        model=model,
-        summary_model=summary,
-        mcp_tools=[lookup_fact],
-        checkpointer=InMemorySaver(),
+        AgentGraphOptions(
+            model=model,
+            summary_model=summary,
+            mcp_tools=[lookup_fact],
+            checkpointer=InMemorySaver(),
+        )
     )
     config = {"configurable": {"thread_id": "tool-compaction"}}
     inputs = {"messages": [HumanMessage(content="Check the project and the date.")]}

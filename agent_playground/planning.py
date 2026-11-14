@@ -65,6 +65,7 @@ class PlanningMiddleware(TodoListMiddleware):
     def wrap_model_call(
         self, request: ModelRequest, handler: Callable[[ModelRequest], ModelResponse]
     ) -> ModelResponse:
+        """Attach the active plan to synchronous model context."""
         return cast(
             "ModelResponse", super().wrap_model_call(self._request(request), handler)
         )
@@ -75,6 +76,7 @@ class PlanningMiddleware(TodoListMiddleware):
         request: ModelRequest,
         handler: Callable[[ModelRequest], Awaitable[ModelResponse]],
     ) -> ModelResponse:
+        """Attach the active plan to asynchronous model context."""
         return cast(
             "ModelResponse",
             await super().awrap_model_call(self._request(request), handler),
@@ -98,7 +100,10 @@ class PlanningMiddleware(TodoListMiddleware):
         # Reject before the official Command overwrites progress. The model can
         # shorten its plan; the compaction budget reserves this same upper bound.
         return ToolMessage(
-            content="The plan exceeds the context budget. Shorten the task descriptions and update the plan again.",
+            content=(
+                "The plan exceeds the context budget. Shorten the task "
+                "descriptions and update the plan again."
+            ),
             tool_call_id=request.tool_call["id"],
             name="write_todos",
             status="error",
@@ -110,6 +115,7 @@ class PlanningMiddleware(TodoListMiddleware):
         request: ToolCallRequest,
         handler: Callable[[ToolCallRequest], ToolMessage | Command[Any]],
     ) -> ToolMessage | Command[Any]:
+        """Reject an oversized plan before running the synchronous tool."""
         error = self._plan_error(request)
 
         if error is not None:
@@ -123,6 +129,7 @@ class PlanningMiddleware(TodoListMiddleware):
         request: ToolCallRequest,
         handler: Callable[[ToolCallRequest], Awaitable[ToolMessage | Command[Any]]],
     ) -> ToolMessage | Command[Any]:
+        """Reject an oversized plan before running the asynchronous tool."""
         error = self._plan_error(request)
 
         if error is not None:

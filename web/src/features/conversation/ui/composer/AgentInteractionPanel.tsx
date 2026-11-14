@@ -21,6 +21,8 @@ import {
 import { useConversation } from "../../providers/ConversationProvider";
 import { isRestoring, isRunning } from "../../model/selectors";
 
+const maximumResponseCharacters = 4000;
+
 interface QuestionDraft {
   selection: string;
   customText: string;
@@ -44,6 +46,13 @@ interface AgentInteractionPanelProps {
     interaction: AgentInteraction,
     response: InteractionResponse,
   ) => Promise<void>;
+}
+
+interface NextDecisionPageOptions {
+  interaction: AgentInteraction;
+  pages: InteractionPage[];
+  drafts: DecisionDraft[];
+  pageIndex: number;
 }
 
 function answerText(question: UserQuestion, draft: QuestionDraft): string {
@@ -83,11 +92,42 @@ function actionDecision(
     answer: answerText(question, draft.answers[question.id]!),
   }));
 
-  if (answers.some(({ answer }) => !answer || answer.length > 4000)) {
+  if (
+    answers.some(
+      ({ answer }) => !answer || answer.length > maximumResponseCharacters,
+    )
+  ) {
     return null;
   }
 
   return { type: "respond", message: JSON.stringify({ answers }) };
+}
+
+function nextDecisionPage({
+  interaction,
+  pages,
+  drafts,
+  pageIndex,
+}: NextDecisionPageOptions) {
+  // Skip answered questions while requiring a separate explicit decision for each tool.
+  for (let offset = 1; offset <= pages.length; offset += 1) {
+    const nextIndex = (pageIndex + offset) % pages.length;
+    const nextPage = pages[nextIndex]!;
+    const nextDraft = drafts[nextPage.actionIndex]!;
+    const action = interaction.action_requests[nextPage.actionIndex]!;
+
+    if (actionDecision(action, nextDraft)) {
+      continue;
+    }
+
+    const question = nextPage.question;
+
+    if (!question || !answerText(question, nextDraft.answers[question.id]!)) {
+      return nextIndex;
+    }
+  }
+
+  return pageIndex;
 }
 
 function responseFromDrafts(
@@ -120,6 +160,7 @@ export function PendingAgentInteraction() {
       respond: state.respondToInteraction,
     })),
   );
+
   const interaction = interrupts
     .map(parseAgentInteraction)
     .find((request) => request !== null);
@@ -191,7 +232,7 @@ function QuestionFields({
           aria-label={`Your answer: ${question.question}`}
           placeholder="Write your answer…"
           rows={1}
-          maxLength={4000}
+          maxLength={maximumResponseCharacters}
           value={draft.customText}
           onChange={(event) =>
             onChange({ ...draft, customText: event.target.value })
@@ -203,6 +244,7 @@ function QuestionFields({
   );
 }
 
+/** Collects every decision in a checkpoint request before handing it to the session. */
 export function AgentInteractionPanel({
   interaction,
   busy,
@@ -230,6 +272,7 @@ export function AgentInteractionPanel({
       reason: "",
     })),
   );
+
   const [submitting, setSubmitting] = useState<
     InteractionDecision["type"] | null
   >(null);
@@ -243,6 +286,7 @@ export function AgentInteractionPanel({
             .questions.map((question) => ({ actionIndex, question }))
         : [{ actionIndex }],
   );
+
   const page = pages[pageIndex]!;
   const action = interaction.action_requests[page.actionIndex]!;
   const config = interaction.review_configs[page.actionIndex]!;
@@ -256,8 +300,11 @@ export function AgentInteractionPanel({
     : null;
   const primaryDisabled =
     disabled || (question !== undefined && !currentAnswer);
-  const candidateDrafts: DecisionDraft[] = drafts.map((value, index) =>
-    index === page.actionIndex ? { ...value, type: primaryType } : value,
+
+  const candidateDrafts: DecisionDraft[] = drafts.map((actionDraft, index) =>
+    index === page.actionIndex
+      ? { ...actionDraft, type: primaryType }
+      : actionDraft,
   );
   const completeResponse = responseFromDrafts(interaction, candidateDrafts);
   let primaryLabel = "Allow once";
@@ -277,8 +324,10 @@ export function AgentInteractionPanel({
 
   function updateDraft(update: Partial<DecisionDraft>) {
     setDrafts((previous) =>
-      previous.map((value, index) =>
-        index === page.actionIndex ? { ...value, ...update } : value,
+      previous.map((actionDraft, index) =>
+        index === page.actionIndex
+          ? { ...actionDraft, ...update }
+          : actionDraft,
       ),
     );
     setError(null);
@@ -293,8 +342,8 @@ export function AgentInteractionPanel({
       return;
     }
 
-    const nextDrafts = drafts.map((value, index) =>
-      index === page.actionIndex ? { ...value, type } : value,
+    const nextDrafts = drafts.map((actionDraft, index) =>
+      index === page.actionIndex ? { ...actionDraft, type } : actionDraft,
     );
     const response = responseFromDrafts(interaction, nextDrafts);
 
@@ -302,33 +351,14 @@ export function AgentInteractionPanel({
     setError(null);
 
     if (!response) {
-      // Only explicit footer decisions authorize tools. Paging skips answered questions,
-      // but a later tool remains undecided until its own approval button is pressed.
-      for (let offset = 1; offset <= pages.length; offset += 1) {
-        const nextIndex = (pageIndex + offset) % pages.length;
-        const nextPage = pages[nextIndex]!;
-        const nextDraft = nextDrafts[nextPage.actionIndex]!;
-
-        if (
-          actionDecision(
-            interaction.action_requests[nextPage.actionIndex]!,
-            nextDraft,
-          )
-        ) {
-          continue;
-        }
-
-        if (
-          !nextPage.question ||
-          !answerText(
-            nextPage.question,
-            nextDraft.answers[nextPage.question.id]!,
-          )
-        ) {
-          setPageIndex(nextIndex);
-          break;
-        }
-      }
+      setPageIndex(
+        nextDecisionPage({
+          interaction,
+          pages,
+          drafts: nextDrafts,
+          pageIndex,
+        }),
+      );
 
       return;
     }
@@ -386,6 +416,7 @@ export function AgentInteractionPanel({
           )}
         </div>
       </div>
+
       <div
         key={pageIndex}
         className="max-h-[min(24rem,48dvh)] min-h-0 overflow-y-auto overscroll-contain px-5 pt-2 pb-3"
@@ -438,7 +469,7 @@ export function AgentInteractionPanel({
                   <Textarea
                     aria-label="Reason or instructions (optional)"
                     rows={1}
-                    maxLength={4000}
+                    maxLength={maximumResponseCharacters}
                     value={draft.reason}
                     onChange={(event) =>
                       updateDraft({ reason: event.target.value })
@@ -513,6 +544,7 @@ export function AgentInteractionPanel({
           )}
         </div>
       </div>
+
       {error && (
         <p role="alert" className="px-3 pt-1 pb-2 text-xs/5 text-destructive">
           {error}

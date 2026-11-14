@@ -96,7 +96,12 @@ class ConversationViewModel(private val repository: ConversationRepository) : Vi
         }
     }
 
+    /** Saves the current draft and switches only after the selection is persisted. */
     fun select(threadId: String?) {
+        if (threadId != null && session?.threadId == threadId) {
+            return
+        }
+
         selectionJob?.cancel()
 
         selectionJob = viewModelScope.launch {
@@ -123,16 +128,14 @@ class ConversationViewModel(private val repository: ConversationRepository) : Vi
     }
 
     private suspend fun selectSaved(saved: SavedConversation) {
-        modelSelectionJob?.cancel()
-        session?.close()
-        sessionCollector?.cancel()
-        draftSaveJob?.cancel()
-
+        // A failed journal write must leave the current session usable and observed.
         repository.select(saved)
+        forgetSession()
 
         val next = repository.createSession(viewModelScope, saved)
-        session = next
         next.setDefaultModel(mutable.value.agentInfo?.defaultModelId)
+
+        session = next
 
         mutable.update {
             it.copy(session = next.state.value, attachments = emptyList(), error = null)
@@ -201,28 +204,46 @@ class ConversationViewModel(private val repository: ConversationRepository) : Vi
         }
     }
 
-    fun attach(uris: List<android.net.Uri>) {
-        if (mutable.value.uploading || mutable.value.session?.canSend != true) {
+    /** Applies picker results only to the session for which the picker was opened. */
+    fun attach(threadId: String, uris: List<android.net.Uri>) {
+        val current = session ?: return
+
+        if (current.threadId != threadId || !canAttach(current) || uris.isEmpty()) {
             return
         }
 
         viewModelScope.launch {
-            action {
+            try {
                 val added = repository.inspectAttachments(uris.map { it.toString() })
+
+                // A document provider can return after the conversation has switched.
+                if (!canAttach(current)) {
+                    return@launch
+                }
 
                 require(mutable.value.attachments.size + added.size <= 4) {
                     "Attach up to four files."
                 }
 
-                mutable.update { it.copy(attachments = it.attachments + added) }
+                mutable.update { it.copy(attachments = it.attachments + added, error = null) }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                if (canAttach(current)) {
+                    mutable.update { it.copy(error = error.message ?: "Could not attach files.") }
+                }
             }
         }
     }
+
+    private fun canAttach(current: ConversationSession): Boolean =
+        session === current && current.state.value.canSend && !mutable.value.uploading
 
     fun removeAttachment(id: String) {
         mutable.update { it.copy(attachments = it.attachments.filterNot { file -> file.id == id }) }
     }
 
+    /** Uploads selected files and submits the message through the selected conversation. */
     fun send() {
         val current = session ?: return
         val state = mutable.value
@@ -243,7 +264,11 @@ class ConversationViewModel(private val repository: ConversationRepository) : Vi
                 // Selected files retain their IDs after failure, so retries reuse server resources.
                 val uploaded = repository.uploadAttachments(current.threadId, state.attachments)
 
-                current.send(messageWithAttachments(text, uploaded))
+                if (session !== current) {
+                    return@launch
+                }
+
+                current.send(messageWithAttachments(text, uploaded), composerDraft = text)
 
                 if (session === current && current.state.value.draft.isEmpty()) {
                     mutable.update { it.copy(attachments = emptyList()) }
@@ -255,8 +280,10 @@ class ConversationViewModel(private val repository: ConversationRepository) : Vi
                     throw error
                 }
 
-                mutable.update {
-                    it.copy(error = error.message ?: "File upload failed. Please retry.")
+                if (session === current) {
+                    mutable.update {
+                        it.copy(error = error.message ?: "File upload failed. Please retry.")
+                    }
                 }
             } finally {
                 mutable.update { it.copy(uploading = false) }
@@ -350,6 +377,7 @@ class ConversationViewModel(private val repository: ConversationRepository) : Vi
         history.loadMore()
     }
 
+    /** Renames the remote conversation, then refreshes the selected thread and history. */
     fun rename(thread: String, title: String, completed: () -> Unit) {
         mutateHistory(HistoryMutation("rename", thread)) {
             repository.rename(thread, title)
@@ -365,6 +393,7 @@ class ConversationViewModel(private val repository: ConversationRepository) : Vi
         }
     }
 
+    /** Deletes remotely before removing its recovery record and replacing the selected session. */
     fun delete(thread: String, completed: () -> Unit) {
         if (mutable.value.deletionBlocked(thread)) {
             return
@@ -390,6 +419,7 @@ class ConversationViewModel(private val repository: ConversationRepository) : Vi
         }
     }
 
+    /** Clears remote history before dropping the local journals and selecting a new thread. */
     fun clear(completed: () -> Unit) {
         if (mutable.value.clearBlocked) {
             return

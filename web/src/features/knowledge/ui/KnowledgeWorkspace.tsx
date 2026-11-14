@@ -28,6 +28,7 @@ import { DocumentRow } from "./DocumentRow";
 import { useKnowledgeDocuments } from "../hooks/useKnowledgeDocuments";
 import { AnimatePresence } from "motion/react";
 
+/** Manages shared documents and restores focus after document actions. */
 export function KnowledgeWorkspace() {
   const {
     documents,
@@ -42,10 +43,12 @@ export function KnowledgeWorkspace() {
     reindex,
     remove,
   } = useKnowledgeDocuments();
+
   const input = useRef<HTMLInputElement>(null);
   const uploadButton = useRef<HTMLButtonElement>(null);
   const actionOpener = useRef<HTMLButtonElement | null>(null);
   const resumeId = useRef<string | null>(null);
+
   const [deleting, setDeleting] = useState<KnowledgeDocument | null>(null);
   const [encodingDocument, setEncodingDocument] =
     useState<KnowledgeDocument | null>(null);
@@ -138,11 +141,13 @@ export function KnowledgeWorkspace() {
           onChange={selectUploadFile}
         />
       </div>
+
       {error && !deleting && !encodingDocument && (
         <Alert variant="destructive" className="mt-5">
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       )}
+
       {retryUpload && (
         <Button
           variant="outline"
@@ -153,6 +158,7 @@ export function KnowledgeWorkspace() {
           Retry upload
         </Button>
       )}
+
       {documents.isError && (
         <Alert variant="destructive" className="mt-5">
           <AlertDescription>Could not load documents.</AlertDescription>
@@ -161,6 +167,7 @@ export function KnowledgeWorkspace() {
           </Button>
         </Alert>
       )}
+
       <Card className="mt-8 gap-0 border border-line bg-surface py-0 ring-0">
         {documents.isPending && (
           <div role="status" className="min-h-36 p-6">
@@ -172,6 +179,7 @@ export function KnowledgeWorkspace() {
             </div>
           </div>
         )}
+
         {documents.data?.length === 0 && (
           <Empty className="motion-content-enter min-h-36 p-8">
             <EmptyHeader>
@@ -182,6 +190,7 @@ export function KnowledgeWorkspace() {
             </EmptyHeader>
           </Empty>
         )}
+
         <ul className="relative divide-y divide-line">
           <AnimatePresence initial={false}>
             {documents.data?.map((document) => (
@@ -209,6 +218,7 @@ export function KnowledgeWorkspace() {
           </AnimatePresence>
         </ul>
       </Card>
+
       {encodingDocument && (
         <TextEncodingDialog
           key={encodingDocument.id}
@@ -225,6 +235,7 @@ export function KnowledgeWorkspace() {
           }
         />
       )}
+
       <AlertDialog
         open={deleting !== null}
         onOpenChange={(open) => {
@@ -251,11 +262,13 @@ export function KnowledgeWorkspace() {
               New searches in all conversations will stop using it.
             </AlertDialogDescription>
           </AlertDialogHeader>
+
           {deleting && error && (
             <Alert variant="destructive">
               <AlertDescription>{error}</AlertDescription>
             </Alert>
           )}
+
           <AlertDialogFooter>
             <AlertDialogCancel disabled={busy}>Cancel</AlertDialogCancel>
             <AlertDialogAction

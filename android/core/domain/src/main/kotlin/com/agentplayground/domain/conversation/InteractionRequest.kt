@@ -6,6 +6,15 @@ import com.agui.core.types.ResumeStatus
 import java.time.Instant
 import kotlinx.serialization.json.*
 
+private const val MAX_DECISION_TEXT_LENGTH = 4000
+private const val MAX_QUESTION_COUNT = 3
+private const val MIN_OPTION_COUNT = 2
+private const val MAX_OPTION_COUNT = 4
+private const val MAX_QUESTION_ID_LENGTH = 64
+private const val MAX_QUESTION_LENGTH = 1000
+private const val MAX_OPTION_LABEL_LENGTH = 200
+private const val MAX_OPTION_DESCRIPTION_LENGTH = 500
+
 enum class InteractionDecisionType(val wireName: String) {
     Approve("approve"),
     Reject("reject"),
@@ -47,6 +56,7 @@ data class InteractionDraft(val decisions: List<InteractionDecisionDraft>)
 
 /** One LangChain HITL interrupt is an atomic batch, identified by its full current envelope. */
 data class InteractionRequest(val interrupt: Interrupt, val actions: List<InteractionAction>) {
+    /** Defaults clarification decisions to responding and leaves approvals unselected. */
     fun initialDraft() =
         InteractionDraft(
             actions.map { action ->
@@ -57,11 +67,13 @@ data class InteractionRequest(val interrupt: Interrupt, val actions: List<Intera
             }
         )
 
+    /** Treats an invalid server expiration as expired so it cannot authorize a stale response. */
     fun expiredAt(now: Instant): Boolean =
         interrupt.expiresAt?.let {
             runCatching { !Instant.parse(it).isAfter(now) }.getOrDefault(true)
         } == true
 
+    /** Encodes a complete batch with decisions in the original action order. */
     fun respond(draft: InteractionDraft, now: Instant): ResumeEntry? {
         if (expiredAt(now) || draft.decisions.size != actions.size) {
             return null
@@ -69,64 +81,7 @@ data class InteractionRequest(val interrupt: Interrupt, val actions: List<Intera
 
         val decisions =
             actions.zip(draft.decisions).map { (action, decision) ->
-                val type = decision.type ?: return null
-
-                if (type !in action.allowedDecisions) {
-                    return null
-                }
-
-                when (type) {
-                    InteractionDecisionType.Approve -> buildJsonObject { put("type", "approve") }
-
-                    InteractionDecisionType.Reject -> {
-                        if (decision.message.length > 4000) {
-                            return null
-                        }
-
-                        buildJsonObject {
-                            put("type", "reject")
-
-                            if (decision.message.isNotBlank()) {
-                                put("message", decision.message)
-                            }
-                        }
-                    }
-
-                    InteractionDecisionType.Respond -> {
-                        val ids = action.questions.map { it.id }.toSet()
-
-                        if (
-                            decision.answers.keys != ids ||
-                                decision.answers.values.any { !validText(it, 4000) }
-                        ) {
-                            return null
-                        }
-
-                        val response = buildJsonObject {
-                            put(
-                                "answers",
-                                buildJsonArray {
-                                    action.questions.forEach { question ->
-                                        add(
-                                            buildJsonObject {
-                                                put("id", question.id)
-                                                put(
-                                                    "answer",
-                                                    decision.answers.getValue(question.id),
-                                                )
-                                            }
-                                        )
-                                    }
-                                },
-                            )
-                        }
-
-                        buildJsonObject {
-                            put("type", "respond")
-                            put("message", response.toString())
-                        }
-                    }
-                }
+                encodeDecision(action, decision) ?: return null
             }
         val payload = buildJsonObject { put("decisions", JsonArray(decisions)) }
 
@@ -134,6 +89,7 @@ data class InteractionRequest(val interrupt: Interrupt, val actions: List<Intera
     }
 
     companion object {
+        /** Parses the LangGraph envelope carried by the official AG-UI interrupt. */
         fun from(interrupt: Interrupt): InteractionRequest? {
             val metadata = interrupt.metadata as? JsonObject ?: return null
             val langgraph = metadata["langgraph"] as? JsonObject ?: return null
@@ -149,51 +105,115 @@ data class InteractionRequest(val interrupt: Interrupt, val actions: List<Intera
                 requests.zip(configs).map { (requestValue, configValue) ->
                     val request = requestValue as? JsonObject ?: return null
                     val config = configValue as? JsonObject ?: return null
-                    val name =
-                        request.stringField("name")?.takeIf { it.isNotBlank() } ?: return null
-                    val arguments = request["args"] as? JsonObject ?: return null
-                    val description =
-                        request["description"]?.let {
-                            request.stringField("description") ?: return null
-                        }
-                    val allowed = config["allowed_decisions"] as? JsonArray ?: return null
 
-                    if (config.stringField("action_name") != name || allowed.isEmpty()) {
-                        return null
-                    }
-
-                    val decisions = allowed.map { value ->
-                        val text = (value as? JsonPrimitive)?.takeIf { it.isString }?.content
-
-                        InteractionDecisionType.entries.find { it.wireName == text } ?: return null
-                    }
-                    val permitted =
-                        if (name == "ask_user") {
-                            setOf(InteractionDecisionType.Respond, InteractionDecisionType.Reject)
-                        } else {
-                            setOf(InteractionDecisionType.Approve, InteractionDecisionType.Reject)
-                        }
-
-                    if (
-                        decisions.distinct().size != decisions.size ||
-                            decisions.any { it !in permitted }
-                    ) {
-                        return null
-                    }
-
-                    val questions =
-                        if (name == "ask_user") {
-                            parseInteractionQuestions(arguments) ?: return null
-                        } else {
-                            emptyList()
-                        }
-
-                    InteractionAction(name, arguments, description, decisions.toSet(), questions)
+                    parseAction(request, config) ?: return null
                 }
 
             return InteractionRequest(interrupt, actions)
         }
     }
+}
+
+private fun encodeDecision(
+    action: InteractionAction,
+    draft: InteractionDecisionDraft,
+): JsonObject? {
+    val type = draft.type ?: return null
+
+    if (type !in action.allowedDecisions) {
+        return null
+    }
+
+    return when (type) {
+        InteractionDecisionType.Approve -> buildJsonObject { put("type", type.wireName) }
+
+        InteractionDecisionType.Reject -> {
+            if (draft.message.length > MAX_DECISION_TEXT_LENGTH) {
+                return null
+            }
+
+            buildJsonObject {
+                put("type", type.wireName)
+
+                if (draft.message.isNotBlank()) {
+                    put("message", draft.message)
+                }
+            }
+        }
+
+        InteractionDecisionType.Respond -> {
+            val message = encodeAnswers(action.questions, draft.answers) ?: return null
+
+            buildJsonObject {
+                put("type", type.wireName)
+                put("message", message)
+            }
+        }
+    }
+}
+
+private fun encodeAnswers(
+    questions: List<InteractionQuestion>,
+    answers: Map<String, String>,
+): String? {
+    val expectedIds = questions.map { it.id }.toSet()
+
+    val hasInvalidAnswer = answers.values.any { !validText(it, MAX_DECISION_TEXT_LENGTH) }
+
+    if (answers.keys != expectedIds || hasInvalidAnswer) {
+        return null
+    }
+
+    // The upstream validator matches each answer to its question by position.
+    val orderedAnswers = questions.map { question ->
+        buildJsonObject {
+            put("id", question.id)
+            put("answer", answers.getValue(question.id))
+        }
+    }
+
+    return buildJsonObject { put("answers", JsonArray(orderedAnswers)) }.toString()
+}
+
+private fun parseAction(request: JsonObject, config: JsonObject): InteractionAction? {
+    val name = request.stringField("name")?.takeIf { it.isNotBlank() } ?: return null
+    val arguments = request["args"] as? JsonObject ?: return null
+    val description =
+        request["description"]?.let { request.stringField("description") ?: return null }
+    val allowed = config["allowed_decisions"] as? JsonArray ?: return null
+
+    if (config.stringField("action_name") != name || allowed.isEmpty()) {
+        return null
+    }
+
+    val isClarification = name == "ask_user"
+    val permitted =
+        if (isClarification) {
+            setOf(InteractionDecisionType.Respond, InteractionDecisionType.Reject)
+        } else {
+            setOf(InteractionDecisionType.Approve, InteractionDecisionType.Reject)
+        }
+    val decisions = mutableSetOf<InteractionDecisionType>()
+
+    for (value in allowed) {
+        val text = (value as? JsonPrimitive)?.takeIf { it.isString }?.content
+        val decision = permitted.find { it.wireName == text } ?: return null
+
+        if (!decisions.add(decision)) {
+            return null
+        }
+    }
+
+    val questions =
+        if (isClarification) parseInteractionQuestions(arguments) ?: return null else emptyList()
+
+    return InteractionAction(
+        name = name,
+        arguments = arguments,
+        description = description,
+        allowedDecisions = decisions,
+        questions = questions,
+    )
 }
 
 /** Revalidates the exact visible interrupt before allowing an atomic response. */
@@ -218,46 +238,51 @@ internal fun resolveInteraction(
 fun parseInteractionQuestions(arguments: JsonObject): List<InteractionQuestion>? {
     val values = arguments["questions"] as? JsonArray ?: return null
 
-    if (values.size !in 1..3) {
+    if (values.size !in 1..MAX_QUESTION_COUNT) {
         return null
     }
 
     val questions = values.map { value ->
-        val fields = value as? JsonObject ?: return null
-        val id = fields.stringField("id")?.takeIf { validText(it, 64) } ?: return null
-        val question = fields.stringField("question")?.takeIf { validText(it, 1000) } ?: return null
-        val options =
-            if ("options" in fields) {
-                val optionValues = fields["options"] as? JsonArray ?: return null
+        val question = value as? JsonObject ?: return null
 
-                if (optionValues.size !in 2..4) {
-                    return null
-                }
-
-                optionValues.map { optionValue ->
-                    val option = optionValue as? JsonObject ?: return null
-                    val label =
-                        option.stringField("label")?.takeIf { validText(it, 200) } ?: return null
-                    val description =
-                        option["description"]?.let {
-                            option.stringField("description")?.takeIf { it.length <= 500 }
-                                ?: return null
-                        }
-
-                    InteractionOption(label, description)
-                }
-            } else {
-                emptyList()
-            }
-
-        if (options.map { it.label }.distinct().size != options.size) {
-            return null
-        }
-
-        InteractionQuestion(id, question, options)
+        parseQuestion(question) ?: return null
     }
 
     return questions.takeIf { it.map(InteractionQuestion::id).distinct().size == it.size }
+}
+
+private fun parseQuestion(fields: JsonObject): InteractionQuestion? {
+    val id =
+        fields.stringField("id")?.takeIf { validText(it, MAX_QUESTION_ID_LENGTH) } ?: return null
+    val question =
+        fields.stringField("question")?.takeIf { validText(it, MAX_QUESTION_LENGTH) } ?: return null
+    val values = fields["options"] ?: return InteractionQuestion(id, question, emptyList())
+    val options = parseOptions(values as? JsonArray ?: return null) ?: return null
+
+    return InteractionQuestion(id, question, options)
+}
+
+private fun parseOptions(values: JsonArray): List<InteractionOption>? {
+    if (values.size !in MIN_OPTION_COUNT..MAX_OPTION_COUNT) {
+        return null
+    }
+
+    val options = values.map { value ->
+        val option = value as? JsonObject ?: return null
+        val label =
+            option.stringField("label")?.takeIf { validText(it, MAX_OPTION_LABEL_LENGTH) }
+                ?: return null
+        val description =
+            option["description"]?.let {
+                option.stringField("description")?.takeIf {
+                    it.length <= MAX_OPTION_DESCRIPTION_LENGTH
+                } ?: return null
+            }
+
+        InteractionOption(label, description)
+    }
+
+    return options.takeIf { it.map(InteractionOption::label).distinct().size == it.size }
 }
 
 private fun JsonObject.stringField(name: String): String? =

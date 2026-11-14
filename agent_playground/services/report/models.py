@@ -14,7 +14,12 @@ class ReportRequest(BaseModel):
 
 class ReportEvent(BaseModel):
     revision: int
-    status: Literal["queued", "running", "succeeded", "failed"]
+    status: Literal[
+        "queued",
+        "running",
+        "succeeded",
+        "failed",
+    ]
     stage: str
     message: str
     progress: int

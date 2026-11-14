@@ -26,6 +26,7 @@ interface ConversationProviderProps {
   onThreadCreated?: (threadId: string) => void;
 }
 
+/** Connects one mounted conversation session to Query and server change notifications. */
 export function ConversationProvider({
   conversation,
   children,
@@ -35,6 +36,7 @@ export function ConversationProvider({
   // draft to a saved thread keeps this session and its active resources intact.
   const [session] = useState(() => createConversationSession(conversation));
   const client = useQueryClient();
+
   const threadId = useStore(session.store, (state) => state.threadId);
   const snapshotEnabled = useStore(
     session.store,
@@ -46,7 +48,7 @@ export function ConversationProvider({
   );
 
   const {
-    data,
+    data: snapshot,
     isFetchedAfterMount,
     isSuccess,
     error,
@@ -54,7 +56,7 @@ export function ConversationProvider({
     dataUpdatedAt,
     errorUpdatedAt,
   } = useQuery({
-    ...conversationQueryOptions(threadId ?? "", snapshotPolling),
+    ...conversationQueryOptions(threadId ?? "", { polling: snapshotPolling }),
     enabled: snapshotEnabled && threadId !== null,
   });
 
@@ -64,17 +66,24 @@ export function ConversationProvider({
 
   useEffect(() => session.connect(refresh), [session, refresh]);
 
-  useEffect(() => {
-    if (!threadId || !snapshotEnabled || typeof EventSource === "undefined") {
-      return;
-    }
+  useEffect(
+    () => {
+      if (!threadId || !snapshotEnabled || typeof EventSource === "undefined") {
+        return;
+      }
 
-    return subscribeConversationChanges(threadId, () => {
-      void client.invalidateQueries({
-        queryKey: ["conversation", threadId],
+      return subscribeConversationChanges(threadId, () => {
+        void client.invalidateQueries({
+          queryKey: ["conversation", threadId],
+        });
       });
-    });
-  }, [client, threadId, snapshotEnabled]);
+    },
+    /* prettier-ignore */ [
+      client,
+      threadId,
+      snapshotEnabled,
+    ],
+  );
 
   useEffect(
     () =>
@@ -93,7 +102,11 @@ export function ConversationProvider({
           void client.invalidateQueries({ queryKey: conversationHistoryKey });
         }
       }),
-    [session, client, onThreadCreated],
+    /* prettier-ignore */ [
+      session,
+      client,
+      onThreadCreated,
+    ],
   );
 
   useEffect(() => {
@@ -104,13 +117,13 @@ export function ConversationProvider({
     }
 
     if (isSuccess) {
-      session.receiveSnapshot(data ?? null);
+      session.receiveSnapshot(snapshot ?? null);
     } else if (error) {
       session.receiveSnapshotError(error);
     }
   }, [
     session,
-    data,
+    snapshot,
     isFetchedAfterMount,
     isSuccess,
     error,
@@ -121,6 +134,7 @@ export function ConversationProvider({
   return <ConversationContext value={session}>{children}</ConversationContext>;
 }
 
+/** Subscribes to a projection of the nearest conversation session. */
 export function useConversation<T>(
   selector: (state: ConversationState) => T,
 ): T {

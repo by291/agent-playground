@@ -16,7 +16,6 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import kotlinx.coroutines.CancellationException
 
 /** Compose animations inherit the system duration scale, including the zero-duration setting. */
 object Motion {
@@ -120,23 +119,39 @@ fun BackPreview(
     onBack: () -> Unit,
     content: @Composable (Modifier) -> Unit,
 ) {
-    val progress = remember { Animatable(0f) }
+    var progress by remember { mutableFloatStateOf(0f) }
+    var activeGesture by remember { mutableStateOf<Any?>(null) }
 
     PredictiveBackHandler(enabled) { events ->
-        try {
-            events.collect { progress.snapTo(it.progress) }
+        val gesture = Any()
 
-            onBack()
-            progress.snapTo(0f)
-        } catch (_: CancellationException) {
-            progress.animateTo(0f, Motion.expansion())
+        activeGesture = gesture
+        progress = 0f
+
+        try {
+            events.collect { event ->
+                if (activeGesture === gesture) {
+                    progress = event.progress
+                }
+            }
+
+            if (activeGesture === gesture) {
+                onBack()
+            }
+        } finally {
+            // AndroidX cancels the job on abort. Reset without suspending or clearing a newer
+            // preview.
+            if (activeGesture === gesture) {
+                activeGesture = null
+                progress = 0f
+            }
         }
     }
 
     content(
         Modifier.graphicsLayer {
-            translationX = progress.value * 64.dp.toPx()
-            scaleX = 1f - progress.value * 0.04f
+            translationX = progress * 64.dp.toPx()
+            scaleX = 1f - progress * 0.04f
             scaleY = scaleX
         }
     )

@@ -2,7 +2,7 @@ import type { Message } from "@ag-ui/client";
 import type { ExternalTaskSnapshot } from "@shared/external-task";
 import { isRunFinished } from "@shared/run-status";
 import { workflowReplyMessages } from "@shared/workflow-output";
-import type { A2UIIngestResult, A2UIOutput } from "@/features/a2ui";
+import type { A2UIIngestResult } from "@/features/a2ui";
 
 /** Merges task revisions without letting a late snapshot reopen a continuation. */
 export function mergeExternalTasks(
@@ -35,18 +35,21 @@ export function mergeExternalTasks(
 
 /** Publishes reply text only after the corresponding A2UI output sequence is complete. */
 export function projectOutputs(
-  outputs: A2UIOutput[],
   result: A2UIIngestResult,
   messages: Message[],
   invalidOutputIssue: string | null,
 ) {
   const savedIds = new Set(messages.map((message) => message.id));
-  const replies =
-    result.kind === "ready"
-      ? outputs
-          .flatMap(workflowReplyMessages)
-          .filter((message) => !savedIds.has(message.id))
-      : [];
+  const replies: Message[] = [];
+
+  for (const output of result.appliedOutputs) {
+    for (const reply of workflowReplyMessages(output)) {
+      if (!savedIds.has(reply.id)) {
+        savedIds.add(reply.id);
+        replies.push(reply);
+      }
+    }
+  }
 
   let issue: string | null = null;
 

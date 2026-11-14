@@ -5,7 +5,7 @@ import {
   skillScriptResultSchema,
   type SkillFile,
 } from "@shared/skill-files";
-import type { toolProcess } from "../../model/turns";
+import type { toolProcess, ToolStep } from "../../model/turns";
 import { AnimatePresence } from "motion/react";
 import { AnimatedDiv } from "@/components/ui/motion";
 import {
@@ -22,30 +22,36 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 
+const bytesPerKibibyte = 1024;
+
+function readSkillFiles(step: ToolStep): SkillFile[] {
+  if (step.call.function.name !== "run_skill_script" || !step.result) {
+    return [];
+  }
+
+  try {
+    const result = skillScriptResultSchema.safeParse(
+      JSON.parse(messageText(step.result)),
+    );
+
+    return result.success ? result.data.files : [];
+  } catch {
+    // Legacy or interrupted results may not contain complete file metadata.
+    return [];
+  }
+}
+
+/** Offers the files produced by successful Skill operations as downloads. */
 export function SkillFiles({
-  process,
+  toolHistory,
 }: {
-  process: ReturnType<typeof toolProcess>;
+  toolHistory: ReturnType<typeof toolProcess>;
 }) {
   const files = new Map<string, SkillFile>();
 
-  for (const step of process.flatMap((entry) => entry.calls)) {
-    if (step.call.function.name !== "run_skill_script" || !step.result) {
-      continue;
-    }
-
-    try {
-      const result = skillScriptResultSchema.safeParse(
-        JSON.parse(messageText(step.result)),
-      );
-
-      if (result.success) {
-        for (const file of result.data.files) {
-          files.set(file.id, file);
-        }
-      }
-    } catch {
-      // Legacy or interrupted results may not contain complete file metadata.
+  for (const step of toolHistory.flatMap((entry) => entry.calls)) {
+    for (const file of readSkillFiles(step)) {
+      files.set(file.id, file);
     }
   }
 
@@ -64,7 +70,7 @@ export function SkillFiles({
 }
 
 function FileLink({ file }: { file: SkillFile }) {
-  const size = `${Math.ceil(file.size / 1024)} KB`;
+  const size = `${Math.ceil(file.size / bytesPerKibibyte)} KB`;
 
   return (
     <AnimatedDiv className="max-w-full min-w-0">

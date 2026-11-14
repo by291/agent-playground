@@ -4,18 +4,21 @@ import pytest
 
 from agent_playground.services.sql.models import SqlCheck, SqlSubmission
 from agent_playground.workflows.a2a.cards import completion_receipt
-from agent_playground.workflows.cards import content_card
+from agent_playground.workflows.cards import WorkflowContent, content_card
 from agent_playground.workflows.sql.cards import sql_card
 from agent_playground.workflows.sql.models import SqlState
 
 
 def test_content_card_preserves_component_order_and_child_references():
-    card = content_card(
-        surface_id="experiment-call-review",
-        title="Draft ready",
-        heading="REVIEW",
-        lines=["Check the draft.", "Accept or revise."],
-    ).model_dump(mode="json", by_alias=True, exclude_none=True)
+    surface = content_card(
+        WorkflowContent(
+            surface_id="experiment-call-review",
+            title="Draft ready",
+            heading="REVIEW",
+            lines=["Check the draft.", "Accept or revise."],
+        )
+    )
+    card = surface.model_dump(mode="json", by_alias=True, exclude_none=True)
 
     assert card["messages"][0] == {
         "version": "v0.9",

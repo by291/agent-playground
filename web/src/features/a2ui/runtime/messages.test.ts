@@ -8,7 +8,11 @@ test("accepts the official message wrapper and update-only message lists", () =>
   const messages = [
     {
       version: "v0.9",
-      updateDataModel: { surfaceId: "main", path: "/title", value: "Updated" },
+      updateDataModel: {
+        surfaceId: "main",
+        path: "/title",
+        value: "Updated",
+      },
     },
   ];
 
@@ -30,11 +34,19 @@ test("the transport adapter validates output identity and does not parse ordinar
   };
 
   assert.equal(
-    parseA2UIEvent({ type: EventType.CUSTOM, name: "a2ui", value })?.id,
+    parseA2UIEvent({
+      type: EventType.CUSTOM,
+      name: "a2ui",
+      value,
+    })?.id,
     "output",
   );
   assert.equal(
-    parseA2UIEvent({ type: EventType.CUSTOM, name: "other", value }),
+    parseA2UIEvent({
+      type: EventType.CUSTOM,
+      name: "other",
+      value,
+    }),
     null,
   );
   assert.equal(

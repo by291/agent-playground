@@ -452,9 +452,21 @@ test("an encoding choice recovers ambiguous text, persists after reload and pres
   test.setTimeout(60_000);
   const filename = `legacy-${randomUUID()}.txt`;
   // GBK bytes for "Return 你好", independent of the application's detector.
-  const original = Buffer.from([
-    0x52, 0x65, 0x74, 0x75, 0x72, 0x6e, 0x20, 0xc4, 0xe3, 0xba, 0xc3,
-  ]);
+  const original = Buffer.from(
+    /* prettier-ignore */ [
+      0x52,
+      0x65,
+      0x74,
+      0x75,
+      0x72,
+      0x6e,
+      0x20,
+      0xc4,
+      0xe3,
+      0xba,
+      0xc3,
+    ],
+  );
   const { request } = knowledge;
 
   await page.goto("/knowledge");

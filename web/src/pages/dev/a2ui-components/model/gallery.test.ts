@@ -3,9 +3,10 @@ import assert from "node:assert/strict";
 import { MessageProcessor } from "@a2ui/web_core/v0_9";
 import { catalogExamples } from "./examples";
 import { workflowCatalog } from "@/features/a2ui";
+import { createGalleryPreviews } from "./gallery-previews";
 import { createGalleryPreview } from "./preview";
 
-const validJson = JSON.stringify({
+const validExample = {
   messages: [
     {
       version: "v0.9",
@@ -29,7 +30,9 @@ const validJson = JSON.stringify({
       },
     },
   ],
-});
+} as const;
+
+const validJson = JSON.stringify(validExample);
 
 test("edited JSON produces the surface used for the preview", () => {
   const result = createGalleryPreview("WorkflowText", validJson);
@@ -69,8 +72,49 @@ test("unknown component types cannot replace a valid preview", () => {
   assert.match(result.error ?? "", /Unknown.*catalog/i);
 });
 
-test("replacement, invalid edits, reset and unmount own the preview resources", async () => {
-  const { createGalleryPreviews } = await import("./gallery-previews");
+test("an undefined child leaves the last complete preview visible", () => {
+  const component = "WorkflowText";
+  const [creation, update] = validExample.messages;
+
+  const incompleteSource = JSON.stringify({
+    messages: [
+      creation,
+      {
+        ...update,
+        updateComponents: {
+          ...update.updateComponents,
+          components: [
+            {
+              id: "root",
+              component: "WorkflowPanel",
+              children: ["missing"],
+            },
+          ],
+        },
+      },
+    ],
+  });
+
+  const owner = createGalleryPreviews([{ component, source: validJson }]);
+
+  try {
+    owner.initialize();
+    owner.update(component, incompleteSource);
+
+    const preview = owner.getSnapshot().WorkflowText;
+
+    assert.match(preview?.error ?? "", /missing/i);
+    assert.equal(
+      preview?.surfaces[0]?.surface.componentsModel.get("root")?.properties
+        .text,
+      "Edited title",
+    );
+  } finally {
+    owner.dispose();
+  }
+});
+
+test("replacement, invalid edits, reset and unmount own the preview resources", () => {
   const examples = [
     { component: "WorkflowText", source: validJson },
     { component: "WorkflowPanel", source: validJson },
@@ -126,7 +170,12 @@ test("replacement, invalid edits, reset and unmount own the preview resources", 
   assert.deepEqual(owner.getSnapshot(), {});
   assert.deepEqual(
     disposed.sort(),
-    ["WorkflowPanel", "WorkflowText", "WorkflowText", "WorkflowText"].sort(),
+    /* prettier-ignore */ [
+      "WorkflowPanel",
+      "WorkflowText",
+      "WorkflowText",
+      "WorkflowText",
+    ].sort(),
   );
   owner.dispose();
   assert.equal(disposed.length, 4);

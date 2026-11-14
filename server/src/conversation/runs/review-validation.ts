@@ -69,6 +69,7 @@ async function reviewOutputsPersisted(
   });
 }
 
+/** Validate responses against the current pause while admission holds its lock. */
 export async function validateReview(
   input: RunAgentInput,
   run: RunRow | null,
@@ -175,6 +176,7 @@ export async function validateReview(
   }
 }
 
+/** Derive the public user message for a conversational workflow reply. */
 export function workflowFeedbackMessage(input: RunAgentInput) {
   const messages = (input.resume ?? []).flatMap((entry) => {
     const parsed = workflowReviewResponseSchema.safeParse(entry.payload);
@@ -197,12 +199,20 @@ export function workflowFeedbackMessage(input: RunAgentInput) {
   return messages[0] ?? null;
 }
 
-export async function validateExternalContinuation(
-  input: RunAgentInput,
-  run: RunRow | null,
-  database: Pick<typeof db, "select">,
-  taskId: string,
-) {
+interface ExternalContinuationValidation {
+  input: RunAgentInput;
+  run: RunRow | null;
+  database: Pick<typeof db, "select">;
+  taskId: string;
+}
+
+/** Bind a continuation to the persisted terminal result and its checkpoint interrupt. */
+export async function validateExternalContinuation({
+  input,
+  run,
+  database,
+  taskId,
+}: ExternalContinuationValidation): Promise<void> {
   const entry = input.resume?.[0];
   const wait = run?.interrupts
     .map(parseExternalWait)
@@ -212,7 +222,11 @@ export async function validateExternalContinuation(
     .from(externalTasks)
     .where(eq(externalTasks.taskId, taskId));
   const expected = task
-    ? { ...task.update, kind: "external_task_result", taskId }
+    ? {
+        ...task.update,
+        kind: "external_task_result",
+        taskId,
+      }
     : null;
 
   if (

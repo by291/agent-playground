@@ -158,19 +158,20 @@ function ToolDetails({ step }: { step: ToolStep }) {
   );
 }
 
+/** Shows a group of tool calls and retains their details in a disclosure. */
 export function ToolProcess({
-  process,
+  toolHistory,
   children,
   skillName,
   category = skillName ? "Skill" : "Tool",
 }: {
-  process: ReturnType<typeof toolProcess>;
+  toolHistory: ReturnType<typeof toolProcess>;
   children?: ReactNode;
   skillName?: string;
   category?: "Tool" | "Skill" | "Memory";
 }) {
   const [open, setOpen] = useState(false);
-  const steps = process.flatMap((entry) => entry.calls);
+  const steps = toolHistory.flatMap((entry) => entry.calls);
   const failed = steps.some((step) => step.status === "failed");
   const running = steps.some((step) => step.status === "running");
   const statusLabel = processStatusLabel(steps);
@@ -242,7 +243,7 @@ export function ToolProcess({
         </Alert>
       )}
       <CollapsibleContent className="mt-2 space-y-3 border-l border-line pl-3">
-        {process.map((entry, index) => {
+        {toolHistory.map((entry, index) => {
           const text = messageText(entry.message);
 
           return (

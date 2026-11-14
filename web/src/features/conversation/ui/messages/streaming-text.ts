@@ -4,20 +4,28 @@ type Element = NonNullable<ExtraProps["node"]>;
 type Parent = Pick<Element, "children">;
 
 const wordSegmenter = new Intl.Segmenter(undefined, { granularity: "word" });
-const excludedTags = new Set(["pre", "code", "svg", "math", "annotation"]);
+const excludedTags = new Set(
+  /* prettier-ignore */ [
+    "pre",
+    "code",
+    "svg",
+    "math",
+    "annotation",
+  ],
+);
 const wordsPerGroup = 64;
 const fadingTailLength = 256;
 
 // Stable groups let old text shed its animation spans without remounting the tail.
-function groupText(value: string): Element[] {
-  const words = [...wordSegmenter.segment(value)];
+function groupText(text: string): Element[] {
+  const words = [...wordSegmenter.segment(text)];
   const groups: Element[] = [];
 
   for (let start = 0; start < words.length; start += wordsPerGroup) {
     const group = words.slice(start, start + wordsPerGroup);
     const last = group.at(-1)!;
     const settled =
-      last.index + last.segment.length <= value.length - fadingTailLength;
+      last.index + last.segment.length <= text.length - fadingTailLength;
     const segments = settled
       ? [group.map((word) => word.segment).join("")]
       : group.map((word) => word.segment);
@@ -76,12 +84,12 @@ function compactText(parent: Parent) {
   }
 }
 
-// Streamdown's word separator only recognizes whitespace. Segment CJK through
-// Intl first, then let its native plugin provide the fade and animation timing.
+/** Segments CJK words before Streamdown applies its whitespace-based fade. */
 export function segmentStreamingText() {
   return segmentText;
 }
 
+/** Removes token spans from settled text while retaining the animated tail. */
 export function compactStreamingText() {
   return compactText;
 }

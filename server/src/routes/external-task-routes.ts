@@ -13,25 +13,30 @@ import {
 } from "../conversation/tasks/task-store.js";
 import { workflowAuth } from "../middleware/workflow-auth.js";
 
-export const externalTaskRoutes = new Hono();
+const maximumAdditionalInputCharacters = 4000;
+const maximumControlRequestBytes = 16_384;
 
+// Six bounded child outputs can use up to six JSON bytes per character.
+const maximumTaskEventBytes = 4_000_000;
+
+const boundedAdditionalInput = z.string().max(maximumAdditionalInputCharacters);
+const invalidInputMessage = `Provide additional information up to ${maximumAdditionalInputCharacters} characters`;
 const externalTaskInputSchema = z
-  .object({ input: z.string().max(4000).trim().min(1) })
+  .object({ input: boundedAdditionalInput.trim().min(1) })
   .strict();
+
+/** Serves external task control and workflow callbacks. */
+export const externalTaskRoutes = new Hono();
 
 externalTaskRoutes.post(
   "/external-tasks/:taskId/input",
-  bodyLimit({ maxSize: 16384 }),
+  bodyLimit({ maxSize: maximumControlRequestBytes }),
   async (context) => {
-    const parsed = externalTaskInputSchema.safeParse(
-      await context.req.json().catch(() => null),
-    );
+    const body: unknown = await context.req.json().catch(() => null);
+    const parsed = externalTaskInputSchema.safeParse(body);
 
     if (!parsed.success) {
-      return context.json(
-        { error: "Provide additional information up to 4000 characters" },
-        400,
-      );
+      return context.json({ error: invalidInputMessage }, 400);
     }
 
     try {
@@ -71,18 +76,19 @@ externalTaskRoutes.post("/external-tasks/:taskId/cancel", async (context) => {
 externalTaskRoutes.post(
   "/internal/external-tasks",
   workflowAuth("Invalid workflow credential"),
-  bodyLimit({ maxSize: 16384 }),
+  bodyLimit({ maxSize: maximumControlRequestBytes }),
   async (context) => {
-    const parsed = externalTaskRegistrationSchema.safeParse(
-      await context.req.json().catch(() => null),
-    );
+    const body: unknown = await context.req.json().catch(() => null);
+    const parsed = externalTaskRegistrationSchema.safeParse(body);
 
     if (!parsed.success) {
       return context.json({ error: "Invalid external task registration" }, 400);
     }
 
     try {
-      return context.json(await registerExternalTask(parsed.data));
+      const task = await registerExternalTask(parsed.data);
+
+      return context.json(task);
     } catch (error) {
       if (error instanceof SubmissionError) {
         return context.json({ error: error.message }, error.status);
@@ -95,25 +101,23 @@ externalTaskRoutes.post(
 
 externalTaskRoutes.post(
   "/external-tasks/:taskId/events",
-  // Six bounded child outputs can use up to six JSON bytes per character.
-  bodyLimit({ maxSize: 4000000 }),
+  bodyLimit({ maxSize: maximumTaskEventBytes }),
   async (context) => {
-    const parsed = externalTaskUpdateSchema.safeParse(
-      await context.req.json().catch(() => null),
-    );
+    const body: unknown = await context.req.json().catch(() => null);
+    const parsed = externalTaskUpdateSchema.safeParse(body);
 
     if (!parsed.success) {
       return context.json({ error: "Invalid external task update" }, 400);
     }
 
     try {
-      return context.json(
-        await updateExternalTask(
-          context.req.param("taskId"),
-          context.req.header("Authorization")?.replace(/^Bearer /, "") ?? "",
-          parsed.data,
-        ),
-      );
+      const taskId = context.req.param("taskId");
+      const authorization = context.req.header("Authorization");
+      const token = authorization?.replace(/^Bearer /, "") ?? "";
+
+      const task = await updateExternalTask(taskId, token, parsed.data);
+
+      return context.json(task);
     } catch (error) {
       if (error instanceof SubmissionError) {
         return context.json({ error: error.message }, error.status);

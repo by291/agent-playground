@@ -23,13 +23,20 @@ fun ConversationRoute(
 ) {
     val state by vm.state.collectAsStateWithLifecycle()
     val loadImage = rememberAttachmentImageLoader(preferences.serverUrl, vm::attachmentBytes)
+
+    var pickerThreadId by rememberSaveable { mutableStateOf<String?>(null) }
     var download by rememberSaveable(stateSaver = DownloadSaver) { mutableStateOf<Download?>(null) }
 
     val filePicker =
-        rememberLauncherForActivityResult(
-            ActivityResultContracts.OpenMultipleDocuments(),
-            vm::attach,
-        )
+        rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+            val threadId = pickerThreadId
+            pickerThreadId = null
+
+            if (threadId != null) {
+                vm.attach(threadId, uris)
+            }
+        }
+
     val savePicker =
         rememberLauncherForActivityResult(
             ActivityResultContracts.CreateDocument("application/octet-stream")
@@ -64,7 +71,14 @@ fun ConversationRoute(
         onEditInput = vm::editInput,
         onSend = vm::send,
         onRemoveAttachment = vm::removeAttachment,
-        onAttach = { filePicker.launch(arrayOf("*/*")) },
+        onAttach = {
+            val threadId = state.session?.threadId
+
+            if (threadId != null) {
+                pickerThreadId = threadId
+                filePicker.launch(arrayOf("*/*"))
+            }
+        },
         onSelectModel = vm::selectModel,
         onEditPlan = vm::editPlan,
         onReview = vm::review,

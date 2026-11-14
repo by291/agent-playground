@@ -68,7 +68,11 @@ function reply(text: string, streaming = false) {
           ],
         }),
       },
-      { id: "answer", role: "assistant", content: text },
+      {
+        id: "answer",
+        role: "assistant",
+        content: text,
+      },
     ],
     [],
   )[0]!;

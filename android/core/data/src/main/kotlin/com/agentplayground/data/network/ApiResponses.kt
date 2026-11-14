@@ -19,6 +19,7 @@ internal fun Response<*>.checkResponse() {
                 }
                 .getOrNull()
         }
+
     throw ApiException(code(), detail ?: "Server request failed (${code()}).")
 }
 

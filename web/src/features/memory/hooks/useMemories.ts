@@ -24,8 +24,10 @@ interface MemoryRequest {
   controller: AbortController;
 }
 
+/** Owns paginated memory reads and aborts in-flight edits or deletions on unmount. */
 export function useMemories() {
   const client = useQueryClient();
+
   const controller = useRef<AbortController | null>(null);
   const mounted = useRef(true);
 
@@ -54,14 +56,14 @@ export function useMemories() {
       }
 
       // Keep the committed result visible even if the following refresh fails.
-      client.setQueryData<InfiniteData<MemoryPage>>(queryKey, (data) => {
-        if (!data) {
-          return data;
+      client.setQueryData<InfiniteData<MemoryPage>>(queryKey, (cachedPages) => {
+        if (!cachedPages) {
+          return cachedPages;
         }
 
         return {
-          ...data,
-          pages: data.pages.map((page) => ({
+          ...cachedPages,
+          pages: cachedPages.pages.map((page) => ({
             ...page,
             items: page.items.flatMap((memory) => {
               if (memory.id !== request.memory.id) {
@@ -74,7 +76,7 @@ export function useMemories() {
         };
       });
     },
-    onSettled: async (_data, _error, request) => {
+    onSettled: async (_updated, _error, request) => {
       if (mounted.current && !request.controller.signal.aborted) {
         await client.invalidateQueries({ queryKey });
       }
@@ -88,6 +90,7 @@ export function useMemories() {
       page.items.map((memory) => [memory.id, memory] as const),
     ),
   );
+
   const conflict =
     mutation.error instanceof MemoryRequestError &&
     mutation.error.status === 409;
@@ -112,7 +115,12 @@ export function useMemories() {
     controller.current = request;
 
     try {
-      await mutation.mutateAsync({ kind, memory, text, controller: request });
+      await mutation.mutateAsync({
+        kind,
+        memory,
+        text,
+        controller: request,
+      });
 
       return mounted.current && !request.signal.aborted ? true : undefined;
     } catch {

@@ -79,6 +79,7 @@ function openListener(): Listener {
   return current;
 }
 
+/** Attach a conversation stream to the process-owned listener and return its cleanup. */
 export function subscribeConversationChanges(
   threadId: string,
   callbacks: Omit<Subscriber, "threadId">,

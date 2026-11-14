@@ -18,6 +18,7 @@ import { ConversationActions } from "./ConversationActions";
 import { AnimatePresence } from "motion/react";
 import { AnimatedDiv } from "@/components/ui/motion";
 
+/** Keeps the current conversation visible while paging through its saved history. */
 export function ConversationList({
   history,
   threadId,
@@ -39,10 +40,15 @@ export function ConversationList({
 }) {
   const scrollerRef = useRef<HTMLDivElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
+
   const { hasMore, loadingMore, error, loadMore } = history;
   const entries = history.conversations;
   const currentListed = entries.some((entry) => entry.threadId === threadId);
-  const current = { threadId, title, status };
+  const current = {
+    threadId,
+    title,
+    status,
+  };
   const rows: (typeof current)[] = [...entries];
 
   if (!currentListed && !empty) {
@@ -56,43 +62,55 @@ export function ConversationList({
     empty &&
     !history.error;
 
-  useEffect(() => {
-    const root = scrollerRef.current;
-    const end = endRef.current;
+  useEffect(
+    () => {
+      const root = scrollerRef.current;
+      const end = endRef.current;
 
-    if (
-      !root ||
-      !end ||
-      !hasMore ||
-      loadingMore ||
-      error ||
-      typeof IntersectionObserver === "undefined"
-    ) {
-      return;
-    }
+      if (
+        !root ||
+        !end ||
+        !hasMore ||
+        loadingMore ||
+        error ||
+        typeof IntersectionObserver === "undefined"
+      ) {
+        return;
+      }
 
-    // Observer callbacks already queued at cleanup must not fetch another page.
-    let observing = true;
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const reachedBottom = entries.some(
-          (entry) => entry.isIntersecting && entry.intersectionRatio === 1,
-        );
+      // Observer callbacks already queued at cleanup must not fetch another page.
+      let observing = true;
+      const observer = new IntersectionObserver(
+        (entries) => {
+          const reachedBottom = entries.some(
+            (entry) => entry.isIntersecting && entry.intersectionRatio === 1,
+          );
 
-        if (observing && reachedBottom) {
-          loadMore();
-        }
-      },
-      { root, rootMargin: "0px", threshold: 1 },
-    );
+          if (observing && reachedBottom) {
+            loadMore();
+          }
+        },
+        {
+          root,
+          rootMargin: "0px",
+          threshold: 1,
+        },
+      );
 
-    observer.observe(end);
+      observer.observe(end);
 
-    return () => {
-      observing = false;
-      observer.disconnect();
-    };
-  }, [hasMore, loadingMore, error, loadMore]);
+      return () => {
+        observing = false;
+        observer.disconnect();
+      };
+    },
+    /* prettier-ignore */ [
+      hasMore,
+      loadingMore,
+      error,
+      loadMore,
+    ],
+  );
 
   return (
     <div className="workspace-sidebar-history flex min-h-0 flex-1 flex-col">
@@ -117,6 +135,7 @@ export function ConversationList({
           </Button>
         </div>
       </div>
+
       <ScrollArea
         viewportRef={scrollerRef}
         className="-mr-2 min-h-0 flex-1"
@@ -140,7 +159,11 @@ export function ConversationList({
               <AnimatedDiv
                 key={entry.threadId}
                 layout="position"
-                exit={{ opacity: 0, height: 0, marginBottom: 0 }}
+                exit={{
+                  opacity: 0,
+                  height: 0,
+                  marginBottom: 0,
+                }}
                 className={`mb-0.5 flex items-center rounded-md transition-colors duration-(--motion-feedback) ${selected ? "bg-selected" : "hover:bg-selected/60"}`}
               >
                 <Tooltip>
@@ -180,6 +203,7 @@ export function ConversationList({
             );
           })}
         </AnimatePresence>
+
         {!collapsed && history.loading && (
           <div
             role="status"
@@ -190,6 +214,7 @@ export function ConversationList({
             <Skeleton className="h-8" />
           </div>
         )}
+
         {showEmptyHistory && (
           <Empty className="p-2 py-3">
             <EmptyHeader>
@@ -199,6 +224,7 @@ export function ConversationList({
             </EmptyHeader>
           </Empty>
         )}
+
         {!collapsed && history.error && (
           <div className="space-y-2 px-2 py-3">
             <Alert variant="destructive" className="p-2">

@@ -1,4 +1,4 @@
-import { and, asc, eq, gt, inArray, isNull, ne, not, or } from "drizzle-orm";
+import { and, asc, eq, gt, inArray, isNull, not, or, sql } from "drizzle-orm";
 import { db } from "../../db/database.js";
 import { externalTasks } from "../../db/external-task-schema.js";
 import {
@@ -6,28 +6,41 @@ import {
   conversations,
 } from "../../db/conversation-schema.js";
 
+const TASK_SCAN_PAGE_SIZE = 100;
+
+type ExternalTask = typeof externalTasks.$inferSelect;
+type ContinuationRun = typeof conversationRuns.$inferSelect;
+
+export interface ScannedExternalTask {
+  task: ExternalTask;
+  continuation: ContinuationRun | null;
+}
+
 /** Yields tasks whose continuation is absent or still needs execution/checkpoint recovery. */
-export async function* scanExternalTasks() {
+export async function* scanExternalTasks(): AsyncGenerator<ScannedExternalTask> {
   let cursor: string | undefined;
 
   while (true) {
-    const rows = await db
+    const taskJoin = db
       .select({ task: externalTasks, continuation: conversationRuns })
       .from(externalTasks)
       .innerJoin(
         conversations,
         eq(externalTasks.threadId, conversations.threadId),
-      )
-      .leftJoin(
-        conversationRuns,
-        eq(externalTasks.continuationRunId, conversationRuns.aguiRunId),
-      )
+      );
+    const continuationJoin = taskJoin.leftJoin(
+      conversationRuns,
+      eq(externalTasks.continuationRunId, conversationRuns.aguiRunId),
+    );
+
+    const needsCheckpointSync = sql`NOT ${conversationRuns.checkpointSynced}`;
+    const rows = await continuationJoin
       .where(
         and(
           isNull(conversations.deletedAt),
           or(
             isNull(conversationRuns.aguiRunId),
-            ne(conversationRuns.checkpointSynced, true),
+            needsCheckpointSync,
             not(
               inArray(conversationRuns.status, [
                 "completed",
@@ -40,17 +53,19 @@ export async function* scanExternalTasks() {
         ),
       )
       .orderBy(asc(externalTasks.taskId))
-      .limit(100);
+      .limit(TASK_SCAN_PAGE_SIZE);
 
-    if (!rows.length) {
+    const last = rows.at(-1);
+
+    if (!last) {
       return;
     }
 
     // Keyset paging keeps the scan bounded while callbacks update task rows.
-    cursor = rows.at(-1)!.task.taskId;
+    cursor = last.task.taskId;
     yield* rows;
 
-    if (rows.length < 100) {
+    if (rows.length < TASK_SCAN_PAGE_SIZE) {
       return;
     }
   }

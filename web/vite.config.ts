@@ -36,7 +36,12 @@ export default defineConfig(({ mode }) => {
   const backendUrl = env.BACKEND_URL ?? "http://127.0.0.1:3000";
 
   return {
-    plugins: [react(), tailwindcss(), productionFeatureBoundary()],
+    plugins:
+      /* prettier-ignore */ [
+        react(),
+        tailwindcss(),
+        productionFeatureBoundary(),
+      ],
     resolve: { tsconfigPaths: true },
     server: {
       host: "0.0.0.0",

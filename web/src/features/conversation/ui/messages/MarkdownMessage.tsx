@@ -52,7 +52,11 @@ function FadingSpan({
   // timing until the mounted token finishes, even as later text arrives.
   const [animationStyle] = useState(() =>
     node?.properties["data-sd-animate"]
-      ? { ...style, "--sd-delay": "0ms", animationFillMode: "backwards" }
+      ? {
+          ...style,
+          "--sd-delay": "0ms",
+          animationFillMode: "backwards",
+        }
       : undefined,
   );
   const chunkId = node?.properties["data-knowledge-citation"];
@@ -69,17 +73,29 @@ const components: Components = { span: FadingSpan };
 function StreamingBlock(props: BlockProps) {
   const lastBlock = useContext(lastBlockContext);
   const active = props.index === lastBlock;
-  const rehypePlugins = useMemo(() => {
-    const animate = props.animatePlugin?.rehypePlugin;
-    const base =
-      props.rehypePlugins?.filter((plugin) => plugin !== animate) ?? [];
+  const rehypePlugins = useMemo(
+    () => {
+      const animate = props.animatePlugin?.rehypePlugin;
+      const base =
+        props.rehypePlugins?.filter((plugin) => plugin !== animate) ?? [];
 
-    if (!active || !animate) {
-      return base;
-    }
+      if (!active || !animate) {
+        return base;
+      }
 
-    return [...base, segmentStreamingText, animate, compactStreamingText];
-  }, [active, props.rehypePlugins, props.animatePlugin]);
+      return /* prettier-ignore */ [
+        ...base,
+        segmentStreamingText,
+        animate,
+        compactStreamingText,
+      ];
+    },
+    /* prettier-ignore */ [
+      active,
+      props.rehypePlugins,
+      props.animatePlugin,
+    ],
+  );
 
   return (
     <Block
@@ -90,6 +106,7 @@ function StreamingBlock(props: BlockProps) {
   );
 }
 
+/** Renders Markdown while limiting token animation to the current streaming block. */
 export const MarkdownContent = memo(function MarkdownContent({
   text,
   streaming,
@@ -124,14 +141,15 @@ export const MarkdownContent = memo(function MarkdownContent({
   );
 });
 
+/** Paces a reply before displaying it and reports when its display finishes. */
 export default function MarkdownMessage({
   text,
   streaming,
   onStreamingChange,
 }: MarkdownProps) {
-  const display = usePacedText(text, streaming);
+  const display = usePacedText({ text, isStreaming: streaming });
 
-  useReportReplyPresentation(display.streaming);
+  useReportReplyPresentation({ isBusy: display.streaming });
   useLayoutEffect(
     () => onStreamingChange?.(display.streaming),
     [onStreamingChange, display.streaming],
