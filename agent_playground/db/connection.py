@@ -1,6 +1,7 @@
 """Own the shared engine; prepare Python-owned tables explicitly at startup."""
 
 from functools import lru_cache
+from threading import Lock
 
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
@@ -15,8 +16,13 @@ from agent_playground.db.schema import (
     workflow_outputs,
 )
 
+DATABASE_CONNECT_TIMEOUT_SECONDS = 5
+_schema_lock = Lock()
+_prepared_engine: Engine | None = None
+
 
 def postgres_driver_url(database_url: str) -> str:
+    """Normalize PostgreSQL schemes for SQLAlchemy's Psycopg driver."""
     if database_url.startswith("postgres://"):
         database_url = "postgresql://" + database_url.removeprefix("postgres://")
 
@@ -26,7 +32,8 @@ def postgres_driver_url(database_url: str) -> str:
 @lru_cache(maxsize=1)
 def app_engine() -> Engine:
     """Return the process-owned engine, released by ``close_app_store``."""
-    database_url = load_agent_config().database.application_url.get_secret_value()
+    database = load_agent_config().database
+    database_url = database.application_url.get_secret_value()
 
     if not database_url:
         raise RuntimeError(
@@ -34,14 +41,28 @@ def app_engine() -> Engine:
         )
 
     return create_engine(
-        postgres_driver_url(database_url), connect_args={"connect_timeout": 5}
+        postgres_driver_url(database_url),
+        connect_args={"connect_timeout": DATABASE_CONNECT_TIMEOUT_SECONDS},
     )
 
 
 def prepare_app_store() -> None:
-    """Prepare Python-owned tables while serializing concurrent process starts."""
+    """Prepare Python-owned tables once for the current process engine."""
+    global _prepared_engine
+
+    with _schema_lock:
+        engine = app_engine()
+
+        if _prepared_engine is engine:
+            return
+
+        _create_application_tables(engine)
+        _prepared_engine = engine
+
+
+def _create_application_tables(engine: Engine) -> None:
     try:
-        with app_engine().begin() as connection:
+        with engine.begin() as connection:
             # Independent agent processes can start together. Serialize both the
             # existence checks and DDL so checkfirst cannot race another creator.
             connection.execute(
@@ -66,6 +87,9 @@ def prepare_app_store() -> None:
 
 def close_app_store() -> None:
     """Dispose the cached engine after its callers have drained database work."""
+    global _prepared_engine
+    _prepared_engine = None
+
     if not app_engine.cache_info().currsize:
         return
 

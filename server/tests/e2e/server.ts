@@ -30,6 +30,19 @@ import {
 } from "../../src/db/conversation-schema.js";
 import { scrollHistory } from "./scroll-history.js";
 
+const KNOWLEDGE_SHUTDOWN_TIMEOUT_MS = 5_000;
+const KNOWLEDGE_STARTUP_ATTEMPTS = 100;
+const KNOWLEDGE_STARTUP_INTERVAL_MS = 100;
+const KNOWLEDGE_SEARCH_TIMEOUT_MS = 10_000;
+const REDIS_PORT = 6379;
+const SHUTDOWN_SIGNALS = ["SIGTERM", "SIGINT"] as const;
+// prettier-ignore
+const KNOWLEDGE_WORKER_STDIO = [
+  "ignore",
+  "ignore",
+  "inherit",
+] as const;
+
 let knowledgeProcess: ChildProcess | undefined;
 let configurationDirectory: string | undefined;
 let stopKnowledgeCleanup: (() => Promise<void>) | undefined;
@@ -48,7 +61,6 @@ async function closeServer(server: Server | undefined) {
     return;
   }
 
-  server.closeAllConnections();
   await new Promise<void>((resolve, reject) => {
     server.close((error) => {
       if (error) {
@@ -57,69 +69,94 @@ async function closeServer(server: Server | undefined) {
         resolve();
       }
     });
+    // Stop accepting requests before forcing active connections to close.
+    server.closeAllConnections();
   });
 }
 
-function stop() {
-  stopping ??= (async () => {
-    agent?.releaseAll();
+async function stopKnowledgeProcess() {
+  const worker = knowledgeProcess;
 
-    if (
-      knowledgeProcess?.pid &&
-      knowledgeProcess.exitCode === null &&
-      knowledgeProcess.signalCode === null
-    ) {
-      const process = knowledgeProcess;
-      const exited = new Promise<void>((resolve) =>
-        process.once("exit", () => resolve()),
-      );
-      const timeout = setTimeout(() => process.kill("SIGKILL"), 5000);
+  if (!worker?.pid || worker.exitCode !== null || worker.signalCode !== null) {
+    return;
+  }
 
-      process.kill("SIGTERM");
-      await exited;
-      clearTimeout(timeout);
-    }
+  // Register before sending the signal so a fast exit cannot bypass the wait.
+  const exited = new Promise<void>((resolve) => {
+    worker.once("exit", () => resolve());
+  });
+  const timeout = setTimeout(
+    () => worker.kill("SIGKILL"),
+    KNOWLEDGE_SHUTDOWN_TIMEOUT_MS,
+  );
 
-    await stopWorker?.();
-    await stopKnowledgeCleanup?.();
+  try {
+    worker.kill("SIGTERM");
+    await exited;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
 
+async function closeChangeSubscriptions() {
+  const { closeConversationChanges } =
+    await import("../../src/conversation/events/subscription.js");
+
+  await closeConversationChanges();
+}
+
+async function closeStorageClient() {
+  const { closeObjectStore } =
+    await import("../../src/storage/object-store.js");
+
+  closeObjectStore();
+}
+
+async function removeTestConfiguration() {
+  if (configurationDirectory) {
+    await rm(configurationDirectory, {
+      recursive: true,
+      force: true,
+    });
+  }
+}
+
+async function releaseResources() {
+  // Release blocked streams and stop their producers before closing HTTP and
+  // the shared clients. Containers and test configuration outlive their consumers.
+  const steps = [
+    () => agent?.releaseAll(),
+    stopKnowledgeProcess,
+    () => stopWorker?.(),
+    () => stopKnowledgeCleanup?.(),
+    () => closeServer(backend),
+    () => closeServer(upstream),
+    closeChangeSubscriptions,
+    () => database?.db.$client.end(),
+    () => postgres?.stop(),
+    closeStorageClient,
+    () => storage?.stop(),
+    () => redis?.stop(),
+    removeTestConfiguration,
+  ];
+
+  const failures: unknown[] = [];
+
+  for (const release of steps) {
     try {
-      await closeServer(backend);
-    } finally {
-      try {
-        await closeServer(upstream);
-      } finally {
-        try {
-          await (
-            await import("../../src/conversation/events/subscription.js")
-          ).closeConversationChanges();
-          await database?.db.$client.end();
-        } finally {
-          try {
-            await postgres?.stop();
-          } finally {
-            try {
-              (
-                await import("../../src/storage/object-store.js")
-              ).closeObjectStore();
-              await storage?.stop();
-            } finally {
-              try {
-                await redis?.stop();
-              } finally {
-                if (configurationDirectory) {
-                  await rm(configurationDirectory, {
-                    recursive: true,
-                    force: true,
-                  });
-                }
-              }
-            }
-          }
-        }
-      }
+      await release();
+    } catch (error) {
+      failures.push(error);
     }
-  })();
+  }
+
+  if (failures.length > 0) {
+    throw new AggregateError(failures, "Unable to release all E2E resources");
+  }
+}
+
+function stop() {
+  stopping ??= releaseResources().catch(reportFailure);
 
   return stopping;
 }
@@ -127,27 +164,43 @@ function stop() {
 async function start() {
   storage = await createSkillTestStorage();
   redis = await new GenericContainer("redis:8-alpine")
-    .withExposedPorts(6379)
+    .withExposedPorts(REDIS_PORT)
     .start();
   postgres = await new PostgreSqlContainer(
     "pgvector/pgvector:0.8.7-pg18",
   ).start();
+
   process.env.APP_DATABASE_URL = postgres.getConnectionUri();
-  database = await import("../../src/db/database.js");
-  await database.migrateServer();
+  const databaseModule = await import("../../src/db/database.js");
+
+  database = databaseModule;
+  await databaseModule.migrateServer();
+
   // Python owns this table. Match its read contract in the isolated test DB.
-  await database.db.execute(sql`
+  await databaseModule.db.execute(sql`
     CREATE TABLE workflow_outputs (
-      id text PRIMARY KEY, thread_id text NOT NULL, agui_run_id text NOT NULL,
-      workflow_call_id text NOT NULL, step_id text NOT NULL, step_seq integer NOT NULL,
-      output_seq bigint NOT NULL, kind text NOT NULL DEFAULT 'a2ui', version integer NOT NULL DEFAULT 1,
-      payload jsonb NOT NULL, created_at timestamptz NOT NULL DEFAULT now(),
-      UNIQUE (thread_id, workflow_call_id, step_id, version), UNIQUE (thread_id, output_seq)
+      id text PRIMARY KEY,
+      thread_id text NOT NULL,
+      agui_run_id text NOT NULL,
+      workflow_call_id text NOT NULL,
+      step_id text NOT NULL,
+      step_seq integer NOT NULL,
+      output_seq bigint NOT NULL,
+      kind text NOT NULL DEFAULT 'a2ui',
+      version integer NOT NULL DEFAULT 1,
+      payload jsonb NOT NULL,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      UNIQUE (thread_id, workflow_call_id, step_id, version),
+      UNIQUE (thread_id, output_seq)
     )
   `);
-  agent = controlledAegra(database.db);
+
+  const aegraFixture = controlledAegra(databaseModule.db);
+
+  agent = aegraFixture;
+
   // Management uses the real Python routes and LangGraph PostgreSQL Store.
-  agent.api.all("/memory/*", async (context) => {
+  aegraFixture.api.all("/memory/*", async (context) => {
     const url = new URL(context.req.url);
 
     return fetch(`http://127.0.0.1:4301${url.pathname}${url.search}`, {
@@ -159,7 +212,7 @@ async function start() {
       signal: context.req.raw.signal,
     });
   });
-  agent.api.get("/memory", (context) => {
+  aegraFixture.api.get("/memory", (context) => {
     const url = new URL(context.req.url);
 
     return fetch(`http://127.0.0.1:4301/memory${url.search}`, {
@@ -169,7 +222,11 @@ async function start() {
   });
   upstream = await new Promise<Server>((resolve) => {
     const server = serve(
-      { fetch: agent!.api.fetch, hostname: "127.0.0.1", port: 0 },
+      {
+        fetch: aegraFixture.api.fetch,
+        hostname: "127.0.0.1",
+        port: 0,
+      },
       () => resolve(server as Server),
     );
   });
@@ -189,9 +246,36 @@ async function start() {
     await import("../../src/conversation/history/snapshot.js");
 
   stopWorker = startExternalTaskWorker();
+
   const harness = new Hono();
-  let ready = false;
-  let embeddingFailure = false;
+  let isReady = false;
+  let isEmbeddingFailureEnabled = false;
+
+  async function seedCompletedConversation(
+    threadId: string,
+    userMessage: Message,
+    messages: LangGraphPlatformMessage[],
+  ) {
+    // Replace all archived messages atomically before exposing the fixture state.
+    await databaseModule.db.transaction(async (transaction) => {
+      await transaction
+        .delete(conversationMessages)
+        .where(eq(conversationMessages.threadId, threadId));
+
+      const publicMessages = [userMessage, ...completedMessages({ messages })];
+
+      await transaction.insert(conversationMessages).values(
+        publicMessages.map((message, messageOrder) => ({
+          threadId,
+          messageId: message.id,
+          submitSeq: 1,
+          messageOrder,
+          message,
+        })),
+      );
+    });
+    aegraFixture.seedConversation(threadId, messages);
+  }
 
   process.env.WORKFLOW_API_TOKEN = "knowledge-e2e-token";
   harness.post("/__e2e/memory/:threadId", async (context) => {
@@ -206,17 +290,17 @@ async function start() {
     );
   });
   harness.get("/health", (context) =>
-    context.text(ready ? "ok" : "starting", ready ? 200 : 503),
+    context.text(isReady ? "ok" : "starting", isReady ? 200 : 503),
   );
   harness.post("/__e2e/embedding-failure", async (context) => {
-    embeddingFailure = z
+    isEmbeddingFailureEnabled = z
       .object({ enabled: z.boolean() })
       .parse(await context.req.json()).enabled;
 
-    return context.json({ enabled: embeddingFailure });
+    return context.json({ enabled: isEmbeddingFailureEnabled });
   });
   harness.post("/__e2e/embeddings", async (context) => {
-    if (embeddingFailure) {
+    if (isEmbeddingFailureEnabled) {
       context.header("Retry-After", "0.05");
 
       return context.json(
@@ -247,22 +331,41 @@ async function start() {
   harness.post("/__e2e/knowledge-result/:threadId", async (context) => {
     const threadId = context.req.param("threadId");
     const query = "What is the return policy?";
+    const userMessageId = randomUUID();
+
     const search = await fetch("http://127.0.0.1:4301/search", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ query }),
-      signal: AbortSignal.timeout(10_000),
+      signal: AbortSignal.timeout(KNOWLEDGE_SEARCH_TIMEOUT_MS),
     });
+
     const result = knowledgeSearchSchema.parse(await search.json());
+    const passages = result.sources.map((source) => {
+      const citation =
+        source.citation ?? `[source](${knowledgeCitationUrl(source.chunkId)})`;
+
+      return `A matching policy passage ${citation}.`;
+    });
+
     const messages: LangGraphPlatformMessage[] = [
-      { id: randomUUID(), type: "human", role: "user", content: query },
+      {
+        id: userMessageId,
+        type: "human",
+        role: "user",
+        content: query,
+      },
       {
         id: randomUUID(),
         type: "ai",
         role: "assistant",
         content: "",
         tool_calls: [
-          { id: "knowledge-search", name: "search_knowledge", args: { query } },
+          {
+            id: "knowledge-search",
+            name: "search_knowledge",
+            args: { query },
+          },
         ],
       },
       {
@@ -278,35 +381,19 @@ async function start() {
         type: "ai",
         role: "assistant",
         content:
-          result.sources
-            .map(
-              (source) =>
-                `A matching policy passage ${source.citation ?? `[source](${knowledgeCitationUrl(source.chunkId)})`}.`,
-            )
-            .join("\n\n") || "No matching policy passages were found.",
+          passages.join("\n\n") || "No matching policy passages were found.",
       },
     ];
 
-    await database!.db.transaction(async (tx) => {
-      await tx
-        .delete(conversationMessages)
-        .where(eq(conversationMessages.threadId, threadId));
-      const publicMessages: Message[] = [
-        { id: messages[0]!.id!, role: "user", content: query },
-        ...completedMessages({ messages }),
-      ];
-
-      await tx.insert(conversationMessages).values(
-        publicMessages.map((message, messageOrder) => ({
-          threadId,
-          messageId: message.id,
-          submitSeq: 1,
-          messageOrder,
-          message,
-        })),
-      );
-    });
-    agent!.seedConversation(threadId, messages);
+    await seedCompletedConversation(
+      threadId,
+      {
+        id: userMessageId,
+        role: "user",
+        content: query,
+      },
+      messages,
+    );
 
     return context.json(result);
   });
@@ -320,12 +407,14 @@ async function start() {
       return context.json({ error: "Wrong conversation" }, 400);
     }
 
+    const userMessageId = randomUUID();
+    const request = "Read the uploaded CSV.";
     const messages: LangGraphPlatformMessage[] = [
       {
-        id: randomUUID(),
+        id: userMessageId,
         type: "human",
         role: "user",
-        content: "Read the uploaded CSV.",
+        content: request,
       },
       {
         id: randomUUID(),
@@ -366,30 +455,15 @@ async function start() {
       },
     ];
 
-    await database!.db.transaction(async (tx) => {
-      await tx
-        .delete(conversationMessages)
-        .where(eq(conversationMessages.threadId, threadId));
-      const publicMessages: Message[] = [
-        {
-          id: messages[0]!.id!,
-          role: "user",
-          content: "Read the uploaded CSV.",
-        },
-        ...completedMessages({ messages }),
-      ];
-
-      await tx.insert(conversationMessages).values(
-        publicMessages.map((message, messageOrder) => ({
-          threadId,
-          messageId: message.id,
-          submitSeq: 1,
-          messageOrder,
-          message,
-        })),
-      );
-    });
-    agent!.seedConversation(threadId, messages);
+    await seedCompletedConversation(
+      threadId,
+      {
+        id: userMessageId,
+        role: "user",
+        content: request,
+      },
+      messages,
+    );
 
     return context.json({ threadId });
   });
@@ -397,11 +471,11 @@ async function start() {
     const threadId = randomUUID();
     const messages = scrollHistory();
 
-    await database!.db.transaction(async (tx) => {
-      await tx
+    await databaseModule.db.transaction(async (transaction) => {
+      await transaction
         .insert(conversations)
         .values({ threadId, title: "Scroll history" });
-      await tx.insert(conversationMessages).values(
+      await transaction.insert(conversationMessages).values(
         messages.map((message, messageOrder) => ({
           threadId,
           messageId: message.id,
@@ -415,17 +489,17 @@ async function start() {
         })),
       );
     });
-    agent!.seedConversation(threadId, messages);
+    aegraFixture.seedConversation(threadId, messages);
 
     return context.json({ threadId });
   });
   harness.post("/__e2e/release/:threadId", (context) => {
-    const released = agent!.release(context.req.param("threadId"));
+    const isReleased = aegraFixture.release(context.req.param("threadId"));
 
-    return context.json({ released }, released ? 200 : 404);
+    return context.json({ released: isReleased }, isReleased ? 200 : 404);
   });
   harness.get("/__e2e/external-task/:threadId", async (context) => {
-    const [task] = await database!.db
+    const [task] = await databaseModule.db
       .select()
       .from(externalTasks)
       .where(eq(externalTasks.threadId, context.req.param("threadId")));
@@ -493,7 +567,7 @@ async function start() {
         application_url: postgres.getConnectionUri(),
       },
       redis: {
-        url: `redis://${redis.getHost()}:${redis.getMappedPort(6379)}/0`,
+        url: `redis://${redis.getHost()}:${redis.getMappedPort(REDIS_PORT)}/0`,
       },
       workflow: {
         app_api_url: "http://127.0.0.1:4300",
@@ -523,7 +597,7 @@ async function start() {
     ],
     {
       cwd: root,
-      stdio: ["ignore", "ignore", "inherit"],
+      stdio: [...KNOWLEDGE_WORKER_STDIO],
       env: {
         ...process.env,
         PYTHONPATH: root,
@@ -538,7 +612,7 @@ async function start() {
     processError = error;
   });
 
-  for (let attempt = 0; attempt < 100; attempt++) {
+  for (let attempt = 0; attempt < KNOWLEDGE_STARTUP_ATTEMPTS; attempt++) {
     if (processError || knowledgeProcess.exitCode !== null) {
       throw (
         processError ?? new Error("Knowledge test worker exited during startup")
@@ -550,14 +624,16 @@ async function start() {
     );
 
     if (response?.ok) {
-      ready = true;
+      isReady = true;
       break;
     }
 
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    await new Promise((resolve) =>
+      setTimeout(resolve, KNOWLEDGE_STARTUP_INTERVAL_MS),
+    );
   }
 
-  if (!ready) {
+  if (!isReady) {
     throw new Error("Knowledge test worker did not start");
   }
 
@@ -566,25 +642,23 @@ async function start() {
   ).startKnowledgeCleanup();
 }
 
+function reportFailure(error: unknown) {
+  console.error(error);
+  process.exitCode = 1;
+}
+
 const starting = start();
 
-for (const signal of ["SIGTERM", "SIGINT"] as const) {
+for (const signal of SHUTDOWN_SIGNALS) {
   process.once(signal, () => {
     // A signal during startup must still release resources created afterwards.
-    void starting
-      .catch(() => undefined)
-      .then(stop)
-      .catch((error: unknown) => {
-        console.error(error);
-        process.exitCode = 1;
-      });
+    void starting.catch(() => undefined).then(stop);
   });
 }
 
 try {
   await starting;
 } catch (error) {
-  console.error(error);
-  process.exitCode = 1;
+  reportFailure(error);
   await stop();
 }

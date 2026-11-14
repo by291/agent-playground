@@ -9,7 +9,11 @@ test("thread-specific queries fetch the correct snapshot and treat a new thread 
       url === "/conversations/existing%2Fthread"
         ? Response.json({
             messages: [
-              { id: "saved", role: "assistant", content: "Recovered" },
+              {
+                id: "saved",
+                role: "assistant",
+                content: "Recovered",
+              },
             ],
             outputs: [],
             interrupts: [],
@@ -67,7 +71,14 @@ test("recovery rejects legacy A2UI output wrappers", async () => {
         messages: [],
         interrupts: [],
         runs: [],
-        outputs: [{ id: "old", outputSeq: 1, kind: "a2ui", messages: [] }],
+        outputs: [
+          {
+            id: "old",
+            outputSeq: 1,
+            kind: "a2ui",
+            messages: [],
+          },
+        ],
       }),
     ),
   );

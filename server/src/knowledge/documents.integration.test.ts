@@ -62,7 +62,11 @@ test("shared uploads are idempotent, authenticated internally and deleted before
   expect(await internal.text()).toContain("30 days");
   await database.db
     .update(schema.knowledgeDocuments)
-    .set({ status: "ready", generation: "old", chunkCount: 1 })
+    .set({
+      status: "ready",
+      generation: "old",
+      chunkCount: 1,
+    })
     .where(eq(schema.knowledgeDocuments.id, id));
   await database.db.insert(schema.knowledgeChunks).values({
     langchainId: randomUUID(),
@@ -94,7 +98,8 @@ test("shared uploads are idempotent, authenticated internally and deleted before
     (await app.request(`/api/knowledge/documents/${id}/file`)).status,
   ).toBe(404);
   expect((await upload(id)).status).toBe(404);
-  const { cleanupDeletedDocuments } = await import("./cleanup.js");
+  const { createKnowledgeCleanup } = await import("./cleanup.js");
+  const cleanupDeletedDocuments = createKnowledgeCleanup();
 
   await cleanupDeletedDocuments();
   expect(await database.db.select().from(schema.knowledgeChunks)).toHaveLength(
@@ -135,7 +140,8 @@ test("late object commits after deletion are reconciled and removed", async () =
 
   await upload(id);
   await app.request(`/api/knowledge/documents/${id}`, { method: "DELETE" });
-  const { cleanupDeletedDocuments } = await import("./cleanup.js");
+  const { createKnowledgeCleanup } = await import("./cleanup.js");
+  const cleanupDeletedDocuments = createKnowledgeCleanup();
   const store = await import("../storage/object-store.js");
 
   await cleanupDeletedDocuments();
@@ -146,10 +152,52 @@ test("late object commits after deletion are reconciled and removed", async () =
   expect((await upload(id)).status).toBe(404);
 });
 
+test("restarted cleanup reconciles late uploads on the first page", async () => {
+  const id = randomUUID();
+  const store = await import("../storage/object-store.js");
+  const { createKnowledgeCleanup } = await import("./cleanup.js");
+  const firstCleanup = createKnowledgeCleanup();
+
+  await upload(id);
+  await app.request(`/api/knowledge/documents/${id}`, { method: "DELETE" });
+
+  const listObjects = vi.spyOn(store, "listObjects").mockResolvedValueOnce({
+    keys: [`knowledge/${id}`],
+    continuationToken: "second-page",
+  });
+
+  try {
+    await firstCleanup();
+    await store.putObject(`knowledge/${id}`, Buffer.from("late upload"));
+
+    listObjects.mockImplementationOnce((prefix, continuationToken) => {
+      if (continuationToken) {
+        return Promise.resolve({ keys: [], continuationToken: undefined });
+      }
+
+      return Promise.resolve({
+        keys: [`${prefix}${id}`],
+        continuationToken: undefined,
+      });
+    });
+
+    const restartedCleanup = createKnowledgeCleanup();
+
+    await restartedCleanup();
+    await expect(store.getObject(`knowledge/${id}`, 11)).rejects.toThrow();
+  } finally {
+    listObjects.mockRestore();
+  }
+});
+
 test("invalid and oversized uploads are rejected before creating an intent", async () => {
   const before = await database.db.select().from(schema.knowledgeDocuments);
 
-  for (const name of ["../policy.md", "data.csv", "bad\n.pdf"]) {
+  for (const name of /* prettier-ignore */ [
+    "../policy.md",
+    "data.csv",
+    "bad\n.pdf",
+  ]) {
     const response = await app.request("/api/knowledge/documents", {
       method: "POST",
       headers: {

@@ -11,7 +11,12 @@ function experimentStage(view: A2UISurfaceView): string | null {
 
   const stage = view.surface.id.slice(prefix.length);
 
-  return ["idea", "draft", "review", "reviewed"].includes(stage) ? stage : null;
+  return /* prettier-ignore */ [
+    "idea",
+    "draft",
+    "review",
+    "reviewed",
+  ].includes(stage) ? stage : null;
 }
 
 /** Selects visible experiment stages while retaining replaced surfaces as history. */
@@ -76,5 +81,9 @@ export function workflowArtifacts(
     return !replacedByEditor;
   });
 
-  return { current: visible, history, reviews: pending };
+  return {
+    current: visible,
+    history,
+    reviews: pending,
+  };
 }

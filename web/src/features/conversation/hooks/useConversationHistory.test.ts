@@ -55,7 +55,11 @@ test("a failed next page retains the loaded page and retry fetches only the fail
         url.includes("cursor")
           ? {
               conversations: [
-                { ...saved, threadId: "older", title: "Older discussion" },
+                {
+                  ...saved,
+                  threadId: "older",
+                  title: "Older discussion",
+                },
               ],
               nextCursor: null,
             }

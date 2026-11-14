@@ -62,7 +62,11 @@ function inputFor(threadId: string, turn = 1): RunAgentInput {
     threadId,
     runId: `${threadId}-run-${turn}`,
     messages: [
-      { id: `${threadId}-message-${turn}`, role: "user", content: "Question" },
+      {
+        id: `${threadId}-message-${turn}`,
+        role: "user",
+        content: "Question",
+      },
     ],
     tools: [],
     context: [],
@@ -115,7 +119,12 @@ async function waitForBlockedQuery(fragment: string) {
 }
 
 test("clear tombstones every page and preserves messages, runs, outputs and checkpoints", async () => {
-  const statuses = ["completed", "failed", "interrupted"] as const;
+  const statuses =
+    /* prettier-ignore */ [
+    "completed",
+    "failed",
+    "interrupted",
+  ] as const;
   const history = Array.from({ length: 35 }, (_, index) =>
     inputFor(`conversation-${index}`),
   );

@@ -6,6 +6,9 @@ from dataclasses import dataclass, field
 
 from agent_playground.config.models import load_model_config
 
+QUOTA_HEADROOM_FRACTION = 0.8
+SECONDS_PER_MINUTE = 60
+
 
 @dataclass(frozen=True)
 class EmbeddingConfig:
@@ -23,8 +26,12 @@ class EmbeddingConfig:
 
     @property
     def batch_token_budget(self) -> int:
+        """Return the maximum token reservation for one request."""
         # Keep headroom for provider accounting and other account traffic.
-        return max(1, int(self.tokens_per_minute * 0.8 / 60))
+        return max(
+            1,
+            int(self.tokens_per_minute * QUOTA_HEADROOM_FRACTION / SECONDS_PER_MINUTE),
+        )
 
     @property
     def quota_key(self) -> str:
@@ -35,6 +42,7 @@ class EmbeddingConfig:
 
     @classmethod
     def from_config(cls) -> "EmbeddingConfig":
+        """Load and validate the embedding provider settings without contacting it."""
         settings = load_model_config().embedding
         api_key = settings.api_key.get_secret_value()
 
@@ -44,23 +52,28 @@ class EmbeddingConfig:
             )
 
         return cls(
-            settings.base_url.rstrip("/"),
-            settings.model,
-            api_key,
-            settings.dimensions,
-            settings.max_distance,
-            settings.batch_size,
-            settings.tokens_per_minute,
-            settings.requests_per_minute,
-            settings.max_retries,
-            settings.index_timeout,
-            settings.quota_scope,
+            base_url=settings.base_url.rstrip("/"),
+            model=settings.model,
+            api_key=api_key,
+            dimensions=settings.dimensions,
+            max_distance=settings.max_distance,
+            batch_size=settings.batch_size,
+            tokens_per_minute=settings.tokens_per_minute,
+            requests_per_minute=settings.requests_per_minute,
+            max_retries=settings.max_retries,
+            index_timeout=settings.index_timeout,
+            quota_scope=settings.quota_scope,
         )
 
     def profile(self, dimension: int) -> str:
         """Fence retrieval to vectors produced by compatible embedding settings."""
         identity = json.dumps(
-            [self.base_url, self.model, self.dimensions], separators=(",", ":")
+            [
+                self.base_url,
+                self.model,
+                self.dimensions,
+            ],
+            separators=(",", ":"),
         )
 
         return f"{hashlib.sha256(identity.encode()).hexdigest()}:{dimension}"

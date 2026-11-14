@@ -10,10 +10,12 @@ import androidx.lifecycle.compose.LifecycleResumeEffect
 import com.agentplayground.app.di.rememberWorkspaceModels
 import com.agentplayground.domain.settings.AppPreferences
 import com.agentplayground.feature.settings.SettingsRoute
+import com.agentplayground.feature.settings.SettingsRouteOptions
 import com.agentplayground.ui.network.ServerNetworkAccess
 import com.agentplayground.ui.network.rememberServerNetworkAccess
 import kotlinx.coroutines.launch
 
+/** Creates server-owned workspace models after the permission gate opens. */
 @Composable
 internal fun PlaygroundApp(preferences: AppPreferences) {
     val networkAccess = rememberServerNetworkAccess()
@@ -29,6 +31,7 @@ internal fun PlaygroundApp(preferences: AppPreferences) {
     }
 }
 
+/** Keeps Settings reachable while the configured server needs local-network access. */
 @Composable
 internal fun ServerConnectionGate(
     preferences: AppPreferences,
@@ -36,12 +39,11 @@ internal fun ServerConnectionGate(
     content: @Composable () -> Unit,
 ) {
     var allowed by remember(preferences.serverUrl) { mutableStateOf<Boolean?>(null) }
+    val scope = rememberCoroutineScope()
 
     LaunchedEffect(networkAccess, preferences.serverUrl) {
         allowed = networkAccess.request(preferences.serverUrl)
     }
-
-    val scope = rememberCoroutineScope()
 
     LifecycleResumeEffect(networkAccess, preferences.serverUrl) {
         if (allowed == true) {
@@ -56,17 +58,20 @@ internal fun ServerConnectionGate(
 
         false ->
             SettingsRoute(
-                preferences = preferences,
-                onClear = null,
-                conversationBusy = false,
-                conversationError = null,
-                networkAccess = networkAccess,
-                localNetworkBlocked = true,
-                onConnected = { url ->
-                    if (url == preferences.serverUrl) {
-                        allowed = true
-                    }
-                },
+                options =
+                    SettingsRouteOptions(
+                        preferences = preferences,
+                        networkAccess = networkAccess,
+                        onClear = null,
+                        conversationBusy = false,
+                        conversationError = null,
+                        localNetworkBlocked = true,
+                        onConnected = { url ->
+                            if (url == preferences.serverUrl) {
+                                allowed = true
+                            }
+                        },
+                    )
             )
 
         null ->

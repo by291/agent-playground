@@ -1,148 +1,95 @@
-"""Submit reports and reconcile ambiguous responses using the original task ID."""
+"""Submit report jobs under the identity stored by the workflow."""
 
-from typing import Literal
+from dataclasses import dataclass
+from typing import Any, Literal
 
 import httpx
 from pydantic import ValidationError
 
-from agent_playground.config.agent import app_api_url, load_agent_config
+from agent_playground.config.agent import load_agent_config
 from agent_playground.services.report.models import (
     ReportEvent,
     ReportJobStatus,
     ReportRequest,
 )
+from agent_playground.workflows.submission import (
+    INITIAL_FAILURE_REVISION,
+    JOB_SUBMISSION_TIMEOUT_SECONDS,
+    ExternalTaskCallback,
+    JobSubmission,
+    publish_submission_failure,
+    submit_checkpointed_job,
+)
+
+
+@dataclass(frozen=True)
+class ReportSubmission:
+    task_id: str
+    task: str
+    callback_token: str
+    outcome: Literal["succeeded", "failed"]
+
+
+def _rejection_event(error: str) -> dict[str, Any]:
+    event = ReportEvent(
+        revision=INITIAL_FAILURE_REVISION,
+        status="failed",
+        stage="failed",
+        message="Report submission failed",
+        progress=0,
+        error=error,
+    )
+
+    return event.model_dump(exclude_none=True)
 
 
 class HttpReportApi:
-    def __init__(self):
+    def __init__(self) -> None:
         self.base_url = load_agent_config().services.report_demo_url
 
-    async def submit(
-        self,
-        *,
-        task_id: str,
-        task: str,
-        callback_token: str,
-        outcome: Literal["succeeded", "failed"],
-    ) -> None:
-        async with httpx.AsyncClient(timeout=30) as client:
+    async def submit(self, submission: ReportSubmission) -> None:
+        """Send a validated report request and report definite failure to the workflow."""
+        callback = ExternalTaskCallback(
+            task_id=submission.task_id, token=submission.callback_token
+        )
+
+        async with httpx.AsyncClient(timeout=JOB_SUBMISSION_TIMEOUT_SECONDS) as client:
             try:
                 request = ReportRequest(
-                    id=task_id,
-                    task=task,
-                    callback_token=callback_token,
-                    outcome=outcome,
+                    id=submission.task_id,
+                    task=submission.task,
+                    callback_token=submission.callback_token,
+                    outcome=submission.outcome,
                 )
             except ValidationError:
-                await self.reject(
-                    client,
-                    task_id,
-                    callback_token,
-                    "Report submission rejected: invalid report request.",
+                event = _rejection_event(
+                    "Report submission rejected: invalid report request."
                 )
+                await publish_submission_failure(client, callback, event)
+
                 return
 
-            submission_error: httpx.HTTPError | None = None
-            write_unconfirmed = False
+            def validate_job(response: httpx.Response) -> None:
+                receipt = ReportJobStatus.model_validate(response.json())
+                matches_request = (
+                    receipt.job_id == request.id
+                    and receipt.task == request.task
+                    and receipt.outcome == request.outcome
+                )
 
-            # Checkpoint replay can follow an accepted write from an earlier run.
-            # Confirm that identity before allowing a fresh rejection to end it.
-            try:
-                if await self.accepted(client, request):
-                    return
-            except httpx.HTTPError as error:
-                submission_error = error
-                write_unconfirmed = True
-
-            for _ in range(2):
-                response = None
-
-                try:
-                    response = await client.post(
-                        f"{self.base_url}/jobs", json=request.model_dump()
-                    )
-                except httpx.TransportError as error:
-                    submission_error = error
-
-                if response is not None:
-                    definite_rejection = (
-                        400 <= response.status_code < 500
-                        and response.status_code not in {408, 429}
+                if not matches_request:
+                    raise ValueError(
+                        "Report job does not match the checkpointed request"
                     )
 
-                    # A later rejection cannot establish that an earlier timed-out
-                    # write never committed. Keep reconciling that original job.
-                    if definite_rejection and not write_unconfirmed:
-                        await self.reject(
-                            client,
-                            task_id,
-                            callback_token,
-                            f"Report submission rejected (HTTP {response.status_code}).",
-                        )
-                        return
-
-                    try:
-                        response.raise_for_status()
-                    except httpx.HTTPStatusError as error:
-                        submission_error = error
-                    else:
-                        if response.json().get("jobId") != task_id:
-                            raise ValueError(
-                                "Report submission receipt targets a different task"
-                            )
-
-                        return
-
-                write_unconfirmed = True
-
-                # A timeout or server error can follow a committed job. Look it up
-                # before replaying the same request; never create another task ID.
-                try:
-                    if await self.accepted(client, request):
-                        return
-                except httpx.HTTPError as error:
-                    submission_error = error
-
-            # An unconfirmed write is not a rejection. Registration was already
-            # checkpointed, so replay resumes submission with the same identity.
-            if submission_error is not None:
-                raise submission_error
-
-    async def accepted(self, client: httpx.AsyncClient, request: ReportRequest) -> bool:
-        response = await client.get(
-            f"{self.base_url}/jobs/{request.id}",
-            headers={"Authorization": f"Bearer {request.callback_token}"},
-        )
-
-        if response.status_code == 404:
-            return False
-
-        response.raise_for_status()
-        receipt = ReportJobStatus.model_validate(response.json())
-
-        if (receipt.job_id, receipt.task, receipt.outcome) != (
-            request.id,
-            request.task,
-            request.outcome,
-        ):
-            raise ValueError("Report job does not match the checkpointed request")
-
-        return True
-
-    async def reject(
-        self, client: httpx.AsyncClient, task_id: str, callback_token: str, error: str
-    ) -> None:
-        event = ReportEvent(
-            revision=1,
-            status="failed",
-            stage="failed",
-            message="Report submission failed",
-            progress=0,
-            error=error,
-        )
-        response = await client.post(
-            f"{app_api_url()}/external-tasks/{task_id}/events",
-            headers={"Authorization": f"Bearer {callback_token}"},
-            json=event.model_dump(exclude_none=True),
-        )
-        response.raise_for_status()
+            await submit_checkpointed_job(
+                client,
+                JobSubmission(
+                    service_name="Report",
+                    jobs_url=f"{self.base_url}/jobs",
+                    callback=callback,
+                    request_body=request.model_dump(),
+                    validate_job=validate_job,
+                    rejection_event=_rejection_event,
+                ),
+            )

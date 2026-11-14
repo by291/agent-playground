@@ -1,5 +1,6 @@
 import { EventType } from "@ag-ui/client";
 
+/** Replaces upstream lifecycle IDs with the application run ID. */
 export function normalizeRunEvent<T extends { type: EventType }>(
   event: T,
   runId: string,

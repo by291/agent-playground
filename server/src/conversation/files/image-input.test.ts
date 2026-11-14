@@ -50,7 +50,13 @@ function submission(files: { id: string; name: string }[] = []): RunAgentInput {
   return {
     threadId: "image-test",
     runId: randomUUID(),
-    messages: [{ id: randomUUID(), role: "user", content }],
+    messages: [
+      {
+        id: randomUUID(),
+        role: "user",
+        content,
+      },
+    ],
     state: {},
     tools: [],
     context: [],
@@ -65,8 +71,8 @@ test("uploaded images reach the official multimodal adapter while admission keep
   mocks.readFile.mockImplementation((_threadId, id) =>
     Promise.resolve(
       id === image.id
-        ? { ...image, data: png }
-        : { ...csv, data: Buffer.from("amount\n20") },
+        ? { ...image, bytes: png }
+        : { ...csv, bytes: Buffer.from("amount\n20") },
     ),
   );
   const { input: prepared } = await prepareConversationRun(input);
@@ -109,7 +115,10 @@ test("ordinary file attachments and text stay text-only", async () => {
   const csv = { id: randomUUID(), name: "orders.csv" };
   const input = submission([csv]);
 
-  mocks.readFile.mockResolvedValue({ ...csv, data: Buffer.from("amount\n20") });
+  mocks.readFile.mockResolvedValue({
+    ...csv,
+    bytes: Buffer.from("amount\n20"),
+  });
   const { input: prepared } = await prepareConversationRun(input);
 
   assert.equal(prepared.messages[0]?.content, input.messages[0]?.content);
@@ -131,13 +140,18 @@ test("only the selected model reaches admission from client forwarded properties
   assert.deepEqual(prepared.input.forwardedProps, { modelId: "qwen" });
 });
 
-test.each(["jpeg", "png", "gif", "webp"] as const)(
+test.each(/* prettier-ignore */ [
+  "jpeg",
+  "png",
+  "gif",
+  "webp",
+] as const)(
   "decoded %s images use their actual format regardless of filename",
   async (format) => {
     const file = { id: randomUUID(), name: "screenshot.bin" };
-    const data = await sharp(png).toFormat(format).toBuffer();
+    const bytes = await sharp(png).toFormat(format).toBuffer();
 
-    mocks.readFile.mockResolvedValue({ ...file, data });
+    mocks.readFile.mockResolvedValue({ ...file, bytes });
     const { input: prepared } = await prepareConversationRun(
       submission([file]),
     );
@@ -148,7 +162,7 @@ test.each(["jpeg", "png", "gif", "webp"] as const)(
       source: {
         type: "data",
         mimeType: `image/${format}`,
-        value: data.toString("base64"),
+        value: bytes.toString("base64"),
       },
     });
   },
@@ -156,13 +170,18 @@ test.each(["jpeg", "png", "gif", "webp"] as const)(
 
 test("oversized image dimensions fail before admission", async () => {
   const file = { id: randomUUID(), name: "wide.png" };
-  const data = await sharp({
-    create: { width: 8193, height: 1, channels: 3, background: "red" },
+  const bytes = await sharp({
+    create: {
+      width: 8193,
+      height: 1,
+      channels: 3,
+      background: "red",
+    },
   })
     .png()
     .toBuffer();
 
-  mocks.readFile.mockResolvedValue({ ...file, data });
+  mocks.readFile.mockResolvedValue({ ...file, bytes });
 
   await assert.rejects(
     prepareConversationRun(submission([file])),
@@ -186,7 +205,7 @@ test("invalid image bytes are reported before admission", async () => {
 
   mocks.readFile.mockResolvedValue({
     ...file,
-    data: Buffer.from("not an image"),
+    bytes: Buffer.from("not an image"),
   });
 
   await assert.rejects(
@@ -199,10 +218,10 @@ test("invalid image bytes are reported before admission", async () => {
 test.each([
   ["truncated.jpg", Buffer.from("ffd8ffd9", "hex")],
   ["truncated.png", png.subarray(0, 24)],
-])("truncated image %s is rejected before admission", async (name, data) => {
+])("truncated image %s is rejected before admission", async (name, bytes) => {
   const file = { id: randomUUID(), name };
 
-  mocks.readFile.mockResolvedValue({ ...file, data });
+  mocks.readFile.mockResolvedValue({ ...file, bytes });
 
   await assert.rejects(
     prepareConversationRun(submission([file])),
@@ -214,7 +233,7 @@ test.each([
 test("attachment names must match stored metadata", async () => {
   const file = { id: randomUUID(), name: "screen.png" };
 
-  mocks.readFile.mockResolvedValue({ name: "another.png", data: png });
+  mocks.readFile.mockResolvedValue({ name: "another.png", bytes: png });
 
   await assert.rejects(
     prepareConversationRun(submission([file])),
@@ -241,11 +260,11 @@ test("large image batches fail before base64 expansion and admission", async () 
     id: randomUUID(),
     name: `${index}.png`,
   }));
-  const data = Buffer.alloc(10 * 1024 * 1024);
+  const bytes = Buffer.alloc(10 * 1024 * 1024);
 
-  png.copy(data);
+  png.copy(bytes);
   mocks.readFile.mockImplementation((_threadId, id) =>
-    Promise.resolve({ ...files.find((file) => file.id === id), data }),
+    Promise.resolve({ ...files.find((file) => file.id === id), bytes }),
   );
 
   await assert.rejects(prepareConversationRun(submission(files)), /32 MiB/);
@@ -270,7 +289,7 @@ test("workflow review images fail explicitly instead of being silently ignored",
       },
     },
   ];
-  mocks.readFile.mockResolvedValue({ ...file, data: png });
+  mocks.readFile.mockResolvedValue({ ...file, bytes: png });
 
   await assert.rejects(prepareConversationRun(input), /regular chat/);
   assert.equal(mocks.admit.mock.calls.length, 0);

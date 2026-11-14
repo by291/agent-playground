@@ -17,8 +17,8 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.types import Command
 from pydantic import BaseModel
 
-from agent_playground.db.workflow_outputs import WorkflowOutput
-from agent_playground.graph import make_graph, mcp_client
+from agent_playground.db.workflow_outputs import StoreWorkflowOutput, WorkflowOutput
+from agent_playground.graph import AgentGraphOptions, make_graph, mcp_client
 from agent_playground.workflows.experiment.graph import (
     ExperimentState,
     experiment_workflow,
@@ -27,19 +27,12 @@ from agent_playground.workflows.experiment.graph import (
 
 @pytest.fixture(autouse=True)
 def isolate_workflow_output_store(monkeypatch: pytest.MonkeyPatch):
-    async def save_card(
-        thread_id: str,
-        agui_run_id: str,
-        workflow_call_id: str,
-        step_id: str,
-        step_seq: int,
-        payload: dict[str, object],
-    ) -> WorkflowOutput:
+    async def save_card(request: StoreWorkflowOutput) -> WorkflowOutput:
         return WorkflowOutput(
-            id=f"experiment-{workflow_call_id}-{step_id}",
-            agui_run_id=agui_run_id,
-            output_seq=step_seq,
-            payload=payload,
+            id=f"experiment-{request.workflow_call_id}-{request.step_id}",
+            agui_run_id=request.agui_run_id,
+            output_seq=request.step_seq,
+            payload=request.payload,
         )
 
     monkeypatch.setattr(
@@ -81,7 +74,7 @@ def fake_model() -> FakeToolModel:
 
 
 def test_tool_and_followup_response():
-    graph = make_graph(model=fake_model())
+    graph = make_graph(AgentGraphOptions(model=fake_model()))
     output = graph.invoke({"messages": [HumanMessage(content="What time is it?")]})
 
     assert output["messages"][-1].content == "The clock was checked."
@@ -109,9 +102,9 @@ def test_mcp_tool_and_followup_response():
                 AIMessage(content="The sum is ready."),
             ]
         )
-        output = await make_graph(model=model, mcp_tools=mcp_tools).ainvoke(
-            {"messages": [HumanMessage(content="Add two numbers.")]}
-        )
+        output = await make_graph(
+            AgentGraphOptions(model=model, mcp_tools=mcp_tools)
+        ).ainvoke({"messages": [HumanMessage(content="Add two numbers.")]})
         results = {message.name: message.content for message in output["messages"]}
 
         assert "5.0" in str(results["calculate_sum"])
@@ -212,7 +205,9 @@ def test_agent_resumes_workflow_tool_after_review():
             ]
         )
         saver = InMemorySaver()
-        first_graph = make_graph(model=first_model, checkpointer=saver)
+        first_graph = make_graph(
+            AgentGraphOptions(model=first_model, checkpointer=saver)
+        )
         config = {
             "configurable": {"thread_id": str(uuid4())},
             "metadata": {"agui_run_id": "agui-test"},
@@ -239,10 +234,12 @@ def test_agent_resumes_workflow_tool_after_review():
         )
 
         resumed_graph = make_graph(
-            model=FakeToolModel(
-                responses=[AIMessage(content="The approved plan is ready.")]
-            ),
-            checkpointer=saver,
+            AgentGraphOptions(
+                model=FakeToolModel(
+                    responses=[AIMessage(content="The approved plan is ready.")]
+                ),
+                checkpointer=saver,
+            )
         )
         completed = await resumed_graph.ainvoke(
             Command(
@@ -292,7 +289,7 @@ def test_agent_resumes_parallel_workflow_reviews():
                 AIMessage(content="Both reviews are complete."),
             ]
         )
-        graph = make_graph(model=model, checkpointer=InMemorySaver())
+        graph = make_graph(AgentGraphOptions(model=model, checkpointer=InMemorySaver()))
         config = {
             "configurable": {"thread_id": str(uuid4())},
             "metadata": {"agui_run_id": "agui-test"},
@@ -338,8 +335,10 @@ def test_postgres_checkpoint_survives_graph_recreation(postgres_database_url: st
         async with AsyncPostgresSaver.from_conn_string(database_url) as first_saver:
             await first_saver.setup()
             first_graph = make_graph(
-                model=FakeToolModel(responses=[AIMessage(content="First answer")]),
-                checkpointer=first_saver,
+                AgentGraphOptions(
+                    model=FakeToolModel(responses=[AIMessage(content="First answer")]),
+                    checkpointer=first_saver,
+                )
             )
 
             await first_graph.ainvoke(
@@ -349,8 +348,10 @@ def test_postgres_checkpoint_survives_graph_recreation(postgres_database_url: st
 
         async with AsyncPostgresSaver.from_conn_string(database_url) as second_saver:
             second_graph = make_graph(
-                model=FakeToolModel(responses=[AIMessage(content="Second answer")]),
-                checkpointer=second_saver,
+                AgentGraphOptions(
+                    model=FakeToolModel(responses=[AIMessage(content="Second answer")]),
+                    checkpointer=second_saver,
+                )
             )
             result = await second_graph.ainvoke(
                 {"messages": [HumanMessage(content="Second turn")]},
@@ -378,20 +379,24 @@ def test_skill_tools_run_in_existing_agent_and_preserve_official_results(
     from langchain_core.messages import ToolMessage
 
     from agent_playground.skills.catalog import SkillCatalog
-    from agent_playground.skills.sandbox import ScriptResult, skill_execution
+    from agent_playground.skills.sandbox import (
+        ScriptInvocation,
+        ScriptResult,
+        skill_execution,
+    )
 
     calls: list[tuple[str, str]] = []
 
-    async def execute(
-        self: object,
-        skill_name: str,
-        script_path: str,
-        arguments: list[str],
-        inputs: dict[str, bytes],
-        outputs: list[str],
-    ):
-        calls.append((skill_name, script_path))
-        return ScriptResult(exit_code, "verified result", "", None, {})
+    async def execute(self: object, invocation: ScriptInvocation) -> ScriptResult:
+        calls.append((invocation.skill_name, invocation.script_path))
+
+        return ScriptResult(
+            exit_code=exit_code,
+            stdout="verified result",
+            stderr="",
+            error=None,
+            outputs={},
+        )
 
     monkeypatch.setattr("agent_playground.skills.sandbox.SkillSession.run", execute)
     catalog = SkillCatalog(Path("skills"))
@@ -425,7 +430,9 @@ def test_skill_tools_run_in_existing_agent_and_preserve_official_results(
     )
 
     async def check():
-        graph = make_graph(model=model, skills=catalog, checkpointer=InMemorySaver())
+        graph = make_graph(
+            AgentGraphOptions(model=model, skills=catalog, checkpointer=InMemorySaver())
+        )
         config = {
             "configurable": {"thread_id": str(uuid4())},
             "metadata": {"agui_run_id": "skill-graph-test"},

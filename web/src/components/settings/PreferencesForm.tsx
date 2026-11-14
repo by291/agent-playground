@@ -20,6 +20,7 @@ import {
 } from "@/shared/preferences/preferences";
 import { useUserPreferences } from "@/shared/preferences/UserPreferencesProvider";
 
+/** Edits display and keyboard preferences through the shared provider. */
 export function PreferencesForm({ id }: { id: string }) {
   const { preferences, updatePreferences, saved } = useUserPreferences();
 

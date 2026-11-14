@@ -18,7 +18,12 @@ test("saved memory can be corrected, reloaded and forgotten", async ({
   const response = await request.post(
     `http://127.0.0.1:4300/__e2e/memory/${threadId}`,
     {
-      data: { category: "preference", project: null, revision: 1, text },
+      data: {
+        category: "preference",
+        project: null,
+        revision: 1,
+        text,
+      },
     },
   );
 

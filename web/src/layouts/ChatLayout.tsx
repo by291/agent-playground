@@ -31,6 +31,22 @@ import {
 } from "@/features/conversation";
 
 const collapsedStorageKey = "agent-playground-sidebar-collapsed";
+const collapsedSidebarWidth = 64;
+const minimumMainWidth = 320;
+const dockedActivityQuery = "(min-width: 1536px)";
+const sidebarWidthPreference = {
+  key: "agent-playground-sidebar-width",
+  initial: 320,
+  minimum: 240,
+  maximum: 420,
+};
+const activityWidthPreference = {
+  key: "agent-playground-activity-width",
+  initial: 520,
+  minimum: 400,
+  maximum: 720,
+};
+
 const ActivityPanel = import.meta.env.DEV
   ? lazy(async () => ({
       default: (await import("@/features/conversation/ActivityPanel"))
@@ -53,6 +69,7 @@ interface ChatLayoutProps {
   history?: ConversationHistory;
 }
 
+/** Composes the chat workspace and restores its desktop navigation preference. */
 export function ChatLayout(props: ChatLayoutProps) {
   const [open, setOpen] = useState(() => !loadSidebarCollapsed());
 
@@ -84,28 +101,21 @@ function ChatPanels({
   history,
 }: ChatLayoutProps) {
   const [activityOpen, setActivityOpen] = useState(false);
+  const [prompt, setPrompt] = useState("");
   const { open, isMobile } = useSidebar();
-  const wide = useMediaQuery("(min-width: 1536px)");
+  const wide = useMediaQuery(dockedActivityQuery);
+
   const sidebarPanel = usePanelRef();
   const activityPanel = usePanelRef();
   const navigationGroup = useRef<HTMLDivElement>(null);
   const contentGroup = useRef<HTMLDivElement>(null);
-  const sidebarSize = useStoredPanelSize(
-    "agent-playground-sidebar-width",
-    320,
-    240,
-    420,
-  );
-  const activitySize = useStoredPanelSize(
-    "agent-playground-activity-width",
-    520,
-    400,
-    720,
-  );
-  const [prompt, setPrompt] = useState("");
+  const activityTrigger = useRef<HTMLButtonElement>(null);
+
+  const sidebarSize = useStoredPanelSize(sidebarWidthPreference);
+  const activitySize = useStoredPanelSize(activityWidthPreference);
+  // The panels read defaultSize on mount. Effects restore live widths later.
   const [initialSidebarWidth] = useState(sidebarSize.size);
   const [initialActivityWidth] = useState(activitySize.size);
-  const activityTrigger = useRef<HTMLButtonElement>(null);
 
   const empty = useConversation(isEmpty);
   const threadId =
@@ -121,17 +131,24 @@ function ChatPanels({
       ?.title ??
     savedTitle ??
     (empty ? "New conversation" : "Current conversation");
-  const current = { threadId: threadId ?? "", title, status, busy };
+  const current = {
+    threadId: threadId ?? "",
+    title,
+    status,
+    busy,
+  };
+
   const showActivity = import.meta.env.DEV && development && activityOpen;
   const expandedDesktopSidebar = open && !isMobile;
-  const sidebarMinimum = isMobile ? 0 : 64;
-  const desktopSidebarWidth = open ? sidebarSize.size : 64;
+  const sidebarMinimum = isMobile ? 0 : collapsedSidebarWidth;
+  const desktopSidebarWidth = open ? sidebarSize.size : collapsedSidebarWidth;
   const sidebarWidth = isMobile ? 0 : desktopSidebarWidth;
   const dockedActivity = showActivity && wide;
 
   const restoreSidebarSize = useEffectEvent(() => {
     sidebarPanel.current?.resize(sidebarWidth);
   });
+
   const restoreActivitySize = useEffectEvent(() => {
     activityPanel.current?.resize(dockedActivity ? activitySize.size : 0);
   });
@@ -166,15 +183,17 @@ function ChatPanels({
         id="workspace-layout"
         elementRef={navigationGroup}
         onLayoutChanged={(layout, meta) => {
-          const userResizedSidebar =
+          const percentage = layout["navigation-panel"];
+          const isSidebarResize =
             meta.isUserInteraction &&
             expandedDesktopSidebar &&
-            sidebarPanel.current;
+            sidebarPanel.current !== null &&
+            percentage !== undefined;
 
           // Responsive restoration must not replace the preferred expanded width.
-          if (userResizedSidebar) {
+          if (isSidebarResize) {
             sidebarSize.saveSize(
-              panelPixels(navigationGroup.current, layout["navigation-panel"]!),
+              panelPixels(navigationGroup.current, percentage),
             );
           }
         }}
@@ -183,8 +202,16 @@ function ChatPanels({
           id="navigation-panel"
           panelRef={sidebarPanel}
           defaultSize={isMobile ? 0 : initialSidebarWidth}
-          minSize={expandedDesktopSidebar ? 240 : sidebarMinimum}
-          maxSize={expandedDesktopSidebar ? 420 : sidebarMinimum}
+          minSize={
+            expandedDesktopSidebar
+              ? sidebarWidthPreference.minimum
+              : sidebarMinimum
+          }
+          maxSize={
+            expandedDesktopSidebar
+              ? sidebarWidthPreference.maximum
+              : sidebarMinimum
+          }
           groupResizeBehavior="preserve-pixel-size"
           className="workspace-sidebar-shell"
           style={{ overflow: "visible" }}
@@ -201,7 +228,7 @@ function ChatPanels({
         )}
         <ResizablePanel
           id="workspace-main"
-          minSize={isMobile ? 0 : 320}
+          minSize={isMobile ? 0 : minimumMainWidth}
           className="flex min-w-0 flex-col bg-surface"
         >
           <ConversationToolbar
@@ -222,20 +249,23 @@ function ChatPanels({
               { "--activity-width": `${activitySize.size}px` } as CSSProperties
             }
             onLayoutChanged={(layout, meta) => {
-              if (
+              const percentage = layout["activity-panel"];
+              const isActivityResize =
                 meta.isUserInteraction &&
                 dockedActivity &&
-                activityPanel.current
-              ) {
+                activityPanel.current !== null &&
+                percentage !== undefined;
+
+              if (isActivityResize) {
                 activitySize.saveSize(
-                  panelPixels(contentGroup.current, layout["activity-panel"]!),
+                  panelPixels(contentGroup.current, percentage),
                 );
               }
             }}
           >
             <ResizablePanel
               id="workspace-chat-panel"
-              minSize={wide ? 320 : 0}
+              minSize={wide ? minimumMainWidth : 0}
               className="flex min-w-0 flex-col"
             >
               <main className="workspace-chat flex size-full min-h-0 min-w-0 flex-col">
@@ -251,8 +281,8 @@ function ChatPanels({
                 id="activity-panel"
                 panelRef={activityPanel}
                 defaultSize={initialActivityWidth}
-                minSize={dockedActivity ? 400 : 0}
-                maxSize={dockedActivity ? 720 : 0}
+                minSize={dockedActivity ? activityWidthPreference.minimum : 0}
+                maxSize={dockedActivity ? activityWidthPreference.maximum : 0}
                 groupResizeBehavior="preserve-pixel-size"
                 style={{ overflow: "visible" }}
               >

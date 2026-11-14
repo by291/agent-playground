@@ -12,8 +12,10 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 
 from agent_playground.db.connection import app_engine
 
+MAX_INDEX_ERROR_CHARS = 500
 
-@dataclass(frozen=True)
+
+@dataclass(frozen=True, kw_only=True)
 class IndexJob:
     id: str
     name: str
@@ -21,6 +23,16 @@ class IndexJob:
     sha256: str
     generation: str
     text_encoding: str | None = None
+
+
+@dataclass(frozen=True, kw_only=True)
+class IndexPublication:
+    """Carry the fenced generation and metadata committed with its visible chunks."""
+
+    engine: AsyncEngine
+    job: IndexJob
+    profile: str
+    chunk_count: int
 
 
 class KnowledgeRepository:
@@ -67,12 +79,12 @@ class KnowledgeRepository:
             )
 
             return IndexJob(
-                str(row["id"]),
-                str(row["name"]),
-                int(row["size"]),
-                str(row["sha256"]),
-                generation,
-                row["text_encoding"],
+                id=str(row["id"]),
+                name=str(row["name"]),
+                size=int(row["size"]),
+                sha256=str(row["sha256"]),
+                generation=generation,
+                text_encoding=row["text_encoding"],
             )
 
     def fail(self, job: IndexJob, message: str) -> None:
@@ -88,7 +100,11 @@ class KnowledgeRepository:
                     WHERE id = :id AND generation = :generation
                       AND deleted_at IS NULL AND status = 'indexing'
                 """),
-                {"id": job.id, "generation": job.generation, "error": message[:500]},
+                {
+                    "id": job.id,
+                    "generation": job.generation,
+                    "error": message[:MAX_INDEX_ERROR_CHARS],
+                },
             )
             connection.execute(
                 text("""
@@ -135,11 +151,12 @@ class KnowledgeRepository:
             return {str(row[0]) for row in rows}
 
 
-async def publish_index(
-    engine: AsyncEngine, job: IndexJob, profile: str, chunk_count: int
-) -> bool:
+async def publish_index(publication: IndexPublication) -> bool:
     """Atomically make chunks visible only while this generation owns the lease."""
-    async with engine.begin() as connection:
+    job = publication.job
+    generation = {"id": job.id, "generation": job.generation}
+
+    async with publication.engine.begin() as connection:
         # Lock the generation check through publication. Deletion, replacement
         # and lease expiry must not let an old attempt expose its chunks.
         result = await connection.execute(
@@ -150,7 +167,7 @@ async def publish_index(
                   AND lease_until > now()
                 FOR UPDATE
             """),
-            {"id": job.id, "generation": job.generation},
+            generation,
         )
         current_generation = result.first()
 
@@ -162,14 +179,14 @@ async def publish_index(
                 DELETE FROM knowledge_chunks
                 WHERE document_id = :id AND generation <> :generation
             """),
-            {"id": job.id, "generation": job.generation},
+            generation,
         )
         await connection.execute(
             text("""
                 UPDATE knowledge_chunks SET visible = true
                 WHERE document_id = :id AND generation = :generation
             """),
-            {"id": job.id, "generation": job.generation},
+            generation,
         )
         await connection.execute(
             text("""
@@ -178,7 +195,11 @@ async def publish_index(
                   error = NULL, updated_at = now()
                 WHERE id = :id
             """),
-            {"id": job.id, "profile": profile, "count": chunk_count},
+            {
+                "id": job.id,
+                "profile": publication.profile,
+                "count": publication.chunk_count,
+            },
         )
 
         return True

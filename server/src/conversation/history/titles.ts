@@ -7,6 +7,7 @@ function shortenedTitle(text: string) {
   return Array.from(title).slice(0, 100).join("") || "Untitled conversation";
 }
 
+/** Derive the initial title from the user message. */
 export function defaultConversationTitle(message: Message) {
   if (typeof message.content !== "string") {
     return "Untitled conversation";
@@ -15,6 +16,7 @@ export function defaultConversationTitle(message: Message) {
   return shortenedTitle(uploadedMessageContent(message.content).text);
 }
 
+/** Resolve a stored title or derive the legacy presentation from the first message. */
 export function presentConversationTitle(
   title: string,
   firstMessage: Message | null | undefined,

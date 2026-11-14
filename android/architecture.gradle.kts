@@ -32,15 +32,17 @@ tasks.register("architectureCheck") {
                 it.plugins.hasPlugin("com.android.library") ||
                 it.plugins.hasPlugin("org.jetbrains.kotlin.jvm")
         }
+
         check(modules.map { it.path }.toSet() == allowedDependencies.keys) {
             "Update the architecture policy when adding or removing a maintained module."
         }
 
         for (module in modules) {
             val allowed = allowedDependencies.getValue(module.path)
+
             for (configuration in module.configurations) {
-                val isTestConfiguration = configuration.name.contains("test", ignoreCase = true)
                 // Android test configurations include their own tested project.
+                val isTestConfiguration = configuration.name.contains("test", ignoreCase = true)
                 val allowedForConfiguration =
                     when {
                         isTestConfiguration && module.path.startsWith(":feature:") ->

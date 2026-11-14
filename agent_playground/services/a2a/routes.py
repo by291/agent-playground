@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 
 from agent_playground.config.agent import workflow_api_token
 from agent_playground.db.a2a_jobs import (
+    CollaborationJob,
     create_job,
     read_job,
     request_cancel,
@@ -20,6 +21,7 @@ router = APIRouter(prefix="/a2a-demo", tags=["A2A demonstration"])
 
 
 def check_token(authorization: str | None, expected: str) -> None:
+    """Require a matching bearer credential for the A2A operation."""
     supplied = (authorization or "").removeprefix("Bearer ")
 
     if (
@@ -33,7 +35,8 @@ def check_token(authorization: str | None, expected: str) -> None:
 @router.post("/jobs", status_code=202)
 async def submit_job(
     request: CollaborationRequest, authorization: Annotated[str | None, Header()] = None
-):
+) -> dict[str, str]:
+    """Accept or replay a durable collaboration request."""
     check_token(authorization, workflow_api_token())
 
     try:
@@ -44,7 +47,8 @@ async def submit_job(
     return {"jobId": job.request.id, "status": job.state.status}
 
 
-async def authorized_job(job_id: str, authorization: str | None):
+async def authorized_job(job_id: str, authorization: str | None) -> CollaborationJob:
+    """Read a job and check its callback credential."""
     job = await run_database_operation(read_job, job_id)
 
     if job is None:
@@ -58,7 +62,8 @@ async def authorized_job(job_id: str, authorization: str | None):
 @router.get("/jobs/{job_id}")
 async def job_status(
     job_id: str, authorization: Annotated[str | None, Header()] = None
-):
+) -> dict[str, object]:
+    """Return the latest collaboration snapshot for an authorized caller."""
     job = await authorized_job(job_id, authorization)
 
     return {
@@ -78,7 +83,8 @@ async def supply_input(
     job_id: str,
     request: AdditionalInput,
     authorization: Annotated[str | None, Header()] = None,
-):
+) -> dict[str, str]:
+    """Persist additional input for an interrupted collaboration."""
     await authorized_job(job_id, authorization)
 
     if not request.input.strip():
@@ -95,7 +101,8 @@ async def supply_input(
 @router.post("/jobs/{job_id}/cancel")
 async def cancel_job(
     job_id: str, authorization: Annotated[str | None, Header()] = None
-):
+) -> dict[str, object]:
+    """Request cancellation and leave acknowledgement to the remote agents."""
     await authorized_job(job_id, authorization)
 
     try:
@@ -103,4 +110,8 @@ async def cancel_job(
     except ValueError as error:
         raise HTTPException(409, str(error)) from error
 
-    return {"jobId": job_id, "status": job.state.status, "cancellationRequested": True}
+    return {
+        "jobId": job_id,
+        "status": job.state.status,
+        "cancellationRequested": True,
+    }

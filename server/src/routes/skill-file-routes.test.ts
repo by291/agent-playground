@@ -17,13 +17,18 @@ beforeEach(() => {
 });
 
 test("preview serves a bounded decoded image while downloads retain original bytes", async () => {
-  const data = await sharp({
-    create: { width: 640, height: 480, channels: 3, background: "red" },
+  const bytes = await sharp({
+    create: {
+      width: 640,
+      height: 480,
+      channels: 3,
+      background: "red",
+    },
   })
     .png()
     .toBuffer();
 
-  mocks.readFile.mockResolvedValue({ name: "screen.png", data });
+  mocks.readFile.mockResolvedValue({ name: "screen.png", bytes });
   const thumbnail = await skillFileRoutes.request(
     "/conversations/chat/files/image/preview?size=thumbnail",
   );
@@ -44,7 +49,7 @@ test("preview serves a bounded decoded image while downloads retain original byt
   );
 
   assert.match(download.headers.get("Content-Disposition") ?? "", /attachment/);
-  assert.deepEqual(Buffer.from(await download.arrayBuffer()), data);
+  assert.deepEqual(Buffer.from(await download.arrayBuffer()), bytes);
 });
 
 test("preview rejects foreign files, active documents and corrupt images", async () => {
@@ -57,11 +62,18 @@ test("preview rejects foreign files, active documents and corrupt images", async
 
   assert.equal(foreign.status, 404);
 
-  for (const data of [
+  for (const bytes of [
     Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"></svg>'),
-    Buffer.from([0xff, 0xd8, 0xff, 0xe0]),
+    Buffer.from(
+      /* prettier-ignore */ [
+      0xff,
+      0xd8,
+      0xff,
+      0xe0,
+    ],
+    ),
   ]) {
-    mocks.readFile.mockResolvedValue({ name: "screen.png", data });
+    mocks.readFile.mockResolvedValue({ name: "screen.png", bytes });
     const response = await skillFileRoutes.request(
       "/conversations/chat/files/image/preview",
     );
@@ -72,4 +84,21 @@ test("preview rejects foreign files, active documents and corrupt images", async
       /application\/json/,
     );
   }
+});
+
+test("downloads encode punctuation and Unicode in the filename parameter", async () => {
+  mocks.readFile.mockResolvedValue({
+    name: "报告 (draft)!*.txt",
+    bytes: Buffer.from("report"),
+  });
+
+  const download = await skillFileRoutes.request(
+    "/conversations/chat/files/report",
+  );
+
+  assert.equal(download.status, 200);
+  assert.equal(
+    download.headers.get("Content-Disposition"),
+    `attachment; filename="download"; filename*=UTF-8''%E6%8A%A5%E5%91%8A%20%28draft%29%21%2A.txt`,
+  );
 });

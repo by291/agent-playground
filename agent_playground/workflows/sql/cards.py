@@ -2,19 +2,14 @@
 
 from typing import Literal
 
-from a2ui.core.schema.v0_9 import (
-    A2uiMessageListWrapper,
-    CreateSurface,
-    CreateSurfaceMessage,
-    UpdateComponents,
-    UpdateComponentsMessage,
-)
+from a2ui.core.schema.v0_9 import A2uiMessageListWrapper
 from a2ui.core.schema.v0_9.common_types import ComponentId
 from pydantic import BaseModel
 
 from agent_playground.services.sql.models import SqlCheck
+from agent_playground.workflows.cards import workflow_surface
 from agent_playground.workflows.output import (
-    WORKFLOW_CATALOG_ID,
+    PublishWorkflowOutput,
     WorkflowOutputMetadata,
     WorkflowPresentation,
     WorkflowReply,
@@ -37,6 +32,7 @@ class WorkflowSql(BaseModel):
 
 
 def sql_card(state: SqlState) -> A2uiMessageListWrapper:
+    """Render one checked SQL revision as a workflow card."""
     if state.check is None:
         raise ValueError("SQL card requires a check result")
 
@@ -51,28 +47,11 @@ def sql_card(state: SqlState) -> A2uiMessageListWrapper:
         check=state.check,
         receiptId=state.submission.id if state.submission else None,
     )
-    component_payload = component.model_dump(
-        mode="json", by_alias=True, exclude_none=True
-    )
-
-    return A2uiMessageListWrapper(
-        messages=[
-            CreateSurfaceMessage(
-                create_surface=CreateSurface(
-                    surface_id=surface_id, catalog_id=WORKFLOW_CATALOG_ID
-                )
-            ),
-            UpdateComponentsMessage(
-                update_components=UpdateComponents(
-                    surface_id=surface_id,
-                    components=[component_payload],
-                )
-            ),
-        ]
-    )
+    return workflow_surface(surface_id, [component])
 
 
 async def publish_sql_card(*, state: SqlState) -> None:
+    """Publish the SQL card and associate its reply with the same review round."""
     card = sql_card(state)
     surface_id = f"sql-{state.workflow_call_id}-{state.round}"
     reply_id = f"sql-{state.workflow_call_id}-reply-{state.round}"
@@ -88,12 +67,14 @@ async def publish_sql_card(*, state: SqlState) -> None:
     )
 
     await publish_workflow_output(
-        workflow_call_id=state.workflow_call_id,
-        step_id=f"{state.status}:{state.round}",
-        step_seq=state.round,
-        card=card,
-        workflow=WorkflowOutputMetadata(
-            reply=reply,
-            presentation=presentation,
-        ),
+        PublishWorkflowOutput(
+            workflow_call_id=state.workflow_call_id,
+            step_id=f"{state.status}:{state.round}",
+            step_seq=state.round,
+            card=card,
+            workflow=WorkflowOutputMetadata(
+                reply=reply,
+                presentation=presentation,
+            ),
+        )
     )

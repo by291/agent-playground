@@ -261,52 +261,51 @@ class SessionTest {
     }
 
     @Test
-    fun `review and feedback inherit the interrupted run model after selection and default drift`() =
-        runTest {
-            for (feedback in listOf(false, true)) {
-                val api =
-                    ControlledApi().apply {
-                        snapshot =
-                            emptySnapshot.copy(
-                                modelId = "qwen",
-                                interrupts = listOf(workflowReview()),
-                                runs =
-                                    listOf(
-                                        RunRecord(
-                                            "paused",
-                                            status = "interrupted",
-                                            modelId = "deepseek",
-                                        )
-                                    ),
-                            )
-                    }
-                val session =
-                    ConversationSession(
-                        api,
-                        MemoryPersistence(),
-                        backgroundScope,
-                        SavedConversation("thread", empty = false, modelId = "qwen"),
-                    )
-                session.setDefaultModel("qwen")
-                session.restore()
-
-                if (feedback) {
-                    session.send("Clarify this plan")
-                } else {
-                    session.review("pause", "accept")
+    fun `review and feedback retain the interrupted run model when defaults change`() = runTest {
+        for (feedback in listOf(false, true)) {
+            val api =
+                ControlledApi().apply {
+                    snapshot =
+                        emptySnapshot.copy(
+                            modelId = "qwen",
+                            interrupts = listOf(workflowReview()),
+                            runs =
+                                listOf(
+                                    RunRecord(
+                                        "paused",
+                                        status = "interrupted",
+                                        modelId = "deepseek",
+                                    )
+                                ),
+                        )
                 }
-
-                runCurrent()
-
-                assertEquals(
-                    "deepseek",
-                    api.inputs.single().forwardedProps.jsonObject.string("modelId"),
+            val session =
+                ConversationSession(
+                    api,
+                    MemoryPersistence(),
+                    backgroundScope,
+                    SavedConversation("thread", empty = false, modelId = "qwen"),
                 )
-                assertEquals("pause", api.inputs.single().resume!!.single().interruptId)
-                assertEquals("qwen", session.state.value.modelId)
-                session.close()
+            session.setDefaultModel("qwen")
+            session.restore()
+
+            if (feedback) {
+                session.send("Clarify this plan")
+            } else {
+                session.review("pause", "accept")
             }
+
+            runCurrent()
+
+            assertEquals(
+                "deepseek",
+                api.inputs.single().forwardedProps.jsonObject.string("modelId"),
+            )
+            assertEquals("pause", api.inputs.single().resume!!.single().interruptId)
+            assertEquals("qwen", session.state.value.modelId)
+            session.close()
         }
+    }
 
     @Test
     fun `legacy interrupted run omits explicit model instead of adopting the new default`() =

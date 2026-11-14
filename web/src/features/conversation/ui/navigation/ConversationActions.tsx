@@ -68,6 +68,7 @@ function runBlocksDeletion(status: RunStatus | null) {
   );
 }
 
+/** Owns the dialogs across sidebar layout changes so their pending actions survive. */
 export function ConversationActionsProvider({
   children,
   history,
@@ -83,6 +84,7 @@ export function ConversationActionsProvider({
   const [draft, setDraft] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
   const focusThreadId = useRef<string | null>(null);
 
   const action = target?.action ?? null;
@@ -90,6 +92,7 @@ export function ConversationActionsProvider({
   const entry = activeHistory?.conversations.find(
     (entry) => entry.threadId === target?.threadId,
   );
+
   // Recheck current run/history state while a dialog remains open; its captured
   // target may predate a new run or an unresolved submission.
   const currentBlocked =
@@ -313,6 +316,7 @@ export function ConversationActionsProvider({
   );
 }
 
+/** Opens management for a row through the active dialog owner. */
 export function ConversationActions(props: ConversationActionsProps) {
   const sharedActions = useContext(ConversationActionsContext);
 
@@ -336,8 +340,10 @@ export function ConversationActions(props: ConversationActionsProps) {
 
 function ConversationActionsMenu(props: ConversationActionsProps) {
   const { threadId, title, deletionBlocked, history } = props;
+
   const actions = useContext(ConversationActionsContext);
   const [menuOpen, setMenuOpen] = useState(false);
+
   const openingDialog = useRef(false);
 
   if (!actions) {

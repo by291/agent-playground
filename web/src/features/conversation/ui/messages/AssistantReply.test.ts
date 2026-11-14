@@ -39,7 +39,12 @@ function planningTurn(
     }
   }
 
-  return { id: "planning", user: null, messages, status };
+  return {
+    id: "planning",
+    user: null,
+    messages,
+    status,
+  };
 }
 
 function renderPlan(turn: ChatTurn) {
@@ -147,7 +152,11 @@ test("a finished run keeps unfinished plan steps honest", () => {
 test("a tool reply uses one avatar, keeps commentary collapsed and renders the final Markdown", () => {
   const turn = chatTurns(
     [
-      { id: "question", role: "user", content: "Time?" },
+      {
+        id: "question",
+        role: "user",
+        content: "Time?",
+      },
       {
         id: "note",
         role: "assistant",
@@ -160,10 +169,25 @@ test("a tool reply uses one avatar, keeps commentary collapsed and renders the f
           },
         ],
       },
-      { id: "result", role: "tool", toolCallId: "clock", content: "12:00 UTC" },
-      { id: "final", role: "assistant", content: "It is **12:00 UTC**." },
+      {
+        id: "result",
+        role: "tool",
+        toolCallId: "clock",
+        content: "12:00 UTC",
+      },
+      {
+        id: "final",
+        role: "assistant",
+        content: "It is **12:00 UTC**.",
+      },
     ],
-    [{ runId: "run", messageId: "question", status: "completed" }],
+    [
+      {
+        runId: "run",
+        messageId: "question",
+        status: "completed",
+      },
+    ],
   )[0]!;
   const markup = renderToStaticMarkup(
     createElement(AssistantReply, { turn, animatedMessageId: null }),
@@ -180,7 +204,11 @@ test("a tool reply uses one avatar, keeps commentary collapsed and renders the f
 test("tool-only waiting and failures retain their reply while cards remain outside the fold", () => {
   const turn = chatTurns(
     [
-      { id: "question", role: "user", content: "Build a plan" },
+      {
+        id: "question",
+        role: "user",
+        content: "Build a plan",
+      },
       {
         id: "note",
         role: "assistant",
@@ -194,7 +222,13 @@ test("tool-only waiting and failures retain their reply while cards remain outsi
         ],
       },
     ],
-    [{ runId: "run", messageId: "question", status: "interrupted" }],
+    [
+      {
+        runId: "run",
+        messageId: "question",
+        status: "interrupted",
+      },
+    ],
   )[0]!;
   const markup = renderToStaticMarkup(
     createElement(
@@ -219,7 +253,11 @@ test("tool-only waiting and failures retain their reply while cards remain outsi
 test("completed replies release streaming controls for the latest streamed message", () => {
   const turn: ChatTurn = {
     id: "question",
-    user: { id: "question", role: "user", content: "Compare seasons" },
+    user: {
+      id: "question",
+      role: "user",
+      content: "Compare seasons",
+    },
     messages: [
       {
         id: "reply",
@@ -246,7 +284,11 @@ test("completed replies release streaming controls for the latest streamed messa
 test("external waits are described as background work instead of user review", () => {
   const turn = chatTurns(
     [
-      { id: "question", role: "user", content: "Build a report" },
+      {
+        id: "question",
+        role: "user",
+        content: "Build a report",
+      },
       {
         id: "call",
         role: "assistant",
@@ -260,7 +302,13 @@ test("external waits are described as background work instead of user review", (
         ],
       },
     ],
-    [{ runId: "run", messageId: "question", status: "interrupted" }],
+    [
+      {
+        runId: "run",
+        messageId: "question",
+        status: "interrupted",
+      },
+    ],
   )[0]!;
   const markup = renderToStaticMarkup(
     createElement(AssistantReply, {
@@ -307,7 +355,11 @@ test("clarification is an ordered dialogue with a confirmed user bubble instead 
           answers: [{ id: "style", answer: "Concise and direct" }],
         }),
       },
-      { id: "final", role: "assistant", content: "I will keep it concise." },
+      {
+        id: "final",
+        role: "assistant",
+        content: "I will keep it concise.",
+      },
     ],
   };
   const markup = renderPlan(turn);

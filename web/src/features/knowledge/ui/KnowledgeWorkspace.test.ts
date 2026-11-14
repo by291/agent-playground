@@ -160,6 +160,58 @@ test("document deletion requires confirmation, blocks pending dismissal and pres
   client.clear();
 });
 
+test("a deleted document stays removed when the list fails to refresh", async () => {
+  const remainingDocument = {
+    ...documentFixture,
+    id: "00000000-0000-4000-8000-000000000002",
+    name: "handbook.md",
+  };
+
+  let isDeleted = false;
+
+  vi.stubGlobal("fetch", (_url: string, init?: RequestInit) => {
+    if (init?.method === "DELETE") {
+      isDeleted = true;
+
+      return Promise.resolve(new Response(null, { status: 204 }));
+    }
+
+    if (isDeleted) {
+      return Promise.resolve(
+        Response.json({ error: "Storage offline" }, { status: 503 }),
+      );
+    }
+
+    return Promise.resolve(Response.json([documentFixture, remainingDocument]));
+  });
+
+  const { client, view } = renderWorkspace();
+  const user = userEvent.setup();
+
+  const deleteTrigger = await view.findByRole("button", {
+    name: "Actions for policy.md",
+  });
+
+  await user.click(deleteTrigger);
+  await user.click(view.getByRole("menuitem", { name: "Delete" }));
+
+  const dialog = view.getByRole("alertdialog", { name: "Delete document?" });
+
+  await user.click(
+    within(dialog).getByRole("button", { name: "Delete document" }),
+  );
+  await view.findByText("Could not load documents.");
+
+  await waitFor(() => expect(view.queryByRole("alertdialog")).toBeNull());
+  await waitFor(() =>
+    expect(view.queryByText("policy.md")).not.toBeInTheDocument(),
+  );
+  expect(view.getByText("handbook.md")).toBeInTheDocument();
+
+  view.unmount();
+  client.clear();
+});
+
 test("reindex feedback belongs to its document while the upload action keeps its label", async () => {
   let completeIndex: ((response: Response) => void) | undefined;
   let completeRefresh: ((response: Response) => void) | undefined;

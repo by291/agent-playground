@@ -6,9 +6,10 @@ import {
   isEmpty,
   conversationIssue,
 } from "../../model/selectors";
-import { Fragment, lazy, Suspense, useMemo } from "react";
+import { lazy, Suspense, useMemo, type ReactNode } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
 import {
   MessageScroller,
   MessageScrollerButton,
@@ -24,6 +25,7 @@ import { ReviewPanel } from "../review/ReviewPanel";
 import { ExternalTaskPanel } from "../outputs/ExternalTaskPanel";
 import { WorkflowReviewPanel } from "../review/WorkflowReviewPanel";
 import { useConversation } from "../../providers/ConversationProvider";
+import type { ConversationState } from "../../model/state";
 import { ConversationWelcome } from "./ConversationWelcome";
 import { isRunActive } from "@shared/run-status";
 import { AnimatePresence } from "motion/react";
@@ -34,6 +36,28 @@ const A2UISurface = lazy(() =>
     default: A2UISurface,
   })),
 );
+
+const artifactExit = {
+  opacity: 0,
+  height: 0,
+  overflow: "hidden",
+};
+
+type TimelineView = ReturnType<typeof conversationView>;
+
+interface TurnPresentation {
+  threadId: ConversationState["threadId"];
+  messageTimestamps: ConversationState["messageTimestamps"];
+  activeMessageIds: ReadonlySet<string | undefined>;
+  externalWaitCallIds: readonly string[];
+  animatedMessageId: ConversationState["animatedMessageId"];
+}
+
+interface ReviewControls {
+  running: boolean;
+  onReview: ConversationState["reviewPlan"];
+  onWorkflowReview: ConversationState["reviewWorkflow"];
+}
 
 function Surface({
   view,
@@ -49,6 +73,180 @@ function Surface({
   );
 }
 
+function WorkflowHistory({ surfaces }: { surfaces: A2UISurfaceView[] }) {
+  return (
+    <div className="space-y-3 pt-2">
+      <p className="px-2 text-xs font-medium text-muted">
+        Previous workflow steps
+      </p>
+      {surfaces.map((view) => (
+        <Surface key={view.id} view={view} inChat={false} />
+      ))}
+    </div>
+  );
+}
+
+function TimelineTurn({
+  reply,
+  presentation,
+  reviewControls,
+}: {
+  reply: TimelineView["turns"][number];
+  presentation: TurnPresentation;
+  reviewControls: ReviewControls;
+}) {
+  const {
+    turn,
+    hasReply,
+    artifacts,
+    externalTasks,
+    reviewKey,
+    workflowReviews,
+  } = reply;
+  const { user } = turn;
+  const {
+    threadId,
+    activeMessageIds,
+    messageTimestamps,
+    externalWaitCallIds,
+    animatedMessageId,
+  } = presentation;
+
+  const { running, onReview, onWorkflowReview } = reviewControls;
+
+  // Each message must remain a direct DOM child of the measured scroll content.
+  return (
+    <>
+      {user && (
+        <MessageScrollerItem className="conversation-column">
+          <div
+            className={
+              activeMessageIds.has(user.id) ? "motion-item-enter" : undefined
+            }
+          >
+            <MessageRow
+              message={user}
+              timestamp={messageTimestamps[user.id]}
+              threadId={threadId}
+            />
+          </div>
+        </MessageScrollerItem>
+      )}
+
+      {hasReply && (
+        <MessageScrollerItem className="conversation-column">
+          <AssistantReply
+            turn={turn}
+            messageTimestamps={messageTimestamps}
+            externalWaitCallIds={externalWaitCallIds}
+            animatedMessageId={animatedMessageId}
+            processDetails={
+              artifacts.history.length > 0 && (
+                <WorkflowHistory surfaces={artifacts.history} />
+              )
+            }
+          >
+            <AnimatePresence initial={false}>
+              {externalTasks.map((task) => (
+                <AnimatedDiv key={task.taskId} exit={artifactExit}>
+                  <ExternalTaskPanel task={task} />
+                </AnimatedDiv>
+              ))}
+              {artifacts.current.map((view) => (
+                <AnimatedDiv key={view.id} exit={artifactExit}>
+                  <Surface view={view} inChat={false} />
+                </AnimatedDiv>
+              ))}
+
+              {artifacts.reviews.length > 0 && (
+                <AnimatedDiv key={reviewKey} exit={artifactExit}>
+                  <ReviewPanel
+                    reviews={artifacts.reviews}
+                    running={running}
+                    onReview={onReview}
+                  />
+                </AnimatedDiv>
+              )}
+              {workflowReviews.length > 0 && (
+                <AnimatedDiv key="workflow-reviews" exit={artifactExit}>
+                  <WorkflowReviewPanel
+                    reviews={workflowReviews}
+                    running={running}
+                    onReview={onWorkflowReview}
+                  />
+                </AnimatedDiv>
+              )}
+            </AnimatePresence>
+          </AssistantReply>
+        </MessageScrollerItem>
+      )}
+    </>
+  );
+}
+
+function TimelineArtifact({ children }: { children: ReactNode }) {
+  return (
+    <MessageScrollerItem className="conversation-column">
+      <AnimatedDiv exit={artifactExit}>{children}</AnimatedDiv>
+    </MessageScrollerItem>
+  );
+}
+
+function UnattachedArtifacts({
+  view,
+  reviewControls,
+}: {
+  view: TimelineView;
+  reviewControls: ReviewControls;
+}) {
+  const {
+    unattachedTasks,
+    unattachedSurfaces,
+    unattachedReviews,
+    unattachedWorkflowReviews,
+  } = view;
+  const { running, onReview, onWorkflowReview } = reviewControls;
+
+  const reviewKey = unattachedReviews
+    .map((review) => review.interruptId)
+    .join(",");
+
+  return (
+    <AnimatePresence initial={false}>
+      {unattachedTasks.map((task) => (
+        <TimelineArtifact key={task.taskId}>
+          <ExternalTaskPanel task={task} />
+        </TimelineArtifact>
+      ))}
+      {unattachedSurfaces.map((surface) => (
+        <TimelineArtifact key={surface.id}>
+          <Surface view={surface} />
+        </TimelineArtifact>
+      ))}
+
+      {unattachedReviews.length > 0 && (
+        <TimelineArtifact key={reviewKey}>
+          <ReviewPanel
+            reviews={unattachedReviews}
+            running={running}
+            onReview={onReview}
+          />
+        </TimelineArtifact>
+      )}
+      {unattachedWorkflowReviews.length > 0 && (
+        <TimelineArtifact key="unattached-workflow-reviews">
+          <WorkflowReviewPanel
+            reviews={unattachedWorkflowReviews}
+            running={running}
+            onReview={onWorkflowReview}
+          />
+        </TimelineArtifact>
+      )}
+    </AnimatePresence>
+  );
+}
+
+/** Composes the saved transcript, live outputs and recovery controls in scroll order. */
 export function ConversationTimeline({
   onSelectPrompt,
 }: { onSelectPrompt?: (prompt: string) => void } = {}) {
@@ -65,6 +263,8 @@ export function ConversationTimeline({
     empty,
     animatedMessageId,
     recoveryIssue,
+    canRetryPreparedSubmission,
+    retryPreparedSubmission,
     onSend,
     onReview,
     onWorkflowReview,
@@ -82,11 +282,14 @@ export function ConversationTimeline({
       empty: isEmpty(state),
       animatedMessageId: state.animatedMessageId,
       recoveryIssue: conversationIssue(state),
+      canRetryPreparedSubmission: state.canRetryPreparedSubmission,
+      retryPreparedSubmission: state.retryPreparedSubmission,
       onSend: state.send,
       onReview: state.reviewPlan,
       onWorkflowReview: state.reviewWorkflow,
     })),
   );
+
   const activeMessageIds = new Set(
     runs.filter((run) => isRunActive(run.status)).map((run) => run.messageId),
   );
@@ -99,24 +302,54 @@ export function ConversationTimeline({
         pendingInterrupts,
         externalTasks,
       }),
-    [messages, runs, surfaces, pendingInterrupts, externalTasks],
+    /* prettier-ignore */ [
+      messages,
+      runs,
+      surfaces,
+      pendingInterrupts,
+      externalTasks,
+    ],
   );
   const externalWaitCallIds = pendingInterrupts.flatMap((interrupt) => {
     const wait = parseExternalWait(interrupt);
 
     return wait ? [wait.workflowCallId] : [];
   });
-  const {
-    turns,
-    unattachedTasks,
-    unattachedSurfaces,
-    unattachedReviews,
-    unattachedWorkflowReviews,
-    hasContent,
-  } = view;
+  const { turns, hasContent } = view;
+
+  const presentation = {
+    threadId,
+    messageTimestamps,
+    activeMessageIds,
+    externalWaitCallIds,
+    animatedMessageId,
+  };
+  const reviewControls = {
+    running,
+    onReview,
+    onWorkflowReview,
+  };
+
+  // Retrying reuses the existing journal even when there is no current error message.
+  const hasRecoveryNotice =
+    recoveryIssue !== null || canRetryPreparedSubmission;
+  const recoveryNotice = hasRecoveryNotice && (
+    <RecoveryNotice
+      issue={recoveryIssue}
+      onRetry={
+        canRetryPreparedSubmission
+          ? () => void retryPreparedSubmission().catch(() => undefined)
+          : undefined
+      }
+    />
+  );
 
   if (recovering && !empty && !hasContent) {
-    return <ConversationPlaceholder issue={recoveryIssue} />;
+    return (
+      <ConversationPlaceholder issue={recoveryIssue}>
+        {recoveryNotice}
+      </ConversationPlaceholder>
+    );
   }
 
   return (
@@ -130,7 +363,7 @@ export function ConversationTimeline({
                 ((prompt) => void onSend(prompt).catch(() => undefined))
               }
             />
-            {recoveryIssue && <RecoveryNotice issue={recoveryIssue} />}
+            {recoveryNotice}
           </div>
         </div>
       ) : (
@@ -138,189 +371,26 @@ export function ConversationTimeline({
           <MessageScroller className="min-h-0 flex-1">
             <MessageScrollerViewport className="px-4 sm:px-8">
               <MessageScrollerContent className="motion-content-enter conversation-layout gap-8 pt-8 pb-12 sm:pt-12">
-                {turns.map(
-                  ({
-                    turn,
-                    artifacts,
-                    hasReply,
-                    reviewKey,
-                    workflowReviews,
-                    externalTasks: turnTasks,
-                  }) => {
-                    return (
-                      <Fragment key={turn.id}>
-                        {turn.user && (
-                          <MessageScrollerItem className="conversation-column">
-                            <div
-                              className={
-                                activeMessageIds.has(turn.user.id)
-                                  ? "motion-item-enter"
-                                  : undefined
-                              }
-                            >
-                              <MessageRow
-                                message={turn.user}
-                                timestamp={messageTimestamps[turn.user.id]}
-                                threadId={threadId}
-                              />
-                            </div>
-                          </MessageScrollerItem>
-                        )}
-                        {hasReply && (
-                          <MessageScrollerItem className="conversation-column">
-                            <AssistantReply
-                              turn={turn}
-                              messageTimestamps={messageTimestamps}
-                              externalWaitCallIds={externalWaitCallIds}
-                              animatedMessageId={animatedMessageId}
-                              processDetails={
-                                artifacts.history.length > 0 && (
-                                  <div className="space-y-3 pt-2">
-                                    <p className="px-2 text-xs font-medium text-muted">
-                                      Previous workflow steps
-                                    </p>
-                                    {artifacts.history.map((view) => (
-                                      <Surface
-                                        key={view.id}
-                                        view={view}
-                                        inChat={false}
-                                      />
-                                    ))}
-                                  </div>
-                                )
-                              }
-                            >
-                              <AnimatePresence initial={false}>
-                                {turnTasks.map((task) => (
-                                  <AnimatedDiv
-                                    key={task.taskId}
-                                    exit={{
-                                      opacity: 0,
-                                      height: 0,
-                                      overflow: "hidden",
-                                    }}
-                                  >
-                                    <ExternalTaskPanel task={task} />
-                                  </AnimatedDiv>
-                                ))}
-                                {artifacts.current.map((view) => (
-                                  <AnimatedDiv
-                                    key={view.id}
-                                    exit={{
-                                      opacity: 0,
-                                      height: 0,
-                                      overflow: "hidden",
-                                    }}
-                                  >
-                                    <Surface view={view} inChat={false} />
-                                  </AnimatedDiv>
-                                ))}
-                                {artifacts.reviews.length > 0 && (
-                                  <AnimatedDiv
-                                    key={reviewKey}
-                                    exit={{
-                                      opacity: 0,
-                                      height: 0,
-                                      overflow: "hidden",
-                                    }}
-                                  >
-                                    <ReviewPanel
-                                      reviews={artifacts.reviews}
-                                      running={running}
-                                      onReview={onReview}
-                                    />
-                                  </AnimatedDiv>
-                                )}
-                                {workflowReviews.length > 0 && (
-                                  <AnimatedDiv
-                                    key="workflow-reviews"
-                                    exit={{
-                                      opacity: 0,
-                                      height: 0,
-                                      overflow: "hidden",
-                                    }}
-                                  >
-                                    <WorkflowReviewPanel
-                                      reviews={workflowReviews}
-                                      running={running}
-                                      onReview={onWorkflowReview}
-                                    />
-                                  </AnimatedDiv>
-                                )}
-                              </AnimatePresence>
-                            </AssistantReply>
-                          </MessageScrollerItem>
-                        )}
-                      </Fragment>
-                    );
-                  },
-                )}
-                <AnimatePresence initial={false}>
-                  {unattachedTasks.map((task) => (
-                    <MessageScrollerItem
-                      className="conversation-column"
-                      key={task.taskId}
-                    >
-                      <AnimatedDiv
-                        exit={{ opacity: 0, height: 0, overflow: "hidden" }}
-                      >
-                        <ExternalTaskPanel task={task} />
-                      </AnimatedDiv>
-                    </MessageScrollerItem>
-                  ))}
-                  {unattachedSurfaces.map((view) => (
-                    <MessageScrollerItem
-                      key={view.id}
-                      className="conversation-column"
-                    >
-                      <AnimatedDiv
-                        exit={{ opacity: 0, height: 0, overflow: "hidden" }}
-                      >
-                        <Surface view={view} />
-                      </AnimatedDiv>
-                    </MessageScrollerItem>
-                  ))}
-                  {unattachedReviews.length > 0 && (
-                    <MessageScrollerItem
-                      className="conversation-column"
-                      key={unattachedReviews
-                        .map((review) => review.interruptId)
-                        .join(",")}
-                    >
-                      <AnimatedDiv
-                        exit={{ opacity: 0, height: 0, overflow: "hidden" }}
-                      >
-                        <ReviewPanel
-                          reviews={unattachedReviews}
-                          running={running}
-                          onReview={onReview}
-                        />
-                      </AnimatedDiv>
-                    </MessageScrollerItem>
-                  )}
-                  {unattachedWorkflowReviews.length > 0 && (
-                    <MessageScrollerItem
-                      key="unattached-workflow-reviews"
-                      className="conversation-column"
-                    >
-                      <AnimatedDiv
-                        exit={{ opacity: 0, height: 0, overflow: "hidden" }}
-                      >
-                        <WorkflowReviewPanel
-                          reviews={unattachedWorkflowReviews}
-                          running={running}
-                          onReview={onWorkflowReview}
-                        />
-                      </AnimatedDiv>
-                    </MessageScrollerItem>
-                  )}
-                </AnimatePresence>
-                {recoveryIssue && (
+                {turns.map((reply) => (
+                  <TimelineTurn
+                    key={reply.turn.id}
+                    reply={reply}
+                    presentation={presentation}
+                    reviewControls={reviewControls}
+                  />
+                ))}
+
+                <UnattachedArtifacts
+                  view={view}
+                  reviewControls={reviewControls}
+                />
+
+                {recoveryNotice && (
                   <MessageScrollerItem
                     key="recovery-issue"
                     className="conversation-column"
                   >
-                    <RecoveryNotice issue={recoveryIssue} />
+                    {recoveryNotice}
                   </MessageScrollerItem>
                 )}
               </MessageScrollerContent>
@@ -336,7 +406,13 @@ export function ConversationTimeline({
   );
 }
 
-function ConversationPlaceholder({ issue }: { issue: string | null }) {
+function ConversationPlaceholder({
+  issue,
+  children,
+}: {
+  issue: string | null;
+  children?: ReactNode;
+}) {
   return (
     <div
       role="region"
@@ -355,16 +431,30 @@ function ConversationPlaceholder({ issue }: { issue: string | null }) {
             </div>
           </div>
         </div>
-        {issue && <RecoveryNotice issue={issue} />}
+        {children}
       </div>
     </div>
   );
 }
 
-function RecoveryNotice({ issue }: { issue: string }) {
+function RecoveryNotice({
+  issue,
+  onRetry,
+}: {
+  issue: string | null;
+  onRetry: (() => void) | undefined;
+}) {
   return (
     <Alert className="mb-3 rounded-xl border-amber-300 bg-amber-50 p-3 text-amber-900">
-      <AlertDescription className="text-amber-900">{issue}</AlertDescription>
+      {issue && (
+        <AlertDescription className="text-amber-900">{issue}</AlertDescription>
+      )}
+
+      {onRetry && (
+        <Button type="button" variant="outline" size="sm" onClick={onRetry}>
+          Retry submission
+        </Button>
+      )}
     </Alert>
   );
 }

@@ -7,7 +7,7 @@ import org.junit.Test
 
 class ClarificationTranscriptTest {
     @Test
-    fun `commentary questions committed answers and continuation keep message order after reload`() {
+    fun `commentary and clarification exchanges keep their order after reload`() {
         val first = call("first")
         val second = call("second", arguments("scope", "What is the scope?"))
         val messages =

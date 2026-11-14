@@ -7,10 +7,11 @@ import {
   type WorkflowOutputMetadata,
 } from "@shared/workflow-output";
 
+const safeOutputSequence = z.number().int().safe();
 const outputSchema = z
   .object({
     id: z.string().min(1),
-    outputSeq: z.number().int().positive().safe(),
+    outputSeq: safeOutputSequence.positive(),
     aguiRunId: z.string().optional(),
     workflowCallId: z.string().optional(),
     toolCallId: z.string().optional(),
@@ -27,6 +28,7 @@ export interface A2UIOutput {
   workflow?: WorkflowOutputMetadata;
 }
 
+/** Validates stored output identity, ordering and messages before replay. */
 export function parseA2UIOutput(value: unknown): A2UIOutput {
   try {
     const output = outputSchema.parse(value);
@@ -45,6 +47,7 @@ export function parseA2UIOutput(value: unknown): A2UIOutput {
   }
 }
 
+/** Extracts an A2UI output from a live event, ignoring unrelated events. */
 export function parseA2UIEvent(event: BaseEvent): A2UIOutput | null {
   if (event.type !== EventType.CUSTOM || event.name !== "a2ui") {
     return null;

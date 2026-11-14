@@ -16,7 +16,7 @@ import org.junit.Test
 
 class ConversationTimelineModelTest {
     @Test
-    fun `latest presentation follows feedback while previous surfaces stay with the original tool`() {
+    fun `latest card follows feedback while older cards stay with the original tool`() {
         val earlier = presentation(1, "earlier", "workflow", "first-reply")
         val repeated = presentation(2, "earlier", "workflow", "first-reply")
         val latest = presentation(3, "latest", "workflow", "latest-reply")

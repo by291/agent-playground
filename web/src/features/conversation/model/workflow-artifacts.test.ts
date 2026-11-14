@@ -31,7 +31,12 @@ function output(sequence: number, callId: string, stage: string) {
       updateComponents: {
         surfaceId,
         components: [
-          { id: "root", component: "WorkflowText", role: "title", text: stage },
+          {
+            id: "root",
+            component: "WorkflowText",
+            role: "title",
+            text: stage,
+          },
         ],
       },
     },

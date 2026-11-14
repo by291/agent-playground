@@ -3,18 +3,32 @@ import assert from "node:assert/strict";
 import { EventSchemas } from "@ag-ui/core/schemas";
 import { EventType, type RunAgentInput } from "@ag-ui/client";
 import { Hono } from "hono";
-import { of } from "rxjs";
+import { concat, of, throwError } from "rxjs";
 import { streamAgent } from "./run-stream.js";
 
+const input: RunAgentInput = {
+  threadId: "thread",
+  runId: "run",
+  messages: [],
+  tools: [],
+  context: [],
+  state: {},
+};
+
+const sseDataPrefix = "data: ";
+
+function readEvents(output: string) {
+  const lines = output.split("\n\n");
+  const eventLines = lines.filter((line) => line.startsWith(sseDataPrefix));
+
+  return eventLines.map((line) => {
+    const body: unknown = JSON.parse(line.slice(sseDataPrefix.length));
+
+    return EventSchemas.parse(body);
+  });
+}
+
 test("model context snapshots cannot replace the public transcript or expose summaries", async () => {
-  const input: RunAgentInput = {
-    threadId: "thread",
-    runId: "run",
-    messages: [],
-    tools: [],
-    context: [],
-    state: {},
-  };
   const app = new Hono();
 
   app.get("/stream", (context) =>
@@ -66,6 +80,7 @@ test("model context snapshots cannot replace the public transcript or expose sum
       settle: () => Promise.resolve(),
     })),
   );
+
   const response = await app.request("/stream");
   const output = await response.text();
 
@@ -74,10 +89,8 @@ test("model context snapshots cannot replace the public transcript or expose sum
     /Private summary|MESSAGES_SNAPSHOT|response_messages/,
   );
   assert.match(output, /context_usage/);
-  const events = output
-    .split("\n\n")
-    .filter((line) => line.startsWith("data: "))
-    .map((line) => EventSchemas.parse(JSON.parse(line.slice(6))));
+
+  const events = readEvents(output);
   const failure = events.find((event) => {
     if (event.type !== EventType.STATE_SNAPSHOT) {
       return false;
@@ -106,14 +119,6 @@ test("model context snapshots cannot replace the public transcript or expose sum
 });
 
 test("stream deduplicates public state while preserving tool error updates", async () => {
-  const input: RunAgentInput = {
-    threadId: "thread",
-    runId: "run",
-    messages: [],
-    tools: [],
-    context: [],
-    state: {},
-  };
   const failure = {
     id: "result",
     type: "tool",
@@ -129,14 +134,26 @@ test("stream deduplicates public state while preserving tool error updates", asy
         {
           type: EventType.STATE_SNAPSHOT as const,
           snapshot: {
-            messages: [{ id: "reply", type: "ai", content: "Checking" }],
+            messages: [
+              {
+                id: "reply",
+                type: "ai",
+                content: "Checking",
+              },
+            ],
             context_usage: { revision: 1 },
           },
         },
         {
           type: EventType.STATE_SNAPSHOT as const,
           snapshot: {
-            messages: [{ id: "reply", type: "ai", content: "Checking…" }],
+            messages: [
+              {
+                id: "reply",
+                type: "ai",
+                content: "Checking…",
+              },
+            ],
             response_messages: [],
             context_usage: { revision: 1 },
           },
@@ -161,13 +178,12 @@ test("stream deduplicates public state while preserving tool error updates", asy
       settle: () => Promise.resolve(),
     })),
   );
+
   const response = await app.request("/stream");
   const output = await response.text();
-  const snapshots = output
-    .split("\n\n")
-    .filter((line) => line.startsWith("data: "))
-    .map((line) => EventSchemas.parse(JSON.parse(line.slice(6))))
-    .filter((event) => event.type === EventType.STATE_SNAPSHOT);
+  const snapshots = readEvents(output).filter(
+    (event) => event.type === EventType.STATE_SNAPSHOT,
+  );
 
   assert.deepEqual(
     snapshots.map((event) => event.snapshot as unknown),
@@ -199,4 +215,52 @@ test("stream deduplicates public state while preserving tool error updates", asy
       },
     ],
   );
+});
+
+test("an upstream error follows events that were already queued for the client", async () => {
+  const upstreamEvents = concat(
+    of(
+      {
+        type: EventType.RUN_STARTED as const,
+        threadId: input.threadId,
+        runId: input.runId,
+      },
+      {
+        type: EventType.TEXT_MESSAGE_CONTENT as const,
+        messageId: "reply",
+        delta: "First chunk",
+      },
+    ),
+    throwError(() => new Error("Private upstream failure")),
+  );
+
+  const app = new Hono();
+
+  app.get("/stream", (context) =>
+    streamAgent(context, input, () => ({
+      events: upstreamEvents,
+      settle: () => Promise.resolve(),
+    })),
+  );
+
+  const response = await app.request("/stream");
+  const output = await response.text();
+  const events = readEvents(output);
+
+  assert.deepEqual(events, [
+    {
+      type: EventType.RUN_STARTED,
+      threadId: input.threadId,
+      runId: input.runId,
+    },
+    {
+      type: EventType.TEXT_MESSAGE_CONTENT,
+      messageId: "reply",
+      delta: "First chunk",
+    },
+    {
+      type: EventType.RUN_ERROR,
+      message: "Agent run failed",
+    },
+  ]);
 });

@@ -50,7 +50,11 @@ beforeAll(async () => {
     await database.db.execute(sql`
       INSERT INTO conversation_messages (thread_id, message_id, submit_seq, message)
       VALUES ('legacy', 'legacy-message', 1, '{"id":"legacy-message","role":"user","content":"  Old   discussion  "}'),
-      ('legacy-unicode', 'legacy-unicode-message', 1, ${JSON.stringify({ id: "legacy-unicode-message", role: "user", content: "😀".repeat(110) })}::jsonb)
+      ('legacy-unicode', 'legacy-unicode-message', 1, ${JSON.stringify({
+        id: "legacy-unicode-message",
+        role: "user",
+        content: "😀".repeat(110),
+      })}::jsonb)
     `);
     await database.db.execute(sql`
       INSERT INTO conversation_runs (thread_id, agui_run_id, message_id, submit_seq, request, status, created_at)
@@ -84,7 +88,13 @@ function inputFor(threadId: string, content: string): RunAgentInput {
   return {
     threadId,
     runId: `${threadId}-run`,
-    messages: [{ id: `${threadId}-message`, role: "user", content }],
+    messages: [
+      {
+        id: `${threadId}-message`,
+        role: "user",
+        content,
+      },
+    ],
     tools: [],
     context: [],
     state: {},
@@ -176,7 +186,12 @@ test("admission names conversations and rename persists across later turns", asy
 });
 
 test("management validates titles, cursors and missing conversations", async () => {
-  for (const title of ["", "   ", "x".repeat(101), 42]) {
+  for (const title of /* prettier-ignore */ [
+    "",
+    "   ",
+    "x".repeat(101),
+    42,
+  ]) {
     assert.equal((await rename("named", title)).status, 400);
   }
 
@@ -242,7 +257,11 @@ test("deletion rejects unfinished runs and tombstones completed or paused conver
     );
   }
 
-  for (const status of ["completed", "failed", "interrupted"] as const) {
+  for (const status of /* prettier-ignore */ [
+    "completed",
+    "failed",
+    "interrupted",
+  ] as const) {
     const threadId = `deleted-${status}`;
     const input = inputFor(threadId, "Remove this conversation");
 

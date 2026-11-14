@@ -1,5 +1,10 @@
+const TURN_COUNT = 3;
+const PARAGRAPHS_PER_REPLY = 8;
+const CODE_LINES_PER_REPLY = 10;
+
+/** Builds mixed text and code history long enough to exercise the scroll viewport. */
 export function scrollHistory() {
-  return Array.from({ length: 3 }, (_, turn) => [
+  return Array.from({ length: TURN_COUNT }, (_, turn) => [
     {
       id: `user-${turn}`,
       role: "user" as const,
@@ -12,13 +17,13 @@ export function scrollHistory() {
       type: "ai" as const,
       content:
         Array.from(
-          { length: 8 },
+          { length: PARAGRAPHS_PER_REPLY },
           (_, paragraph) =>
             `Paragraph ${paragraph}: This saved reply contains enough text to exercise scrolling through a long conversation without changing its layout.`,
         ).join("\n\n") +
         "\n\n```typescript\n" +
         Array.from(
-          { length: 10 },
+          { length: CODE_LINES_PER_REPLY },
           (_, line) => `const value${line} = ${line};`,
         ).join("\n") +
         "\n```",

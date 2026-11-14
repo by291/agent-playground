@@ -28,6 +28,7 @@ interface AssistantReplyProps {
   messageTimestamps?: Record<string, string>;
 }
 
+/** Renders a reply and any clarification dialogue projected from its tool receipts. */
 export function AssistantReply(props: AssistantReplyProps) {
   const parts = clarificationReply(props.turn);
 
@@ -39,8 +40,8 @@ export function AssistantReply(props: AssistantReplyProps) {
     );
   }
 
-  const process = toolProcess(props.turn, props.externalWaitCallIds);
-  const plan = latestAgentPlan(process);
+  const toolHistory = toolProcess(props.turn, props.externalWaitCallIds);
+  const plan = latestAgentPlan(toolHistory);
   const active = props.turn.status !== null && isRunActive(props.turn.status);
 
   // A committed answer may precede the resumed model's first token. Preserve the
@@ -49,7 +50,11 @@ export function AssistantReply(props: AssistantReplyProps) {
     parts.push({
       type: "assistant",
       id: `after-${parts.at(-1)!.id}`,
-      turn: { ...props.turn, user: null, messages: [] },
+      turn: {
+        ...props.turn,
+        user: null,
+        messages: [],
+      },
     });
   }
 
@@ -84,10 +89,10 @@ export function AssistantReply(props: AssistantReplyProps) {
             current={index === parts.length - 1}
             plan={index === firstAssistant ? plan : null}
             clarification={part.clarification}
-            sourceProcess={process}
+            sourceProcess={toolHistory}
             resultMessages={props.turn.messages}
             showSourceSummary={index === lastAssistant}
-            fileProcess={index === lastAssistant ? process : []}
+            fileProcess={index === lastAssistant ? toolHistory : []}
             processDetails={
               index === processDetailsIndex ? props.processDetails : undefined
             }
@@ -124,6 +129,7 @@ function AssistantReplyContent({
   resultMessages?: ChatTurn["messages"];
 }) {
   const [visibleAnswers, setVisibleAnswers] = useState(() => new Set<string>());
+
   const reportVisibleAnswer = useCallback((messageId: string) => {
     setVisibleAnswers((previous) => {
       if (previous.has(messageId)) {
@@ -134,9 +140,10 @@ function AssistantReplyContent({
     });
   }, []);
 
-  const process = toolProcess(turn, externalWaitCallIds, resultMessages);
+  const toolHistory = toolProcess(turn, externalWaitCallIds, resultMessages);
   const plan =
-    suppliedPlan === undefined ? latestAgentPlan(process) : suppliedPlan;
+    suppliedPlan === undefined ? latestAgentPlan(toolHistory) : suppliedPlan;
+
   const answers = turn.messages.filter(
     (message) =>
       message.role === "assistant" &&
@@ -144,6 +151,7 @@ function AssistantReplyContent({
       hasMessageText(message),
   );
   const active = current && turn.status !== null && isRunActive(turn.status);
+
   const reasoning = turn.messages.filter(
     (message): message is ReasoningMessage =>
       message.role === "reasoning" && hasMessageText(message),
@@ -162,7 +170,7 @@ function AssistantReplyContent({
     );
   const hasReplyContent =
     reasoning.length > 0 ||
-    process.length > 0 ||
+    toolHistory.length > 0 ||
     answers.length > 0 ||
     Boolean(children) ||
     Boolean(clarification) ||
@@ -172,7 +180,7 @@ function AssistantReplyContent({
     return null;
   }
 
-  const toolsRunning = process.some((entry) =>
+  const toolsRunning = toolHistory.some((entry) =>
     entry.calls.some((step) => step.status === "running"),
   );
   const showThinkingStatus =
@@ -187,6 +195,7 @@ function AssistantReplyContent({
       {plan && plan.length > 0 && (
         <AgentPlan todos={plan} status={turn.status} />
       )}
+
       {reasoning.length > 0 && (
         <ReasoningProcess
           messages={reasoning}
@@ -195,13 +204,16 @@ function AssistantReplyContent({
           replyId={replyAfterReasoning?.id ?? clarification?.id ?? null}
         />
       )}
-      {process.length > 0 && (
-        <ExecutionProcess process={process}>{processDetails}</ExecutionProcess>
+
+      {toolHistory.length > 0 && (
+        <ExecutionProcess toolHistory={toolHistory}>
+          {processDetails}
+        </ExecutionProcess>
       )}
-      <SkillFiles process={fileProcess ?? process} />
+      <SkillFiles toolHistory={fileProcess ?? toolHistory} />
       {children}
       <KnowledgeSources
-        process={sourceProcess ?? process}
+        toolHistory={sourceProcess ?? toolHistory}
         showSummary={showSourceSummary}
       >
         {answers.map((message) => (
@@ -220,7 +232,7 @@ function AssistantReplyContent({
       )}
       {showThinkingStatus && (
         <ThinkingStatus
-          label={process.length ? "Preparing reply" : "Thinking"}
+          label={toolHistory.length ? "Preparing reply" : "Thinking"}
         />
       )}
     </AssistantFrame>

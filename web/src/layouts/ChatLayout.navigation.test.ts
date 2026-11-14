@@ -206,7 +206,12 @@ test("a canonical model switch displays the selected model and hides another mod
           model: "deepseek-flash",
           available: true,
         },
-        { id: "qwen", label: "Qwen", model: "qwen3.8-flash", available: true },
+        {
+          id: "qwen",
+          label: "Qwen",
+          model: "qwen3.8-flash",
+          available: true,
+        },
       ],
     },
   );
@@ -232,7 +237,12 @@ test("the model picker disables unconfigured models and preserves the draft on s
         model: "deepseek-flash",
         available: true,
       },
-      { id: "qwen", label: "Qwen", model: "qwen3.8-flash", available: false },
+      {
+        id: "qwen",
+        label: "Qwen",
+        model: "qwen3.8-flash",
+        available: false,
+      },
     ],
   });
   const input = page.getByRole("textbox", { name: "Message" });
@@ -259,7 +269,12 @@ test("choosing an available model updates a fresh conversation without clearing 
         model: "deepseek-flash",
         available: true,
       },
-      { id: "qwen", label: "Qwen", model: "qwen3.8-flash", available: true },
+      {
+        id: "qwen",
+        label: "Qwen",
+        model: "qwen3.8-flash",
+        available: true,
+      },
     ],
   });
   const input = page.getByRole("textbox", { name: "Message" });

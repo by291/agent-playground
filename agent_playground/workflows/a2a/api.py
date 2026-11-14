@@ -1,139 +1,86 @@
 """Submit one durable collaboration job with replay-safe identity."""
 
+from dataclasses import dataclass
+
 import httpx
 from pydantic import ValidationError
 
-from agent_playground.config.agent import (
-    app_api_url,
-    load_agent_config,
-    workflow_api_token,
-)
+from agent_playground.config.agent import load_agent_config, workflow_api_token
 from agent_playground.services.a2a.contracts import CollaborationRequest
+from agent_playground.workflows.submission import (
+    INITIAL_FAILURE_REVISION,
+    JOB_SUBMISSION_TIMEOUT_SECONDS,
+    ExternalTaskCallback,
+    JobSubmission,
+    publish_submission_failure,
+    submit_checkpointed_job,
+)
+
+
+@dataclass(frozen=True)
+class A2aSubmission:
+    task_id: str
+    task: str
+    callback_token: str
+    require_input: bool
+
+
+def _rejection_event(error: str) -> dict[str, str | int]:
+    return {
+        "revision": INITIAL_FAILURE_REVISION,
+        "kind": "a2a",
+        "status": "failed",
+        "stage": "submission",
+        "message": "A2A submission failed",
+        "error": error,
+    }
 
 
 class HttpA2aApi:
-    def __init__(self):
+    def __init__(self) -> None:
         self.base_url = load_agent_config().a2a.demo_api_url
 
-    async def submit(
-        self, *, task_id: str, task: str, callback_token: str, require_input: bool
-    ) -> None:
+    async def submit(self, submission: A2aSubmission) -> None:
+        """Send a validated collaboration request and report definite failure."""
         internal_token = workflow_api_token()
+        callback = ExternalTaskCallback(
+            task_id=submission.task_id, token=submission.callback_token
+        )
 
-        async with httpx.AsyncClient(timeout=30) as client:
+        async with httpx.AsyncClient(timeout=JOB_SUBMISSION_TIMEOUT_SECONDS) as client:
             try:
                 request = CollaborationRequest(
-                    id=task_id,
-                    task=task,
-                    callbackToken=callback_token,
-                    requireInput=require_input,
+                    id=submission.task_id,
+                    task=submission.task,
+                    callbackToken=submission.callback_token,
+                    requireInput=submission.require_input,
                 )
             except ValidationError:
-                await self.reject(
-                    client, task_id, callback_token, "Invalid A2A request."
-                )
+                event = _rejection_event("Invalid A2A request.")
+                await publish_submission_failure(client, callback, event)
 
                 return
 
-            submission_error: httpx.HTTPError | None = None
-            write_unconfirmed = False
+            def validate_job(response: httpx.Response) -> None:
+                receipt = response.json()
+                matches_request = (
+                    receipt.get("jobId") == request.id
+                    and receipt.get("task") == request.task
+                    and receipt.get("requireInput") == request.require_input
+                )
 
-            try:
-                if await self.accepted(client, request):
-                    return
-            except httpx.HTTPError as error:
-                submission_error = error
-                write_unconfirmed = True
+                if not matches_request:
+                    raise ValueError("A2A job does not match the checkpointed request")
 
-            for _ in range(2):
-                response = None
-
-                try:
-                    response = await client.post(
-                        f"{self.base_url}/jobs",
-                        headers={"Authorization": f"Bearer {internal_token}"},
-                        json=request.model_dump(by_alias=True),
-                    )
-                except httpx.TransportError as error:
-                    submission_error = error
-
-                if response is not None:
-                    definite_rejection = (
-                        400 <= response.status_code < 500
-                        and response.status_code not in {408, 429}
-                    )
-
-                    # A later rejection cannot disprove an earlier accepted write
-                    # whose response was lost. Preserve the checkpointed identity.
-                    if definite_rejection and not write_unconfirmed:
-                        await self.reject(
-                            client,
-                            task_id,
-                            callback_token,
-                            f"A2A submission rejected (HTTP {response.status_code}).",
-                        )
-
-                        return
-
-                    try:
-                        response.raise_for_status()
-                    except httpx.HTTPStatusError as error:
-                        submission_error = error
-                    else:
-                        if response.json().get("jobId") != task_id:
-                            raise ValueError(
-                                "A2A submission receipt targets a different task"
-                            )
-
-                        return
-
-                write_unconfirmed = True
-
-                try:
-                    if await self.accepted(client, request):
-                        return
-                except httpx.HTTPError as error:
-                    submission_error = error
-
-            if submission_error is not None:
-                raise submission_error
-
-    async def accepted(
-        self, client: httpx.AsyncClient, request: CollaborationRequest
-    ) -> bool:
-        receipt = await client.get(
-            f"{self.base_url}/jobs/{request.id}",
-            headers={"Authorization": f"Bearer {request.callback_token}"},
-        )
-
-        if receipt.status_code == 404:
-            return False
-
-        receipt.raise_for_status()
-        data = receipt.json()
-
-        if (data.get("jobId"), data.get("task"), data.get("requireInput")) != (
-            request.id,
-            request.task,
-            request.require_input,
-        ):
-            raise ValueError("A2A job does not match the checkpointed request")
-
-        return True
-
-    async def reject(
-        self, client: httpx.AsyncClient, task_id: str, callback_token: str, error: str
-    ) -> None:
-        response = await client.post(
-            f"{app_api_url()}/external-tasks/{task_id}/events",
-            headers={"Authorization": f"Bearer {callback_token}"},
-            json={
-                "revision": 1,
-                "kind": "a2a",
-                "status": "failed",
-                "stage": "submission",
-                "message": "A2A submission failed",
-                "error": error,
-            },
-        )
-        response.raise_for_status()
+            await submit_checkpointed_job(
+                client,
+                JobSubmission(
+                    service_name="A2A",
+                    jobs_url=f"{self.base_url}/jobs",
+                    callback=callback,
+                    request_body=request.model_dump(by_alias=True),
+                    validate_job=validate_job,
+                    rejection_event=_rejection_event,
+                    headers={"Authorization": f"Bearer {internal_token}"},
+                ),
+            )

@@ -21,12 +21,20 @@ test("switching conversations keeps each unconfirmed submission recoverable", ()
     runId: "original-run",
     messageId: "original-message",
     messages: [
-      { id: "original-message", role: "user" as const, content: "Hello" },
+      {
+        id: "original-message",
+        role: "user" as const,
+        content: "Hello",
+      },
     ],
     state: {},
   };
 
-  saveConversation({ threadId: "first", pending, empty: false });
+  saveConversation({
+    threadId: "first",
+    pending,
+    empty: false,
+  });
   saveConversation({ threadId: "second", empty: true });
 
   expect(loadConversation().threadId).toBe("second");

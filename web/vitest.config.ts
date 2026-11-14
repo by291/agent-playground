@@ -34,7 +34,12 @@ export default defineConfig((environment) =>
         provider: "v8",
         include: ["src/**/*.{ts,tsx}"],
         exclude: ["**/*.test.ts"],
-        reporter: ["text", "html", "lcov"],
+        reporter:
+          /* prettier-ignore */ [
+            "text",
+            "html",
+            "lcov",
+          ],
       },
     },
   }),

@@ -11,6 +11,7 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.automirrored.outlined.ArrowForward
 import androidx.compose.material.icons.automirrored.outlined.HelpOutline
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Edit
@@ -23,6 +24,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
@@ -54,35 +56,41 @@ internal fun InteractionPanel(
         return
     }
 
+    var savedPageIndex by rememberSaveable(state.threadId) { mutableIntStateOf(0) }
+    var selectedPage by remember(state.threadId) { mutableStateOf<InteractionPage?>(null) }
+
     val pages = requests.flatMap { request ->
         interactionPages(
             request,
             state.interactionDrafts[request.interrupt] ?: request.initialDraft(),
         )
     }
-    var savedPageIndex by rememberSaveable(state.threadId) { mutableIntStateOf(0) }
-    var selectedPage by remember(state.threadId) { mutableStateOf<InteractionPage?>(null) }
     val selectedIndex = selectedPage?.let(pages::indexOf)
     val pageIndex = selectedIndex?.coerceAtLeast(0) ?: savedPageIndex.coerceIn(0, pages.lastIndex)
     val page = pages[pageIndex]
     val request = page.request
+    val requestIndex = requests.indexOf(request)
+
+    var noteExpanded by
+        rememberSaveable(request.interrupt, page.actionIndex) { mutableStateOf(false) }
+    var argumentsExpanded by
+        rememberSaveable(request.interrupt, page.actionIndex) { mutableStateOf(false) }
+    var expiredWhileEditing by remember(request.interrupt) { mutableStateOf(false) }
+
     val action = request.actions[page.actionIndex]
     val question = page.questionIndex?.let(action.questions::get)
     val initialDraft = request.initialDraft()
     val draft = state.interactionDrafts[request.interrupt] ?: initialDraft
     val decision =
         draft.decisions.getOrElse(page.actionIndex) { initialDraft.decisions[page.actionIndex] }
+
     val now = Instant.now()
     val unique = state.interrupts.count { it.id == request.interrupt.id } == 1
-    val expired = request.expiredAt(now)
+    val expired = expiredWhileEditing || request.expiredAt(now)
     val enabled = !state.busy && !state.loading && !state.pendingSubmission && unique && !expired
     val canReject = InteractionDecisionType.Reject in action.allowedDecisions
     val canRespond = InteractionDecisionType.Respond in action.allowedDecisions
     val canApprove = InteractionDecisionType.Approve in action.allowedDecisions
-    var noteExpanded by
-        rememberSaveable(request.interrupt, page.actionIndex) { mutableStateOf(false) }
-    var argumentsExpanded by
-        rememberSaveable(request.interrupt, page.actionIndex) { mutableStateOf(false) }
 
     val replaceDecision: (InteractionDecisionDraft) -> InteractionDraft = { next ->
         InteractionDraft(
@@ -95,28 +103,45 @@ internal fun InteractionPanel(
             }
         )
     }
+
     val updateDecision: (InteractionDecisionDraft) -> Unit = {
         onEdit(request.interrupt, replaceDecision(it))
     }
+
     val navigate: (InteractionPage) -> Unit = { target ->
         selectedPage = target
         savedPageIndex = pages.indexOf(target).coerceAtLeast(0)
     }
-    val completeOrAdvance: (InteractionDraft) -> Unit = { next ->
-        onEdit(request.interrupt, next)
 
-        if (request.respond(next, now) != null) {
-            onSubmit(request.interrupt)
+    val navigateRequest: (Int) -> Unit = { index ->
+        val target = requests.getOrNull(index)
+
+        pages.firstOrNull { it.request == target }?.let(navigate)
+    }
+
+    val completeOrAdvance: (InteractionDraft) -> Unit = { next ->
+        val submittedAt = Instant.now()
+
+        if (request.expiredAt(submittedAt)) {
+            expiredWhileEditing = true
         } else {
-            firstUnfinishedPage(request, next, now)?.let(navigate)
+            onEdit(request.interrupt, next)
+
+            if (request.respond(next, submittedAt) != null) {
+                onSubmit(request.interrupt)
+            } else {
+                firstUnfinishedPage(request, next, submittedAt)?.let(navigate)
+            }
         }
     }
+
     val rejectAction: () -> Unit = {
         val rejected =
             decision.copy(
                 type = InteractionDecisionType.Reject,
                 message = if (question != null) "" else decision.message,
             )
+
         completeOrAdvance(replaceDecision(rejected))
     }
 
@@ -157,13 +182,21 @@ internal fun InteractionPanel(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Spacer(Modifier.weight(1f))
-                if (pages.size > 1) {
+
+                if (requests.size > 1) {
+                    InteractionRequestNavigation(
+                        requestIndex = requestIndex,
+                        requestCount = requests.size,
+                        onNavigate = navigateRequest,
+                    )
+                } else if (pages.size > 1) {
                     Text(
                         "${pageIndex + 1}/${pages.size}",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
+
                 if (question != null && canReject) {
                     IconButton(
                         onClick = rejectAction,
@@ -327,7 +360,9 @@ internal fun InteractionPanel(
                                     decision.copy(type = InteractionDecisionType.Respond)
                                 )
 
-                            if (!lastQuestion) {
+                            if (request.expiredAt(Instant.now())) {
+                                expiredWhileEditing = true
+                            } else if (!lastQuestion) {
                                 onEdit(request.interrupt, next)
                                 navigate(
                                     InteractionPage(
@@ -361,6 +396,38 @@ internal fun InteractionPanel(
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun InteractionRequestNavigation(
+    requestIndex: Int,
+    requestCount: Int,
+    onNavigate: (Int) -> Unit,
+) {
+    val requestPosition = requestIndex + 1
+
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        IconButton(
+            onClick = { onNavigate(requestIndex - 1) },
+            enabled = requestIndex > 0,
+        ) {
+            Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Previous request")
+        }
+
+        Text(
+            "$requestPosition/$requestCount",
+            Modifier.semantics { contentDescription = "Request $requestPosition of $requestCount" },
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+
+        IconButton(
+            onClick = { onNavigate(requestIndex + 1) },
+            enabled = requestIndex < requestCount - 1,
+        ) {
+            Icon(Icons.AutoMirrored.Outlined.ArrowForward, "Next request")
         }
     }
 }

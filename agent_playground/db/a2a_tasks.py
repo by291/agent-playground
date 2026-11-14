@@ -8,6 +8,7 @@ from a2a.server.tasks import TaskStore
 from a2a.types import (
     ListTasksRequest,
     ListTasksResponse,
+    Message,
     Role,
     SendMessageRequest,
     Task,
@@ -20,7 +21,7 @@ from a2a.utils.errors import (
     UnsupportedOperationError,
 )
 from google.protobuf.json_format import MessageToDict, ParseDict
-from sqlalchemy import delete, func, select
+from sqlalchemy import Connection, delete, func, select
 from sqlalchemy.dialects.postgresql import insert
 
 from agent_playground.db.async_operations import run_database_operation
@@ -33,6 +34,13 @@ from agent_playground.services.a2a.contracts import (
     request_fingerprint,
 )
 
+DEFAULT_PAGE_SIZE = 50
+MAX_PAGE_SIZE = 100
+CONTINUATION_TASK_STATES = {
+    TaskState.TASK_STATE_INPUT_REQUIRED,
+    TaskState.TASK_STATE_AUTH_REQUIRED,
+}
+
 
 class PostgresTaskStore(TaskStore):
     """Persist SDK task snapshots and reserve role-scoped message identities."""
@@ -44,6 +52,7 @@ class PostgresTaskStore(TaskStore):
         self.role = cast(AgentRole, role)
 
     async def save(self, task: Task, context: ServerCallContext) -> None:
+        """Persist a task snapshot only while its context is current."""
         await run_database_operation(self._save, task)
 
     def _save(self, task: Task) -> None:
@@ -60,7 +69,7 @@ class PostgresTaskStore(TaskStore):
 
         # Delayed SDK events cannot reopen a terminal task or replace another
         # context's snapshot after a task identity has already been reserved.
-        statement = statement.on_conflict_do_update(
+        save_snapshot = statement.on_conflict_do_update(
             index_elements=[a2a_tasks.c.role, a2a_tasks.c.id],
             set_={
                 "state": statement.excluded.state,
@@ -71,9 +80,10 @@ class PostgresTaskStore(TaskStore):
         )
 
         with app_engine().begin() as connection:
-            connection.execute(statement)
+            connection.execute(save_snapshot)
 
     async def get(self, task_id: str, context: ServerCallContext) -> Task | None:
+        """Read the role-scoped snapshot for an SDK task."""
         return await run_database_operation(self._get, task_id)
 
     def _get(self, task_id: str) -> Task | None:
@@ -137,74 +147,86 @@ class PostgresTaskStore(TaskStore):
 
             # Keep fingerprint checks and interruption consumption under the
             # same task lock so only one new answer can reserve the transition.
-            row = connection.execute(
+            statement = (
                 select(a2a_tasks.c.payload)
                 .where(a2a_tasks.c.role == self.role, a2a_tasks.c.id == task_id)
                 .with_for_update()
-            ).scalar_one_or_none()
+            )
+            row = connection.execute(statement).scalar_one_or_none()
 
             if row is None:
                 raise TaskNotFoundError(message=f"Task {task_id} does not exist")
 
             task = ParseDict(row, Task())
+            should_save = self._reserve_continuation(task, message, fingerprint)
 
-            if message.context_id and message.context_id != task.context_id:
-                raise InvalidParamsError(
-                    message="Message contextId does not match task contextId"
-                )
-
-            metadata = MessageToDict(task.metadata)
-            fingerprints = metadata.setdefault("requestFingerprints", {})
-            previous_fingerprint = fingerprints.get(message.message_id)
-
-            if previous_fingerprint is not None:
-                if previous_fingerprint != fingerprint:
-                    raise InvalidParamsError(
-                        message="The messageId was already used with different input"
-                    )
-
-                # A retry replays even if the task has since become terminal.
-                return task
-
-            if task.status.state in TERMINAL_TASK_STATES:
-                raise UnsupportedOperationError(
-                    message=f"Task {task.id} is in terminal state"
-                )
-
-            if task.status.state not in {
-                TaskState.TASK_STATE_INPUT_REQUIRED,
-                TaskState.TASK_STATE_AUTH_REQUIRED,
-            }:
-                raise UnsupportedOperationError(
-                    message="Task is already running; subscribe to its existing stream"
-                )
-
-            if task.status.HasField("message"):
-                task.history.append(task.status.message)
-                task.status.ClearField("message")
-
-            task.history.append(message)
-            # Reserving an answer consumes the interruption. Persist that
-            # transition before dispatch so a crash cannot strand the answer.
-            task.status.state = TaskState.TASK_STATE_SUBMITTED
-            fingerprints[message.message_id] = fingerprint
-            task.metadata.Clear()
-            task.metadata.update(metadata)
-            connection.execute(
-                a2a_tasks.update()
-                .where(a2a_tasks.c.role == self.role, a2a_tasks.c.id == task_id)
-                .values(
-                    state=task.status.state,
-                    payload=MessageToDict(task),
-                    updated_at=func.now(),
-                )
-            )
+            if should_save:
+                self._save_continuation(connection, task_id, task)
 
         return task
+
+    def _reserve_continuation(
+        self, task: Task, message: Message, fingerprint: str
+    ) -> bool:
+        if message.context_id and message.context_id != task.context_id:
+            raise InvalidParamsError(
+                message="Message contextId does not match task contextId"
+            )
+
+        metadata = MessageToDict(task.metadata)
+        fingerprints = metadata.setdefault("requestFingerprints", {})
+        previous_fingerprint = fingerprints.get(message.message_id)
+
+        if previous_fingerprint is not None:
+            if previous_fingerprint != fingerprint:
+                raise InvalidParamsError(
+                    message="The messageId was already used with different input"
+                )
+
+            # A retry replays even if the task has since become terminal.
+            return False
+
+        if task.status.state in TERMINAL_TASK_STATES:
+            raise UnsupportedOperationError(
+                message=f"Task {task.id} is in terminal state"
+            )
+
+        if task.status.state not in CONTINUATION_TASK_STATES:
+            raise UnsupportedOperationError(
+                message="Task is already running; subscribe to its existing stream"
+            )
+
+        if task.status.HasField("message"):
+            task.history.append(task.status.message)
+            task.status.ClearField("message")
+
+        # Reserving an answer consumes the interruption. Persist that
+        # transition before dispatch so a crash cannot strand the answer.
+        task.history.append(message)
+        task.status.state = TaskState.TASK_STATE_SUBMITTED
+        fingerprints[message.message_id] = fingerprint
+        task.metadata.Clear()
+        task.metadata.update(metadata)
+
+        return True
+
+    def _save_continuation(
+        self, connection: Connection, task_id: str, task: Task
+    ) -> None:
+        connection.execute(
+            a2a_tasks.update()
+            .where(a2a_tasks.c.role == self.role, a2a_tasks.c.id == task_id)
+            .values(
+                state=task.status.state,
+                payload=MessageToDict(task),
+                updated_at=func.now(),
+            )
+        )
 
     async def list(
         self, params: ListTasksRequest, context: ServerCallContext
     ) -> ListTasksResponse:
+        """Page through role-scoped snapshots using supported SDK filters."""
         unsupported_filters = params.tenant or params.HasField("status_timestamp_after")
 
         if unsupported_filters:
@@ -212,24 +234,28 @@ class PostgresTaskStore(TaskStore):
                 message="Tenant and timestamp filters are not supported by this demo task store"
             )
 
-        page_size = params.page_size if params.HasField("page_size") else 50
+        page_size = (
+            params.page_size if params.HasField("page_size") else DEFAULT_PAGE_SIZE
+        )
 
-        if not 1 <= page_size <= 100:
-            raise InvalidParamsError(message="pageSize must be between 1 and 100")
+        if not 1 <= page_size <= MAX_PAGE_SIZE:
+            raise InvalidParamsError(
+                message=f"pageSize must be between 1 and {MAX_PAGE_SIZE}"
+            )
 
         offset = 0
 
         if params.page_token:
             prefix = f"{self.role}:"
-            value = params.page_token.removeprefix(prefix)
+            page_offset = params.page_token.removeprefix(prefix)
             invalid_page_token = (
-                not params.page_token.startswith(prefix) or not value.isdecimal()
+                not params.page_token.startswith(prefix) or not page_offset.isdecimal()
             )
 
             if invalid_page_token:
                 raise InvalidParamsError(message="Invalid pageToken")
 
-            offset = int(value)
+            offset = int(page_offset)
 
         return await run_database_operation(self._list, params, page_size, offset)
 
@@ -244,21 +270,17 @@ class PostgresTaskStore(TaskStore):
         if params.status != TaskState.TASK_STATE_UNSPECIFIED:
             filters.append(a2a_tasks.c.state == params.status)
 
+        count_tasks = select(func.count()).select_from(a2a_tasks).where(*filters)
+        ordered_tasks = (
+            select(a2a_tasks.c.payload)
+            .where(*filters)
+            .order_by(a2a_tasks.c.updated_at.desc(), a2a_tasks.c.id)
+        )
+        page = ordered_tasks.limit(page_size).offset(offset)
+
         with app_engine().connect() as connection:
-            total = connection.execute(
-                select(func.count()).select_from(a2a_tasks).where(*filters)
-            ).scalar_one()
-            rows = (
-                connection.execute(
-                    select(a2a_tasks.c.payload)
-                    .where(*filters)
-                    .order_by(a2a_tasks.c.updated_at.desc(), a2a_tasks.c.id)
-                    .limit(page_size)
-                    .offset(offset)
-                )
-                .scalars()
-                .all()
-            )
+            total = connection.execute(count_tasks).scalar_one()
+            rows = connection.execute(page).scalars().all()
 
         next_token = (
             f"{self.role}:{offset + page_size}" if offset + page_size < total else ""
@@ -272,6 +294,7 @@ class PostgresTaskStore(TaskStore):
         )
 
     async def delete(self, task_id: str, context: ServerCallContext) -> None:
+        """Delete a task snapshot from this role's store."""
         await run_database_operation(self._delete, task_id)
 
     def _delete(self, task_id: str) -> None:

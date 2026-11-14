@@ -79,7 +79,11 @@ test("the composer waits for the display buffer and final fade after the run com
               snapshot = {
                 messages: [
                   ...input.messages,
-                  { id: "reply", role: "assistant", content: text },
+                  {
+                    id: "reply",
+                    role: "assistant",
+                    content: text,
+                  },
                 ],
                 outputs: [],
                 interrupts: [],

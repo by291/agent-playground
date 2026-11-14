@@ -1,7 +1,7 @@
 """Register durable external tasks and wait for trusted backend continuation."""
 
 from hashlib import sha256
-from typing import Any, Literal
+from typing import Any, Literal, Self
 
 import httpx
 from langgraph.config import get_config
@@ -9,6 +9,8 @@ from langgraph.types import interrupt
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from agent_playground.config.agent import app_api_url, workflow_api_token
+
+_REGISTRATION_TIMEOUT_SECONDS = 30
 
 
 class ExternalTaskRegistration(BaseModel):
@@ -29,9 +31,11 @@ class ExternalTaskResult(BaseModel):
     error: str | None = None
 
     @model_validator(mode="after")
-    def validate_terminal_content(self):
+    def validate_terminal_content(self) -> Self:
+        """Require a payload for success and a reason for failure."""
         if self.status == "succeeded" and self.result is None:
             raise ValueError("A successful external task requires a result")
+
         if self.status == "failed" and not self.error:
             raise ValueError("A failed external task requires an error")
 
@@ -43,8 +47,10 @@ async def register_external_task(
 ) -> ExternalTaskRegistration:
     """Reuse one task identity across run recovery and checkpoint replay."""
     config = get_config()
-    thread_id = (config.get("configurable") or {}).get("thread_id")
-    run_id = (config.get("metadata") or {}).get("agui_run_id")
+    configurable = config.get("configurable") or {}
+    metadata = config.get("metadata") or {}
+    thread_id = configurable.get("thread_id")
+    run_id = metadata.get("agui_run_id")
     token = workflow_api_token()
 
     if not isinstance(thread_id, str) or not isinstance(run_id, str) or not token:
@@ -54,12 +60,10 @@ async def register_external_task(
 
     # Runs can change during recovery; the workflow call and step still identify
     # the original task and must not create a second external operation.
-    task_id = (
-        "task-"
-        + sha256(f"{thread_id}:{workflow_call_id}:{step_id}".encode()).hexdigest()
-    )
+    identity = f"{thread_id}:{workflow_call_id}:{step_id}"
+    task_id = f"task-{sha256(identity.encode()).hexdigest()}"
 
-    async with httpx.AsyncClient(timeout=30) as client:
+    async with httpx.AsyncClient(timeout=_REGISTRATION_TIMEOUT_SECONDS) as client:
         response = await client.post(
             f"{app_api_url()}/internal/external-tasks",
             headers={"Authorization": f"Bearer {token}"},
@@ -74,7 +78,9 @@ async def register_external_task(
         )
         response.raise_for_status()
 
-    return ExternalTaskRegistration.model_validate(response.json())
+    registration_payload = response.json()
+
+    return ExternalTaskRegistration.model_validate(registration_payload)
 
 
 def wait_for_external_task(

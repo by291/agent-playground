@@ -1,5 +1,6 @@
 """Preserve provider reasoning when replaying tool-call history."""
 
+from dataclasses import dataclass
 from typing import Any, override
 
 from langchain_core.language_models import BaseChatModel
@@ -21,11 +22,23 @@ DEFAULT_BASE_URLS: dict[ChatProvider, str] = {
 }
 
 
+@dataclass(frozen=True, kw_only=True)
+class ProviderModelOptions:
+    """Carry the resolved provider connection and generation settings."""
+
+    provider: ChatProvider
+    model: str
+    api_key: SecretStr
+    base_url: str | None
+    thinking: ThinkingLevel
+    output_tokens: int
+
+
 def restore_reasoning_history(
     messages: list[BaseMessage],
     payload: dict[str, Any],
     *,
-    require_reasoning: bool = False,
+    should_require_reasoning: bool = False,
 ) -> dict[str, Any]:
     """Restore provider-only fields omitted by the shared request serializer."""
     # Both integrations retain reasoning in responses, but their shared OpenAI
@@ -38,7 +51,7 @@ def restore_reasoning_history(
 
         if isinstance(reasoning, str):
             serialized["reasoning_content"] = reasoning
-        elif require_reasoning:
+        elif should_require_reasoning:
             # Nonthinking models and workflow replies have no reasoning to
             # replay. DeepSeek thinking tools still require the field.
             serialized["reasoning_content"] = ""
@@ -60,14 +73,14 @@ class DeepSeekChatModel(ChatDeepSeek):
         payload = super()._get_request_payload(input_, stop=stop, **kwargs)
         extra_body: dict[str, Any] = payload.get("extra_body") or {}
         thinking: dict[str, Any] = extra_body.get("thinking") or {}
-        requires_reasoning = (
+        should_restore_missing_reasoning = (
             bool(payload.get("tools")) and thinking.get("type") != "disabled"
         )
 
         return restore_reasoning_history(
             self._convert_input(input_).to_messages(),
             payload,
-            require_reasoning=requires_reasoning,
+            should_require_reasoning=should_restore_missing_reasoning,
         )
 
 
@@ -89,40 +102,33 @@ class QwenChatModel(ChatQwen):
         )
 
 
-def create_provider_model(
-    provider: ChatProvider,
-    *,
-    model: str,
-    api_key: SecretStr,
-    base_url: str | None,
-    thinking: ThinkingLevel,
-    output_tokens: int,
-) -> BaseChatModel:
-    thinking_enabled = thinking != "disabled"
-    native_effort = NATIVE_REASONING_EFFORTS[provider].get(thinking)
-    endpoint = base_url or DEFAULT_BASE_URLS[provider]
+def create_provider_model(options: ProviderModelOptions) -> BaseChatModel:
+    """Build the provider client with the request format its API expects."""
+    is_thinking_enabled = options.thinking != "disabled"
+    native_effort = NATIVE_REASONING_EFFORTS[options.provider].get(options.thinking)
+    endpoint = options.base_url or DEFAULT_BASE_URLS[options.provider]
 
-    if provider == "deepseek":
+    if options.provider == "deepseek":
         return DeepSeekChatModel(
-            model=model,
-            api_key=api_key,
+            model=options.model,
+            api_key=options.api_key,
             base_url=endpoint,
             stream_usage=True,
-            max_tokens=output_tokens,
+            max_tokens=options.output_tokens,
             reasoning_effort=native_effort,
             extra_body={
-                "thinking": {"type": "enabled" if thinking_enabled else "disabled"}
+                "thinking": {"type": "enabled" if is_thinking_enabled else "disabled"}
             },
         )
 
     return QwenChatModel(
-        model=model,
-        api_key=api_key,
+        model=options.model,
+        api_key=options.api_key,
         base_url=endpoint,
         stream_usage=True,
         use_responses_api=False,
-        enable_thinking=thinking_enabled,
+        enable_thinking=is_thinking_enabled,
         reasoning_effort=native_effort,
-        extra_body={"enable_thinking": thinking_enabled},
-        model_kwargs={"max_completion_tokens": output_tokens},
+        extra_body={"enable_thinking": is_thinking_enabled},
+        model_kwargs={"max_completion_tokens": options.output_tokens},
     )

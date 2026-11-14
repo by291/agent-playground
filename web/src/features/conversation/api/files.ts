@@ -1,12 +1,19 @@
 import { skillFileSchema } from "@shared/skill-files";
 
+interface UploadFileOptions {
+  threadId: string;
+  id: string;
+  file: File;
+  signal: AbortSignal;
+}
+
 /** Uploads under a caller-owned ID so retries keep the same conversation-file identity. */
-export async function uploadFile(
-  threadId: string,
-  id: string,
-  file: File,
-  signal: AbortSignal,
-) {
+export async function uploadFile({
+  threadId,
+  id,
+  file,
+  signal,
+}: UploadFileOptions) {
   const response = await fetch(
     `/conversations/${encodeURIComponent(threadId)}/files`,
     {

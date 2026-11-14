@@ -11,7 +11,11 @@ from opensandbox.models.execd import Execution, ExecutionLogs, OutputMessage
 from opensandbox.models.filesystem import EntryInfo, WriteEntry
 
 from agent_playground.skills.catalog import SkillCatalog
-from agent_playground.skills.sandbox import SandboxSettings, SkillSession
+from agent_playground.skills.sandbox import (
+    SandboxSettings,
+    ScriptInvocation,
+    SkillSession,
+)
 
 
 def make_catalog(tmp_path: Path) -> SkillCatalog:
@@ -137,11 +141,17 @@ def test_session_reuses_sandbox_and_quotes_arguments(
     async def check():
         async with SkillSession(catalog, SandboxSettings()) as session:
             result = await session.run(
-                "example", "scripts/main.py", ["x; touch /tmp/escape"], {}, []
+                ScriptInvocation(
+                    skill_name="example",
+                    script_path="scripts/main.py",
+                    arguments=["x; touch /tmp/escape"],
+                )
             )
             assert result.exit_code == 0
             assert result.stdout == "done"
-            await session.run("example", "scripts/main.py", [], {}, [])
+            await session.run(
+                ScriptInvocation(skill_name="example", script_path="scripts/main.py")
+            )
 
         assert len(creations) == 1
         assert creations[0]["network_policy"].default_action == "deny"
@@ -171,12 +181,18 @@ def test_session_returns_nonzero_exit_and_cleans_up_after_timeout(
             catalog, SandboxSettings(command_timeout=0.02)
         ) as session:
             sandbox.commands.failure = True
-            result = await session.run("example", "scripts/main.py", [], {}, [])
+            result = await session.run(
+                ScriptInvocation(skill_name="example", script_path="scripts/main.py")
+            )
             assert result.exit_code == 7
             sandbox.commands.stall = True
 
             with pytest.raises(TimeoutError):
-                await session.run("example", "scripts/main.py", [], {}, [])
+                await session.run(
+                    ScriptInvocation(
+                        skill_name="example", script_path="scripts/main.py"
+                    )
+                )
 
             assert sandbox.destroyed
 
@@ -195,7 +211,11 @@ def test_cancellation_destroys_sandbox(tmp_path: Path, monkeypatch: pytest.Monke
     async def check():
         async with SkillSession(make_catalog(tmp_path), SandboxSettings()) as session:
             task = asyncio.create_task(
-                session.run("example", "scripts/main.py", [], {}, [])
+                session.run(
+                    ScriptInvocation(
+                        skill_name="example", script_path="scripts/main.py"
+                    )
+                )
             )
             await asyncio.sleep(0.01)
             task.cancel()

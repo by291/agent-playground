@@ -116,6 +116,7 @@ internal fun Composer(
 
     val windowInsets =
         if (applyWindowInsets) Modifier.navigationBarsPadding().imePadding() else Modifier
+
     // Keep attachment resources and the editor's local draft composed while interaction takes
     // over the input area. Hidden content is neither measured nor exposed to accessibility.
     val visibility =
@@ -257,9 +258,20 @@ internal fun Composer(
                             }
 
                             Reveal(metadata.usage != null) {
-                                metadata.usage?.let {
+                                metadata.usage?.let { usage ->
+                                    val scaledUsage = usage.usedTokens * 100L
+                                    val isBelowOnePercent =
+                                        usage.usedTokens > 0 && scaledUsage < usage.contextWindow
+                                    val percentage =
+                                        if (isBelowOnePercent) {
+                                            "<1"
+                                        } else {
+                                            (scaledUsage / usage.contextWindow.coerceAtLeast(1))
+                                                .toString()
+                                        }
+
                                     Text(
-                                        " · ${if (it.usedTokens > 0 && it.usedTokens * 100L < it.contextWindow) "<1" else it.usedTokens * 100L / it.contextWindow.coerceAtLeast(1)}%",
+                                        " · $percentage%",
                                         style = MaterialTheme.typography.labelMedium,
                                     )
                                 }

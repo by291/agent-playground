@@ -31,31 +31,44 @@ export function chatTurns(
 
   for (const message of messages) {
     if (message.role === "user") {
-      current = { id: message.id, user: message, messages: [], status: null };
+      current = {
+        id: message.id,
+        user: message,
+        messages: [],
+        status: null,
+      };
       turns.push(current);
-    } else if (
-      message.role === "assistant" ||
-      message.role === "tool" ||
-      message.role === "reasoning"
+
+      continue;
+    }
+
+    if (
+      message.role !== "assistant" &&
+      message.role !== "tool" &&
+      message.role !== "reasoning"
     ) {
-      if (!current) {
-        current = { id: message.id, user: null, messages: [], status: null };
-        turns.push(current);
-      }
+      continue;
+    }
 
-      // A workflow can span feedback turns while its original tool call stays
-      // open. Attach its terminal result to the caller, not the latest feedback.
-      const owner =
-        message.role === "tool"
-          ? callOwners.get(message.toolCallId)
-          : undefined;
+    if (!current) {
+      current = {
+        id: message.id,
+        user: null,
+        messages: [],
+        status: null,
+      };
+      turns.push(current);
+    }
 
-      (owner ?? current).messages.push(message);
+    // A workflow can span feedback turns; its tool result belongs to the caller.
+    const owner =
+      message.role === "tool" ? callOwners.get(message.toolCallId) : undefined;
 
-      if (message.role === "assistant") {
-        for (const call of message.toolCalls ?? []) {
-          callOwners.set(call.id, current);
-        }
+    (owner ?? current).messages.push(message);
+
+    if (message.role === "assistant") {
+      for (const call of message.toolCalls ?? []) {
+        callOwners.set(call.id, current);
       }
     }
   }
@@ -80,6 +93,7 @@ export function chatTurns(
   return turns;
 }
 
+/** Associates tool calls with their saved results or the enclosing run status. */
 export function toolProcess(
   turn: ChatTurn,
   externalWaitCallIds: readonly string[] = [],
@@ -122,7 +136,11 @@ export function toolProcess(
             status = "running";
           }
 
-          return { call, result, status };
+          return {
+            call,
+            result,
+            status,
+          };
         }),
       },
     ];
