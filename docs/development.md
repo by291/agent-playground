@@ -114,6 +114,8 @@ The AWS SDK uses its standard credential chain, including an optional `AWS_SESSI
 
 The TypeScript server applies Drizzle migrations at startup. Python prepares its application repositories, while Aegra manages its own schema. Compose initializes the local `aegra` role and its search path only when creating a new PostgreSQL volume.
 
+When deploying multiple server replicas, apply startup migrations with one instance before starting the rest. Replicas must share `APP_DATABASE_URL`, `AEGRA_URL` and the object store configuration. Drain old server instances before sending traffic to the new replicas on a shared database. Old instances do not recognize dispatch leases and can misclassify an in-flight submission. Read [admission and recovery consistency](architecture.md#admission-and-recovery-consistency) for the lease and retry rules.
+
 PostgreSQL 18 stores volume data at `/var/lib/postgresql`. An older PostgreSQL 17 volume cannot be reused directly. `docker compose down --volumes` removes **all volumes in this Compose project**, including PostgreSQL, local S3 objects and sandbox state; use it only when intentionally discarding that local data. It is not a normal restart or upgrade step.
 
 ## Quality checks

@@ -149,7 +149,7 @@ export async function processExternalTasks(
 
         await recordAegraRun(run.aguiRunId, created.run_id);
       } finally {
-        releaseDispatch();
+        await releaseDispatch();
       }
 
       await synchronizeConversation(task.threadId, client);

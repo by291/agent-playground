@@ -8,6 +8,8 @@ import {
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
+import { once } from "node:events";
+import type { conversationSnapshot } from "../history/snapshot.js";
 import { InterruptSchema } from "../../../../shared/ag-ui-schemas.js";
 import { eq, sql } from "drizzle-orm";
 import {
@@ -27,7 +29,7 @@ let controlStatus = 202;
 const stalledResponses = new Map<string, ServerResponse>();
 const creationModes = new Map<
   string,
-  "lost-response" | "unconfirmed" | "stall" | "stall-read"
+  "lost-response" | "unconfirmed" | "hold-response" | "stall" | "stall-read"
 >();
 const creationGates = new Map<
   string,
@@ -131,9 +133,16 @@ async function handleRequest(
 
     runs.set(threadId, run);
 
-    if (creationModes.get(threadId) === "lost-response") {
+    const mode = creationModes.get(threadId);
+
+    if (mode === "lost-response" || mode === "hold-response") {
       run.status = "success";
       completed.add(threadId);
+
+      if (mode === "hold-response") {
+        await gate.finish;
+      }
+
       response.destroy();
       gate.finished?.();
 
@@ -929,8 +938,7 @@ test.each(["accepted", "lost-response", "unconfirmed"] as const)(
     const { synchronizeConversation } =
       await import("../runs/checkpoint-sync.js");
     const { conversationSnapshot } = await import("../history/snapshot.js");
-    const { hasRunDispatchOwner, latestRun } =
-      await import("../runs/run-store.js");
+    const { latestRun } = await import("../runs/run-store.js");
     const response = await app.request("/agent", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -951,14 +959,17 @@ test.each(["accepted", "lost-response", "unconfirmed"] as const)(
       await entered;
       await reader.read();
       await reader.cancel();
-      assert.equal(hasRunDispatchOwner(runId), true);
       await synchronizeConversation(threadId);
       const pending = await conversationSnapshot(threadId);
 
       assert.equal(pending?.runs.at(-1)?.status, "dispatching");
       assert.equal(pending?.runs.at(-1)?.aegraRunId, null);
       releaseCreation();
-      await vi.waitUntil(() => !hasRunDispatchOwner(runId));
+      await vi.waitUntil(async () => {
+        const current = await latestRun(threadId);
+
+        return current?.dispatchLeaseUntil === null;
+      });
 
       if (outcome === "accepted") {
         assert.ok((await latestRun(threadId))?.aegraRunId);
@@ -968,7 +979,11 @@ test.each(["accepted", "lost-response", "unconfirmed"] as const)(
       releaseCreation();
       finishStream();
       await finished;
-      await vi.waitUntil(() => !hasRunDispatchOwner(runId));
+      await vi.waitUntil(async () => {
+        const current = await latestRun(threadId);
+
+        return current?.dispatchLeaseUntil === null;
+      });
       reader?.releaseLock();
       creationGates.delete(threadId);
     }
@@ -1056,6 +1071,242 @@ test("external failures also resume the workflow with a terminal result", async 
   await processExternalTasks();
   assert.equal(creations.get(task.threadId), 1);
 });
+
+function dispatchGate() {
+  let resolve!: () => void;
+  const promise = new Promise<void>((complete) => {
+    resolve = complete;
+  });
+
+  return { promise, resolve };
+}
+
+async function startDispatchServer() {
+  const probe = createServer();
+
+  await new Promise<void>((resolve) => probe.listen(0, "127.0.0.1", resolve));
+  const address = probe.address();
+
+  assert.ok(address && typeof address !== "string");
+  await new Promise<void>((resolve) => probe.close(() => resolve()));
+  const child = spawn(process.execPath, ["--import", "tsx", "src/main.ts"], {
+    cwd: fileURLToPath(new URL("../../../", import.meta.url)),
+    env: { ...process.env, SERVER_PORT: String(address.port) },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  const exited = once(child, "exit");
+  let output = "";
+
+  child.stdout.on("data", (chunk: Buffer) => {
+    output += chunk.toString();
+  });
+  child.stderr.on("data", (chunk: Buffer) => {
+    output += chunk.toString();
+  });
+
+  async function crash() {
+    if (child.pid && child.exitCode === null && child.signalCode === null) {
+      child.kill("SIGKILL");
+    }
+
+    await exited;
+  }
+
+  try {
+    await Promise.race([
+      vi.waitUntil(() => output.includes("AG-UI server listening"), {
+        timeout: 10_000,
+        interval: 20,
+      }),
+      exited.then(() => {
+        throw new Error(`Server exited during startup: ${output}`);
+      }),
+    ]);
+
+    return { url: `http://127.0.0.1:${address.port}`, crash };
+  } catch (error) {
+    await crash();
+    throw error;
+  }
+}
+
+async function readLatestDispatch(url: string, threadId: string) {
+  const response = await fetch(`${url}/conversations/${threadId}`);
+
+  assert.equal(response.status, 200);
+  const snapshot = (await response.json()) as NonNullable<
+    Awaited<ReturnType<typeof conversationSnapshot>>
+  >;
+
+  return snapshot.runs.at(-1);
+}
+
+type DispatchServer = Awaited<ReturnType<typeof startDispatchServer>>;
+type DispatchGate = ReturnType<typeof dispatchGate>;
+interface CrashScenario {
+  outcome: "lost-response" | "unconfirmed";
+  threadId: string;
+  runId: string;
+  owner: DispatchServer;
+  peer: DispatchServer;
+  release: DispatchGate;
+  sendResponse: DispatchGate;
+  finished: DispatchGate;
+  submission: RequestInit;
+}
+
+async function verifyDispatchRecovery({
+  outcome,
+  threadId,
+  runId,
+  owner,
+  peer,
+  release,
+  sendResponse,
+  finished,
+  submission,
+}: CrashScenario) {
+  const pending = await readLatestDispatch(peer.url, threadId);
+
+  assert.equal(pending?.status, "dispatching");
+  assert.equal(pending?.aegraRunId, null);
+
+  if (outcome === "lost-response") {
+    const { latestRun } = await import("../runs/run-store.js");
+    const initialLease = (await latestRun(threadId))?.dispatchLeaseUntil;
+
+    assert.ok(initialLease);
+
+    await vi.waitUntil(
+      async () => {
+        const renewedLease = (await latestRun(threadId))?.dispatchLeaseUntil;
+
+        return (
+          renewedLease !== null &&
+          renewedLease !== undefined &&
+          renewedLease > initialLease
+        );
+      },
+      { timeout: 15_000, interval: 100 },
+    );
+
+    release.resolve();
+    await vi.waitUntil(() => completed.has(threadId));
+  }
+
+  await owner.crash();
+  release.resolve();
+  sendResponse.resolve();
+  await finished.promise;
+
+  if (outcome === "unconfirmed") {
+    const duringLease = await readLatestDispatch(peer.url, threadId);
+
+    assert.equal(duringLease?.status, "dispatching");
+
+    // Advance only the lease expiration without waiting for the production TTL.
+    await database.db.execute(sql`
+      UPDATE conversation_runs SET dispatch_lease_until = now() - interval '1 second'
+      WHERE agui_run_id = ${runId}
+    `);
+  }
+
+  const recovered = await readLatestDispatch(peer.url, threadId);
+  const expectedStatus =
+    outcome === "unconfirmed" ? "submission_unknown" : "completed";
+
+  assert.equal(recovered?.status, expectedStatus);
+  assert.equal(Boolean(recovered?.aegraRunId), outcome === "lost-response");
+  const retry = await fetch(`${peer.url}/agent`, submission);
+
+  assert.equal(retry.status, 409);
+  await retry.text();
+  assert.equal(creations.get(threadId), 1);
+}
+
+test.each(["lost-response", "unconfirmed"] as const)(
+  "a second server preserves a live dispatch and reconciles a %s crash without resending",
+  async (outcome) => {
+    const threadId = randomUUID();
+    const runId = randomUUID();
+    const entered = dispatchGate();
+    const release = dispatchGate();
+    const finished = dispatchGate();
+    const sendResponse = dispatchGate();
+
+    creationGates.set(threadId, {
+      entered: entered.resolve,
+      release: release.promise,
+      finished: finished.resolve,
+      finish: sendResponse.promise,
+    });
+    const mode = outcome === "lost-response" ? "hold-response" : outcome;
+
+    creationModes.set(threadId, mode);
+
+    const input = JSON.stringify({
+      threadId,
+      runId,
+      messages: [{ id: randomUUID(), role: "user", content: "Hello" }],
+      tools: [],
+      context: [],
+      state: {},
+    });
+    const submission = {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: input,
+    };
+    const first = await startDispatchServer();
+
+    try {
+      const second = await startDispatchServer();
+
+      try {
+        const firstSubmission = fetch(`${first.url}/agent`, submission);
+        const secondSubmission = fetch(`${second.url}/agent`, submission);
+        // The fixture withholds the winning response, so the conflict identifies the peer.
+        const settled = Promise.allSettled([firstSubmission, secondSubmission]);
+        const conflict = await Promise.race([
+          firstSubmission.then((response) => ({
+            owner: second,
+            peer: first,
+            response,
+          })),
+          secondSubmission.then((response) => ({
+            owner: first,
+            peer: second,
+            response,
+          })),
+        ]);
+        const { owner, peer, response } = conflict;
+
+        assert.equal(response.status, 409);
+        await response.text();
+        await entered.promise;
+        assert.equal(creations.get(threadId), 1);
+        await verifyDispatchRecovery({
+          outcome,
+          threadId,
+          runId,
+          owner,
+          peer,
+          release,
+          sendResponse,
+          finished,
+          submission,
+        });
+        await settled;
+      } finally {
+        await second.crash();
+      }
+    } finally {
+      release.resolve();
+      sendResponse.resolve();
+      await first.crash();
+    }
+  },
+);
 
 test("telemetry-enabled server shutdown releases its subscription and exports work before exit", async () => {
   const task = await register();

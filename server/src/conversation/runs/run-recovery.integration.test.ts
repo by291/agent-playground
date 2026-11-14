@@ -235,7 +235,10 @@ async function admit(threadId: string) {
     isResume: false,
   });
 
-  await runStore.claimPrepared(input.runId);
+  await database.db
+    .update(schema.conversationRuns)
+    .set({ status: "dispatching" })
+    .where(eq(schema.conversationRuns.aguiRunId, input.runId));
 
   return { ...admitted.row, status: "dispatching" as const };
 }
@@ -710,11 +713,11 @@ test("an identical prepared review submission can be claimed after restart", asy
       "dispatching",
     );
   } finally {
-    prepared.releaseDispatch();
+    await prepared.releaseDispatch();
   }
 });
 
-test("competing dispatch claims retain the winner until its explicit release", async () => {
+test("releasing a live claim lets recovery mark an unconfirmed submission unknown", async () => {
   const input = inputFor("dispatch-ownership");
   const { synchronizeConversation } = await import("./checkpoint-sync.js");
 
@@ -733,38 +736,28 @@ test("competing dispatch claims retain the winner until its explicit release", a
 
   try {
     assert.equal(claims.filter(Boolean).length, 1);
-    assert.equal(runStore.hasRunDispatchOwner(input.runId), true);
     await synchronizeConversation(input.threadId);
     assert.equal(
       (await runStore.latestRun(input.threadId))?.status,
       "dispatching",
     );
-    listedRuns = [
-      {
-        run_id: "upstream-run",
-        config: { metadata: { agui_run_id: input.runId } },
-      },
-    ];
-    await synchronizeConversation(input.threadId);
-    assert.equal((await runStore.latestRun(input.threadId))?.status, "running");
-    assert.equal(runStore.hasRunDispatchOwner(input.runId), true);
   } finally {
-    listedRuns = [];
-
     for (const release of claims) {
-      release?.();
-      release?.();
+      await release?.();
     }
   }
 
-  assert.equal(runStore.hasRunDispatchOwner(input.runId), false);
+  await synchronizeConversation(input.threadId);
+  assert.equal(
+    (await runStore.latestRun(input.threadId))?.status,
+    "submission_unknown",
+  );
 });
 
 test("a persisted orphan dispatch remains recoverable as submission unknown after restart", async () => {
   const run = await admit("orphan-dispatch");
   const { synchronizeConversation } = await import("./checkpoint-sync.js");
 
-  assert.equal(runStore.hasRunDispatchOwner(run.aguiRunId), false);
   await synchronizeConversation(run.threadId);
 
   assert.equal(
@@ -772,7 +765,6 @@ test("a persisted orphan dispatch remains recoverable as submission unknown afte
     "submission_unknown",
   );
   assert.equal(await runStore.claimPreparedDispatch(run.aguiRunId), null);
-  assert.equal(runStore.hasRunDispatchOwner(run.aguiRunId), false);
 });
 
 test("an unknown submission can recover its newest confirmed native mapping", async () => {

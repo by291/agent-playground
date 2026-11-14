@@ -50,7 +50,7 @@ agentRoutes.post(
       );
     } catch (error) {
       // Streaming setup may throw before the producer takes responsibility for this claim.
-      prepared?.releaseDispatch();
+      await prepared?.releaseDispatch();
 
       if (error instanceof SubmissionError) {
         return context.json({ error: error.message }, error.status);

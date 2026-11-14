@@ -55,6 +55,10 @@ export const conversationRuns = pgTable(
     request: jsonb("request").$type<RunAgentInput>().notNull(),
     modelId: text("model_id"),
     aegraRunId: text("aegra_run_id"),
+    dispatchToken: text("dispatch_token"),
+    dispatchLeaseUntil: timestamp("dispatch_lease_until", {
+      withTimezone: true,
+    }),
     status: text("status", { enum: runStatuses }).notNull(),
     checkpointSynced: boolean("checkpoint_synced").notNull().default(false),
     interrupts: jsonb("interrupts").$type<Interrupt[]>().notNull().default([]),

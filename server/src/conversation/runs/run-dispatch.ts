@@ -13,7 +13,7 @@ export interface PreparedConversationRun {
   input: RunAgentInput;
   modelId: string | null;
   /** Release after the mapping is durable, producer settlement, or setup failure. */
-  releaseDispatch: () => void;
+  releaseDispatch: () => Promise<void>;
 }
 
 export async function prepareConversationRun(
@@ -101,7 +101,7 @@ export function executeConversationRun(
         try {
           await mappingWrite;
         } finally {
-          releaseDispatch();
+          await releaseDispatch();
         }
       },
       modelId,
@@ -121,7 +121,7 @@ export function executeConversationRun(
       },
     };
   } catch (error) {
-    releaseDispatch();
+    void releaseDispatch();
     throw error;
   }
 }

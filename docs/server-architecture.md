@@ -17,7 +17,7 @@ server/
     conversation/
       runs/
         run-admission.ts      Serialized admission, retry identity and initial persistence
-        run-store.ts          Run mapping, observations and process-local dispatch ownership
+        run-store.ts          Run mapping, observations and PostgreSQL dispatch leases
         run-dispatch.ts       Prepare and execute admitted runs
         run-recovery.ts       Reconcile upstream observations with persisted runs
         checkpoint-sync.ts    Persist checkpoint messages, interrupts and outputs
@@ -64,4 +64,4 @@ pnpm --filter agent-playground-server lint
 pnpm --filter agent-playground-server test
 ```
 
-Unit checks include import boundaries, migration discovery, SSE behavior and shutdown ordering. Integration checks use disposable PostgreSQL and S3 containers to cover admission, model selection, recovery, task continuation, management and file/document lifecycles. They do not reuse the development database.
+Unit checks include import boundaries, migration discovery, SSE behavior and shutdown ordering. Integration checks use disposable PostgreSQL and S3 containers to cover admission, model selection, recovery, task continuation, management and file/document lifecycles. The dispatch regression starts two server processes against the same disposable database and holds an upstream HTTP response while testing concurrent submissions, lease renewal and crash recovery. These tests do not reuse the development database.
