@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { test } from "vitest";
 import assert from "node:assert/strict";
 import { InterruptSchema } from "@shared/ag-ui-schemas";

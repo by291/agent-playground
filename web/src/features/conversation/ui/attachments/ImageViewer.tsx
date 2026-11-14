@@ -132,7 +132,7 @@ function ImageViewerContent({
           ]
           : [Inline, Zoom]
       }
-      controller={{ ref: controller, aria: false }}
+      controller={{ ref: controller }}
       carousel={{
         finite: true,
         preload: 1,

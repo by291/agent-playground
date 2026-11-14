@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { test } from "vitest";
 import assert from "node:assert/strict";
 import { MessageProcessor } from "@a2ui/web_core/v0_9";
