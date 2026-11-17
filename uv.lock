@@ -152,27 +152,27 @@ requires-dist = [
     { name = "aegra-cli" },
     { name = "async-lru", specifier = ">=2.4.0" },
     { name = "charset-normalizer", specifier = ">=3.5.2,<4" },
-    { name = "fastapi", specifier = ">=0.162.5" },
+    { name = "fastapi", specifier = ">=0.162.7" },
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "langchain" },
     { name = "langchain-core", specifier = ">=1.6.7" },
     { name = "langchain-deepseek", specifier = ">=1.1.1" },
     { name = "langchain-mcp-adapters", specifier = ">=0.3.2" },
-    { name = "langchain-openai", specifier = ">=1.7.4" },
+    { name = "langchain-openai", specifier = ">=1.8.0" },
     { name = "langchain-postgres", specifier = ">=0.0.19,<0.1" },
     { name = "langchain-qwq", specifier = ">=0.4.0" },
     { name = "langchain-text-splitters", specifier = ">=1,<2" },
-    { name = "langgraph", specifier = ">=1.2.21" },
+    { name = "langgraph", specifier = ">=1.2.22" },
     { name = "langgraph-checkpoint-postgres" },
     { name = "langmem", specifier = ">=0.0.30,<0.1" },
     { name = "limits", specifier = ">=5.8,<6" },
     { name = "mcp", specifier = ">=1.30.0,<2" },
-    { name = "openai", specifier = ">=3.50.0,<4" },
+    { name = "openai", specifier = ">=3.51.0,<4" },
     { name = "opensandbox", specifier = ">=1.2.1,<1.3" },
     { name = "opentelemetry-api", specifier = ">=1.45.2" },
     { name = "psycopg", extras = ["binary", "pool"], specifier = ">=3.3.6" },
     { name = "pydantic", specifier = ">=2.14.3" },
-    { name = "pypdf", specifier = ">=7.0.1,<8" },
+    { name = "pypdf", specifier = ">=7.1.0,<8" },
     { name = "pyyaml", specifier = ">=6,<7" },
     { name = "redis", specifier = ">=8.1,<9" },
     { name = "sqlalchemy", specifier = ">=2.1.8" },
@@ -576,7 +576,7 @@ wheels = [
 
 [[package]]
 name = "fastapi"
-version = "0.162.5"
+version = "0.162.7"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "annotated-doc" },
@@ -587,9 +587,9 @@ dependencies = [
     { name = "typing-extensions" },
     { name = "typing-inspection" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/4e/7b/ae546e10f153fcf9a6afd8b9fe4730bdfeb8fdcb93178d54122973ef3f4c/fastapi-0.162.5.tar.gz", hash = "sha256:1ca37f64f61c99cebd38636e67525fb721c5e8c1169f07f2a35d73b0a63265d4", size = 531785, upload-time = "2026-11-11T22:29:53.177Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/ea/82/6b9764e52f89a8aaf68a5005093bcb8fdcadcb6ba30571def786c0d3bfc0/fastapi-0.162.7.tar.gz", hash = "sha256:b7503029c8ef2d2d5fea9049294cf8d0f2805c6621f4677ede269fce19f01efb", size = 535511, upload-time = "2026-11-13T17:47:18.517Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/10/19/5b9abfa67a29b862e509911eef40f4901f78aa48de32ad1f939b5c2b165e/fastapi-0.162.5-py3-none-any.whl", hash = "sha256:5303c67415fde762889ca337db79d27b755b8bd09cef314fa7a4340bb30bfd2b", size = 151782, upload-time = "2026-11-11T22:29:51.47Z" },
+    { url = "https://files.pythonhosted.org/packages/a0/49/2d76050f652082f1435f34a8ac9af6207b9aed8b81cde42e0bb121fa7c5a/fastapi-0.162.7-py3-none-any.whl", hash = "sha256:fa3be857122ec8d91d4d234e86ac19acf4ef23f5c6c3dfcce78ec0c27c0c5ab4", size = 152411, upload-time = "2026-11-13T17:47:16.598Z" },
 ]
 
 [[package]]
@@ -1029,7 +1029,7 @@ wheels = [
 
 [[package]]
 name = "langchain-openai"
-version = "1.7.4"
+version = "1.8.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "certifi" },
@@ -1037,9 +1037,9 @@ dependencies = [
     { name = "openai" },
     { name = "tiktoken" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/71/3c/10adfa3dcf1e7b93230b406a4c1db51cea59122a3eb70fed8109487beace/langchain_openai-1.7.4.tar.gz", hash = "sha256:8fd90e41588526d990f32262447adf8e130d7ce28ed66cefa315e64cc9dd12ce", size = 3410755, upload-time = "2026-11-04T16:55:37.274Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/06/4a/7b9a0e825917813eae02d254229a0b56cbd870a8618c38c14eb0eb6c34ab/langchain_openai-1.8.0.tar.gz", hash = "sha256:670a39def25c550ac7b828f6c4336f5653a440e992584590f6cc168525d993b7", size = 3383548, upload-time = "2026-11-13T16:48:12.161Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/46/c1/09d01a810d5f65f2f5f21231b6699e6efc241797790e18aba56c14aa754b/langchain_openai-1.7.4-py3-none-any.whl", hash = "sha256:aaee93369765bac7ebf640aab62f8ae16df403ed982737ae51f88f6a24a151ab", size = 146880, upload-time = "2026-11-04T16:55:35.897Z" },
+    { url = "https://files.pythonhosted.org/packages/cf/2e/d206826165323dc9b9e53fd837f7d6ba94b45d15543f068b4a601ee65805/langchain_openai-1.8.0-py3-none-any.whl", hash = "sha256:55a6aca37b7d4fa7011fef7faad53e6a544640c2b9a2fecf2e18d95115497555", size = 154978, upload-time = "2026-11-13T16:48:10.728Z" },
 ]
 
 [[package]]
@@ -1110,7 +1110,7 @@ wheels = [
 
 [[package]]
 name = "langgraph"
-version = "1.2.21"
+version = "1.2.22"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "langchain-core" },
@@ -1120,9 +1120,9 @@ dependencies = [
     { name = "pydantic" },
     { name = "xxhash" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/4a/01/399abb21ff4f6be75de46ea9a342dacdc3ccb8e745eb2e4875f1f27f42c5/langgraph-1.2.21.tar.gz", hash = "sha256:382b657eaf3cd568245de4bf264db94d514e2a6d0916046b3125a228aee1c307", size = 798394, upload-time = "2026-11-12T18:06:32.025Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/29/90/80e9905d7d010a32d1a8fc6a2d413f039d2179ecf7727f6ebdd3a428fff3/langgraph-1.2.22.tar.gz", hash = "sha256:32700dc34b5cf9ebb397258c2e56392f017d4dbc51c9591339225c3c1b7b5126", size = 799615, upload-time = "2026-11-14T01:43:44.184Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/50/d3/dbd2d986e2fa9e142cdc8d4865896a321146ea12f315abe8705ef5ec660a/langgraph-1.2.21-py3-none-any.whl", hash = "sha256:e3e8ed606cbf577ee394d0e4bba0ba723de18c2ecd2f51529fc2ef4051fbca93", size = 263844, upload-time = "2026-11-12T18:06:30.205Z" },
+    { url = "https://files.pythonhosted.org/packages/46/7e/52b1f714b976d344f116ccaae44e2abe4a5602ec849ab4174e3df80f0e2c/langgraph-1.2.22-py3-none-any.whl", hash = "sha256:0f8ebec55a58667e40474a0e55bdb4f06a8c7a1d98cde2b7c8d996a2ee78fe3f", size = 264465, upload-time = "2026-11-14T01:43:42.476Z" },
 ]
 
 [[package]]
@@ -1140,7 +1140,7 @@ wheels = [
 
 [[package]]
 name = "langgraph-checkpoint-postgres"
-version = "3.2.0"
+version = "3.2.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "langgraph-checkpoint" },
@@ -1148,9 +1148,9 @@ dependencies = [
     { name = "psycopg" },
     { name = "psycopg-pool" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/45/28/bc0927c2770ab713edc33c4c2f87d1f7b51c344b401d7dda5c8584bd8bf8/langgraph_checkpoint_postgres-3.2.0.tar.gz", hash = "sha256:dffef0e6822d7c614019f7f2c4bdbef42859746aee2d3e6d9d9747cf3744ca90", size = 165780, upload-time = "2026-10-14T19:54:41.116Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/72/16/1ac32b1d315f96db9a8cb93f427fcdbfb48e1d65409c0af8e29fbc0f26b7/langgraph_checkpoint_postgres-3.2.1.tar.gz", hash = "sha256:d1485fd1d6741fa7dde149a3c8e4373b3cb96c8c46f4140fb907ad79ea8130c3", size = 166488, upload-time = "2026-11-14T01:38:53.082Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/e7/af/07090322c0ac00429ff7f4789b0855e72cbd3c47026ce6b8575f39cd0f9a/langgraph_checkpoint_postgres-3.2.0-py3-none-any.whl", hash = "sha256:4d89526ab3dff0c71d575233e4132327f95812deb07b6c2e75fc473525b5b8fc", size = 55937, upload-time = "2026-10-14T19:54:40.048Z" },
+    { url = "https://files.pythonhosted.org/packages/3d/60/0ad36f48e12d646731108bd8485f5bd494347738f0b274f0c31a89205cdb/langgraph_checkpoint_postgres-3.2.1-py3-none-any.whl", hash = "sha256:77163c33d76c4f4da0362e544ea19350e1acbfd7f612c4152d207af82501aa91", size = 56300, upload-time = "2026-11-14T01:38:51.893Z" },
 ]
 
 [[package]]
@@ -1371,7 +1371,7 @@ wheels = [
 
 [[package]]
 name = "openai"
-version = "3.50.0"
+version = "3.51.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anyio" },
@@ -1381,9 +1381,9 @@ dependencies = [
     { name = "sniffio" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/13/b4/ba46d04d1835d979d89ed7c0d7d94b4ca341b1333e9423c26d97962f6f98/openai-3.50.0.tar.gz", hash = "sha256:ff094ba851ce512e0682f259e8c5bdc4802c7ef5373f68e7fd261261bb4496f2", size = 2411290, upload-time = "2026-11-12T19:26:54.812Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/db/fa/30f098b042a354f685def1d0fe4c817fc4a534233f497fcf5fc29467c58d/openai-3.51.0.tar.gz", hash = "sha256:1cc9b80eb0f1dc15fa45fbc122ba2c99b7e5302548060c01db5719fa6181a6a9", size = 2415149, upload-time = "2026-11-13T21:13:39.771Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/12/68/a1d793a10e8a5fe9d5710544475d686e90ed20848dd224b126e6bc64c1a6/openai-3.50.0-py3-none-any.whl", hash = "sha256:7002115247cacb167154a3da4c668d074e61014a661d2c1ac02583da24e2ce19", size = 2442350, upload-time = "2026-11-12T19:26:52.57Z" },
+    { url = "https://files.pythonhosted.org/packages/52/f9/d3d9ef409ee4e90de64c9b12f15879f56fc845c2eb9cfe6f314b402de7f1/openai-3.51.0-py3-none-any.whl", hash = "sha256:802b7e8c6ff8cf4d59a2a163126c10ce472adf0409ac41fdaadd47c9b4ed091a", size = 2446085, upload-time = "2026-11-13T21:13:37.969Z" },
 ]
 
 [[package]]
@@ -1932,11 +1932,11 @@ crypto = [
 
 [[package]]
 name = "pypdf"
-version = "7.0.1"
+version = "7.1.0"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/00/c2/4c34b3229abae3e2fcc7809e6cf80fdea159771a37142f475fbf1009c809/pypdf-7.0.1.tar.gz", hash = "sha256:0a78bb99efb41e9088260e9a8e5da134a5cbb9a322014744177bf29b5267ea6d", size = 7206748, upload-time = "2026-11-10T11:47:22.582Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/60/d3/367aa9baefaededd3321cde46bbcb9f008bb51cef3a6b745608352a99534/pypdf-7.1.0.tar.gz", hash = "sha256:ca3fa902369e98a6d2cb7b56396de902b72ef9bb3c1e8706c1bfc7d8bd0cf0d7", size = 7215190, upload-time = "2026-11-13T12:23:18.629Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/d5/a9/ae11deef21eaac5113f8c3848da1c42423b7abeca0abc349bfec7abf4c4e/pypdf-7.0.1-py3-none-any.whl", hash = "sha256:6131b764b046282357037309e7ef2a1b7679d4a5c53eed3db2bfbf7c673ddc2b", size = 416136, upload-time = "2026-11-10T11:47:20.716Z" },
+    { url = "https://files.pythonhosted.org/packages/ed/4c/d19f91b743c8579b67e3d8b001e095745dec5bb13a9b4b9eadc235a85d9e/pypdf-7.1.0-py3-none-any.whl", hash = "sha256:47cca6b24bdcf4c4d65b5f7b8b972535c61710a061261e737688777cfd9a7bfb", size = 418698, upload-time = "2026-11-13T12:23:16.777Z" },
 ]
 
 [[package]]
