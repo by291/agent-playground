@@ -12,7 +12,7 @@ const STORAGE_ACTIONS = [
 
 /** Starts isolated S3-compatible storage and sets its connection environment. */
 export async function createSkillTestStorage() {
-  const storageService = new GenericContainer("chrislusf/seaweedfs:4.48")
+  const storageService = new GenericContainer("chrislusf/seaweedfs:4.53")
     .withCommand([
       "mini",
       "-dir=/data",
