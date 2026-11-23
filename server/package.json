@@ -14,12 +14,12 @@
     "test:integration": "vitest run --project integration"
   },
   "dependencies": {
-    "@ag-ui/client": "1.0.4",
-    "@ag-ui/core": "1.0.4",
-    "@ag-ui/langgraph": "^0.0.45",
-    "@aws-sdk/client-s3": "^3.1168.0",
-    "@hono/node-server": "^2.1.8",
-    "@langchain/langgraph-sdk": "^1.16.0",
+    "@ag-ui/client": "1.0.5",
+    "@ag-ui/core": "1.0.5",
+    "@ag-ui/langgraph": "^0.0.46",
+    "@aws-sdk/client-s3": "^3.1173.0",
+    "@hono/node-server": "^2.1.9",
+    "@langchain/langgraph-sdk": "^1.17.0",
     "@opentelemetry/api": "^1.10.0",
     "@opentelemetry/core": "^2.12.0",
     "@opentelemetry/exporter-metrics-otlp-http": "^0.301.2",
@@ -28,7 +28,7 @@
     "@opentelemetry/sdk-metrics": "^2.11.0",
     "@opentelemetry/sdk-trace-node": "^2.12.0",
     "drizzle-orm": "^0.45.4",
-    "hono": "^4.13.18",
+    "hono": "^4.13.19",
     "pg": "^8.23.1",
     "pino": "^10.4.0",
     "rxjs": "7.8.2",
@@ -36,16 +36,16 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
-    "@testcontainers/postgresql": "^12.2.1",
+    "@testcontainers/postgresql": "^12.2.2",
     "@types/node": "^26.6.6",
     "@types/pg": "^8.23.1",
-    "@vitest/coverage-v8": "5.1.0",
+    "@vitest/coverage-v8": "5.1.1",
     "drizzle-kit": "^0.31.11",
-    "eslint": "^10.14.0",
-    "testcontainers": "^12.2.0",
+    "eslint": "^10.15.0",
+    "testcontainers": "^12.2.2",
     "tsx": "^4.20.0",
     "typescript": "^6.0.3",
-    "typescript-eslint": "^8.72.2",
-    "vitest": "5.1.0"
+    "typescript-eslint": "^8.73.0",
+    "vitest": "5.1.1"
   }
 }
